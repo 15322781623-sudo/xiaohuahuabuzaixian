@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "enables the default permissions",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        "https://open.weixin.qq.com/*",
+        "https://long.open.weixin.qq.com/*",
+        "https://comb-platform.hortorgames.com/*",
+        "https://xxz-xyzw.hortorgames.com/*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2615 @@
+import { HERO_DICT } from "@/utils/HeroList";
+import { PEACH_TASKS } from "@/utils/PeachTaskIds";
+
+/**
+ * 开箱、钓鱼、招募类任务
+ * 包含: batchOpenBox, batchClaimBoxPointReward, batchFish, batchRecruit
+ */
+
+/**
+ * 创建物品类任务执行器
+ * @param {object} deps - 依赖项
+ * @returns {object} 任务函数集合
+ */
+export function createTasksItem(deps) {
+  const {
+    selectedTokens,
+    tokens,
+    tokenStatus,
+    isRunning,
+    shouldStop,
+    ensureConnection,
+    releaseConnectionSlot,
+    connectionQueue,
+    batchSettings,
+    tokenStore,
+    addLog,
+    message,
+    currentRunningTokenId,
+    helperSettings,
+    delayConfig,
+  } = deps;
+
+  const boxNames = {
+    2001: "木质宝箱",
+    2002: "青铜宝箱",
+    2003: "黄金宝箱",
+    2004: "铂金宝箱",
+    2005: "钻石宝箱",
+  };
+
+  const fishNames = { 1: "普通鱼竿", 2: "黄金鱼竿" };
+
+  const heroIds = Object.keys(HERO_DICT).map(Number);
+
+  /**
+   * 批量英雄升星
+   */
+  const batchHeroUpgrade = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    const processHeroUpgrade = async (tokenId) => {
+      if (shouldStop.value)
+        return;
+
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始英雄升星: ${token.name} ===`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        for (const heroId of heroIds) {
+          if (shouldStop.value)
+            break;
+
+          // 每个英雄尝试最多10次升星（只要成功就继续，失败则跳过该英雄）
+          for (let i = 1; i <= 10; i++) {
+            if (shouldStop.value)
+              break;
+
+            try {
+              const res = await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "hero_heroupgradestar",
+                { heroId },
+                5000,
+              );
+              const ok
+                = res
+                  && (res.code === 0 || res.success === true || res.result === 0);
+
+              if (ok) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 英雄ID:${heroId} 升星成功 (第${i}次)`,
+                  type: "success",
+                });
+                // 成功了继续尝试下一级，直到失败或达到10次
+              } else {
+                // 失败说明无法继续升星（碎片不足或满星），跳出循环处理下一个英雄
+                throw new Error("升星失败");
+              }
+            } catch (err) {
+              // 失败则停止当前英雄的升星尝试
+              break;
+            }
+            await new Promise((r) => setTimeout(r, delayConfig.action));
+          }
+        }
+
+        tokenStatus.value[tokenId] = "completed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} === 英雄升星完成 ===`,
+          type: "success",
+        });
+      } catch (error) {
+        console.error(error);
+        tokenStatus.value[tokenId] = "failed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `英雄升星失败: ${error.message}`,
+          type: "error",
+        });
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+      }
+    };
+
+    const taskPromises = selectedTokens.value.map((tokenId) => processHeroUpgrade(tokenId));
+    await Promise.all(taskPromises);
+
+    // 批量重试失败账号
+    const retryMax = batchSettings.defaultRetryCount || 2;
+    const retryWait = batchSettings.retryDelay || 60000;
+    let failed = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+    for (let r = 0; r < retryMax && failed.length > 0; r++) {
+      if (shouldStop.value) break;
+      addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
+      await new Promise(r2 => setTimeout(r2, retryWait));
+      const cur = [...failed]; failed = [];
+      await Promise.all(cur.map(t => processHeroUpgrade(t)));
+      cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
+    }
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    message.success("批量英雄升星结束");
+  };
+
+  /**
+   * 批量图鉴升星
+   */
+  const batchBookUpgrade = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    const processBookUpgrade = async (tokenId) => {
+      if (shouldStop.value)
+        return;
+
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始图鉴升星: ${token.name} ===`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        for (const heroId of heroIds) {
+          if (shouldStop.value)
+            break;
+
+          // 每个英雄尝试最多10次图鉴升星（只要成功就继续，失败则跳过该英雄）
+          for (let i = 1; i <= 10; i++) {
+            if (shouldStop.value)
+              break;
+
+            try {
+              const res = await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "book_upgrade",
+                { heroId },
+                5000,
+              );
+              const ok
+                = res
+                  && (res.code === 0 || res.success === true || res.result === 0);
+
+              if (ok) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 英雄ID:${heroId} 图鉴升星成功 (第${i}次)`,
+                  type: "success",
+                });
+                // 成功了继续尝试下一级，直到失败或达到10次
+              } else {
+                // 失败说明无法继续图鉴升星（碎片不足或满星），跳出循环处理下一个英雄
+                throw new Error("图鉴升星失败");
+              }
+            } catch (err) {
+              // 失败则停止当前英雄的图鉴升星尝试
+              break;
+            }
+            await new Promise((r) => setTimeout(r, delayConfig.action));
+          }
+        }
+
+        tokenStatus.value[tokenId] = "completed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} === 图鉴升星完成 ===`,
+          type: "success",
+        });
+      } catch (error) {
+        console.error(error);
+        tokenStatus.value[tokenId] = "failed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `图鉴升星失败: ${error.message}`,
+          type: "error",
+        });
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+      }
+    };
+
+    const taskPromises = selectedTokens.value.map((tokenId) => processBookUpgrade(tokenId));
+    await Promise.all(taskPromises);
+
+    // 批量重试失败账号
+    const retryMax = batchSettings.defaultRetryCount || 2;
+    const retryWait = batchSettings.retryDelay || 60000;
+    let failed = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+    for (let r = 0; r < retryMax && failed.length > 0; r++) {
+      if (shouldStop.value) break;
+      addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
+      await new Promise(r2 => setTimeout(r2, retryWait));
+      const cur = [...failed]; failed = [];
+      await Promise.all(cur.map(t => processBookUpgrade(t)));
+      cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
+    }
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    message.success("批量图鉴升星结束");
+  };
+
+  /**
+   * 批量领取图鉴奖励
+   */
+  const batchClaimStarRewards = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    const processClaimStar = async (tokenId) => {
+      if (shouldStop.value)
+        return;
+
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始领取图鉴奖励: ${token.name} ===`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        for (let i = 1; i <= 10; i++) {
+          if (shouldStop.value)
+            break;
+          try {
+            const res = await tokenStore.sendMessageWithPromise(
+              tokenId,
+              "book_claimpointreward",
+              {},
+              5000,
+            );
+            const ok
+              = res && (res.code === 0 || res.success === true || res.result === 0);
+
+            if (ok) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 领取图鉴奖励成功`,
+                type: "success",
+              });
+            } else {
+              // 如果领取失败（比如没有奖励可领了），停止尝试
+              throw new Error("领取奖励失败");
+            }
+          } catch (err) {
+            // 失败则停止尝试
+            break;
+          }
+          await new Promise((r) => setTimeout(r, delayConfig.action));
+        }
+
+        tokenStatus.value[tokenId] = "completed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} === 领取图鉴奖励完成 ===`,
+          type: "success",
+        });
+      } catch (error) {
+        console.error(error);
+        tokenStatus.value[tokenId] = "failed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `领取图鉴奖励失败: ${error.message}`,
+          type: "error",
+        });
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+      }
+    };
+
+    const taskPromises = selectedTokens.value.map((tokenId) => processClaimStar(tokenId));
+    await Promise.all(taskPromises);
+
+    // 批量重试失败账号
+    const retryMax = batchSettings.defaultRetryCount || 2;
+    const retryWait = batchSettings.retryDelay || 60000;
+    let failed = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+    for (let r = 0; r < retryMax && failed.length > 0; r++) {
+      if (shouldStop.value) break;
+      addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
+      await new Promise(r2 => setTimeout(r2, retryWait));
+      const cur = [...failed]; failed = [];
+      await Promise.all(cur.map(t => processClaimStar(t)));
+      cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
+    }
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    message.success("批量领取图鉴奖励结束");
+  };
+
+  /**
+   * 领取宝箱积分
+   */
+  const batchClaimBoxPointReward = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    const processClaimBoxPoint = async (tokenId) => {
+      if (shouldStop.value)
+        return;
+
+      tokenStatus.value[tokenId] = "running";
+
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始领取宝箱积分: ${token.name} ===`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        await tokenStore.sendMessageWithPromise(
+          tokenId,
+          "item_batchclaimboxpointreward",
+          {},
+          5000,
+        );
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 宝箱积分领取成功`,
+          type: "success",
+        });
+
+        await tokenStore.sendMessage(tokenId, "role_getroleinfo");
+        tokenStatus.value[tokenId] = "completed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} === 领取完成 ===`,
+          type: "success",
+        });
+      } catch (error) {
+        console.error(error);
+        tokenStatus.value[tokenId] = "failed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `领取失败: ${error.message}`,
+          type: "error",
+        });
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+      }
+    };
+
+    const taskPromises = selectedTokens.value.map((tokenId) => processClaimBoxPoint(tokenId));
+    await Promise.all(taskPromises);
+
+    const retryMax = batchSettings.defaultRetryCount || 2;
+    const retryWait = batchSettings.retryDelay || 60000;
+    let failed = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+    for (let r = 0; r < retryMax && failed.length > 0; r++) {
+      if (shouldStop.value) break;
+      addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
+      await new Promise(r2 => setTimeout(r2, retryWait));
+      const cur = [...failed]; failed = [];
+      await Promise.all(cur.map(t => processClaimBoxPoint(t)));
+      cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
+    }
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    message.success("批量领取宝箱积分结束");
+  };
+
+  /**
+   * 宝箱达标奖励自选大奖
+   * @param {object} rewardConfig - 奖励配置 { rewardIndex: count }
+   */
+  const batchClaimBoxWeeklyRewards = async (rewardConfig = { 5: 1 }) => {
+    if (selectedTokens.value.length === 0)
+      return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    const processClaimWeekly = async (tokenId) => {
+      if (shouldStop.value)
+        return;
+
+      tokenStatus.value[tokenId] = "running";
+
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始领取宝箱达标奖励: ${token.name} ===`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        // 遍历奖励配置，领取每个奖励
+        for (const [rewardIndex, count] of Object.entries(rewardConfig)) {
+          if (shouldStop.value)
+            break;
+
+          const rewardIdx = Number(rewardIndex);
+          const claimCount = Number(count);
+
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 开始领取奖励 ${rewardIdx}，共 ${claimCount} 次`,
+            type: "info",
+          });
+
+          // 循环领取指定次数
+          for (let i = 0; i < claimCount; i++) {
+            if (shouldStop.value)
+              break;
+
+            try {
+              await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "activity_claimweekactreward",
+                { typ: 2, selectRewardsMap: { [String(rewardIdx)]: 1 } },
+                5000,
+              );
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 奖励 ${rewardIdx} 领取成功 (${i + 1}/${claimCount})`,
+                type: "success",
+              });
+            } catch (error) {
+              const errorMsg = error.message || "";
+              if (errorMsg.includes("已领取") || errorMsg.includes("1100010")) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 奖励 ${rewardIdx} 已领取`,
+                  type: "info",
+                });
+              } else if (errorMsg.includes("3300080")) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 奖励 ${rewardIdx} 未达标无法领取`,
+                  type: "info",
+                });
+              } else {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 奖励 ${rewardIdx} 领取失败: ${errorMsg}`,
+                  type: "warning",
+                });
+              }
+            }
+
+            // 每次领取后延迟
+            if (i < claimCount - 1 && !shouldStop.value) {
+              await new Promise(resolve => setTimeout(resolve, delayConfig.commandDelay || 500));
+            }
+          }
+        }
+
+        await tokenStore.sendMessage(tokenId, "role_getroleinfo");
+        tokenStatus.value[tokenId] = "completed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} === 领取完成 ===`,
+          type: "success",
+        });
+      } catch (error) {
+        console.error(error);
+        tokenStatus.value[tokenId] = "failed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `领取失败: ${error.message}`,
+          type: "error",
+        });
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+      }
+    };
+
+    const taskPromises = selectedTokens.value.map((tokenId) => processClaimWeekly(tokenId));
+    await Promise.all(taskPromises);
+
+    const retryMax = batchSettings.defaultRetryCount || 2;
+    const retryWait = batchSettings.retryDelay || 60000;
+    let failed = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+    for (let r = 0; r < retryMax && failed.length > 0; r++) {
+      if (shouldStop.value) break;
+      addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
+      await new Promise(r2 => setTimeout(r2, retryWait));
+      const cur = [...failed]; failed = [];
+      await Promise.all(cur.map(t => processClaimWeekly(t)));
+      cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
+    }
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    message.success("批量领取宝箱达标奖励结束");
+  };
+
+  /**
+   * 批量领取蟠桃园任务
+   */
+  const batchClaimPeachTasks = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    const processPeachTasks = async (tokenId) => {
+      if (shouldStop.value)
+        return;
+
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始领取蟠桃园任务奖励: ${token.name} ===`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        const res = await tokenStore.sendMessageWithPromise(
+          tokenId,
+          "legion_getpayloadtask",
+          {},
+          5000,
+        );
+
+        const payloadTask = res?.payloadTask || res?.data?.payloadTask;
+
+        if (payloadTask && payloadTask.taskMap) {
+          const taskMap = payloadTask.taskMap;
+          const tasks = [];
+          Object.values(taskMap).forEach((item) => {
+            const availableTasks = PEACH_TASKS.filter(
+              (t) =>
+                t.type === item.typ
+                && item.progress >= t.target
+                && item.claimedProgress < t.target,
+            );
+            tasks.push(...availableTasks);
+          });
+
+          let claimedCount = 0;
+
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 获取到 ${tasks.length} 个任务奖励`,
+            type: "info",
+          });
+
+          for (const task of tasks) {
+            if (shouldStop.value)
+              break;
+            // status not reliable or not present, try claim all
+            try {
+              const claimRes = await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "legion_claimpayloadtask",
+                { taskId: task.id },
+                5000,
+              );
+              const ok = claimRes && claimRes.payloadTask;
+              if (ok) {
+                claimedCount++;
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 领取${task.desc}任务奖励成功`,
+                  type: "success",
+                });
+              }
+            } catch (err) {
+              // ignore
+            }
+            await new Promise((r) => setTimeout(r, delayConfig.action));
+          }
+
+          // Check and claim point rewards (Moved out of loop to ensure execution)
+          try {
+            const progressMapres = await tokenStore.sendMessageWithPromise(
+              tokenId,
+              "legion_getpayloadtask",
+              {},
+              5000,
+            );
+
+            if (progressMapres && progressMapres.payloadTask) {
+              const legionPoint = progressMapres.payloadTask.legionPoint || 0;
+              const selfPoint = progressMapres.payloadTask.selfPoint || 0;
+              // progressMap key might be string or number, handle both safely
+              const progressMap = progressMapres.payloadTask.progressMap || {};
+              const taskGroupprogressMap = progressMap[1] || progressMap["1"] || 0;
+              const selfPointprogressMap = progressMap[2] || progressMap["2"] || 0;
+
+              // Club Rewards - Claim all if progress is greater than claimed progress
+              if (legionPoint > taskGroupprogressMap && taskGroupprogressMap < 25) {
+                try {
+                  await tokenStore.sendMessageWithPromise(
+                    tokenId,
+                    "legion_claimpayloadtaskprogress",
+                    { taskGroup: 1 },
+                    5000,
+                  );
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 领取俱乐部任务奖励 (当前积分: ${legionPoint})`,
+                    type: "success",
+                  });
+                  await new Promise((r) => setTimeout(r, delayConfig.action || batchSettings.actionDelay || 1500));
+                } catch (e) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 领取俱乐部任务奖励失败: ${e.message}`,
+                    type: "error",
+                  });
+                }
+              }
+
+              // Personal Rewards - Claim all if progress is greater than claimed progress
+              if (selfPoint > selfPointprogressMap && selfPointprogressMap < 25) {
+                try {
+                  await tokenStore.sendMessageWithPromise(
+                    tokenId,
+                    "legion_claimpayloadtaskprogress",
+                    { taskGroup: 2 },
+                    5000,
+                  );
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 领取个人任务奖励 (当前积分: ${selfPoint})`,
+                    type: "success",
+                  });
+                  await new Promise((r) => setTimeout(r, delayConfig.action || batchSettings.actionDelay || 1500));
+                } catch (e) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 领取个人任务奖励失败: ${e.message}`,
+                    type: "error",
+                  });
+                }
+              }
+            }
+          } catch (err) {
+            console.error("领取蟠桃园积分奖励异常:", err);
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 领取积分奖励异常: ${err.message}`,
+              type: "error",
+            });
+          }
+
+          if (claimedCount === 0) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 没有可领取的任务奖励`,
+              type: "info",
+            });
+          }
+        } else {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 未获取到任务奖励列表`,
+            type: "warning",
+          });
+        }
+
+        tokenStatus.value[tokenId] = "completed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} === 领取蟠桃园任务奖励完成 ===`,
+          type: "success",
+        });
+      } catch (error) {
+        console.error(error);
+        tokenStatus.value[tokenId] = "failed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 领取蟠桃园任务奖励失败: ${error.message}`,
+          type: "error",
+        });
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+      }
+    };
+
+    const taskPromises = selectedTokens.value.map((tokenId) => processPeachTasks(tokenId));
+    await Promise.all(taskPromises);
+
+    const retryMax = batchSettings.defaultRetryCount || 2;
+    const retryWait = batchSettings.retryDelay || 60000;
+    let failed = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+    for (let r = 0; r < retryMax && failed.length > 0; r++) {
+      if (shouldStop.value) break;
+      addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
+      await new Promise(r2 => setTimeout(r2, retryWait));
+      const cur = [...failed]; failed = [];
+      await Promise.all(cur.map(t => processPeachTasks(t)));
+      cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
+    }
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    message.success("批量领取蟠桃园任务奖励结束");
+  };
+
+  /**
+   * 一键灯神扫荡
+   */
+  const batchGenieSweep = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    const processGenieSweep = async (tokenId) => {
+      if (shouldStop.value)
+        return;
+
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始灯神扫荡: ${token.name} ===`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        // 获取最新角色信息
+        const roleInfoRes = await tokenStore.sendMessageWithPromise(
+          tokenId,
+          "role_getroleinfo",
+          {},
+          10000,
+        );
+
+        // 解析灯神进度和扫荡券
+        const role = roleInfoRes?.role || roleInfoRes?.data?.role || {};
+        const genieData = role.genie || {};
+        // 扫荡券 ID 1021
+        const sweepTicketCount = role.items?.[1021]?.quantity || 0;
+
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 当前扫荡券数量: ${sweepTicketCount}`,
+          type: "info",
+        });
+
+        if (sweepTicketCount <= 0) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 扫荡券不足，停止扫荡`,
+            type: "warning",
+          });
+          tokenStatus.value[tokenId] = "completed";
+          return;
+        }
+
+        // 计算最高层数
+        // 1-4: 魏蜀吴群 (0-16 -> 1-17层)
+        // 5: 深海 (0-9 -> 1-10层)
+        let maxLayer = -1;
+        let bestGenieId = -1;
+
+        // 检查魏蜀吴群 (1-4)
+        for (let i = 1; i <= 4; i++) {
+          if (genieData[i] !== undefined) {
+            // 数据值 0 代表 1 层? 用户说 0-16 代表 1-17 层
+            // 假设 genieData[i] 是已通过的层数索引
+            const currentLayer = genieData[i] + 1;
+            if (currentLayer > maxLayer) {
+              maxLayer = currentLayer;
+              bestGenieId = i;
+            }
+          }
+        }
+
+        if (bestGenieId === -1) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 未找到可扫荡的灯神关卡`,
+            type: "warning",
+          });
+          tokenStatus.value[tokenId] = "completed";
+          return;
+        }
+
+        const genieNames = { 1: "魏国", 2: "蜀国", 3: "吴国", 4: "群雄", 5: "深海" };
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 扫荡: ${genieNames[bestGenieId]}灯神 (第${maxLayer}层)`,
+          type: "info",
+        });
+
+        // 开始扫荡
+        let remainingTickets = sweepTicketCount;
+
+        while (remainingTickets > 0 && !shouldStop.value) {
+          const sweepCnt = Math.min(remainingTickets, 20);
+
+          try {
+            const res = await tokenStore.sendMessageWithPromise(
+              tokenId,
+              "genie_sweep",
+              {
+                genieId: bestGenieId,
+                sweepCnt,
+              },
+              5000,
+            );
+
+            const ok = res && (res.role || res.role.items);
+
+            if (ok) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 扫荡成功 ${sweepCnt} 次`,
+                type: "success",
+              });
+              remainingTickets = res.role.items?.[1021]?.quantity || 0;
+            } else {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 扫荡失败: ${res.hint || "未知错误"}`,
+                type: "error",
+              });
+              break; // 失败则停止
+            }
+          } catch (err) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 扫荡请求异常: ${err.message}`,
+              type: "error",
+            });
+            break;
+          }
+
+          if (remainingTickets > 0) {
+            await new Promise((r) => setTimeout(r, delayConfig.action));
+          }
+        }
+
+        // 刷新信息
+        await tokenStore.sendMessage(tokenId, "role_getroleinfo");
+        tokenStatus.value[tokenId] = "completed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} === 灯神扫荡完成 ===`,
+          type: "success",
+        });
+      } catch (error) {
+        console.error(error);
+        tokenStatus.value[tokenId] = "failed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `灯神扫荡失败: ${error.message}`,
+          type: "error",
+        });
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+      }
+    };
+
+    const taskPromises = selectedTokens.value.map((tokenId) => processGenieSweep(tokenId));
+    await Promise.all(taskPromises);
+
+    const retryMax = batchSettings.defaultRetryCount || 2;
+    const retryWait = batchSettings.retryDelay || 60000;
+    let failed = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+    for (let r = 0; r < retryMax && failed.length > 0; r++) {
+      if (shouldStop.value) break;
+      addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
+      await new Promise(r2 => setTimeout(r2, retryWait));
+      const cur = [...failed]; failed = [];
+      await Promise.all(cur.map(t => processGenieSweep(t)));
+      cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
+    }
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    message.success("一键灯神扫荡结束");
+  };
+
+  /**
+   * 一键开碎片礼包
+   * 开启所有类型的碎片礼包：红将、紫将、橙将、精铁、进阶石、白玉、扳手、赛车改装、金币、金砖、晶石、怪异
+   */
+  const batchOpenFragmentPacks = async (isScheduledTask = false) => {
+    if (selectedTokens.value.length === 0)
+      return;
+
+    try {
+      isRunning.value = true;
+      shouldStop.value = false;
+
+      selectedTokens.value.forEach((id) => {
+        tokenStatus.value[id] = "waiting";
+      });
+
+      // 碎片礼包配置：itemId -> 名称
+      const fragmentPacks = [
+        { itemId: 3007, name: "随机红将碎片" },
+        { itemId: 3005, name: "随机紫将碎片" }, // 修正：应该是 3005 而不是 2005
+        { itemId: 3006, name: "随机橙将碎片" },
+        { itemId: 3008, name: "精铁福袋" },
+        { itemId: 3009, name: "进阶石福袋" },
+        { itemId: 3011, name: "白玉福袋" },
+        { itemId: 3012, name: "扳手福袋" },
+        { itemId: 35011, name: "赛车改装礼盒" },
+        { itemId: 3001, name: "金币礼包" },
+        { itemId: 3002, name: "金砖礼包" },
+        { itemId: 3010, name: "晶石福袋" },
+        { itemId: 37005, name: "怪异礼包" },
+      ];
+
+      const processFragmentPacks = async (tokenId) => {
+        if (shouldStop.value)
+          return;
+
+        tokenStatus.value[tokenId] = "running";
+        const token = tokens.value.find((t) => t.id === tokenId);
+
+        try {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `=== 开始开碎片礼包: ${token.name} ===`,
+            type: "info",
+          });
+
+          // 确保连接
+          await ensureConnection(tokenId);
+
+          // 获取角色信息，查看拥有的礼包数量
+          const roleRes = await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "role_getroleinfo",
+            {},
+            8000,
+          );
+
+          const items = roleRes?.role?.items || {};
+          let totalOpened = 0;
+
+          // 遍历所有类型的礼包
+          for (const pack of fragmentPacks) {
+            if (shouldStop.value)
+              break;
+
+            const quantity = Number(items[pack.itemId]?.quantity || 0);
+
+            if (quantity > 0) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 拥有 ${pack.name} x${quantity}，开始开启...`,
+                type: "info",
+              });
+
+              // 每次最多开启999个，循环开启
+              let remaining = quantity;
+              let openedCount = 0;
+
+              while (remaining > 0 && !shouldStop.value) {
+                const openNumber = Math.min(remaining, 999);
+
+                try {
+                  // 开启礼包
+                  await tokenStore.sendMessageWithPromise(
+                    tokenId,
+                    "item_openpack",
+                    { itemId: pack.itemId, number: openNumber, index: 0 },
+                    10000,
+                  );
+
+                  openedCount += openNumber;
+                  remaining -= openNumber;
+
+                  if (remaining > 0) {
+                    addLog({
+                      time: new Date().toLocaleTimeString(),
+                      message: `${token.name} 开启 ${pack.name} x${openNumber} 成功，剩余 ${remaining} 个`,
+                      type: "success",
+                    });
+                  } else {
+                    addLog({
+                      time: new Date().toLocaleTimeString(),
+                      message: `${token.name} 开启 ${pack.name} x${openedCount} 成功`,
+                      type: "success",
+                    });
+                  }
+
+                  // 添加延迟避免操作太快
+                  await new Promise((r) => setTimeout(r, delayConfig.action || batchSettings.actionDelay || 1500));
+                } catch (error) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 开启 ${pack.name} x${openNumber} 失败: ${error.message}`,
+                    type: "error",
+                  });
+                  break; // 失败则停止该礼包的开启
+                }
+              }
+
+              totalOpened += openedCount;
+            }
+          }
+
+          if (totalOpened > 0) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} === 碎片礼包开启完成，共开启 ${totalOpened} 个 ===`,
+              type: "success",
+            });
+          } else {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 没有任何可开启的碎片礼包`,
+              type: "warning",
+            });
+          }
+
+          tokenStatus.value[tokenId] = "completed";
+        } catch (error) {
+          console.error(error);
+          tokenStatus.value[tokenId] = "failed";
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 开碎片礼包失败: ${error.message}`,
+            type: "error",
+          });
+        } finally {
+          tokenStore.closeWebSocketConnection(tokenId);
+          releaseConnectionSlot();
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+            type: "info",
+          });
+        }
+      };
+
+      const taskPromises = selectedTokens.value.map((tokenId) => processFragmentPacks(tokenId));
+      await Promise.all(taskPromises);
+
+      const retryMax = batchSettings.defaultRetryCount || 2;
+      const retryWait = batchSettings.retryDelay || 60000;
+      let failed = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+      for (let r = 0; r < retryMax && failed.length > 0; r++) {
+        if (shouldStop.value) break;
+        addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
+        await new Promise(r2 => setTimeout(r2, retryWait));
+        const cur = [...failed]; failed = [];
+        await Promise.all(cur.map(t => processFragmentPacks(t)));
+        cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
+      }
+
+      message.success("一键开碎片礼包结束");
+    } finally {
+      isRunning.value = false;
+      currentRunningTokenId.value = null;
+    }
+  };
+
+  const batchOpenBox = async (isScheduledTask = false) => {
+    if (selectedTokens.value.length === 0)
+      return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    const boxType = isScheduledTask
+      ? batchSettings.defaultBoxType
+      : helperSettings.boxType;
+    const totalCount = isScheduledTask
+      ? batchSettings.boxCount
+      : helperSettings.count;
+    const batches = Math.floor(totalCount / 10);
+    const remainder = totalCount % 10;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    const processOpenBox = async (tokenId) => {
+      if (shouldStop.value)
+        return;
+
+      tokenStatus.value[tokenId] = "running";
+
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始批量开箱: ${token.name} ===`,
+          type: "info",
+        });
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 宝箱类型: ${boxNames[boxType]}, 数量: ${totalCount}`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        for (let i = 0; i < batches && !shouldStop.value; i++) {
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "item_openbox",
+            { itemId: boxType, number: 10 },
+            5000,
+          );
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 开箱进度: ${(i + 1) * 10}/${totalCount}`,
+            type: "info",
+          });
+          await new Promise((r) => setTimeout(r, delayConfig.action));
+        }
+
+        if (remainder > 0 && !shouldStop.value) {
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "item_openbox",
+            { itemId: boxType, number: remainder },
+            5000,
+          );
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 开箱进度: ${totalCount}/${totalCount}`,
+            type: "info",
+          });
+        }
+        await tokenStore.sendMessageWithPromise(
+          tokenId,
+          "item_batchclaimboxpointreward",
+        );
+        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await tokenStore.sendMessage(tokenId, "role_getroleinfo");
+        tokenStatus.value[tokenId] = "completed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== ${token.name} 开箱完成 ===`,
+          type: "success",
+        });
+      } catch (error) {
+        console.error(error);
+        tokenStatus.value[tokenId] = "failed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `开箱失败: ${error.message}`,
+          type: "error",
+        });
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+      }
+    };
+
+    const taskPromises = selectedTokens.value.map((tokenId) => processOpenBox(tokenId));
+    await Promise.all(taskPromises);
+
+    const retryMax = batchSettings.defaultRetryCount || 2;
+    const retryWait = batchSettings.retryDelay || 60000;
+    let failed = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+    for (let r = 0; r < retryMax && failed.length > 0; r++) {
+      if (shouldStop.value) break;
+      addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
+      await new Promise(r2 => setTimeout(r2, retryWait));
+      const cur = [...failed]; failed = [];
+      await Promise.all(cur.map(t => processOpenBox(t)));
+      cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
+    }
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    message.success("批量开箱结束");
+  };
+
+  /**
+   * 批量钓鱼
+   */
+  const batchFish = async (isScheduledTask = false) => {
+    if (selectedTokens.value.length === 0)
+      return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    const fishType = isScheduledTask
+      ? batchSettings.defaultFishType
+      : helperSettings.fishType;
+    const totalCount = isScheduledTask
+      ? batchSettings.fishCount
+      : helperSettings.count;
+    const batches = Math.floor(totalCount / 10);
+    const remainder = totalCount % 10;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    // 记录需要重试的Token（400340/200750/11800010错误）
+    const retryTokens = [];
+    const MAX_RETRIES = batchSettings.defaultRetryCount !== undefined ? batchSettings.defaultRetryCount : 2;
+
+    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+      if (shouldStop.value)
+        return;
+
+      tokenStatus.value[tokenId] = "running";
+
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始批量钓鱼: ${token.name} ===`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        // 检查鱼竿数量
+        let role = tokenStore.gameData?.roleInfo?.role;
+        if (!role) {
+          try {
+            const roleInfo = await tokenStore.sendGetRoleInfo(tokenId);
+            role = roleInfo?.role;
+          } catch {}
+        }
+        // 普通鱼竿: 1011, 黄金鱼竿: 1012
+        const rodId = fishType === 1 ? 1011 : 1012;
+        const rodCount = role?.items?.[rodId]?.quantity || 0;
+
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 鱼竿类型: ${fishNames[fishType]}, 目标数量: ${totalCount}, 当前库存: ${rodCount}`,
+          type: "info",
+        });
+
+        let availableCount = totalCount;
+        if (rodCount < totalCount) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 库存不足 (${rodCount} < ${totalCount})，将仅消耗现有库存`,
+            type: "warning",
+          });
+          availableCount = rodCount;
+        }
+
+        if (availableCount <= 0) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 没有可用的鱼竿，停止任务`,
+            type: "warning",
+          });
+          tokenStatus.value[tokenId] = "completed";
+          return;
+        }
+
+        const batches = Math.floor(availableCount / 10);
+        const remainder = availableCount % 10;
+
+        for (let i = 0; i < batches && !shouldStop.value; i++) {
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "artifact_lottery",
+            { type: fishType, lotteryNumber: 10, newFree: true },
+            5000,
+          );
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 钓鱼进度: ${(i + 1) * 10}/${availableCount}`,
+            type: "info",
+          });
+
+          // 每5轮（50次）后，重新校验鱼竿数量
+          if ((i + 1) % 5 === 0 && i < batches - 1) {
+            try {
+              const roleRes = await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "role_getroleinfo",
+                {},
+                10000,
+              );
+              const currentRole = roleRes?.role || roleRes?.data?.role;
+              if (currentRole) {
+                const currentRodCount = currentRole.items?.[rodId]?.quantity || 0;
+
+                // 剩余需要的次数 (不包括当前这轮，因为i已经执行完了，所以剩余次数是 (batches - 1 - i) * 10 + remainder)
+                // 但实际上我们只需要知道下一轮是否有足够的鱼竿
+                // 如果当前库存少于10，说明下一轮可能不够，或者整个任务不够
+                // 重新计算 availableCount 可能会比较复杂，因为循环是基于 batches
+
+                if (currentRodCount < 10) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 同步后发现鱼竿不足 (${currentRodCount} < 10)，停止后续批量任务`,
+                    type: "warning",
+                  });
+                  // 强制停止
+                  break;
+                }
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          await new Promise((r) => setTimeout(r, delayConfig.action));
+        }
+
+        if (remainder > 0 && !shouldStop.value) {
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "artifact_lottery",
+            { type: fishType, lotteryNumber: remainder, newFree: true },
+            5000,
+          );
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 钓鱼进度: ${availableCount}/${availableCount}`,
+            type: "info",
+          });
+        }
+        // 自动领取鱼竿累计奖励
+        try {
+          const roleRes = await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "role_getroleinfo",
+            {},
+            10000,
+          );
+          const currentRole = roleRes?.role || roleRes?.data?.role;
+          if (currentRole) {
+            const points = currentRole.statistics?.["artifact:point"] || 0;
+            const exchangeCount = Math.floor(points / 20);
+
+            if (exchangeCount > 0) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 检测到鱼竿累计使用 ${points}，开始领取 ${exchangeCount} 次累计奖励`,
+                type: "info",
+              });
+
+              for (let k = 0; k < exchangeCount && !shouldStop.value; k++) {
+                try {
+                  await tokenStore.sendMessageWithPromise(
+                    tokenId,
+                    "artifact_exchange",
+                    {},
+                    3000,
+                  );
+                  // 稍微延迟，避免请求过快
+                  await new Promise((r) => setTimeout(r, delayConfig.commandDelay || batchSettings.commandDelay || 1500));
+                } catch (err) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 领取累计奖励失败 (第${k + 1}次): ${err.message}`,
+                    type: "warning",
+                  });
+                  break; // 如果出错可能是不满足条件，停止领取
+                }
+              }
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 累计奖励领取结束`,
+                type: "success",
+              });
+            }
+          }
+        } catch (e) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 检查累计奖励失败: ${e.message}`,
+            type: "warning",
+          });
+        }
+
+        tokenStatus.value[tokenId] = "completed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} === 钓鱼完成 ===`,
+          type: "success",
+        });
+      } catch (error) {
+        console.error(error);
+        const errMsg = error.message || "";
+        
+        // ✅ 检测400340、200750或11800010错误，加入重试队列
+        if (errMsg.includes("400340") || errMsg.includes("200750") || errMsg.includes("11800010")) {
+          const errorCode = errMsg.includes("400340") ? "400340服务器限流" : errMsg.includes("200750") ? "200750服务器错误" : "11800010未知错误";
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 钓鱼失败: ${errorCode}，加入重试队列`,
+            type: "warning",
+          });
+          retryTokens.push({ tokenId, tokenName: token.name, error: errMsg });
+          tokenStatus.value[tokenId] = "waiting_retry";
+        } else {
+          tokenStatus.value[tokenId] = "failed";
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `钓鱼失败: ${error.message}`,
+            type: "error",
+          });
+        }
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+      }
+    });
+
+    await Promise.all(taskPromises);
+
+    // 处理需要重试的账号
+    if (retryTokens.length > 0 && !shouldStop.value) {
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `\n=== 发现 ${retryTokens.length} 个账号出现400340/200750/11800010错误，开始重试 ===`,
+        type: "info",
+      });
+
+      const retryWaitTime = batchSettings.retryDelay || 60000;
+      await new Promise((r) => setTimeout(r, retryWaitTime));
+
+      for (let retryCount = 1; retryCount <= MAX_RETRIES && retryTokens.length > 0 && !shouldStop.value; retryCount++) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `--- 第 ${retryCount}/${MAX_RETRIES} 轮重试 (${retryTokens.length} 个账号) ---`,
+          type: "info",
+        });
+
+        const stillFailed = [];
+
+        for (const retryTask of retryTokens) {
+          if (shouldStop.value)
+            break;
+
+          try {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `=== 重试钓鱼: ${retryTask.tokenName} ===`,
+              type: "info",
+            });
+
+            await ensureConnection(retryTask.tokenId);
+
+            const availableCount = totalCount;
+            const batches = Math.floor(availableCount / 10);
+            const remainder = availableCount % 10;
+
+            for (let i = 0; i < batches && !shouldStop.value; i++) {
+              await tokenStore.sendMessageWithPromise(
+                retryTask.tokenId,
+                "artifact_lottery",
+                { type: fishType, lotteryNumber: 10, newFree: true },
+                5000,
+              );
+              await new Promise((r) => setTimeout(r, delayConfig.action));
+            }
+
+            if (remainder > 0 && !shouldStop.value) {
+              await tokenStore.sendMessageWithPromise(
+                retryTask.tokenId,
+                "artifact_lottery",
+                { type: fishType, lotteryNumber: remainder, newFree: true },
+                5000,
+              );
+            }
+
+            tokenStatus.value[retryTask.tokenId] = "completed";
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${retryTask.tokenName} 重试成功`,
+              type: "success",
+            });
+          } catch (error) {
+            const errMsg = error.message || "";
+            if (errMsg.includes("400340") || errMsg.includes("200750") || errMsg.includes("11800010")) {
+              stillFailed.push(retryTask);
+              tokenStatus.value[retryTask.tokenId] = "waiting_retry";
+            } else {
+              tokenStatus.value[retryTask.tokenId] = "failed";
+            }
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${retryTask.tokenName} 重试失败: ${errMsg}`,
+              type: "error",
+            });
+          } finally {
+            tokenStore.closeWebSocketConnection(retryTask.tokenId);
+            releaseConnectionSlot();
+          }
+        }
+
+        retryTokens.length = 0;
+        retryTokens.push(...stillFailed);
+
+        if (stillFailed.length > 0 && retryCount < MAX_RETRIES) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${stillFailed.length} 个账号重试失败，等待${retryWaitTime / 1000}秒后进行下一轮重试`,
+            type: "warning",
+          });
+          await new Promise((r) => setTimeout(r, retryWaitTime));
+        }
+      }
+
+      // 最终结果
+      const successCount = selectedTokens.value.length - retryTokens.length;
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `\n=== 钓鱼重试完成 ===`,
+        type: "info",
+      });
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `重试成功: ${successCount} 个`,
+        type: "success",
+      });
+      if (retryTokens.length > 0) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `重试失败: ${retryTokens.length} 个`,
+          type: "error",
+        });
+      }
+    }
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    message.success("批量钓鱼结束");
+  };
+
+  /**
+   * 批量招募
+   */
+  const batchRecruit = async (isScheduledTask = false) => {
+    if (selectedTokens.value.length === 0)
+      return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    const totalCount = isScheduledTask
+      ? batchSettings.recruitCount
+      : helperSettings.count;
+    const batches = Math.floor(totalCount / 10);
+    const remainder = totalCount % 10;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    const processRecruit = async (tokenId) => {
+      if (shouldStop.value)
+        return;
+
+      tokenStatus.value[tokenId] = "running";
+
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始批量招募: ${token.name} ===`,
+          type: "info",
+        });
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 招募数量: ${totalCount}`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        for (let i = 0; i < batches && !shouldStop.value; i++) {
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "hero_recruit",
+            { recruitType: 1, recruitNumber: 10 },
+            5000,
+          );
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `招募进度: ${(i + 1) * 10}/${totalCount}`,
+            type: "info",
+          });
+          await new Promise((r) => setTimeout(r, delayConfig.action));
+        }
+
+        if (remainder > 0 && !shouldStop.value) {
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "hero_recruit",
+            { recruitType: 1, recruitNumber: remainder },
+            5000,
+          );
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `招募进度: ${totalCount}/${totalCount}`,
+            type: "info",
+          });
+        }
+
+        await tokenStore.sendMessage(tokenId, "role_getroleinfo");
+        tokenStatus.value[tokenId] = "completed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== ${token.name} 招募完成 ===`,
+          type: "success",
+        });
+      } catch (error) {
+        console.error(error);
+        tokenStatus.value[tokenId] = "failed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `招募失败: ${error.message}`,
+          type: "error",
+        });
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+      }
+    };
+
+    const taskPromises = selectedTokens.value.map((tokenId) => processRecruit(tokenId));
+    await Promise.all(taskPromises);
+
+    const retryMax = batchSettings.defaultRetryCount || 2;
+    const retryWait = batchSettings.retryDelay || 60000;
+    let failed = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+    for (let r = 0; r < retryMax && failed.length > 0; r++) {
+      if (shouldStop.value) break;
+      addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
+      await new Promise(r2 => setTimeout(r2, retryWait));
+      const cur = [...failed]; failed = [];
+      await Promise.all(cur.map(t => processRecruit(t)));
+      cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
+    }
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    message.success("批量招募结束");
+  };
+
+  const batchOpenBoxByPoints = async (isScheduledTask = false) => {
+    if (selectedTokens.value.length === 0)
+      return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    const TARGET_SCORE_PER_ROUND = 8000; // 每轮目标积分
+    const MAX_ROUNDS = 4; // 最多4轮
+
+    const targetRounds = isScheduledTask
+      ? (batchSettings.targetBoxRounds || 1)
+      : (helperSettings.targetRounds || 1);
+
+    const boxPriority = [
+      { id: 2002, name: "青铜宝箱", points: 10, reserve: 0 }, // 优先开青铜
+      { id: 2003, name: "黄金宝箱", points: 20, reserve: 0 }, // 其次开黄金
+      { id: 2004, name: "铂金宝箱", points: 50, reserve: 0 }, // 再次开铂金
+      { id: 2001, name: "木质宝箱", points: 1, reserve: 200 }, // 最后用木质精确补足
+    ];
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    const processOpenBoxByPoints = async (tokenId) => {
+      if (shouldStop.value)
+        return;
+
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始按积分开箱: ${token.name} ===`,
+          type: "info",
+        });
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 目标轮数: ${targetRounds} 轮（每轮 ${TARGET_SCORE_PER_ROUND} 积分）`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        // 1. 获取当前宝箱周积分
+        const activityRes = await tokenStore.sendMessageWithPromise(
+          tokenId,
+          "activity_get",
+          {},
+          5000,
+        );
+
+        const activity = activityRes?.activity || activityRes?.body?.activity || activityRes;
+        const myTotalInfo = activity?.myTotalInfo || {};
+        const boxWeekInfo = myTotalInfo["2"]; // 2表示宝箱周
+
+        // 调试日志
+        console.log(`[${token.name}] 初始 boxWeekInfo:`, JSON.stringify(boxWeekInfo));
+
+        if (!boxWeekInfo) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 未获取到宝箱周活动数据，可能还未开启宝箱周`,
+            type: "error",
+          });
+          tokenStatus.value[tokenId] = "failed";
+          return;
+        }
+
+        // 兼容多种字段名：num, score, value
+        const currentRoundScore = Number(boxWeekInfo.num || boxWeekInfo.score || boxWeekInfo.value || 0);
+        // rounds 表示当前轮数（第几轮）
+        const currentRound = Number(boxWeekInfo.rounds || 0);
+        
+        // 计算已完成轮数和总积分：
+        // - 当当前轮积分为8000时，该轮已完成，completedRounds = rounds
+        // - 当当前轮积分<8000时，该轮未完成，completedRounds = rounds - 1
+        let completedRounds;
+        let totalScore;
+        if (currentRoundScore >= TARGET_SCORE_PER_ROUND) {
+          // 当前轮已完成
+          completedRounds = currentRound;
+          totalScore = currentRound * TARGET_SCORE_PER_ROUND;
+        } else {
+          // 当前轮未完成
+          completedRounds = Math.max(0, currentRound - 1);
+          totalScore = completedRounds * TARGET_SCORE_PER_ROUND + currentRoundScore;
+        }
+        
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 当前宝箱周: 第 ${currentRound} 轮，已完成 ${completedRounds} 轮，当前轮积分: ${currentRoundScore}，总积分: ${totalScore}`,
+          type: "info",
+        });
+        
+        // 计算目标总积分和还需要的积分
+        const targetTotalScore = targetRounds * TARGET_SCORE_PER_ROUND;
+        let neededScore = Math.max(0, targetTotalScore - totalScore);
+        
+        // 如果目标已达标但当前轮未完成，计算完成当前轮所需积分
+        if (neededScore <= 0 && currentRoundScore < TARGET_SCORE_PER_ROUND) {
+          neededScore = TARGET_SCORE_PER_ROUND - currentRoundScore;
+        }
+        
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 目标总积分: ${targetTotalScore}，还需积分: ${neededScore}`,
+          type: "info",
+        });
+        
+        // 无需开箱条件：第4轮且当前轮积分已满8000（4轮全部完成）
+        if (currentRound === 4 && currentRoundScore >= TARGET_SCORE_PER_ROUND) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 已完成 ${completedRounds} 轮宝箱任务，无需开箱`,
+            type: "success",
+          });
+        } else {
+          // 2. 获取角色物品信息
+          const roleInfoRes = await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "role_getroleinfo",
+            {},
+            10000,
+          );
+          const role = roleInfoRes?.role || roleInfoRes?.data?.role || {};
+          const items = role.items || {};
+
+          // 计算可用宝箱数量
+          const boxInventory = {};
+          let totalAvailablePoints = 0;
+
+          for (const box of boxPriority) {
+            const count = items[box.id]?.quantity || 0;
+            const available = box.id === 2001 ? Math.max(0, count - box.reserve) : count;
+            boxInventory[box.id] = available;
+            totalAvailablePoints += available * box.points;
+          }
+
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 可用宝箱: 木质=${boxInventory[2001]}, 青铜=${boxInventory[2002]}, 黄金=${boxInventory[2003]}, 铂金=${boxInventory[2004]}`,
+            type: "info",
+          });
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 可获得总积分: ${totalAvailablePoints}`,
+            type: "info",
+          });
+
+          if (totalAvailablePoints < neededScore) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 积分不足！需要 ${neededScore}，可获得 ${totalAvailablePoints}`,
+              type: "error",
+            });
+            tokenStatus.value[tokenId] = "failed";
+            return;
+          }
+
+          // 3. 计算需要开的宝箱数量：所有箱子只开10的倍数，木质不开单个
+          let remainingScore = neededScore;
+          const openedBoxes = {};
+
+          for (const box of boxPriority) {
+            if (remainingScore <= 0)
+              break;
+
+            const available = boxInventory[box.id];
+            if (available <= 0)
+              continue;
+
+            // 所有宝箱只开10的倍数
+            const maxAllowedByScore = Math.floor(remainingScore / box.points);
+            const maxAllowed = Math.floor(maxAllowedByScore / 10) * 10;
+            const availableBoxes = Math.floor(available / 10) * 10;
+            const boxesToOpen = Math.min(maxAllowed, availableBoxes);
+
+            if (boxesToOpen <= 0)
+              continue;
+
+            openedBoxes[box.id] = boxesToOpen;
+            const gainedPoints = boxesToOpen * box.points;
+            remainingScore -= gainedPoints;
+
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 计划开 ${box.name}: ${boxesToOpen} 个 (+${gainedPoints}积分)`,
+              type: "info",
+            });
+          }
+
+          // 检查是否还有剩余（剩余积分不足开10个箱子，待领取奖励后补足）
+          if (remainingScore > 0) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 第一轮开箱后还差 ${remainingScore} 积分，待领取奖励后用青铜/黄金补足`,
+              type: "info",
+            });
+          }
+
+          // 4. 执行开箱（所有箱子只开10的倍数）
+          for (const box of boxPriority) {
+            if (shouldStop.value)
+              break;
+
+            const count = openedBoxes[box.id] || 0;
+            if (count <= 0)
+              continue;
+
+            const batches = count / 10;
+
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 开始开 ${box.name}: ${count} 个`,
+              type: "info",
+            });
+
+            for (let i = 0; i < batches && !shouldStop.value; i++) {
+              await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "item_openbox",
+                { itemId: box.id, number: 10 },
+                5000,
+              );
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} ${box.name} 开箱进度: ${(i + 1) * 10}/${count}`,
+                type: "info",
+              });
+              await new Promise((r) => setTimeout(r, delayConfig.action));
+            }
+          }
+
+          // 5. 领取积分值宝箱奖励
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 领取积分值宝箱奖励...`,
+            type: "info",
+          });
+
+          try {
+            await tokenStore.sendMessageWithPromise(
+              tokenId,
+              "item_batchclaimboxpointreward",
+              {},
+              5000,
+            );
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} ✅ 积分值宝箱奖励领取成功`,
+              type: "success",
+            });
+          } catch (error) {
+            const errorMsg = error.message || "";
+            if (errorMsg.includes("已领取") || errorMsg.includes("1100010")) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 积分值宝箱奖励已领取`,
+                type: "info",
+              });
+            } else {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 领取积分值宝箱奖励失败: ${errorMsg}`,
+                type: "warning",
+              });
+            }
+          }
+
+          // 5.5 第二轮补足：重新查询积分，用青铜/黄金补足剩余
+          const refreshActivityRes = await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "activity_get",
+            {},
+            5000,
+          );
+          const refreshActivity = refreshActivityRes?.activity || refreshActivityRes?.body?.activity || refreshActivityRes;
+          const refreshBoxWeekInfo = refreshActivity?.myTotalInfo?.["2"];
+          if (refreshBoxWeekInfo) {
+            const refreshRoundScore = Number(refreshBoxWeekInfo.num || refreshBoxWeekInfo.score || refreshBoxWeekInfo.value || 0);
+            const refreshRound = Number(refreshBoxWeekInfo.rounds || 0);
+            if (refreshRoundScore < TARGET_SCORE_PER_ROUND) {
+              const stillNeed = TARGET_SCORE_PER_ROUND - refreshRoundScore;
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 第二轮补足: 第 ${refreshRound} 轮，当前积分 ${refreshRoundScore}，还需 ${stillNeed}`,
+                type: "info",
+              });
+
+              // 用青铜/黄金补足（不开木质）
+              const supplementPriority = [
+                { id: 2002, name: "青铜宝箱", points: 10 },
+                { id: 2003, name: "黄金宝箱", points: 20 },
+                { id: 2004, name: "铂金宝箱", points: 50 },
+              ];
+              let supplementRemaining = stillNeed;
+              const supplementBoxes = {};
+
+              for (const box of supplementPriority) {
+                if (supplementRemaining <= 0) break;
+                const avail = Number(items[box.id]?.quantity || 0);
+                if (avail <= 0) continue;
+                const maxByScore = Math.floor(supplementRemaining / box.points);
+                const maxAllowed = Math.floor(maxByScore / 10) * 10 || (maxByScore > 0 ? maxByScore * 10 <= avail ? maxByScore : Math.floor(avail / 10) * 10 : 0);
+                const toOpen = Math.min(Math.floor(maxByScore / 10) * 10, Math.floor(avail / 10) * 10);
+                // 如果剩余积分不足10的倍数，向上取整开10个
+                let finalToOpen = toOpen;
+                if (finalToOpen <= 0 && supplementRemaining > 0 && avail >= 10) {
+                  finalToOpen = 10;
+                }
+                if (finalToOpen > 0) {
+                  supplementBoxes[box.id] = finalToOpen;
+                  supplementRemaining -= finalToOpen * box.points;
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 补足计划开 ${box.name}: ${finalToOpen} 个 (+${finalToOpen * box.points}积分)`,
+                    type: "info",
+                  });
+                }
+              }
+
+              // 执行补足开箱
+              for (const box of supplementPriority) {
+                if (shouldStop.value) break;
+                const count = supplementBoxes[box.id] || 0;
+                if (count <= 0) continue;
+                const batches = Math.ceil(count / 10);
+                for (let i = 0; i < batches && !shouldStop.value; i++) {
+                  const num = Math.min(10, count - i * 10);
+                  await tokenStore.sendMessageWithPromise(
+                    tokenId,
+                    "item_openbox",
+                    { itemId: box.id, number: num },
+                    5000,
+                  );
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 补足 ${box.name}: ${(i + 1) * 10 > count ? count : (i + 1) * 10}/${count}`,
+                    type: "info",
+                  });
+                  await new Promise((r) => setTimeout(r, delayConfig.action));
+                }
+              }
+
+              // 补足后再次领取积分奖励
+              try {
+                await tokenStore.sendMessageWithPromise(tokenId, "item_batchclaimboxpointreward", {}, 5000);
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ✅ 补足后积分奖励领取成功`, type: "success" });
+              } catch (e) { /* ignore */ }
+            }
+          }
+
+        // 6. 领取宝箱周任务达标奖励（珍珠）
+        const finalActivityRes = await tokenStore.sendMessageWithPromise(
+          tokenId,
+          "activity_get",
+          {},
+          5000,
+        );
+
+        // 调试日志：查看响应结构
+        console.log(`[${token.name}] activity_get 响应:`, JSON.stringify(finalActivityRes).substring(0, 500));
+
+        const finalActivity = finalActivityRes?.activity || finalActivityRes?.body?.activity || finalActivityRes;
+        const finalMyTotalInfo = finalActivity?.myTotalInfo || {};
+        const finalBoxWeekInfo = finalMyTotalInfo["2"];
+
+        // 调试日志：查看宝箱周数据
+        console.log(`[${token.name}] myTotalInfo:`, JSON.stringify(finalMyTotalInfo).substring(0, 300));
+        console.log(`[${token.name}] boxWeekInfo["2"]:`, JSON.stringify(finalBoxWeekInfo));
+
+        if (finalBoxWeekInfo) {
+          // 兼容多种字段名：num, score, value
+          const finalRoundScore = Number(finalBoxWeekInfo.num || finalBoxWeekInfo.score || finalBoxWeekInfo.value || 0);
+          // rounds 表示当前轮数（第几轮）
+          const finalCurrentRound = Number(finalBoxWeekInfo.rounds || 0);
+          // 计算已完成轮数和总积分
+          let finalCompletedRounds;
+          let finalTotalScore;
+          if (finalRoundScore >= TARGET_SCORE_PER_ROUND) {
+            finalCompletedRounds = finalCurrentRound;
+            finalTotalScore = finalCurrentRound * TARGET_SCORE_PER_ROUND;
+          } else {
+            finalCompletedRounds = Math.max(0, finalCurrentRound - 1);
+            finalTotalScore = finalCompletedRounds * TARGET_SCORE_PER_ROUND + finalRoundScore;
+          }
+
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 开箱完成: 第 ${finalCurrentRound} 轮，已完成 ${finalCompletedRounds} 轮，当前轮积分: ${finalRoundScore}，总积分: ${finalTotalScore}`,
+            type: "success",
+          });
+
+          // 显示每轮完成状态
+          for (let i = 1; i <= Math.min(finalCompletedRounds, MAX_ROUNDS); i++) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} ✅ 第 ${i} 轮已完成`,
+              type: "success",
+            });
+          }
+        }
+        } // 关闭 else 块
+
+        tokenStatus.value[tokenId] = "completed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== ${token.name} 按积分开箱完成 ===`,
+          type: "success",
+        });
+      } catch (error) {
+        console.error(error);
+        tokenStatus.value[tokenId] = "failed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `按积分开箱失败: ${error.message}`,
+          type: "error",
+        });
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+      }
+    };
+
+    const taskPromises = selectedTokens.value.map((tokenId) => processOpenBoxByPoints(tokenId));
+    await Promise.all(taskPromises);
+
+    const retryMax = batchSettings.defaultRetryCount || 2;
+    const retryWait = batchSettings.retryDelay || 60000;
+    let failed = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+    for (let r = 0; r < retryMax && failed.length > 0; r++) {
+      if (shouldStop.value) break;
+      addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
+      await new Promise(r2 => setTimeout(r2, retryWait));
+      const cur = [...failed]; failed = [];
+      await Promise.all(cur.map(t => processOpenBoxByPoints(t)));
+      cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
+    }
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    message.success("按积分开箱结束");
+  };
+
+  /**
+   * 英雄四圣升级
+   * @param {Array} heroIds - 英雄ID数组
+   */
+  const heroFourSaintsUpgrade = async (heroIds = [], isScheduledTask = false) => {
+    if (selectedTokens.value.length === 0 || heroIds.length === 0) {
+      if (!isScheduledTask) {
+        message.warning("请选择账号和英雄");
+      }
+      return;
+    }
+
+    // 限制：每次只能单个英雄升级
+    if (heroIds.length > 1) {
+      if (!isScheduledTask) {
+        message.warning("四圣升级每次只能选择一个英雄，请重新选择");
+      }
+      return;
+    }
+
+    isRunning.value = true;
+    shouldStop.value = false;
+    currentRunningTokenId.value = null;
+
+    // 英雄ID与名称映射
+    const heroNameMap = {
+      101: "司马懿",
+      103: "关羽",
+      104: "诸葛亮",
+      105: "周瑜",
+      106: "太史慈",
+      107: "吕布",
+      109: "甄姬",
+      111: "孙策",
+      112: "贾诩",
+      113: "曹仁",
+      114: "姜维",
+      116: "公孙瓒",
+      117: "典韦",
+      118: "超云",
+      120: "张角",
+      121: "鲁肃",
+    };
+
+    const processFourSaints = async (tokenId) => {
+      const token = tokens.value.find((t) => t.id === tokenId);
+      if (!token)
+        return;
+
+      tokenStatus.value[tokenId] = "running";
+      currentRunningTokenId.value = tokenId;
+
+        try {
+          await ensureConnection(tokenId);
+
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `=== 开始 ${token.name} 英雄四圣升级 ===`,
+            type: "info",
+          });
+
+          // 遍历每个英雄
+          for (const heroId of heroIds) {
+            if (shouldStop.value)
+              break;
+
+            const heroName = heroNameMap[heroId] || `英雄${heroId}`;
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 开始升级 ${heroName} 四圣`,
+              type: "info",
+            });
+
+            try {
+              // 四圣升级逻辑：红玉1次 → 蓝玉循环到上限 → 红玉1次 → (成功则继续蓝玉，失败则停止)
+              let totalUpgradeCount = 0; // 红玉总次数
+              let totalQuenchCount = 0; // 蓝玉总次数
+
+              // 1. 第一次红玉升级（不管成功失败）
+              let firstUpgradeSuccess = false;
+              try {
+                const upgradeResult = await tokenStore.sendMessageWithPromise(
+                  tokenId,
+                  "hb_upgradeorder",
+                  { heroId },
+                  5000,
+                );
+
+                if (upgradeResult && upgradeResult.error) {
+                  // 第一次红玉升级失败，判断为未开启四圣或缺少材料
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} ${heroName} 未开启四圣或缺少红玉/蓝玉，跳过该英雄`,
+                    type: "warning",
+                  });
+                  firstUpgradeSuccess = false;
+                } else {
+                  totalUpgradeCount++;
+                  firstUpgradeSuccess = true;
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} ${heroName} 红玉升级第 ${totalUpgradeCount} 次成功`,
+                    type: "success",
+                  });
+                }
+              } catch (error) {
+                // 第一次红玉升级就出错，判断为未开启四圣或缺少材料
+                // 错误码400000表示物品不存在，400010表示物品数量不足（缺少红玉）
+                const errorMsg = error.message?.includes("400000") || error.message?.includes("400010")
+                  ? `${token.name} ${heroName} 红玉数量缺少，无法升级成功`
+                  : `${token.name} ${heroName} 未开启四圣或缺少红玉，跳过该英雄`;
+
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: errorMsg,
+                  type: "warning",
+                });
+                firstUpgradeSuccess = false;
+              }
+
+              // 2. 不管红玉是否成功，都要执行蓝玉升级循环
+              if (!shouldStop.value) {
+                // 延迟
+                await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 1000));
+
+                let quenchCount = 0;
+                let quenchStopped = false;
+                while (!quenchStopped && !shouldStop.value) {
+                  try {
+                    const quenchResult = await tokenStore.sendMessageWithPromise(
+                      tokenId,
+                      "hb_quench",
+                      { heroId },
+                      5000,
+                    );
+
+                    if (quenchResult && quenchResult.error) {
+                      // 蓝玉升级到达上限
+                      addLog({
+                        time: new Date().toLocaleTimeString(),
+                        message: `${token.name} ${heroName} 蓝玉升级已达上限或失败: ${quenchResult.error}`,
+                        type: "info",
+                      });
+                      quenchStopped = true;
+                    } else {
+                      quenchCount++;
+                      totalQuenchCount++;
+                      addLog({
+                        time: new Date().toLocaleTimeString(),
+                        message: `${token.name} ${heroName} 蓝玉升级第 ${quenchCount} 次成功`,
+                        type: "success",
+                      });
+                      // 延迟后继续
+                      await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 1000));
+                    }
+                  } catch (error) {
+                    // 错误码200020表示已达上限，400000表示物品不存在（缺少蓝玉）
+                    let errorMsg;
+                    if (error.message?.includes("200020")) {
+                      errorMsg = `${token.name} ${heroName} 蓝玉升级已达上限`;
+                    } else if (error.message?.includes("400000")) {
+                      errorMsg = `${token.name} ${heroName} 蓝玉升级已达上限`;
+                    } else {
+                      errorMsg = `${token.name} ${heroName} 蓝玉升级出错: ${error.message}`;
+                    }
+
+                    addLog({
+                      time: new Date().toLocaleTimeString(),
+                      message: errorMsg,
+                      type: error.message?.includes("200020") || error.message?.includes("400000") ? "info" : "error",
+                    });
+                    quenchStopped = true;
+                  }
+                }
+
+                if (quenchCount > 0) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} ${heroName} 蓝玉升级完成 - ${quenchCount}次`,
+                    type: "info",
+                  });
+                }
+              }
+
+              // 3. 如果第一次红玉成功，进入循环：红玉1次 → 成功则蓝玉循环 → 失败则停止
+              if (firstUpgradeSuccess && !shouldStop.value) {
+                // 延迟后进入循环
+                await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 1000));
+
+                let shouldContinue = true;
+                while (shouldContinue && !shouldStop.value) {
+                  // 执行红玉升级1次
+                  let currentUpgradeSuccess = false;
+                  try {
+                    const upgradeResult = await tokenStore.sendMessageWithPromise(
+                      tokenId,
+                      "hb_upgradeorder",
+                      { heroId },
+                      5000,
+                    );
+
+                    if (upgradeResult && upgradeResult.error) {
+                      // 红玉升级失败，停止整个流程
+                      addLog({
+                        time: new Date().toLocaleTimeString(),
+                        message: `${token.name} ${heroName} 红玉升级已达上限或失败: ${upgradeResult.error}`,
+                        type: "info",
+                      });
+                      shouldContinue = false;
+                    } else {
+                      totalUpgradeCount++;
+                      currentUpgradeSuccess = true;
+                      addLog({
+                        time: new Date().toLocaleTimeString(),
+                        message: `${token.name} ${heroName} 红玉升级第 ${totalUpgradeCount} 次成功`,
+                        type: "success",
+                      });
+                    }
+                  } catch (error) {
+                    // 错误码200020表示已升级成功，400000/400010表示物品不存在或数量不足（缺少红玉）
+                    let errorMsg;
+                    if (error.message?.includes("200020")) {
+                      errorMsg = `${token.name} ${heroName} 红玉已升级成功`;
+                      // 200020表示成功，继续执行
+                      totalUpgradeCount++;
+                      currentUpgradeSuccess = true;
+                    } else if (error.message?.includes("400000") || error.message?.includes("400010")) {
+                      errorMsg = `${token.name} ${heroName} 红玉数量缺少，无法升级成功`;
+                      shouldContinue = false;
+                    } else {
+                      errorMsg = `${token.name} ${heroName} 红玉升级出错: ${error.message}`;
+                      shouldContinue = false;
+                    }
+
+                    addLog({
+                      time: new Date().toLocaleTimeString(),
+                      message: errorMsg,
+                      type: error.message?.includes("200020") ? "success" : (error.message?.includes("400000") || error.message?.includes("400010") ? "info" : "error"),
+                    });
+                  }
+
+                  // 如果红玉成功，执行蓝玉升级循环
+                  if (currentUpgradeSuccess && !shouldStop.value) {
+                    // 延迟
+                    await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 500));
+
+                    let quenchCount = 0;
+                    let quenchStopped = false;
+                    while (!quenchStopped && !shouldStop.value) {
+                      try {
+                        const quenchResult = await tokenStore.sendMessageWithPromise(
+                          tokenId,
+                          "hb_quench",
+                          { heroId },
+                          5000,
+                        );
+
+                        if (quenchResult && quenchResult.error) {
+                          // 蓝玉升级到达上限
+                          addLog({
+                            time: new Date().toLocaleTimeString(),
+                            message: `${token.name} ${heroName} 蓝玉升级已达上限或失败: ${quenchResult.error}`,
+                            type: "info",
+                          });
+                          quenchStopped = true;
+                        } else {
+                          quenchCount++;
+                          totalQuenchCount++;
+                          addLog({
+                            time: new Date().toLocaleTimeString(),
+                            message: `${token.name} ${heroName} 蓝玉升级第 ${quenchCount} 次成功`,
+                            type: "success",
+                          });
+                          // 延迟后继续
+                          await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 500));
+                        }
+                      } catch (error) {
+                        // 错误码200020表示已达上限，400000表示物品不存在（缺少蓝玉）
+                        let errorMsg;
+                        if (error.message?.includes("200020")) {
+                          errorMsg = `${token.name} ${heroName} 蓝玉升级已达上限`;
+                        } else if (error.message?.includes("400000")) {
+                          errorMsg = `${token.name} ${heroName} 蓝玉升级已达上限`;
+                        } else {
+                          errorMsg = `${token.name} ${heroName} 蓝玉升级出错: ${error.message}`;
+                        }
+
+                        addLog({
+                          time: new Date().toLocaleTimeString(),
+                          message: errorMsg,
+                          type: error.message?.includes("200020") || error.message?.includes("400000") ? "info" : "error",
+                        });
+                        quenchStopped = true;
+                      }
+                    }
+
+                    if (quenchCount > 0) {
+                      addLog({
+                        time: new Date().toLocaleTimeString(),
+                        message: `${token.name} ${heroName} 本轮蓝玉升级完成 - ${quenchCount}次`,
+                        type: "info",
+                      });
+                    }
+
+                    // 延迟后继续下一轮红玉升级
+                    await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 500));
+                  }
+                }
+              }
+
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} ${heroName} 四圣升级完成 - 红玉${totalUpgradeCount}次, 蓝玉${totalQuenchCount}次`,
+                type: "success",
+              });
+
+              // 英雄间延迟
+              await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 500));
+            } catch (error) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} ${heroName} 升级失败: ${error.message}`,
+                type: "error",
+              });
+            }
+          }
+
+          tokenStatus.value[tokenId] = "completed";
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `=== ${token.name} 英雄四圣升级完成 ===`,
+            type: "success",
+          });
+        } catch (error) {
+          console.error(error);
+          tokenStatus.value[tokenId] = "failed";
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 英雄四圣升级失败: ${error.message}`,
+            type: "error",
+          });
+        } finally {
+          tokenStore.closeWebSocketConnection(tokenId);
+          releaseConnectionSlot();
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+            type: "info",
+          });
+        }
+    };
+
+    const taskPromises = selectedTokens.value.map((tokenId) => processFourSaints(tokenId));
+    await Promise.all(taskPromises);
+
+    const retryMax = batchSettings.defaultRetryCount || 2;
+    const retryWait = batchSettings.retryDelay || 60000;
+    let failed = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+    for (let r = 0; r < retryMax && failed.length > 0; r++) {
+      if (shouldStop.value) break;
+      addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
+      await new Promise(r2 => setTimeout(r2, retryWait));
+      const cur = [...failed]; failed = [];
+      await Promise.all(cur.map(t => processFourSaints(t)));
+      cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
+    }
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    if (!isScheduledTask) {
+      message.success("英雄四圣升级结束");
+    }
+  };
+
+  return {
+    batchOpenBox,
+    batchOpenBoxByPoints,
+    batchOpenFragmentPacks,
+    batchClaimBoxWeeklyRewards,
+    batchClaimBoxPointReward,
+    batchFish,
+    batchRecruit,
+    batchHeroUpgrade,
+    batchBookUpgrade,
+    batchClaimStarRewards,
+    batchClaimPeachTasks,
+    batchGenieSweep,
+    heroFourSaintsUpgrade,
+  };
+}

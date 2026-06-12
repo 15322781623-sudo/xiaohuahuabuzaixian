@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">xyzw_web_helper</string>
+    <string name="title_activity_main">xyzw_web_helper</string>
+    <string name="package_name">com.xyzw.webhelper</string>
+    <string name="custom_url_scheme">com.xyzw.webhelper</string>
+</resources>
