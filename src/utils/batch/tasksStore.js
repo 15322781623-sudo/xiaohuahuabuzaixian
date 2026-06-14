@@ -2060,27 +2060,67 @@ export function createTasksStore(deps) {
       tokenStatus.value[tokenId] = "running";
 
       const token = tokens.value.find((t) => t.id === tokenId);
+      // 整体超时保护：每个账号最多90秒
+      const TASK_TIMEOUT = 90000;
 
-      try {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `=== 开始预约直播: ${token.name} ===`,
-          type: "info",
-        });
+      const runTask = async () => {
+        try {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `=== 开始预约直播: ${token.name} ===`,
+            type: "info",
+          });
 
-        await ensureConnection(tokenId);
+          await ensureConnection(tokenId);
 
-        const result = await tokenStore.sendMessageWithPromise(
-          tokenId,
-          "pkroom_appoint",
-          {},
-          5000,
-        );
+          const result = await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "pkroom_appoint",
+            {},
+            5000,
+          );
 
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, delayConfig.action));
 
-        if (result && result.error) {
-          const errorMsg = result.error;
+          if (result && result.error) {
+            const errorMsg = result.error;
+            // 错误码 7300236 表示已预约过直播
+            const isAlreadyAppointed = errorMsg.includes("7300236") || errorMsg.includes("已预约");
+            // 错误码 7300234 表示预约直播未开启
+            const isNotEnabled = errorMsg.includes("7300234");
+
+            if (isAlreadyAppointed) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 已预约过直播，无需重新预约`,
+                type: "info",
+              });
+              tokenStatus.value[tokenId] = "completed";
+            } else if (isNotEnabled) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 预约直播未开启`,
+                type: "info",
+              });
+              tokenStatus.value[tokenId] = "completed";
+            } else {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 预约直播失败: ${errorMsg}`,
+                type: "error",
+              });
+              tokenStatus.value[tokenId] = "failed";
+            }
+          } else {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 预约直播成功`,
+              type: "success",
+            });
+            tokenStatus.value[tokenId] = "completed";
+          }
+        } catch (error) {
+          const errorMsg = error.message || "";
           // 错误码 7300236 表示已预约过直播
           const isAlreadyAppointed = errorMsg.includes("7300236") || errorMsg.includes("已预约");
           // 错误码 7300234 表示预约直播未开启
@@ -2103,56 +2143,37 @@ export function createTasksStore(deps) {
           } else {
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 预约直播失败: ${errorMsg}`,
+              message: `${token.name} 预约直播过程出错: ${errorMsg}`,
               type: "error",
             });
             tokenStatus.value[tokenId] = "failed";
           }
-        } else {
+        } finally {
+          tokenStore.closeWebSocketConnection(tokenId);
+          releaseConnectionSlot();
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `${token.name} 预约直播成功`,
-            type: "success",
+            message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+            type: "info",
           });
-          tokenStatus.value[tokenId] = "completed";
         }
-      } catch (error) {
-        const errorMsg = error.message || "";
-        // 错误码 7300236 表示已预约过直播
-        const isAlreadyAppointed = errorMsg.includes("7300236") || errorMsg.includes("已预约");
-        // 错误码 7300234 表示预约直播未开启
-        const isNotEnabled = errorMsg.includes("7300234");
+      };
 
-        if (isAlreadyAppointed) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 已预约过直播，无需重新预约`,
-            type: "info",
-          });
-          tokenStatus.value[tokenId] = "completed";
-        } else if (isNotEnabled) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 预约直播未开启`,
-            type: "info",
-          });
-          tokenStatus.value[tokenId] = "completed";
-        } else {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 预约直播过程出错: ${errorMsg}`,
-            type: "error",
-          });
-          tokenStatus.value[tokenId] = "failed";
-        }
-      } finally {
-        tokenStore.closeWebSocketConnection(tokenId);
-        releaseConnectionSlot();
+      // Promise.race 超时保护
+      try {
+        await Promise.race([
+          runTask(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("任务执行超时（90秒）")), TASK_TIMEOUT)),
+        ]);
+      } catch (timeoutErr) {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
-          type: "info",
+          message: `${token.name} 预约直播超时: ${timeoutErr.message}`,
+          type: "warning",
         });
+        tokenStatus.value[tokenId] = "failed";
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
       }
     });
 

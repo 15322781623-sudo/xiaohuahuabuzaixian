@@ -614,6 +614,10 @@ const connectionStatusClass = computed(() => {
   if (isConnecting.value) {
     return "status-connecting";
   }
+  const connection = tokenStore.wsConnections[props.token.id];
+  if (connection?.status === "error") {
+    return "status-error";
+  }
   return {
     "status-connected": isConnected.value,
     "status-disconnected": !isConnected.value,
@@ -623,6 +627,10 @@ const connectionStatusClass = computed(() => {
 const connectionStatusText = computed(() => {
   if (isConnecting.value) {
     return "连接中...";
+  }
+  const connection = tokenStore.wsConnections[props.token.id];
+  if (connection?.status === "error") {
+    return "连接失败";
   }
   return isConnected.value ? "已连接" : "未连接";
 });

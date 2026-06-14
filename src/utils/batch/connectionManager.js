@@ -15,10 +15,15 @@ export const connectionQueue = { active: 0 };
  */
 export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
   /**
-   * 等待连接槽位
+   * 等待连接槽位（带超时和停止信号检测）
+   * @param {number} timeout - 超时时间（ms），默认60秒
    */
-  const waitForConnectionSlot = async () => {
+  const waitForConnectionSlot = async (timeout = 60000) => {
+    const start = Date.now();
     while (connectionQueue.active >= batchSettings.maxActive) {
+      if (Date.now() - start > timeout) {
+        throw new Error(`等待连接槽位超时（${timeout / 1000}秒），当前 ${connectionQueue.active}/${batchSettings.maxActive} 个槽位已占满`);
+      }
       await new Promise((r) => setTimeout(r, 1000));
     }
     connectionQueue.active++;

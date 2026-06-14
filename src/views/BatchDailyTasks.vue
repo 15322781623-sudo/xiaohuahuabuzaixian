@@ -4119,9 +4119,13 @@ const getSortIcon = (field) => {
 
 const tokens = computed(() => tokenStore.gameTokens);
 
+// 响应式时间引用，每30秒更新一次，确保computed属性能正确响应时间变化
+const currentTime = ref(new Date());
+let currentTimeTimer = null;
+
 // 改用函数而不是computed，确保每次调用时都获取最新时间
 const checkCarActivityOpen = () => {
-  const now = new Date();
+  const now = currentTime.value;
   const day = now.getDay();
   const hour = now.getHours();
   // 1=Mon, 2=Tue, 3=Wed; 6点之后
@@ -4129,12 +4133,12 @@ const checkCarActivityOpen = () => {
 };
 
 const checkMengjingActivityOpen = () => {
-  const day = new Date().getDay();
+  const day = currentTime.value.getDay();
   return day === 0 || day === 1 || day === 3 || day === 4;
 };
 
 const checkBaokuActivityOpen = () => {
-  const day = new Date().getDay();
+  const day = currentTime.value.getDay();
   return day != 1 && day != 2;
 };
 
@@ -4144,7 +4148,7 @@ const ismengjingActivityOpen = computed(() => checkMengjingActivityOpen());
 const isbaokuActivityOpen = computed(() => checkBaokuActivityOpen());
 // 改用函数而不是computed，确保每次调用时都获取最新时间
 const checkArenaActivityOpen = () => {
-  const hour = new Date().getHours();
+  const hour = currentTime.value.getHours();
   const result = hour >= 6 && hour < 22;
   console.log('[竞技场开放时间] 当前小时:', hour, '是否开放:', result);
   return result;
@@ -4155,7 +4159,7 @@ const isarenaActivityOpen = computed(() => {
   return checkArenaActivityOpen();
 });
 const getCurrentActivityWeek = computed(() => {
-  const now = new Date();
+  const now = currentTime.value;
   const start = new Date("2025-12-12T12:00:00"); // 起始时间：黑市周开始
   const weekDuration = 7 * 24 * 60 * 60 * 1000; // 一周毫秒数
   const cycleDuration = 3 * weekDuration; // 三周期毫秒数
@@ -4234,7 +4238,7 @@ const isBoxWeeklyActivityOpen = computed(() => {
 // 功法残卷限制判断（28天赛季周期，新赛季中午12:00开启，赛季日00:00-12:00禁止领取和赠送）
 const SEASON_REFERENCE_DATE = new Date(2026, 0, 16); // 第1赛季开始日期（2026年1月16日12:00）
 const isLegacyRestricted = computed(() => {
-  const now = new Date();
+  const now = currentTime.value;
   const hour = now.getHours();
   
   // 12:00 之后赛季已开启，不限制
@@ -4254,7 +4258,7 @@ const isLegacyRestricted = computed(() => {
 
 // 获取本月第四个周日的日期
 const getFourthSundayOfMonth = () => {
-  const now = new Date();
+  const now = currentTime.value;
   const year = now.getFullYear();
   const month = now.getMonth();
   
@@ -4275,7 +4279,7 @@ const getFourthSundayOfMonth = () => {
 };
 
 const isWarGuessActivityOpen = computed(() => {
-  const now = new Date();
+  const now = currentTime.value;
   
   // 手动修正：2026年3月1日开放
   if (now.getFullYear() === 2026 && now.getMonth() === 2 && now.getDate() === 1) {
@@ -7202,23 +7206,50 @@ const startScheduler = () => {
         }
       });
 
-      // ✅ 调度器兜底：如果队列中有等待任务且当前无任务运行，主动消费队列
+      // ✅ 调度器兜底：如果队列中有等待任务且当前无任务运行，主动消费队列（跳过已过期任务）
       if (pendingTaskQueue.length > 0 && !isRunning.value && !isScheduledTaskRunning.value) {
-        const nextTask = pendingTaskQueue.shift();
-        addLog({
-          time: currentTime,
-          message: `▶️ 调度器兜底：从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
-          type: "info",
-        });
-        isScheduledTaskRunning.value = true;
-        currentScheduledTask = nextTask;
-        scheduledTaskStartTime = Date.now();
-        lastTaskExecution = Date.now();
-        executeScheduledTask(nextTask).catch(error => {
-          console.error(`兜底队列任务执行错误:`, error);
-        }).finally(() => {
+        // 循环清理已过期任务，找到第一个有效的执行
+        while (pendingTaskQueue.length > 0) {
+          const peekTask = pendingTaskQueue[0];
+          const timeCheck = isTaskTimeStillValid(peekTask, 2);
+
+          if (!timeCheck.valid) {
+            pendingTaskQueue.shift();
+            addLog({
+              time: currentTime,
+              message: `⏰ 兜底跳过已过期队列任务: ${peekTask.name}（${timeCheck.reason}，剩余队列: ${pendingTaskQueue.length}）`,
+              type: "warning",
+            });
+            continue;
+          }
+
+          // 找到有效任务，正式出队并执行
+          const nextTask = pendingTaskQueue.shift();
+          addLog({
+            time: currentTime,
+            message: `▶️ 调度器兜底：从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
+            type: "info",
+          });
+          isScheduledTaskRunning.value = true;
+          currentScheduledTask = nextTask;
+          scheduledTaskStartTime = Date.now();
           lastTaskExecution = Date.now();
-        });
+          executeScheduledTask(nextTask).catch(error => {
+            console.error(`兜底队列任务执行错误:`, error);
+          }).finally(() => {
+            lastTaskExecution = Date.now();
+          });
+          return; // 已找到有效任务并执行，退出兜底逻辑
+        }
+
+        // 队列全部过期，已清空
+        if (pendingTaskQueue.length === 0) {
+          addLog({
+            time: currentTime,
+            message: `✅ 兜底消费：队列中所有任务均已过期，已清空`,
+            type: "info",
+          });
+        }
       }
     } catch (error) {
       console.error(
@@ -7383,6 +7414,11 @@ onMounted(() => {
   
   // 启动响应式列数监听
   setupResponsiveColumns();
+
+  // 启动响应式时间更新（每30秒更新一次，让活动开放时间computed属性正确响应）
+  currentTimeTimer = setInterval(() => {
+    currentTime.value = new Date();
+  }, 30000);
 });
 
 // Cleanup countdown interval on unmount
@@ -7406,6 +7442,12 @@ onBeforeUnmount(() => {
   if (healthCheckInterval) {
     clearInterval(healthCheckInterval);
     healthCheckInterval = null;
+  }
+
+  // 清理响应式时间更新定时器
+  if (currentTimeTimer) {
+    clearInterval(currentTimeTimer);
+    currentTimeTimer = null;
   }
   
   // 清理响应式列数监听
@@ -7548,6 +7590,56 @@ const verifyTaskDependencies = async (task) => {
     type: "success",
   });
   return true;
+};
+
+// 检查定时任务的时间是否仍然有效（队列任务被阻塞后不再符合执行时间时跳过）
+const isTaskTimeStillValid = (task, toleranceMinutes = 2) => {
+  const now = new Date();
+
+  if (task.runType === "daily") {
+    if (!task.runTime) return { valid: false, reason: "任务未配置执行时间" };
+    const nowTime = now.toLocaleTimeString("zh-CN", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    // 完全匹配，立即有效
+    if (nowTime === task.runTime) return { valid: true };
+
+    const [taskH, taskM] = task.runTime.split(":").map(Number);
+    const taskMinutes = taskH * 60 + taskM;
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const diffMinutes = nowMinutes - taskMinutes;
+
+    // 在容差窗口内（0~toleranceMinutes分钟）仍有效
+    if (diffMinutes >= 0 && diffMinutes <= toleranceMinutes) {
+      return { valid: true };
+    }
+
+    return {
+      valid: false,
+      reason: `已过预定时间 ${task.runTime}（已超出 ${diffMinutes} 分钟，容差 ${toleranceMinutes} 分钟）`,
+    };
+  } else if (task.runType === "cron") {
+    if (!task.cronExpression) return { valid: false, reason: "Cron表达式为空" };
+    try {
+      // Cron表达式：检查是否在容差窗口内匹配
+      const matched = matchesCronExpression(task.cronExpression, now);
+      if (matched) return { valid: true };
+      // 往前检查容差分钟数
+      for (let m = 1; m <= toleranceMinutes; m++) {
+        const past = new Date(now.getTime() - m * 60 * 1000);
+        if (matchesCronExpression(task.cronExpression, past)) {
+          return { valid: true };
+        }
+      }
+      return { valid: false, reason: `Cron任务已过执行时间窗口（容差 ${toleranceMinutes} 分钟）` };
+    } catch {
+      return { valid: false, reason: "Cron表达式解析失败" };
+    }
+  }
+
+  return { valid: false, reason: "未知任务类型" };
 };
 
 // Execute a scheduled task with dependency verification
@@ -8356,27 +8448,54 @@ const executeScheduledTask = async (task) => {
     currentScheduledTask = null;
     scheduledTaskStartTime = null; // ✅ 清除超时计时
 
-    // ✅ 任务完成后，处理待执行队列中的下一个任务
+    // ✅ 任务完成后，处理待执行队列中的下一个任务（跳过已过期的任务）
     if (pendingTaskQueue.length > 0) {
       nextTick(() => {
-        const nextTask = pendingTaskQueue.shift();
-        if (!isRunning.value && !isScheduledTaskRunning.value) {
+        // 循环清理已过期任务，找到第一个仍然有效的任务执行
+        while (pendingTaskQueue.length > 0) {
+          const nextTask = pendingTaskQueue[0]; // 只peek，不先shift
+          const timeCheck = isTaskTimeStillValid(nextTask, 2);
+
+          if (!timeCheck.valid) {
+            pendingTaskQueue.shift(); // 移除过期任务
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `⏰ 跳过已过期的队列任务: ${nextTask.name}（${timeCheck.reason}，剩余队列: ${pendingTaskQueue.length}）`,
+              type: "warning",
+            });
+            continue; // 继续检查下一个
+          }
+
+          // 找到了时间有效的任务
+          pendingTaskQueue.shift(); // 正式出队
+          if (!isRunning.value && !isScheduledTaskRunning.value) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `▶️ 从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
+              type: "info",
+            });
+            isScheduledTaskRunning.value = true;
+            currentScheduledTask = nextTask;
+            scheduledTaskStartTime = Date.now();
+            executeScheduledTask(nextTask).catch(error => {
+              console.error(`队列任务执行错误:`, error);
+            }).finally(() => {
+              lastTaskExecution = Date.now();
+            });
+          } else {
+            // 状态被占用（用户手动执行了任务），放回队列等待
+            pendingTaskQueue.unshift(nextTask);
+          }
+          return; // 已处理，退出
+        }
+
+        // 队列已全部清空（全部过期）
+        if (pendingTaskQueue.length === 0) {
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `▶️ 从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
+            message: `✅ 队列中所有任务均已过期，已清空`,
             type: "info",
           });
-          isScheduledTaskRunning.value = true;
-          currentScheduledTask = nextTask;
-          scheduledTaskStartTime = Date.now(); // ✅ 队列任务开始时间
-          executeScheduledTask(nextTask).catch(error => {
-            console.error(`队列任务执行错误:`, error);
-          }).finally(() => {
-            lastTaskExecution = Date.now();
-          });
-        } else {
-          // 状态被占用（用户手动执行了任务），放回队列等待
-          pendingTaskQueue.unshift(nextTask);
         }
       });
     }
@@ -9566,7 +9685,29 @@ const handleToggleConnection = async (tokenId) => {
           tokenStore.sendGetRoleInfo(tokenId);
         } else {
           message.destroyAll();
-          message.warning(`连接未完成,状态: ${conn?.status || 'unknown'}`);
+          if (conn?.status === 'error') {
+            message.warning(`连接失败，正在刷新Token，稍后重连`);
+            // error状态时自动尝试刷新Token并重连
+            try {
+              const refreshSuccess = await tokenStore.attemptTokenRefresh(tokenId, true);
+              if (refreshSuccess) {
+                message.success(`Token刷新成功, 正在重新连接: ${token.name}`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                const reConn = tokenStore.wsConnections[tokenId];
+                if (reConn?.status === 'connected') {
+                  tokenStore.sendGetRoleInfo(tokenId);
+                }
+              } else {
+                message.error(`Token刷新失败, 请手动重新导入: ${token.name}`);
+              }
+            } catch (refreshError) {
+              message.error(`Token刷新失败: ${refreshError.message || '未知错误'}`);
+            }
+          } else if (conn?.status === 'disconnected') {
+            message.warning(`连接未完成状态：已刷新Token请重新连接`);
+          } else {
+            message.warning(`连接未完成, 状态: ${conn?.status || 'unknown'}`);
+          }
         }
       } catch (error) {
         message.destroyAll();
@@ -10333,8 +10474,15 @@ const waitForConnection = async (
 // 全局连接队列控制 - 限制并发连接数
 const connectionQueue = { active: 0 };
 
-const waitForConnectionSlot = async () => {
+const waitForConnectionSlot = async (timeout = 60000) => {
+  const start = Date.now();
   while (connectionQueue.active >= batchSettings.maxActive) {
+    if (shouldStop.value) {
+      throw new Error("用户取消操作");
+    }
+    if (Date.now() - start > timeout) {
+      throw new Error(`等待连接槽位超时（${timeout / 1000}秒），当前 ${connectionQueue.active}/${batchSettings.maxActive} 个槽位已占满`);
+    }
     await new Promise((r) => setTimeout(r, 1000));
   }
   connectionQueue.active++;
