@@ -6683,6 +6683,13 @@ const exportConfig = async () => {
       if (saved) sortConfigData = JSON.parse(saved);
     } catch (e) { /* ignore */ }
 
+    // ✅ 用户偏好设置（主题、语言、通知等）
+    let userPreferences = null;
+    try {
+      const saved = localStorage.getItem("userPreferences");
+      if (saved) userPreferences = JSON.parse(saved);
+    } catch (e) { /* ignore */ }
+
     // 管理分组数据（过滤掉无有效token的分组）
     const filteredGroups = (tokenGroups.value || []).map((group) => ({
       ...group,
@@ -6690,7 +6697,7 @@ const exportConfig = async () => {
     })).filter((group) => group.tokenIds.length > 0);
 
     const exportData = {
-      version: "2.2",
+      version: "2.3",
       exportTime: new Date().toISOString(),
       configType: "full",
       tokens: mapTokensForExport(tokens.value),
@@ -6699,6 +6706,7 @@ const exportConfig = async () => {
       tokenSettings: collectTokenSettings(tokens.value),
       binData: binDataMap,
       sortConfig: sortConfigData,
+      userPreferences,
       tokenGroups: filteredGroups,
       taskTemplates: taskTemplates.value || [],
     };
@@ -6711,8 +6719,9 @@ const exportConfig = async () => {
       const binMsg = binCount > 0 ? ` (含${binCount}个BIN数据)` : '';
       const groupMsg = filteredGroups.length > 0 ? `, ${filteredGroups.length} 个分组` : '';
       const templateMsg = (taskTemplates.value || []).length > 0 ? `, ${(taskTemplates.value || []).length} 个任务模板` : '';
+      const prefMsg = userPreferences ? ', 偏好设置' : '';
       message.success(
-        `全量导出成功: ${tokens.value.length} 个账号, ${filteredScheduledTasks.length} 个定时任务${groupMsg}${templateMsg}${binMsg}`,
+        `全量导出成功: ${tokens.value.length} 个账号, ${filteredScheduledTasks.length} 个定时任务${groupMsg}${templateMsg}${prefMsg}${binMsg}`,
         { duration: 4000 }
       );
     } else {
@@ -6806,6 +6815,28 @@ const importConfig = async ({ file }) => {
     // 导入排序配置
     if (importData.sortConfig) {
       try { localStorage.setItem("tokenSortConfig", JSON.stringify(importData.sortConfig)); } catch (e) { /* ignore */ }
+    }
+
+    // ✅ 导入用户偏好设置（主题、语言、通知等）
+    if (importData.userPreferences && typeof importData.userPreferences === 'object') {
+      try {
+        localStorage.setItem("userPreferences", JSON.stringify(importData.userPreferences));
+        // 同步主题到独立的 theme 键
+        if (importData.userPreferences.theme) {
+          localStorage.setItem("theme", importData.userPreferences.theme);
+          // 立即应用主题
+          const t = importData.userPreferences.theme;
+          if (t === "dark") {
+            document.documentElement.setAttribute("data-theme", "dark");
+          } else if (t === "light") {
+            document.documentElement.removeAttribute("data-theme");
+          } else {
+            const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+            if (prefersDark) document.documentElement.setAttribute("data-theme", "dark");
+            else document.documentElement.removeAttribute("data-theme");
+          }
+        }
+      } catch (e) { /* ignore */ }
     }
 
     // 导入管理分组
@@ -7211,7 +7242,7 @@ const startScheduler = () => {
         // 循环清理已过期任务，找到第一个有效的执行
         while (pendingTaskQueue.length > 0) {
           const peekTask = pendingTaskQueue[0];
-          const timeCheck = isTaskTimeStillValid(peekTask, 2);
+          const timeCheck = isTaskTimeStillValid(peekTask, 60);
 
           if (!timeCheck.valid) {
             pendingTaskQueue.shift();
@@ -8454,7 +8485,7 @@ const executeScheduledTask = async (task) => {
         // 循环清理已过期任务，找到第一个仍然有效的任务执行
         while (pendingTaskQueue.length > 0) {
           const nextTask = pendingTaskQueue[0]; // 只peek，不先shift
-          const timeCheck = isTaskTimeStillValid(nextTask, 2);
+          const timeCheck = isTaskTimeStillValid(nextTask, 60);
 
           if (!timeCheck.valid) {
             pendingTaskQueue.shift(); // 移除过期任务

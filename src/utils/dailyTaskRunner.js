@@ -699,7 +699,7 @@ export class DailyTaskRunner {
   }
 
   /**
-   * 竞技场任务
+   * 竞技场任务（与 tasksArena.js batcharenafight 完全对齐）
    */
   buildArenaTask() {
     if (!this.settings.arenaEnable) return [];
@@ -711,34 +711,33 @@ export class DailyTaskRunner {
         return;
       }
 
+      // ✅ 检查咸神门票（与批量日常任务一致）
+      const roleData = safeGet(this.tokenStore, 'gameData.roleInfo.role', {});
+      const ticketCount = roleData?.items?.[1007]?.quantity || 0;
+      if (ticketCount <= 0) {
+        this.warn('咸神门票不足，无法进行竞技场战斗');
+        return;
+      }
+      const maxFights = Math.min(ARENA_TIME.MAX_FIGHTS, ticketCount);
+      this.info(`当前咸神门票: ${ticketCount}，将执行 ${maxFights} 次战斗`);
+
       this.info('开始竞技场战斗流程');
       
       // 切换阵容
       const switched = await this.switchFormationIfNeeded(this.settings.arenaFormation);
       if (switched) {
-        await delay(4000); // 切换后短暂等待
+        await delay(4000);
       }
 
-      try {
-        // 开启竞技场
-        try {
-          await this.sendCommand('arena_startarea', {}, { 
-            description: '开始竞技场', 
-            timeout: this.getTimeout('arena_startarea'), 
-            context: 'arena' 
-          });
-        } catch (error) {
-          if (getErrorCode(error) === '200020') {
-            this.warn('关卡未达标，无法开启竞技场');
-            return;
-          }
-          throw error;
-        }
+      // ✅ 战斗间延迟，使用配置值（与批量日常任务一致）
+      const battleDelay = this.batchSettings.battleDelay || 2000;
 
-        // 执行战斗
-        for (let i = 1; i <= ARENA_TIME.MAX_FIGHTS; i++) {
-          await this.executeArenaFight(i);
-          if (i < ARENA_TIME.MAX_FIGHTS) await delay(1000);
+      try {
+        for (let i = 1; i <= maxFights; i++) {
+          const fightResult = await this.executeArenaFight(i, maxFights);
+          // ✅ 限流错误或关卡未达标，停止后续战斗
+          if (fightResult === 'break') break;
+          if (i < maxFights) await delay(battleDelay);
         }
 
         this.success('竞技场战斗流程完成');
@@ -749,10 +748,52 @@ export class DailyTaskRunner {
   }
 
   /**
-   * 执行单次竞技场战斗
+   * 执行单次竞技场战斗（完整流程：arena_startarea → arena_getareatarget → fight_startareaarena）
+   * 与 tasksArena.js 的 executeArenaFight 完全对齐
+   * @returns {'ok'|'skip'|'break'} ok=成功, skip=跳过, break=需停止
    */
-  async executeArenaFight(fightIndex) {
-    this.info(`竞技场战斗 ${fightIndex}/${ARENA_TIME.MAX_FIGHTS}`);
+  async executeArenaFight(fightIndex, totalFights) {
+    this.info(`竞技场战斗 ${fightIndex}/${totalFights}`);
+
+    // ✅ 每场战斗前都需要 arena_startarea（与 tasksArena.js batcharenafight 一致）
+    try {
+      await this.sendCommand('arena_startarea', {}, { 
+        description: `开启竞技场${fightIndex}`, 
+        timeout: this.getTimeout('arena_startarea'), 
+        context: 'arena' 
+      });
+    } catch (error) {
+      if (getErrorCode(error) === '200020') {
+        this.warn('关卡未达标，无法开启竞技场');
+        return 'break';
+      }
+      // 限流错误向上传播
+      if (isRetryableError(error)) {
+        this.warn(`开启竞技场${fightIndex} - 服务器限流(${getErrorCode(error)})`);
+        throw error;
+      }
+      this.error(`开启竞技场失败: ${error.message}`);
+      return 'break';
+    }
+
+    // ✅ 获取玩家竞技场排名（与批量日常 tasksArena.js 对齐，提升目标选择质量）
+    const roleInfo = safeGet(this.tokenStore, 'gameData.roleInfo.role', {});
+    let playerRank = 0;
+    try {
+      const arenaRankData = await this.sendCommand('arena_getarearank', 
+        { rankType: 0, minRank: 1, maxRank: 100 }, 
+        { description: `获取排名${fightIndex}`, timeout: 10000, silent: true });
+      const myRoleId = roleInfo?.roleId;
+      const rankList = arenaRankData?.rankList || arenaRankData?.roleList || arenaRankData?.list || [];
+      const myRankData = rankList.find(item => 
+        item.roleId === myRoleId || item.info?.roleId === myRoleId);
+      if (myRankData) {
+        playerRank = myRankData.rank || myRankData.info?.rank || 0;
+        if (playerRank > 0) this.info(`当前竞技场排名: ${playerRank}`);
+      }
+    } catch (e) {
+      // 排名获取失败不影响后续流程
+    }
 
     // 获取目标
     let targets;
@@ -760,43 +801,45 @@ export class DailyTaskRunner {
       targets = await this.sendCommand('arena_getareatarget', {}, 
         { description: `获取目标${fightIndex}` });
     } catch (error) {
-      // ✅ 限流错误向上传播，触发主循环break
+      // ✅ 与批量日常对齐：400340/200750限流不中断整个竞技场，跳过本次战斗
       if (isRetryableError(error)) {
-        this.warn(`获取目标${fightIndex} - 服务器限流(${getErrorCode(error)})，停止竞技场战斗`);
-        throw error;
+        this.warn(`获取目标${fightIndex} - 服务器限流(${getErrorCode(error)})，跳过本次战斗`);
+        return 'skip';
       }
       this.error(`获取目标失败: ${error.message}`);
-      return;
+      return 'skip';
     }
 
     if (!targets || (extractTargetList(targets).length === 0 && 
         !targets.roleId && !targets.id && !targets.targetId)) {
       this.warn(`战斗${fightIndex} - 无可用目标`);
-      return;
+      return 'skip';
     }
 
-    // 选择目标
-    const roleInfo = safeGet(this.tokenStore, 'gameData.roleInfo.role', {});
-    const target = pickArenaTargetId(targets, roleInfo);
+    // ✅ 选择目标（传入排名和战力信息，与批量日常对齐）
+    const playerInfo = { rank: playerRank, power: roleInfo.power || roleInfo.fightPower || 0 };
+    const target = pickArenaTargetId(targets, playerInfo);
 
     if (!target?.targetId) {
       this.warn(`战斗${fightIndex} - 未找到合适目标`);
-      return;
+      return 'skip';
     }
 
-    this.info(`目标: ${target.targetName} (排名:${target.targetRank})`);
+    this.info(`战斗${fightIndex} 目标: ${target.targetName} (排名:${target.targetRank})`);
 
-    // ✅ 执行战斗（支持一次重试）
+    // 执行战斗
     try {
       await this.sendCommand('fight_startareaarena', { targetId: target.targetId }, 
-        { description: `竞技场战斗${fightIndex}`, timeout: this.getTimeout('fight_startareaarena') });
+        { description: `战斗${fightIndex}`, timeout: this.getTimeout('fight_startareaarena') });
+      this.success(`竞技场战斗 ${fightIndex}/${totalFights} - 完成`);
+      return 'ok';
     } catch (error) {
-      // ✅ 限流错误(400340/200750/11800010)：不再局部重试，直接向上抛出，让主循环break
       if (isRetryableError(error)) {
         this.warn(`战斗${fightIndex} - 服务器限流(${getErrorCode(error)})，停止竞技场战斗`);
-        throw error; // ✅ 向上抛出，触发主循环break
+        throw error;
       }
-      this.error(`战斗失败: ${error.message}`);
+      this.error(`战斗${fightIndex}失败: ${error.message}`);
+      return 'skip';
     }
   }
 
