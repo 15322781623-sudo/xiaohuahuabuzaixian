@@ -545,3 +545,38 @@ export const getTechType = (researchId) => {
     return 6;
   return null;
 };
+
+// 淬炼颜色
+export const QUENCH_COLOR = {
+  1: { name: "白", hex: "#ffffff" }, 2: { name: "绿", hex: "#00ff00" },
+  3: { name: "蓝", hex: "#0080ff" }, 4: { name: "紫", hex: "#a020f0" },
+  5: { name: "橙", hex: "#ff8000" }, 6: { name: "红", hex: "#ff0000" },
+};
+
+// 宠物映射
+export const PET_ID_MAP = {
+  // 海系 (x01)
+  101: { name: "大眼海胆" }, 201: { name: "你真蚌" }, 301: { name: "冰灯水母" },
+  401: { name: "潮团兽" }, 501: { name: "武虾" }, 601: { name: "甲锅龟" },
+  // 陆系 (x02)
+  102: { name: "芽芽蛙" }, 202: { name: "梨嘴鸭" }, 302: { name: "热狗" },
+  402: { name: "盘牙" }, 502: { name: "拳击狐" }, 602: { name: "炎鬃狮" },
+  // 空系 (x03)
+  103: { name: "泡泡蝇" }, 203: { name: "响尾蜂" }, 303: { name: "幽影蝶" },
+  403: { name: "铁头飞猪" }, 503: { name: "雷帽绒" }, 603: { name: "疾风隼" },
+  // 幻系 (x04)
+  104: { name: "小幽灵" }, 204: { name: "溜溜萝" }, 304: { name: "烛灵" },
+  404: { name: "长颈树" }, 504: { name: "灰烬兔" }, 604: { name: "蛇尾枭" },
+};
+
+// 通过 artifactId 获取鱼灵信息（前4位=鱼灵类型ID, 末位=等级）
+export const getFishByArtifactId = (artifactId) => {
+  if (!artifactId) return null;
+  const idStr = String(artifactId);
+  if (idStr.length < 5) return null;
+  const fishTypeId = Number(idStr.substring(0, 4));
+  const level = Number(idStr.substring(idStr.length - 1));
+  const fishInfo = FishMap[fishTypeId];
+  if (!fishInfo) return null;
+  return { ...fishInfo, level, fishTypeId };
+};

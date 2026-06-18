@@ -542,6 +542,29 @@ export function createTasksArena(deps) {
               });
             }
 
+            // 获取 battleVersion（战斗必需，否则服务器返回"版本过低"）
+            if (!tokenStore.getBattleVersion()) {
+              try {
+                const levelResult = await tokenStore.sendMessageWithPromise(
+                  tokenId, "fight_startlevel", {}, 5000
+                );
+                if (levelResult?.battleData?.version) {
+                  tokenStore.setBattleVersion(levelResult.battleData.version);
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 获取 battleVersion: ${levelResult.battleData.version}`,
+                    type: "info",
+                  });
+                }
+              } catch (err) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 获取 battleVersion 失败: ${err.message}`,
+                  type: "warning",
+                });
+              }
+            }
+
             for (let i = 0; i < fights; i++) {
               if (shouldStop.value)
                 break;

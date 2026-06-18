@@ -49,6 +49,7 @@ const errorCodeMap = {
   7300232: "暂无可预约的直播",
   3000280: "已领取过100金砖奖励",
   200370: "已领取完累抽奖励",
+  7100022: "当前账号已加入其他房间",
 };
 
 // 事件节流定义表，根据实际需要调整命令和节流时间
@@ -330,7 +331,6 @@ export function registerDefaultCommands(reg) {
 
     // 队伍相关
     .register("presetteam_getinfo")
-    .register("presetteam_getinfo")
     .register("presetteam_setteam")
     .register("presetteam_saveteam", { teamId: 1 })
     .register("role_gettargetteam")
@@ -349,6 +349,17 @@ export function registerDefaultCommands(reg) {
     .register("hero_heroupgradeorder") // 武将进阶
     .register("hero_rebirth") // 武将重新birth
 
+    // 装备/淬炼/赐福相关
+    .register("equipment_changequench") // 淬炼翻面
+    .register("equipment_cancelenchant") // 取消赐福
+    .register("equipment_enchant") // 应用赐福
+
+    // 军团科技/宠物/水晶
+    .register("legion_research") // 军团科技研究
+    .register("legion_resetresearch") // 重置军团科技
+    .register("pet_load") // 切换宠物
+    .register("trump_change") // 水晶（玩具翻面）
+
     // 英雄四圣升级相关
     .register("hb_quench") // 蓝玉升级
     .register("hb_upgradeorder") // 红玉升级
@@ -363,6 +374,12 @@ export function registerDefaultCommands(reg) {
 
     // 梦魇相关
     .register("nightmare_getroleinfo")
+    .register("nightmare_getroominfo")
+    .register("nightmare_fight")
+    .register("nightmare_leadercomplete")
+    .register("nightmare_dismiss", { roomId: 0 })
+    .register("nightmare_restore")
+    .register("nightmare_fullrage", { roomId: 0, targetRoleId: 0 })
     .register("nightmare_clickturntable")
     .register("nightmare_claimweekreward")
     .register("nightmare_claimturnrewardtimes")
@@ -375,6 +392,7 @@ export function registerDefaultCommands(reg) {
     .register("presetteam_typegetinfo", { types: [101] })
     .register("presetteam_typecalcpowerbyteam", { typ: 101, battleTeam: [], lordWeaponId: 8, petUId: "" })
     .register("presetteam_typesetteam", { typ: 101, battleTeam: [], lordWeaponId: 8 })
+    .register("hero_calcpowerbyteam", { battleTeam: [], lordWeaponId: 8 })
     .register("dungeon_selecthero")
     .register("bosstower_gethelprank")
     .register("dungeon_buymerchant")
@@ -451,6 +469,15 @@ export function registerDefaultCommands(reg) {
 
     // 咸王宝库
     .register("matchteam_getroleteaminfo")
+    .register("matchteam_getteaminfo")
+    .register("matchteam_getrandteamlist")
+    .register("matchteam_create")
+    .register("matchteam_join")
+    .register("matchteam_memberprepare")
+    .register("matchteam_openteam")
+    .register("matchteam_dismiss")
+    .register("matchteam_setleader")
+    .register("matchteam_kick")
     .register("bosstower_getinfo")
     .register("bosstower_startboss")
     .register("bosstower_startbox")
@@ -1285,6 +1312,12 @@ export class XyzwWebSocketClient {
       legion_getarearankresp: "legion_getarearank",
       legionwar_getgoldmonthwarrankresp: "legionwar_getgoldmonthwarrank",
       nightmare_getroleinforesp: "nightmare_getroleinfo",
+      nightmare_getroominforesp: "nightmare_getroominfo",
+      nightmare_fightresp: "nightmare_fight",
+      nightmare_leadercompleteresp: "nightmare_leadercomplete",
+      nightmare_dismissresp: "nightmare_dismiss",
+      nightmare_restoreresp: "nightmare_restore",
+      nightmare_fullrageresp: "nightmare_fullrage",
       studyresp: "study_startgame",
       role_getroleinforesp: "role_getroleinfo",
       hero_recruitresp: "hero_recruit",
@@ -1304,6 +1337,26 @@ export class XyzwWebSocketClient {
       arena_getarearankresp: "arena_getarearank",
       presetteam_saveteamresp: "presetteam_saveteam",
       presetteam_getinforesp: "presetteam_getinfo",
+      hero_exchangeresp: "hero_exchange",
+      hero_gointobattleresp: "hero_gointobattle",
+      hero_gobackbattleresp: "hero_gobackbattle",
+      hero_heroupgradelevelresp: "hero_heroupgradelevel",
+      hero_heroupgradeorderresp: "hero_heroupgradeorder",
+      hero_rebirthresp: "hero_rebirth",
+      artifact_loadresp: "artifact_load",
+      artifact_unloadresp: "artifact_unload",
+      lordweapon_changedefaultweaponresp: "lordweapon_changedefaultweapon",
+      pearl_replaceskillresp: "pearl_replaceskill",
+      pearl_exchangeskillresp: "pearl_exchangeskill",
+      pearl_unloadskillresp: "pearl_unloadskill",
+      equipment_changequenchresp: "equipment_changequench",
+      equipment_cancelenchantresp: "equipment_cancelenchant",
+      equipment_enchantresp: "equipment_enchant",
+      legion_researchresp: "legion_research",
+      legion_resetresearchresp: "legion_resetresearch",
+      pet_loadresp: "pet_load",
+      trump_changeresp: "trump_change",
+      role_getroleinforesp: "role_getroleinfo",
       mail_claimallattachmentresp: "mail_claimallattachment",
       mail_getlistresp: "mail_getlist",
       mail_changestateresp: "mail_changestate",
@@ -1355,6 +1408,15 @@ export class XyzwWebSocketClient {
       league_getgroupopponentresp: "league_getgroupopponent",
       // 咸王宝库
       matchteam_getroleteaminforesp: "matchteam_getroleteaminfo",
+      matchteam_getteaminforesp: "matchteam_getteaminfo",
+      matchteam_getrandteamlistresp: "matchteam_getrandteamlist",
+      matchteam_createresp: "matchteam_create",
+      matchteam_joinresp: "matchteam_join",
+      matchteam_memberprepareresp: "matchteam_memberprepare",
+      matchteam_openteamresp: "matchteam_openteam",
+      matchteam_dismissresp: "matchteam_dismiss",
+      matchteam_setleaderresp: "matchteam_setleader",
+      matchteam_kickresp: "matchteam_kick",
       bosstower_getinforesp: "bosstower_getinfo",
       bosstower_startbossresp: "bosstower_startboss",
       bosstower_startboxresp: "bosstower_startbox",
@@ -1395,6 +1457,21 @@ export class XyzwWebSocketClient {
       // 特殊响应映射 - 有些命令有独立响应，有些用同步响应
       task_claimdailyrewardresp: "task_claimdailyreward",
       task_claimweekrewardresp: "task_claimweekreward",
+
+      // 十殿星级挑战相关响应映射
+      nmext_getinforesp: "nmext_getinfo",
+      nmext_startbossresp: "nmext_startboss",
+      nmext_drawturntableresp: "nmext_drawturntable",
+      nmext_claimstarrewardresp: "nmext_claimstarreward",
+      presetteam_typegetinforesp: "presetteam_typegetinfo",
+      presetteam_typecalcpowerbyteamresp: "presetteam_typecalcpowerbyteam",
+      presetteam_typesetteamresp: "presetteam_typesetteam",
+      hero_calcpowerbyteamresp: "hero_calcpowerbyteam",
+      // 梦魇相关响应映射
+      nightmare_claimweekrewardresp: "nightmare_claimweekreward",
+      nightmare_claimturnrewardtimesresp: "nightmare_claimturnrewardtimes",
+      nightmare_clickturntableresp: "nightmare_clickturntable",
+      nightmare_claimbookresp: "nightmare_claimbook",
 
       // 同步响应映射（优先级低）
       syncresp: [

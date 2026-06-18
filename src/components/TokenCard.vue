@@ -2203,9 +2203,9 @@ const handleArenaFight = async () => {
         );
         console.log("[竞技场] fight_startlevel 返回:", startLevelResult);
 
-        if (startLevelResult?.battleVersion) {
-          tokenStore.setBattleVersion(startLevelResult.battleVersion);
-          console.log("[竞技场] 设置 battleVersion:", startLevelResult.battleVersion);
+        if (startLevelResult?.battleData?.version) {
+          tokenStore.setBattleVersion(startLevelResult.battleData.version);
+          console.log("[竞技场] 设置 battleVersion:", startLevelResult.battleData.version);
         } else {
           console.warn("[竞技场] fight_startlevel 未返回 battleVersion");
         }
@@ -2386,10 +2386,6 @@ onUnmounted(() => {
     clearTimeout(autoCloseTimer);
   if (syncGameDataTimer)
     clearTimeout(syncGameDataTimer); // 清理同步游戏数据定时器
-  if (saveTimer)
-    clearTimeout(saveTimer);
-  // 组件卸载时立即保存最新状态，避免定时器导致的保存延迟丢失数据
-  saveCardStatus();
 });
 
 // 格式化时间（短格式）
@@ -2631,154 +2627,69 @@ const openGame = () => {
   message.success(`已为 ${token.name} 打开游戏功能页面`);
 };
 
-// ==================== 一键补齐每日任务 ====================
-// 与 BatchDailyTasks.startBatch 的 token 级别执行逻辑对齐
-// 核心：不预调 runner.ensureConnection()，让 runner.run() 内部自行管理连接
+// 一键补齐每日任务
 const completeDailyTasks = async () => {
   if (!isConnected.value && !isConnecting.value) {
-    message.warning("请先连接Token");
+    message.warning('请先连接Token');
     return;
   }
 
-  const tokenId = props.token.id;
-  const tokenStore = useTokenStore();
-
-  addLog({ message: `开始为 ${props.token.name} 补齐每日任务...`, type: "info" });
-  message.info(`开始为 ${props.token.name} 补齐每日任务...`);
-
-  // 加载全局配置
-  let batchSettings;
   try {
-    batchSettings = JSON.parse(localStorage.getItem("batchSettings") || "{}");
-  } catch (e) {
-    batchSettings = {};
-  }
+    message.info(`开始为 ${props.token.name} 补齐每日任务...`);
+    addLog({
+      message: `开始为 ${props.token.name} 补齐每日任务...`,
+      type: "info",
+    });
 
-  // ========== 与 BatchDailyTasks.startBatch 对齐的执行流程 ==========
-  const MAX_RETRIES = 1;
-  const RETRY_WAIT_TIME = batchSettings.retryDelay || 60000;
-  let retryCount = 0;
-  let success = false;
-
-  // 等待连接稳定（2秒，与批量一致）
-  addLog({ message: `⏳ 等待连接稳定...`, type: "info" });
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-
-  while (retryCount <= MAX_RETRIES && !success) {
-    if (retryCount > 0) {
-      addLog({ message: `🔄 ${props.token.name} 第${retryCount}次重试...`, type: "warning" });
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-    } else {
-      addLog({ message: `=== 开始执行: ${props.token.name} ===`, type: "info" });
-    }
-
+    // 加载全局batchSettings延迟配置
+    let batchSettings;
     try {
-      // 1. 检查活跃度（与批量一致）
-      addLog({ message: `正在获取活跃度信息...`, type: "info" });
-      try {
-        const roleInfo = await tokenStore.sendMessageWithPromise(
-          tokenId, "role_getroleinfo", {}, 10000
-        );
-        const dailyTask = roleInfo?.role?.dailyTask
-          || roleInfo?.body?.role?.dailyTask
-          || roleInfo?.dailyTask
-          || roleInfo?.body?.dailyTask;
-        const activityPoints = dailyTask?.dailyPoint ?? 0;
-
-        addLog({ message: `📊 ${props.token.name} 当前活跃度: ${activityPoints}/110`, type: "info" });
-
-        if (activityPoints >= 105) {
-          addLog({ message: `✅ ${props.token.name} 活跃度已达标，无需执行任务`, type: "success" });
-          message.success(`${props.token.name} 活跃度已达标`);
-          success = true;
-          break;
-        }
-
-        addLog({ message: `🚀 ${props.token.name} 活跃度 ${activityPoints}，开始执行...`, type: "info" });
-      } catch (error) {
-        console.error("获取活跃度失败:", error);
-        addLog({ message: `⚠️ ${props.token.name} 获取活跃度失败，继续执行任务`, type: "warning" });
-      }
-
-      // 2. 创建 runner 并执行（连接管理由 runner.run() 内部处理，不预调 ensureConnection）
-      const runner = new DailyTaskRunner(tokenStore, {
-        commandDelay: batchSettings.commandDelay || 500,
-        taskDelay: batchSettings.taskDelay || 500,
-      }, batchSettings);
-
-      const runnerResult = await runner.run(props.token.id, {
-        onLog: (log) => addLog(log),
-        onProgress: (p) => {},
-      });
-
-      // 3. 检查400340，需重试（与批量一致）
-      if (runnerResult?.has400340Error) {
-        retryCount++;
-        if (retryCount <= MAX_RETRIES) {
-          addLog({
-            message: `⚠️ ${props.token.name} 遇到服务器限流(400340/200750/11800010)，${RETRY_WAIT_TIME / 1000}秒后重试 (${retryCount}/${MAX_RETRIES})`,
-            type: "warning",
-          });
-          await new Promise((resolve) => setTimeout(resolve, RETRY_WAIT_TIME));
-          continue;
-        }
-        // 重试耗尽：标记结束但不谎报完成
-        addLog({ message: `⚠️ ${props.token.name} 重试已达上限，部分任务未完成`, type: "warning" });
-        success = true; // 退出 while 循环，但不走"完成"分支
-        break;
-      }
-
-      // 4. 刷新角色信息（与批量一致：sendGetRoleInfo + updateTokenGameData）
-      try {
-        const roleInfoResp = await tokenStore.sendGetRoleInfo(tokenId);
-        if (roleInfoResp) {
-          const roleData = roleInfoResp?.role || roleInfoResp;
-          const pts = roleData?.dailyTask?.dailyPoint ?? 0;
-          addLog({ message: `📊 ${props.token.name} 执行后活跃度: ${pts}/110`, type: "info" });
-          tokenStore.updateTokenGameData(tokenId, { roleInfo: roleInfoResp });
-        }
-      } catch (e) {
-        console.error(`刷新${props.token.name}角色信息失败:`, e);
-      }
-
-      // 5. 完成
-      success = true;
-      addLog({ message: `=== ${props.token.name} 执行完成 ===`, type: "success" });
-      addLog({ message: `✅ 补齐每日任务完成`, type: "success" });
-      message.success(`为 ${props.token.name} 补齐每日任务完成！`);
-
-    } catch (error) {
-      console.error("补齐任务执行出错:", error);
-      retryCount++;
-      if (retryCount <= MAX_RETRIES) {
-        addLog({
-          message: `⚠️ ${props.token.name} 执行出错: ${error.message}，3秒后重试 (${retryCount}/${MAX_RETRIES})`,
-          type: "warning",
-        });
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-      } else {
-        addLog({ message: `❌ ${props.token.name} 重试已达上限: ${error.message}`, type: "error" });
-        message.error(`补齐每日任务失败: ${error.message}`);
-      }
+      const batchSettingsRaw = localStorage.getItem("batchSettings");
+      batchSettings = batchSettingsRaw ? JSON.parse(batchSettingsRaw) : {};
+    } catch (e) {
+      batchSettings = {};
     }
-  }
 
-  // 更新卡片进度条显示
-  setTimeout(async () => {
-    await tokenStore.sendGetRoleInfo(props.token.id);
+    const runner = new DailyTaskRunner(tokenStore, {
+      commandDelay: batchSettings.commandDelay || 500,
+      taskDelay: batchSettings.taskDelay || 500,
+    }, batchSettings);
+
+    // 执行每日任务补齐
+    await runner.run(props.token.id, {
+      onLog: (logItem) => {
+        console.log(`[${props.token.name}] ${logItem.message}`);
+        addLog(logItem);
+      },
+      onProgress: (progress) => {
+        addLog({
+          message: `任务进度: ${progress}%`,
+          type: "info",
+        });
+      },
+    });
+
+    message.success(`为 ${props.token.name} 补齐每日任务完成！`);
+    addLog({
+      message: `✅ 补齐每日任务完成`,
+      type: "success",
+    });
+
+    // 刷新角色信息以更新任务状态
     setTimeout(() => {
-      const ri = tokenStore.selectedTokenRoleInfo;
-      if (ri?.dailyTask) {
-        dailyTask.value.progress = Math.min(ri.dailyTask.dailyPoint || 0, 110);
-        dailyTask.value.complete = ri.dailyTask.complete || [];
-        if (props.token?.id) {
-          tokenStore.setTokenActivity(props.token.id, ri.dailyTask.dailyPoint || 0);
-        }
-      }
-    }, 500);
-  }, 1000);
+      tokenStore.sendGetRoleInfo(props.token.id);
+    }, 1000);
 
-  autoCloseLogs();
+    // 5秒后自动关闭日志显示
+    autoCloseLogs();
+  } catch (error) {
+    console.error('补齐每日任务失败:', error);
+    message.error(`补齐每日任务失败: ${error.message}`);
+    addLog({
+      message: `补齐每日任务失败: ${error.message}`,
+      type: "error",
+    });
+  }
 };
 
 // 月度竞技场补齐
@@ -4444,27 +4355,7 @@ const challengeTower = async (type) => {
         });
 
         // 检查是否通关（需要更新 levelRewardMap）
-        try {
-          await refreshTowerInfo();
-        } catch (e) {
-          // refreshTowerInfo 失败时无法判断是否通关，用 failCount 兜底避免无限循环
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `BOSS ${type} 刷新塔信息失败，尝试继续战斗`,
-            type: "warning",
-          });
-          needStart = true; // 状态不确定，重新初始化
-          failCount++;
-          if (failCount >= 3) {
-            loop = false;
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `BOSS ${type} 连续失败 ${failCount} 次，停止挑战`,
-              type: "error",
-            });
-          }
-          continue;
-        }
+        await refreshTowerInfo();
         if (isTowerCleared(type)) {
           loop = false;
           addLog({

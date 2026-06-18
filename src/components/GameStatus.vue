@@ -8,6 +8,7 @@
         || activeSection === 'peachGroup'
         || activeSection === 'rankGroup',
       'club-mode': activeSection === 'club',
+      'lineup-mode': activeSection === 'lineup',
     }"
   >
     <!-- 身份牌常驻（嵌入式，Tabs 上方） -->
@@ -23,6 +24,7 @@
     >
       <n-tab-pane name="daily" tab="日常"></n-tab-pane>
       <n-tab-pane name="club" tab="俱乐部"></n-tab-pane>
+      <n-tab-pane name="lineup" tab="阵容"></n-tab-pane>
       <n-tab-pane name="activity" tab="活动"></n-tab-pane>
       <n-tab-pane v-if="ENABLE_TOOLS_TAB" name="tools" tab="工具"></n-tab-pane>
       <n-tab-pane name="saltFieldGroup" tab="盐场"></n-tab-pane>
@@ -49,8 +51,8 @@
     <!-- 挂机状态（提取组件） -->
     <HangUpStatusCard v-show="activeSection === 'daily'"></HangUpStatusCard>
 
-    <!-- 无限阵容助手（提取组件） -->
-    <Unlimitedlineup v-show="activeSection === 'tools'"></Unlimitedlineup>
+    <!-- 无限阵容助手（迁移到"阵容"标签） -->
+    <Unlimitedlineup v-show="activeSection === 'lineup'" />
 
     <!-- 宝箱助手（提取组件） -->
     <BoxHelperCard v-show="activeSection === 'tools'"></BoxHelperCard>
@@ -168,6 +170,54 @@
     <!-- 换皮闯关 -->
     <SkinChallengeCard v-show="activeSection === 'activity'"></SkinChallengeCard>
 
+    <!-- 十殿星级挑战 -->
+    <div v-show="activeSection === 'activity'" class="star-challenge-trigger">
+      <MyCard class="star-challenge-entry" statusClass="energy">
+        <template #icon>
+          <img src="/icons/ta.png" alt="星级挑战" />
+        </template>
+        <template #title>
+          <h3>十殿星级挑战</h3>
+          <p>一键挑战、罗盘抽奖、领取星章</p>
+        </template>
+        <template #badge>
+          <span>活动</span>
+        </template>
+        <template #default>
+          <p class="description" style="color: #ff0033;">十殿阎罗星级挑战，请先在游戏内设置关卡预设阵容。支持一键挑战、转盘抽奖和星级奖励领取。部分功能建设中</p>
+        </template>
+        <template #action>
+          <button class="action-button" @click="showStarChallengeModal = true">
+            打开星级挑战
+          </button>
+        </template>
+      </MyCard>
+    </div>
+
+    <!-- 十殿阎罗挑战 -->
+    <div v-show="activeSection === 'activity'" class="nightmare-challenge-trigger">
+      <MyCard class="nightmare-challenge-entry" statusClass="energy">
+        <template #icon>
+          <img src="/icons/ta.png" alt="十殿挑战" />
+        </template>
+        <template #title>
+          <h3>十殿阎罗挑战</h3>
+          <p>作为队长组队，完成十殿阎罗1-8关挑战。十殿混沌罗盘抽奖。</p>
+        </template>
+        <template #badge>
+          <span>活动</span>
+        </template>
+        <template #default>
+          <p class="description" style="color: #ff0033;">十殿阎罗挑战，作为队长开组，选择最多4个队友，完成1-8关挑战。也可以提前预设组队阵容，完成一键挑战。更多功能建设中</p>
+        </template>
+        <template #action>
+          <button class="action-button" @click="handleOpenNightmareChallenge" :disabled="isOpeningNightmare">
+            {{ isOpeningNightmare ? '检查中...' : '打开十殿挑战' }}
+          </button>
+        </template>
+      </MyCard>
+    </div>
+
     <!-- 盐场分组（包含盐场、周战绩、月战绩） -->
     <div v-if="activeSection === 'saltFieldGroup'" class="salt-field-group">
       <div class="sub-nav">
@@ -277,11 +327,40 @@
     </div>
     <!-- 切磋（提取组件） -->
     <FightPvp v-if="activeSection === 'fightPvp'"></FightPvp>
+
+    <!-- 星级挑战 Modal -->
+    <n-modal
+      v-model:show="showStarChallengeModal"
+      preset="card"
+      title="十殿星级挑战"
+      style="width: 90%; max-width: 720px"
+      :bordered="true"
+      :segmented="{ content: true, footer: true }"
+      :closable="true"
+      :mask-closable="true"
+    >
+      <StarChallengeCard />
+    </n-modal>
+
+    <!-- 十殿挑战 Modal -->
+    <n-modal
+      v-model:show="showNightmareChallengeModal"
+      preset="card"
+      title="十殿阎罗挑战"
+      style="width: 90%; max-width: 760px"
+      :bordered="true"
+      :segmented="{ content: true, footer: true }"
+      :closable="true"
+      :mask-closable="true"
+    >
+      <NightmareChallengeCard />
+    </n-modal>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { useTokenStore } from "@/stores/tokenStore";
 import { useMessage } from "naive-ui";
 
@@ -294,6 +373,8 @@ import HangUpStatusCard from "./cards/HangUpStatusCard.vue";
 import MonthlyTasksCard from "./cards/MonthlyTasksCard.vue";
 import StudyChallengeCard from "./cards/StudyChallengeCard.vue";
 import SkinChallengeCard from "./cards/SkinChallengeCard.vue";
+import StarChallengeCard from "./cards/StarChallengeCard.vue";
+import NightmareChallengeCard from "./cards/NightmareChallengeCard.vue";
 import ClubWarrank from "./Club/ClubWarrank.vue";
 import ClubMonthBattleRecords from "./Club/ClubMonthBattleRecords.vue";
 import ClubBattleRecords from "./Club/ClubBattleRecords.vue";
@@ -319,6 +400,7 @@ import Unlimitedlineup from "./cards/Unlimitedlineup.vue";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
+const router = useRouter();
 
 const legionMatch = ref({
   isRegistered: false,
@@ -326,6 +408,9 @@ const legionMatch = ref({
 
 // 响应式数据
 const showIdentity = ref(false);
+const showStarChallengeModal = ref(false);
+const showNightmareChallengeModal = ref(false);
+const isOpeningNightmare = ref(false);
 const activeSection = ref("daily");
 const saltFieldSubTab = ref("warrank");
 const peachSubTab = ref("peach");
@@ -659,6 +744,70 @@ watch(
 
 // 战绩加载逻辑现由俱乐部信息模块负责
 
+// ==================== 十殿挑战智能导航 ====================
+const handleOpenNightmareChallenge = async () => {
+  if (!tokenStore.selectedToken) {
+    message.warning("请先选择Token");
+    return;
+  }
+  const tokenId = tokenStore.selectedToken.id;
+  const status = tokenStore.getWebSocketStatus(tokenId);
+  if (status !== "connected") {
+    message.warning("WebSocket未连接，请先建立连接");
+    return;
+  }
+  isOpeningNightmare.value = true;
+  try {
+    // Step 1: 获取 roleId
+    let roleInfo = tokenStore.gameData?.roleInfo;
+    if (!roleInfo?.role?.roleId) {
+      try { roleInfo = await tokenStore.sendGetRoleInfo(tokenId, {}); } catch {}
+    }
+    const roleId = roleInfo?.role?.roleId;
+    if (!roleId) {
+      message.warning("无法获取角色信息，请刷新后重试");
+      isOpeningNightmare.value = false;
+      return;
+    }
+    // Step 2: 检查 nightmare_getroleinfo → roomId（重试3次×2秒）
+    let roomId = null;
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const nightmareRoleInfo = await tokenStore.sendMessageWithPromise(
+          tokenId, "nightmare_getroleinfo",
+          { roleId: Number(roleId) }, 10000
+        );
+        roomId = nightmareRoleInfo?.nightMareData?.roomId
+          || nightmareRoleInfo?.nightmareData?.roomId
+          || nightmareRoleInfo?.roomId
+          || nightmareRoleInfo?.roomid
+          || null;
+        if (roomId) break;
+        if (attempt < maxRetries) await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (err) {
+        if (attempt < maxRetries) await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    if (roomId) {
+      // 战斗中 → 直接进入战斗页面
+      message.info("检测到战斗中，正在进入战斗页面...");
+      router.push({
+        name: "NightmareBattle",
+        query: { captainTokenId: tokenId, roomId: String(roomId) },
+      });
+      isOpeningNightmare.value = false;
+      return;
+    }
+    // Step 3: 非战斗中 → 打开组队 Modal
+    showNightmareChallengeModal.value = true;
+  } catch (err) {
+    message.error(`检查进度失败: ${err.message || String(err)}`);
+  } finally {
+    isOpeningNightmare.value = false;
+  }
+};
+
 // 生命周期
 onMounted(() => {
   updateGameStatus();
@@ -733,6 +882,11 @@ onUnmounted(() => {
     grid-template-columns: repeat(2, 1fr);
     max-width: 100% !important;
   }
+}
+
+.game-status-container.lineup-mode {
+  grid-template-columns: 1fr !important;
+  max-width: 100% !important;
 }
 
 .section-header {

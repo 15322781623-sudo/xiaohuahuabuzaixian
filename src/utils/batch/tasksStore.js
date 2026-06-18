@@ -1324,14 +1324,12 @@ export function createTasksStore(deps) {
             type: "info",
           });
         } else {
-          // 其他错误（如200020），标记失败，不尝试累抽
+          // 其他错误（如200020），标记失败，但仍尝试累抽奖励
           addLog({
             time: new Date().toLocaleTimeString(),
             message: `${token.name} 免费扭蛋失败: ${errorMsg}`,
-            type: "error",
+            type: "warning",
           });
-          tokenStatus.value[tokenId] = "failed";
-          return; // finally 会关闭连接
         }
       }
 
@@ -1363,26 +1361,20 @@ export function createTasksStore(deps) {
           } catch (stageError) {
             const stageErrorMsg = stageError.message || "";
             if (stageErrorMsg.includes("200370") || stageErrorMsg.includes("3500020")
-              || stageErrorMsg.includes("没有可领取的奖励")
               || stageErrorMsg.includes("400000") || stageErrorMsg.includes("物品不存在")) {
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `${token.name} 累抽奖励 第${stageId}层 已领取完累抽奖励，无需继续领取`,
+                message: `${token.name} 累抽奖励 第${stageId}层 已领取，跳过`,
                 type: "info",
               });
-            } else if (stageErrorMsg.includes("超时")) {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 累抽奖励 第${stageId}层 请求超时，停止领取`,
-                type: "warning",
-              });
-            } else {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 累抽奖励 第${stageId}层 未满足条件无法领取`,
-                type: "info",
-              });
+              continue; // 已领取，跳过检查下一层
             }
+            // 未达标或其他错误，直接停止
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 累抽奖励 第${stageId}层 未达标，停止`,
+              type: "info",
+            });
             break;
           }
         }

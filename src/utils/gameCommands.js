@@ -737,6 +737,56 @@ export class GameCommands {
       time: Date.now(),
     };
   }
+
+  // ==================== 十殿阎罗挑战 ====================
+
+  /** 获取十殿角色信息（roomId等） */
+  nightmare_getroleinfo(ack = 0, seq = 0, params = {}) {
+    return {
+      ack, body: this.g_utils.bon.encode({ ...params }),
+      cmd: 'nightmare_getroleinfo', seq, time: Date.now(),
+    };
+  }
+
+  /** 获取战斗房间信息 */
+  nightmare_getroominfo(ack = 0, seq = 0, params = {}) {
+    return {
+      ack, body: this.g_utils.bon.encode({ ...params }),
+      cmd: 'nightmare_getroominfo', seq, time: Date.now(),
+    };
+  }
+
+  /** 成员出战 */
+  nightmare_fight(ack = 0, seq = 0, params = {}) {
+    return {
+      ack, body: this.g_utils.bon.encode({ ...params }),
+      cmd: 'nightmare_fight', seq, time: Date.now(),
+    };
+  }
+
+  /** 队长确认战斗结束 */
+  nightmare_leadercomplete(ack = 0, seq = 0, params = {}) {
+    return {
+      ack, body: this.g_utils.bon.encode({ ...params }),
+      cmd: 'nightmare_leadercomplete', seq, time: Date.now(),
+    };
+  }
+
+  /** 恢复成员武将 */
+  nightmare_restore(ack = 0, seq = 0, params = {}) {
+    return {
+      ack, body: this.g_utils.bon.encode({ ...params }),
+      cmd: 'nightmare_restore', seq, time: Date.now(),
+    };
+  }
+
+  /** 遣散战斗房间 */
+  nightmare_dismiss(ack = 0, seq = 0, params = {}) {
+    return {
+      ack, body: this.g_utils.bon.encode({ ...params }),
+      cmd: 'nightmare_dismiss', seq, time: Date.now(),
+    };
+  }
 }
 
 // 三国答题题库（基于mirror代码中的题目）

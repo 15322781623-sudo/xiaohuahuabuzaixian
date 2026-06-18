@@ -31,7 +31,7 @@ const FREE_SWEEP_COUNT = 3;
 const GOLD_BUY_COUNT = 3;
 const HANG_UP_COUNT = 4;
 const DAILY_TASK_COUNT = 10;
-const DREAM_WORLD_DAYS = [0, 1, 3, 4];
+const DREAM_WORLD_DAYS = [0, 3]; // 周日、周三
 
 // 错误码映射表
 const ERROR_MESSAGES = new Map([
@@ -41,7 +41,7 @@ const ERROR_MESSAGES = new Map([
   ['12000116', '已领取'],
   ['1400010', '没有购买该月卡,不能领取每日奖励'],
   ['3300050', '购买数量超出限制'],
-  ['2600040', '未知错误'],
+  ['2600040', '条件不满足'],
   ['200750', '临时错误'],
   ['700020', '任务奖励已领取'],
   ['200020', '无法解锁免费扭蛋'],
@@ -60,6 +60,7 @@ const ERROR_MESSAGES = new Map([
   ['3300060', '灯神扫荡条件不满足'],
   ['400000', '已上限'],  // ✅ 添加400000错误码
   ['200140', '未达到奖励目标'],
+  ['200370', '已领取完累抽奖励'],  // ✅ 累抽奖励已领取
 ]);
 
 // 上下文错误文案
@@ -81,12 +82,13 @@ const INFORMATIONAL_MESSAGES = new Set([
   '今天已经签到过了', '今天已经领取过奖励了', '已经领取过这个任务',
   '暂无可领取奖励', '没有可领取的签到奖励', '已购买过青铜宝箱',
   '已领取招募', '数量不足', '珍宝礼包已领取', '免费扭蛋已上限',
-  '未达到奖励目标',
+  '未达到奖励目标', '已领取完累抽奖励', '条件不满足',
 ]);
 
 // 默认设置
 const DEFAULT_SETTINGS = {
   arenaFormation: 1,
+  towerFormation: 1,
   bossFormation: 1,
   bossTimes: 2,
   dailyBossTimes: 1,
@@ -98,6 +100,7 @@ const DEFAULT_SETTINGS = {
   claimEmail: true,
   blackMarketPurchase: true,
   blackMarketStandalonePurchase: false,
+  legacyGiftPassword: '',
 };
 
 // ==================== 工具函数 ====================
@@ -539,24 +542,26 @@ export class DailyTaskRunner {
   }
 
   /**
-   * 领取累抽奖励（第1-10层），遇到已领取/未满足条件时停止
+   * 领取累抽奖励（第1-10层），逐层尝试
+   * - 已领取的层跳过，继续检查下一层
+   * - 未达标或其他错误直接停止（后续层需要更多抽取次数）
    */
   async claimGachaStageRewards() {
     for (let stageId = 1; stageId <= 10; stageId++) {
       try {
-        await this.sendCommandSafe('gacha_claimstagereward',
-          { stageId },
-          { description: `累抽奖励 第${stageId}层`, timeout: 5000 });
+        await this.tokenStore.sendMessageWithPromise(
+          this.tokenId, 'gacha_claimstagereward', { stageId }, 5000);
+        // 领取成功
+        this.info(`累抽奖励 第${stageId}层 领取成功`);
       } catch (error) {
         const errorMsg = error.message || '';
         if (errorMsg.includes('200370') || errorMsg.includes('3500020')
-            || errorMsg.includes('没有可领取的奖励')
             || errorMsg.includes('400000') || errorMsg.includes('物品不存在')) {
-          this.info(`累抽奖励 第${stageId}层 已领取完累抽奖励，无需继续领取`);
-        } else if (errorMsg.includes('超时')) {
-          this.warn(`累抽奖励 第${stageId}层 请求超时，停止领取`);
-        } else {
-          this.warn(`累抽奖励 第${stageId}层 未满足条件，停止领取`);
+          continue; // 已领取，跳过检查下一层
+        }
+        // 未达标或其他错误，直接停止
+        if (errorMsg.includes('200140')) {
+          this.info(`累抽奖励 第${stageId}层 未达标，停止领取`);
         }
         break;
       }
@@ -699,7 +704,7 @@ export class DailyTaskRunner {
   }
 
   /**
-   * 竞技场任务（与 tasksArena.js batcharenafight 完全对齐）
+   * 竞技场任务
    */
   buildArenaTask() {
     if (!this.settings.arenaEnable) return [];
@@ -711,33 +716,51 @@ export class DailyTaskRunner {
         return;
       }
 
-      // ✅ 检查咸神门票（与批量日常任务一致）
-      const roleData = safeGet(this.tokenStore, 'gameData.roleInfo.role', {});
-      const ticketCount = roleData?.items?.[1007]?.quantity || 0;
-      if (ticketCount <= 0) {
-        this.warn('咸神门票不足，无法进行竞技场战斗');
-        return;
-      }
-      const maxFights = Math.min(ARENA_TIME.MAX_FIGHTS, ticketCount);
-      this.info(`当前咸神门票: ${ticketCount}，将执行 ${maxFights} 次战斗`);
-
       this.info('开始竞技场战斗流程');
       
       // 切换阵容
       const switched = await this.switchFormationIfNeeded(this.settings.arenaFormation);
       if (switched) {
-        await delay(4000);
+        await delay(4000); // 切换后短暂等待
       }
 
-      // ✅ 战斗间延迟，使用配置值（与批量日常任务一致）
-      const battleDelay = this.batchSettings.battleDelay || 2000;
-
       try {
-        for (let i = 1; i <= maxFights; i++) {
-          const fightResult = await this.executeArenaFight(i, maxFights);
-          // ✅ 限流错误或关卡未达标，停止后续战斗
-          if (fightResult === 'break') break;
-          if (i < maxFights) await delay(battleDelay);
+        // 开启竞技场
+        try {
+          await this.sendCommand('arena_startarea', {}, { 
+            description: '开始竞技场', 
+            timeout: this.getTimeout('arena_startarea'), 
+            context: 'arena' 
+          });
+        } catch (error) {
+          if (getErrorCode(error) === '200020') {
+            this.warn('关卡未达标，无法开启竞技场');
+            return;
+          }
+          throw error;
+        }
+
+        // 获取 battleVersion（战斗必需，否则服务器返回"版本过低"）
+        if (!this.tokenStore.getBattleVersion()) {
+          try {
+            const levelResult = await this.sendCommand('fight_startlevel', {}, {
+              description: '获取战斗版本',
+              timeout: 5000,
+              silent: true,
+            });
+            if (levelResult?.battleData?.version) {
+              this.tokenStore.setBattleVersion(levelResult.battleData.version);
+              this.info(`获取 battleVersion: ${levelResult.battleData.version}`);
+            }
+          } catch (err) {
+            this.warn(`获取 battleVersion 失败: ${err.message}`);
+          }
+        }
+
+        // 执行战斗
+        for (let i = 1; i <= ARENA_TIME.MAX_FIGHTS; i++) {
+          await this.executeArenaFight(i);
+          if (i < ARENA_TIME.MAX_FIGHTS) await delay(1000);
         }
 
         this.success('竞技场战斗流程完成');
@@ -748,52 +771,10 @@ export class DailyTaskRunner {
   }
 
   /**
-   * 执行单次竞技场战斗（完整流程：arena_startarea → arena_getareatarget → fight_startareaarena）
-   * 与 tasksArena.js 的 executeArenaFight 完全对齐
-   * @returns {'ok'|'skip'|'break'} ok=成功, skip=跳过, break=需停止
+   * 执行单次竞技场战斗
    */
-  async executeArenaFight(fightIndex, totalFights) {
-    this.info(`竞技场战斗 ${fightIndex}/${totalFights}`);
-
-    // ✅ 每场战斗前都需要 arena_startarea（与 tasksArena.js batcharenafight 一致）
-    try {
-      await this.sendCommand('arena_startarea', {}, { 
-        description: `开启竞技场${fightIndex}`, 
-        timeout: this.getTimeout('arena_startarea'), 
-        context: 'arena' 
-      });
-    } catch (error) {
-      if (getErrorCode(error) === '200020') {
-        this.warn('关卡未达标，无法开启竞技场');
-        return 'break';
-      }
-      // 限流错误向上传播
-      if (isRetryableError(error)) {
-        this.warn(`开启竞技场${fightIndex} - 服务器限流(${getErrorCode(error)})`);
-        throw error;
-      }
-      this.error(`开启竞技场失败: ${error.message}`);
-      return 'break';
-    }
-
-    // ✅ 获取玩家竞技场排名（与批量日常 tasksArena.js 对齐，提升目标选择质量）
-    const roleInfo = safeGet(this.tokenStore, 'gameData.roleInfo.role', {});
-    let playerRank = 0;
-    try {
-      const arenaRankData = await this.sendCommand('arena_getarearank', 
-        { rankType: 0, minRank: 1, maxRank: 100 }, 
-        { description: `获取排名${fightIndex}`, timeout: 10000, silent: true });
-      const myRoleId = roleInfo?.roleId;
-      const rankList = arenaRankData?.rankList || arenaRankData?.roleList || arenaRankData?.list || [];
-      const myRankData = rankList.find(item => 
-        item.roleId === myRoleId || item.info?.roleId === myRoleId);
-      if (myRankData) {
-        playerRank = myRankData.rank || myRankData.info?.rank || 0;
-        if (playerRank > 0) this.info(`当前竞技场排名: ${playerRank}`);
-      }
-    } catch (e) {
-      // 排名获取失败不影响后续流程
-    }
+  async executeArenaFight(fightIndex) {
+    this.info(`竞技场战斗 ${fightIndex}/${ARENA_TIME.MAX_FIGHTS}`);
 
     // 获取目标
     let targets;
@@ -801,45 +782,43 @@ export class DailyTaskRunner {
       targets = await this.sendCommand('arena_getareatarget', {}, 
         { description: `获取目标${fightIndex}` });
     } catch (error) {
-      // ✅ 与批量日常对齐：400340/200750限流不中断整个竞技场，跳过本次战斗
+      // ✅ 限流错误向上传播，触发主循环break
       if (isRetryableError(error)) {
-        this.warn(`获取目标${fightIndex} - 服务器限流(${getErrorCode(error)})，跳过本次战斗`);
-        return 'skip';
+        this.warn(`获取目标${fightIndex} - 服务器限流(${getErrorCode(error)})，停止竞技场战斗`);
+        throw error;
       }
       this.error(`获取目标失败: ${error.message}`);
-      return 'skip';
+      return;
     }
 
     if (!targets || (extractTargetList(targets).length === 0 && 
         !targets.roleId && !targets.id && !targets.targetId)) {
       this.warn(`战斗${fightIndex} - 无可用目标`);
-      return 'skip';
+      return;
     }
 
-    // ✅ 选择目标（传入排名和战力信息，与批量日常对齐）
-    const playerInfo = { rank: playerRank, power: roleInfo.power || roleInfo.fightPower || 0 };
-    const target = pickArenaTargetId(targets, playerInfo);
+    // 选择目标
+    const roleInfo = safeGet(this.tokenStore, 'gameData.roleInfo.role', {});
+    const target = pickArenaTargetId(targets, roleInfo);
 
     if (!target?.targetId) {
       this.warn(`战斗${fightIndex} - 未找到合适目标`);
-      return 'skip';
+      return;
     }
 
-    this.info(`战斗${fightIndex} 目标: ${target.targetName} (排名:${target.targetRank})`);
+    this.info(`目标: ${target.targetName} (排名:${target.targetRank})`);
 
-    // 执行战斗
+    // ✅ 执行战斗（支持一次重试）
     try {
       await this.sendCommand('fight_startareaarena', { targetId: target.targetId }, 
-        { description: `战斗${fightIndex}`, timeout: this.getTimeout('fight_startareaarena') });
-      this.success(`竞技场战斗 ${fightIndex}/${totalFights} - 完成`);
-      return 'ok';
+        { description: `竞技场战斗${fightIndex}`, timeout: this.getTimeout('fight_startareaarena') });
     } catch (error) {
+      // ✅ 限流错误(400340/200750/11800010)：不再局部重试，直接向上抛出，让主循环break
       if (isRetryableError(error)) {
         this.warn(`战斗${fightIndex} - 服务器限流(${getErrorCode(error)})，停止竞技场战斗`);
-        throw error;
+        throw error; // ✅ 向上抛出，触发主循环break
       }
-      this.error(`战斗${fightIndex}失败: ${error.message}`);
-      return 'skip';
+      this.error(`战斗失败: ${error.message}`);
     }
   }
 

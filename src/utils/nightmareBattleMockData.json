@@ -1,0 +1,15 @@
+{
+  "_meta": {
+    "captureRoomId": "28314045",
+    "captureTime": "2025-01-01T00:00:00Z",
+    "description": "十殿阎罗战斗抓包数据占位文件"
+  },
+  "initialRoomInfo": {
+    "curMonsterCfgId": 1,
+    "monsterTeamInfo": {},
+    "curMonsterData": {},
+    "fightRoleBase": [],
+    "playerTeamInfo": {}
+  },
+  "fightSnapshots": []
+}

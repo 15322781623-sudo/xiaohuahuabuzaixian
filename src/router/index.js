@@ -74,6 +74,15 @@ const my_routes = [
         },
       },
       {
+        path: "nightmare-battle",
+        name: "NightmareBattle",
+        component: () => import("@/views/NightmareBattle.vue"),
+        meta: {
+          title: "十殿战斗",
+          requiresToken: true,
+        },
+      },
+      {
         path: "profile",
         name: "Profile",
         component: () => import("@/views/Profile.vue"),

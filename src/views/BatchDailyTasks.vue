@@ -798,6 +798,14 @@
               <n-space>
                 <n-button
                   size="small"
+                  type="warning"
+                  @click="batchNightmareChallenge"
+                  :disabled="isRunning"
+                >
+                  十殿阎罗挑战
+                </n-button>
+                <n-button
+                  size="small"
                   @click="nightmare_draw_lottery"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
@@ -920,6 +928,18 @@
                 <span style="font-size: 14px;">❤️</span>
               </template>
               赞助
+            </n-button>
+            <n-button 
+              size="small" 
+              @click="showTipsModal = true"
+              style="margin-right: 8px; color: #e67e22;"
+              type="warning"
+              ghost
+            >
+              <template #icon>
+                <span style="font-size: 14px;">💡</span>
+              </template>
+              温馨提示
             </n-button>
             <n-button 
               size="small" 
@@ -1313,6 +1333,14 @@
             />
           </div>
           <div class="setting-item">
+            <label class="setting-label">十殿阵容</label>
+            <n-select
+              v-model:value="currentSettings.nightmareFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
             <label class="setting-label">BOSS次数</label>
             <n-select
               v-model:value="currentSettings.bossTimes"
@@ -1412,6 +1440,14 @@
             <label class="setting-label">BOSS阵容</label>
             <n-select
               v-model:value="currentTemplate.bossFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">十殿阵容</label>
+            <n-select
+              v-model:value="currentTemplate.nightmareFormation"
               :options="formationOptions"
               size="small"
             />
@@ -2258,7 +2294,7 @@
               <div style="font-weight: 500;">{{ item.name }}</div>
               <div style="font-size: 12px; color: #888;">{{ item.cost }}盐锭/次 · 限购{{ item.limit }}次</div>
             </div>
-            <n-input-number v-model:value="item.count" :min="0" :max="item.limit" size="small"
+            <n-input、-number v-model:value="item.count" :min="0" :max="item.limit" size="small"
                             style="width: 100px;"
                             @update:value="(val) => { item._checked = val > 0; }" />
           </div>
@@ -3797,9 +3833,43 @@
       :bordered="false"
     >
       <div style="text-align: center; padding: 16px 0;">
-        <p style="margin-bottom: 16px; color: #666; font-size: 14px;">感谢您的支持！扫码赞助作者 ❤️</p>
+        <p style="margin-bottom: 12px; color: #666; font-size: 14px;">感谢您的支持！扫码赞助作者 ❤️</p>
+        <p style="margin-bottom: 16px; color: #e67e22; font-size: 13px; font-weight: 500;">赞助10元的小伙伴请在QQ联系我领网页版纯前端<br/>联系方式：<span style="font-weight: bold; color: #c0392b; letter-spacing: 1px;">1607863356</span></p>
         <img :src="sponsorQrcode" alt="赞助二维码" style="max-width: 280px; width: 100%; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1);" />
       </div>
+    </n-modal>
+
+    <!-- 温馨提示弹窗 -->
+    <n-modal
+      v-model:show="showTipsModal"
+      preset="card"
+      title="💡 温馨提示"
+      style="width: 90%; max-width: 420px;"
+      :bordered="false"
+    >
+      <div style="padding: 8px 0; font-size: 14px; line-height: 1.8; color: #333;">
+        <p style="margin-bottom: 12px;">本软件除了<span style="color: #e67e22; font-weight: 500;">网页版</span>，<span style="color: #18a058; font-weight: 500;">电脑端和手机端均是免费提供</span>。如果是购买获取的，请自行联系购买商家。</p>
+        <p style="margin-bottom: 12px;">该软件根据开源进行开发。</p>
+        <div style="background: #f7f8fa; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px;">
+          <p style="margin-bottom: 6px;"><span style="color: #c0392b; font-weight: bold;">1.</span> 无使用说明，请自行研究。</p>
+          <p><span style="color: #c0392b; font-weight: bold;">2.</span> 本软件承诺不存在任何数据上传行为。</p>
+        </div>
+        <p style="text-align: center; color: #999; font-size: 12px; margin-top: 8px;">本软件仅供个人非商业学习使用</p>
+      </div>
+    </n-modal>
+
+    <!-- 十殿阎罗挑战组队弹窗 -->
+    <n-modal
+      v-model:show="showNightmareChallengeModal"
+      preset="card"
+      title="十殿阎罗挑战"
+      style="width: 90%; max-width: 760px"
+      :bordered="true"
+      :segmented="{ content: true, footer: true }"
+      :closable="true"
+      :mask-closable="true"
+    >
+      <NightmareChallengeCard />
     </n-modal>
   </div>
 </template>
@@ -3817,7 +3887,7 @@ import {
   h,
 } from "vue";
 import { useTokenStore, gameTokens, tokenGroups } from "@/stores/tokenStore";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { DailyTaskRunner } from "@/utils/dailyTaskRunner";
 import { preloadQuestions } from "@/utils/studyQuestionsFromJSON.js";
 import { useMessage } from "naive-ui";
@@ -3833,6 +3903,7 @@ import UrlTokenForm from "@/views/TokenImport/url.vue";
 import BinTokenForm from "@/views/TokenImport/bin.vue";
 import SingleBinTokenForm from "@/views/TokenImport/singlebin.vue";
 import WxQrcodeForm from "@/views/TokenImport/wxqrcode.vue";
+import NightmareChallengeCard from "@/components/cards/NightmareChallengeCard.vue";
 
 // Import batch task modules
 import {
@@ -3904,6 +3975,7 @@ import { merchantConfig, goldItemsConfig } from "@/utils/dreamConstants";
 const tokenStore = useTokenStore();
 const message = useMessage();
 const router = useRouter();
+const route = useRoute();
 const { storeArrayBuffer: storeArrayBufferToDB, getArrayBuffer: getArrayBufferFromDB } = useIndexedDB();
 
 // 排序配置（从localStorage读取，与TokenImport共享）
@@ -4123,9 +4195,9 @@ const tokens = computed(() => tokenStore.gameTokens);
 const currentTime = ref(new Date());
 let currentTimeTimer = null;
 
-// 改用函数而不是computed，确保每次调用时都获取最新时间
+// 时间检查函数直接使用 new Date()，确保每次调用都获取实时时间
 const checkCarActivityOpen = () => {
-  const now = currentTime.value;
+  const now = new Date();
   const day = now.getDay();
   const hour = now.getHours();
   // 1=Mon, 2=Tue, 3=Wed; 6点之后
@@ -4133,12 +4205,12 @@ const checkCarActivityOpen = () => {
 };
 
 const checkMengjingActivityOpen = () => {
-  const day = currentTime.value.getDay();
+  const day = new Date().getDay();
   return day === 0 || day === 1 || day === 3 || day === 4;
 };
 
 const checkBaokuActivityOpen = () => {
-  const day = currentTime.value.getDay();
+  const day = new Date().getDay();
   return day != 1 && day != 2;
 };
 
@@ -4146,12 +4218,10 @@ const checkBaokuActivityOpen = () => {
 const isCarActivityOpen = computed(() => checkCarActivityOpen());
 const ismengjingActivityOpen = computed(() => checkMengjingActivityOpen());
 const isbaokuActivityOpen = computed(() => checkBaokuActivityOpen());
-// 改用函数而不是computed，确保每次调用时都获取最新时间
+// 直接使用 new Date()，不依赖响应式 ref，避免 computed 缓存导致时间判断失效
 const checkArenaActivityOpen = () => {
-  const hour = currentTime.value.getHours();
-  const result = hour >= 6 && hour < 22;
-  console.log('[竞技场开放时间] 当前小时:', hour, '是否开放:', result);
-  return result;
+  const hour = new Date().getHours();
+  return hour >= 6 && hour < 22;
 };
 
 // 保留computed用于UI显示，但任务执行时使用函数
@@ -4571,6 +4641,7 @@ const currentSettings = reactive({
   arenaFormation: 1,
   towerFormation: 1,
   bossFormation: 1,
+  nightmareFormation: 1, // 十殿阵容
   bossTimes: 2,
   dailyBossTimes: 1,
   claimBottle: true,
@@ -4597,6 +4668,7 @@ const currentTemplate = reactive({
   arenaFormation: 1,
   towerFormation: 1,
   bossFormation: 1,
+  nightmareFormation: 1, // 十殿阵容
   bossTimes: 2,
   dailyBossTimes: 1,
   claimBottle: true,
@@ -6683,18 +6755,18 @@ const exportConfig = async () => {
       if (saved) sortConfigData = JSON.parse(saved);
     } catch (e) { /* ignore */ }
 
-    // ✅ 用户偏好设置（主题、语言、通知等）
-    let userPreferences = null;
-    try {
-      const saved = localStorage.getItem("userPreferences");
-      if (saved) userPreferences = JSON.parse(saved);
-    } catch (e) { /* ignore */ }
-
     // 管理分组数据（过滤掉无有效token的分组）
     const filteredGroups = (tokenGroups.value || []).map((group) => ({
       ...group,
       tokenIds: group.tokenIds?.filter((tid) => validTokenIds.has(tid)) || [],
     })).filter((group) => group.tokenIds.length > 0);
+
+    // 十殿预设数据
+    let nightmarePresetsData = null;
+    try {
+      const saved = localStorage.getItem('nightmare-presets');
+      if (saved) nightmarePresetsData = JSON.parse(saved);
+    } catch (e) { /* ignore */ }
 
     const exportData = {
       version: "2.3",
@@ -6706,9 +6778,9 @@ const exportConfig = async () => {
       tokenSettings: collectTokenSettings(tokens.value),
       binData: binDataMap,
       sortConfig: sortConfigData,
-      userPreferences,
       tokenGroups: filteredGroups,
       taskTemplates: taskTemplates.value || [],
+      nightmarePresets: nightmarePresetsData || [],
     };
 
     const filename = `xyzw_full_config_${new Date().toISOString().slice(0, 10)}.json`;
@@ -6719,9 +6791,9 @@ const exportConfig = async () => {
       const binMsg = binCount > 0 ? ` (含${binCount}个BIN数据)` : '';
       const groupMsg = filteredGroups.length > 0 ? `, ${filteredGroups.length} 个分组` : '';
       const templateMsg = (taskTemplates.value || []).length > 0 ? `, ${(taskTemplates.value || []).length} 个任务模板` : '';
-      const prefMsg = userPreferences ? ', 偏好设置' : '';
+      const nmMsg = (nightmarePresetsData || []).length > 0 ? `, ${(nightmarePresetsData || []).length} 个十殿预设` : '';
       message.success(
-        `全量导出成功: ${tokens.value.length} 个账号, ${filteredScheduledTasks.length} 个定时任务${groupMsg}${templateMsg}${prefMsg}${binMsg}`,
+        `全量导出成功: ${tokens.value.length} 个账号, ${filteredScheduledTasks.length} 个定时任务${groupMsg}${templateMsg}${nmMsg}${binMsg}`,
         { duration: 4000 }
       );
     } else {
@@ -6733,7 +6805,7 @@ const exportConfig = async () => {
   }
 };
 
-// 全量导入（账号 + 定时任务 + 批量设置 + BIN数据 + 管理分组 + 任务模板）
+// 全量导入（账号 + 定时任务 + 批量设置 + BIN数据 + 管理分组 + 任务模板 + 十殿预设）
 const importConfig = async ({ file }) => {
   try {
     const fileContent = await readFileAsText(file);
@@ -6753,7 +6825,7 @@ const importConfig = async ({ file }) => {
       return;
     }
 
-    const stats = { tokens: 0, tasks: 0, bin: 0, settings: 0, groups: 0, templates: 0 };
+    const stats = { tokens: 0, tasks: 0, bin: 0, settings: 0, groups: 0, templates: 0, nightmare: 0 };
 
     // 导入tokens
     if (Array.isArray(importData.tokens) && importData.tokens.length > 0) {
@@ -6817,28 +6889,6 @@ const importConfig = async ({ file }) => {
       try { localStorage.setItem("tokenSortConfig", JSON.stringify(importData.sortConfig)); } catch (e) { /* ignore */ }
     }
 
-    // ✅ 导入用户偏好设置（主题、语言、通知等）
-    if (importData.userPreferences && typeof importData.userPreferences === 'object') {
-      try {
-        localStorage.setItem("userPreferences", JSON.stringify(importData.userPreferences));
-        // 同步主题到独立的 theme 键
-        if (importData.userPreferences.theme) {
-          localStorage.setItem("theme", importData.userPreferences.theme);
-          // 立即应用主题
-          const t = importData.userPreferences.theme;
-          if (t === "dark") {
-            document.documentElement.setAttribute("data-theme", "dark");
-          } else if (t === "light") {
-            document.documentElement.removeAttribute("data-theme");
-          } else {
-            const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-            if (prefersDark) document.documentElement.setAttribute("data-theme", "dark");
-            else document.documentElement.removeAttribute("data-theme");
-          }
-        }
-      } catch (e) { /* ignore */ }
-    }
-
     // 导入管理分组
     if (Array.isArray(importData.tokenGroups) && importData.tokenGroups.length > 0) {
       const existingGroupIds = new Set(tokenGroups.value.map((g) => g.id));
@@ -6886,12 +6936,32 @@ const importConfig = async ({ file }) => {
       stats.templates = importedTemplates;
     }
 
+    // 导入十殿预设
+    if (Array.isArray(importData.nightmarePresets) && importData.nightmarePresets.length > 0) {
+      try {
+        const existing = JSON.parse(localStorage.getItem('nightmare-presets') || '[]');
+        const existingIds = new Set(existing.map((p) => p.id));
+        let added = 0;
+        importData.nightmarePresets.forEach((p) => {
+          if (!p.id || !p.name) return;
+          if (existingIds.has(p.id)) return;
+          existing.push(p);
+          added++;
+        });
+        if (added > 0) {
+          localStorage.setItem('nightmare-presets', JSON.stringify(existing));
+          stats.nightmare = added;
+        }
+      } catch (e) { /* ignore */ }
+    }
+
     // 构建消息
     const parts = [];
     if (stats.tokens > 0) parts.push(`${stats.tokens} 个新账号`);
     if (stats.tasks > 0) parts.push(`${stats.tasks} 个定时任务`);
     if (stats.groups > 0) parts.push(`${stats.groups} 个分组`);
     if (stats.templates > 0) parts.push(`${stats.templates} 个任务模板`);
+    if (stats.nightmare > 0) parts.push(`${stats.nightmare} 个十殿预设`);
     if (stats.bin > 0) parts.push(`${stats.bin} 个BIN数据`);
     if (stats.settings > 0) parts.push(`${stats.settings} 个任务配置`);
     if (parts.length === 0) parts.push('无新增数据（已存在）');
@@ -7445,6 +7515,17 @@ onMounted(() => {
   
   // 启动响应式列数监听
   setupResponsiveColumns();
+
+  // 检查是否需要自动打开十殿预设队列
+  if (route.query.nextPreset === 'true') {
+    try {
+      const queue = JSON.parse(sessionStorage.getItem('nightmare-preset-queue') || '[]');
+      if (queue.length > 0) {
+        showNightmareChallengeModal.value = true;
+        message.info(`预设队列剩余 ${queue.length} 个，正在继续执行...`);
+      }
+    } catch { /* ignore */ }
+  }
 
   // 启动响应式时间更新（每30秒更新一次，让活动开放时间computed属性正确响应）
   currentTimeTimer = setInterval(() => {
@@ -8074,6 +8155,16 @@ const executeScheduledTask = async (task) => {
     for (const taskName of activeTasks) {
       if (shouldStop.value) break;
 
+      // 免费扭蛋已内置在日常任务的 buildActivityTasks 中（周二/四/六自动执行+累抽），无需独立执行
+      if (taskName === "gacha_drawreward") {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `跳过任务: 免费扭蛋 (已包含在日常任务中，无需独立执行)`,
+          type: "info",
+        });
+        continue;
+      }
+
       if (
         ["batchbaoku45", "batchbaoku13"].includes(taskName) &&
         !checkBaokuActivityOpen()  // 使用函数而不是computed
@@ -8112,26 +8203,14 @@ const executeScheduledTask = async (task) => {
 
       if (
         ["batchTopUpArena", "batcharenafight"].includes(taskName) &&
-        !checkArenaActivityOpen()  // 使用函数而不是computed
+        !checkArenaActivityOpen()
       ) {
-        // 添加调试日志
-        const currentTime = new Date();
-        const currentHour = currentTime.getHours();
-        const currentMinute = currentTime.getMinutes();
-        const timestamp = currentTime.getTime();
-        
-        console.log('[竞技场开放时间检查] ========== 开始检查 ==========');
-        console.log('[竞技场开放时间检查] 完整时间:', currentTime.toLocaleString('zh-CN'));
-        console.log('[竞技场开放时间检查] 时间戳:', timestamp);
-        console.log('[竞技场开放时间检查] 当前小时:', currentHour);
-        console.log('[竞技场开放时间检查] 当前分钟:', currentMinute);
-        console.log('[竞技场开放时间检查] 判断条件:', currentHour >= 6 && currentHour < 22);
-        console.log('[竞技场开放时间检查] checkArenaActivityOpen():', checkArenaActivityOpen());
-        console.log('[竞技场开放时间检查] isarenaActivityOpen.value:', isarenaActivityOpen.value);
-        console.log('[竞技场开放时间检查] ========== 结束检查 ==========');
+        const now = new Date();
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
         
         addLog({
-          time: new Date().toLocaleTimeString(),
+          time: now.toLocaleTimeString(),
           message: `跳过任务: ${availableTasks.find((t) => t.value === taskName)?.label || taskName} (不在竞技场开放时间，当前时间:${currentHour}:${currentMinute.toString().padStart(2, '0')}, 开放时段:6:00-22:00)`,
           type: "warning",
         });
@@ -8244,8 +8323,10 @@ const executeScheduledTask = async (task) => {
             type: "info",
           });
           
-          // 执行任务函数
+          // 执行任务函数（带超时保护，防止单个任务卡死导致整个定时任务挂起）
+          const BATCH_TASK_TIMEOUT = (batchSettings.batchTaskTimeout || 15) * 60 * 1000;
           try {
+            const executeTaskFunction = async () => {
             if (
               [
                 "batchOpenBox",
@@ -8383,6 +8464,14 @@ const executeScheduledTask = async (task) => {
             } else {
               await taskFunction();
             }
+            }; // end executeTaskFunction
+            await Promise.race([
+              executeTaskFunction(),
+              new Promise((_, reject) => setTimeout(() =>
+                reject(new Error(`批量任务执行超时（${BATCH_TASK_TIMEOUT / 60000}分钟）`)),
+                BATCH_TASK_TIMEOUT
+              ))
+            ]);
             
             // 如果不是最后一批，且设置了批次间等待，则等待
             if (!isLastBatch && batchSettings.batchIntervalWait > 0) {
@@ -8422,6 +8511,9 @@ const executeScheduledTask = async (task) => {
               isRunning.value = false;
               currentRunningTokenId.value = null;
             }
+            // ✅ 修复：每个子任务完成后刷新 scheduledTaskStartTime，防止 healthCheck 误判定时任务卡死
+            scheduledTaskStartTime = Date.now();
+            lastTaskExecution = Date.now();
           }
         }
         
@@ -8895,6 +8987,7 @@ const loadSettings = (tokenId) => {
       arenaFormation: 1,
       towerFormation: 1,
       bossFormation: 1,
+      nightmareFormation: 1, // 十殿阵容
       bossTimes: 2,
       dailyBossTimes: 1,
       claimBottle: true,
@@ -8904,6 +8997,7 @@ const loadSettings = (tokenId) => {
       claimHangUp: true,
       claimEmail: true,
       blackMarketPurchase: true,
+      blackMarketStandalonePurchase: false,
       legacyGiftPassword: '', // 新增
     };
     return raw ? { ...defaultSettings, ...JSON.parse(raw) } : defaultSettings;
@@ -9580,6 +9674,7 @@ const isIndeterminate = computed(() => {
 // 模块展开/收起状态
 const isTokenListExpanded = ref(true); // 账号列表展开/收起状态，默认展开
 const showSponsorModal = ref(false); // 赞助弹窗显示状态
+const showTipsModal = ref(false); // 温馨提示弹窗显示状态
 const isBatchFunctionsExpanded = ref(true); // 批量功能列表展开/收起状态，默认展开
 const isTowerExpandedForAll = ref(false);
 const isCarExpandedForAll = ref(false);
@@ -10759,11 +10854,57 @@ const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, charge_cl
 const tasksLegacy = createTasksLegacy(createTaskDeps());
 const { batchLegacyClaim, batchLegacyHangup, batchLegacyGiftSendEnhanced, batchLegacyClaimGiftTask } = tasksLegacy;
 
+// ====== 十殿阎罗挑战（弹窗打开组队界面） ======
+const showNightmareChallengeModal = ref(false);
+const batchNightmareChallenge = async () => {
+  // 当未勾选账号时直接打开弹窗，由十殿卡片内的队长下拉框选择队长
+  if (selectedTokens.value.length === 0) {
+    showNightmareChallengeModal.value = true;
+    return;
+  }
+  // 勾选了多个账号时提示只选一个
+  if (selectedTokens.value.length > 1) { message.warning("请只选择一个队长执行"); return; }
+  const tokenId = selectedTokens.value[0];
+  // 自动连接
+  if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+    tokenStore.selectToken(tokenId, true);
+    let retries = 0;
+    while (tokenStore.getWebSocketStatus(tokenId) !== "connected" && retries < 30) {
+      await new Promise((r) => setTimeout(r, 500)); retries++;
+    }
+  }
+  if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+    message.error("WebSocket连接失败，无法打开十殿挑战");
+    return;
+  }
+  // 根据账号设置自动切换十殿阵容
+  try {
+    const settingsRaw = localStorage.getItem(`daily-settings:${tokenId}`);
+    if (settingsRaw) {
+      const settings = JSON.parse(settingsRaw);
+      const nmFormation = settings.nightmareFormation;
+      if (nmFormation && nmFormation >= 1 && nmFormation <= 6) {
+        await tokenStore.sendMessageWithPromise(
+          tokenId, 'presetteam_saveteam',
+          { teamId: nmFormation }, 8000);
+        message.success(`已切换到十殿阵容${nmFormation}`);
+      }
+    }
+  } catch (err) {
+    // 切换失败不阻塞，静默处理
+    console.warn('十殿阵容切换失败:', err);
+  }
+  // 打开组队弹窗
+  showNightmareChallengeModal.value = true;
+};
+
 const startBatch = async () => {
   if (selectedTokens.value.length === 0) return;
 
   isRunning.value = true;
   shouldStop.value = false;
+  // ✅ 修复：手动批量任务开始时也更新 lastTaskExecution，防止 healthCheck 误判为卡死
+  lastTaskExecution = Date.now();
   // 任务开始时重置用户手动关闭标记，允许新的任务使用自动滚动
   userManuallyDisabledScroll.value = false;
   // 不再重置logs数组，保留之前的日志
@@ -10784,6 +10925,9 @@ const startBatch = async () => {
   const RETRY_WAIT_TIME = batchSettings.retryDelay || 60000;        // 使用设置中的重试延迟
 
   // 并行执行任务，但通过connectionQueue限制并发连接数
+  // 单账号执行超时保护（默认10分钟），防止个别账号卡死导致整个批次挂起
+  const TOKEN_EXECUTION_TIMEOUT = (batchSettings.taskTimeout || 10) * 60 * 1000;
+
   const taskPromises = selectedTokens.value.map(async (tokenId) => {
     if (shouldStop.value) return;
 
@@ -10807,6 +10951,9 @@ const startBatch = async () => {
     lastConnectionTime = Date.now();
 
     tokenStatus.value[tokenId] = "running";
+
+    // ✅ 超时保护：防止单个账号卡死导致整个批次挂起
+    const executeToken = async () => {
 
     let retryCount = 0;
     const MAX_RETRIES = 1;
@@ -11021,12 +11168,39 @@ const startBatch = async () => {
         // 完成后关闭连接并释放槽位
         tokenStore.closeWebSocketConnection(tokenId);
         releaseConnectionSlot();
+        // ✅ 修复：每个账号完成时更新 lastTaskExecution，作为心跳防止 healthCheck 误判
+        lastTaskExecution = Date.now();
         addLog({
           time: new Date().toLocaleTimeString(),
           message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
           type: "info",
         });
       }
+    }
+
+    }; // end executeToken
+
+    // Promise.race 超时保护
+    try {
+      await Promise.race([
+        executeToken(),
+        new Promise((_, reject) => setTimeout(() =>
+          reject(new Error(`单账号执行超时（${TOKEN_EXECUTION_TIMEOUT / 60000}分钟）`)),
+          TOKEN_EXECUTION_TIMEOUT
+        ))
+      ]);
+    } catch (timeoutErr) {
+      const token = tokens.value.find((t) => t.id === tokenId);
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `⏰ ${token?.name} ${timeoutErr.message}，强制跳过`,
+        type: "warning",
+      });
+      tokenStatus.value[tokenId] = "failed";
+      // 超时后强制关闭连接并释放槽位
+      tokenStore.closeWebSocketConnection(tokenId);
+      releaseConnectionSlot();
+      lastTaskExecution = Date.now(); // 心跳更新
     }
   });
 

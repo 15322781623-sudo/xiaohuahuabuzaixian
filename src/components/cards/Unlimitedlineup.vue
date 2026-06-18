@@ -15,6 +15,8 @@
     </template>
     <template #default>
       <div class="lineup-container">
+        <!-- 左列：工具栏 + 速度控制 + 已保存阵容 -->
+        <div class="lineup-left-col">
         <div class="toolbar">
           <n-button
             size="small"
@@ -42,147 +44,34 @@
           <n-button
             size="small"
             type="info"
-            @click="savedLineupsModalVisible = true"
           >
             已保存阵容 ({{ savedLineups.length }})
           </n-button>
         </div>
 
-        <div class="quick-switch-section">
-          <h4>阵容槽位</h4>
-          <div class="team-selector">
-            <n-button
-              v-for="teamId in availableTeams"
-              :key="teamId"
-              size="small"
-              :loading="switchingTeamId === teamId"
-              :type="currentTeamId === teamId ? 'primary' : 'default'"
-              @click="switchTeam(teamId)"
-            >
-              阵容{{ teamId }}
-            </n-button>
+        <!-- 速度控制 -->
+        <div class="speed-control-section">
+          <span class="speed-label">⚡ 速度</span>
+          <div class="speed-presets">
+            <button v-for="preset in speedPresets" :key="preset.value" class="speed-preset-btn"
+              :class="{ active: lineupSpeedFactor === preset.value }"
+              :style="{ borderColor: lineupSpeedFactor === preset.value ? preset.color : undefined,
+                        color: lineupSpeedFactor === preset.value ? preset.color : undefined }"
+              @click="lineupSpeedFactor = preset.value">{{ preset.label }}</button>
           </div>
+          <input type="range" class="speed-slider" :value="lineupSpeedFactor"
+            :min="0.1" :max="2.0" :step="0.05"
+            @input="lineupSpeedFactor = parseFloat($event.target.value)" />
+          <span class="speed-value">×{{ lineupSpeedFactor.toFixed(2) }} ({{ cmdDelay }}ms)</span>
         </div>
 
-        <div v-if="currentTeamInfo" class="current-team-section">
-          <h4>
-            编辑阵容 (阵容槽位{{ currentTeamId }})
-            <span class="drag-tip">拖拽调整站位</span>
-          </h4>
-          <div class="heroes-grid">
-            <div
-              v-for="(hero, index) in editingHeroes"
-              :key="`${hero.heroId}-${hero.position}`"
-              class="hero-item"
-              draggable="true"
-              :class="{
-                'dragging': draggedHeroId === hero.heroId,
-                'drag-over': dragOverPosition === hero.position,
-              }"
-              @dragend="onDragEnd"
-              @dragleave="onDragLeave"
-              @dragover.prevent="onDragOver($event, hero)"
-              @dragstart="onDragStart($event, hero)"
-              @drop="onDrop($event, hero)"
-            >
-              <div class="hero-position">{{ hero.position + 1 }}</div>
-              <div class="hero-left" @click="showHeroRefineModal(hero)">
-                <div class="hero-avatar">
-                  <img
-                    v-if="getHeroAvatar(hero.heroId)"
-                    :alt="getHeroName(hero.heroId)"
-                    :src="getHeroAvatar(hero.heroId)"
-                  >
-                  <div v-else class="hero-placeholder">
-                    {{ getHeroName(hero.heroId)?.substring(0, 2) || "?" }}
-                  </div>
-                </div>
-                <div class="hero-avatar-info">
-                  <div class="hero-name-small-inline">
-                    {{ getHeroName(hero.heroId) || `武将${hero.heroId}` }}
-                  </div>
-                  <div v-if="hero.level" class="hero-level-small-inline">
-                    Lv.{{ hero.level }}
-                  </div>
-                </div>
-              </div>
-              <div class="hero-info" @click="showHeroRefineModal(hero)">
-                <div v-if="getFishInfo(hero.artifactId)" class="hero-fish">
-                  {{ getFishInfo(hero.artifactId).name }}
-                  <span
-                    v-if="getPearlSkillNameByArtifactId(hero.artifactId)"
-                    class="hero-fish-skill-inline"
-                  >
-                    {{ getPearlSkillNameByArtifactId(hero.artifactId) }}
-                  </span>
-                  <span
-                    v-if="getSlotColorsByArtifactId(hero.artifactId)"
-                    class="hero-fish-slots-inline"
-                  >
-                    <span
-                      v-for="(color, idx) in getSlotColorsByArtifactId(
-                        hero.artifactId,
-                      )"
-                      :key="idx"
-                      class="slot-dot-small"
-                      :style="{ backgroundColor: color }"
-                    ></span>
-                  </span>
-                </div>
-                <div v-if="hero.power" class="hero-stats">
-                  <div class="stat-row">
-                    <span class="stat-power">战力{{ formatPower(hero.power) }}</span>
-                    <span
-                      v-if="hero.speed"
-                      class="stat-speed"
-                    >速度{{ hero.speed }}</span>
-                  </div>
-                  <div class="stat-row">
-                    <span
-                      v-if="hero.attack"
-                      class="stat-attack"
-                    >攻击{{ formatPower(hero.attack) }}</span>
-                    <span
-                      v-if="hero.hp"
-                      class="stat-hp"
-                    >血量{{ formatPower(hero.hp) }}</span>
-                  </div>
-                </div>
-              </div>
-              <div class="hero-actions">
-                <n-button
-                  class="exchange-btn"
-                  size="tiny"
-                  type="warning"
-                  @click.stop="openExchangeModal(hero)"
-                >
-                  更换
-                </n-button>
-                <n-button
-                  class="remove-btn"
-                  size="tiny"
-                  type="error"
-                  @click.stop="removeHero(hero)"
-                >
-                  下阵
-                </n-button>
-              </div>
-            </div>
+        <!-- 已保存的阵容（内嵌） -->
+        <div class="saved-lineups-section">
+          <h4>已保存的阵容</h4>
+          <div v-if="savedLineups.length === 0" class="empty-tip">
+            暂无保存的阵容，点击"保存阵容"开始使用
           </div>
-        </div>
-      </div>
-
-      <n-modal
-        preset="card"
-        style="width: 900px; max-width: 90vw"
-        title="已保存的阵容"
-        v-model:show="savedLineupsModalVisible"
-        :bordered="false"
-      >
-        <div v-if="savedLineups.length === 0" class="empty-tip">
-          暂无保存的阵容，点击"保存阵容"开始使用
-        </div>
-        <div v-else class="saved-lineups-modal-content">
+          <template v-else>
           <div class="team-tabs">
             <div class="team-tabs-left">
               <div
@@ -207,6 +96,7 @@
               </n-upload>
             </div>
           </div>
+          <!-- 阵容卡片列表 -->
           <div class="lineups-list">
             <div
               v-for="(lineup, index) in getLineupsByTeamId(selectedTeamTab)"
@@ -215,127 +105,55 @@
             >
               <div class="lineup-title-bar" @click="toggleLineupExpand(lineup)">
                 <div class="lineup-title-left">
-                  <span class="expand-icon">{{
-                    expandedLineup === lineup ? "▼" : "▶"
-                  }}</span>
-                  <span class="lineup-name">{{ lineup.name }}</span>
-                  <span
-                    v-if="
-                      lineup.weaponId !== undefined && lineup.weaponId !== null
-                    "
-                    class="lineup-weapon-tag"
-                  >
-                    {{ weapon[lineup.weaponId] || lineup.weaponId }}
-                  </span>
-                  <span class="lineup-time">{{
-                    formatTime(lineup.savedAt)
-                  }}</span>
+                  <span class="expand-icon">{{ expandedLineup === lineup ? "▼" : "▶" }}</span>
+                  <div class="lineup-title-text">
+                    <span class="lineup-name">{{ lineup.name }}</span>
+                    <div class="lineup-title-tags">
+                      <span v-if="lineup.weaponId" class="lineup-weapon-tag">{{ weapon[lineup.weaponId] }}</span>
+                      <span v-if="lineup.petUId" class="lineup-pet-tag">{{ getPetTagName(lineup) }}</span>
+                      <span class="lineup-time">{{ formatTime(lineup.savedAt) }}</span>
+                    </div>
+                  </div>
                 </div>
                 <div class="lineup-quick-actions">
-                  <n-button
-                    size="tiny"
-                    @click.stop="renameLineup(savedLineups.indexOf(lineup))"
-                  >
-                    重命名
-                  </n-button>
-                  <n-button
-                    size="tiny"
-                    :disabled="
-                      !lineup.legionResearch
-                        || Object.keys(lineup.legionResearch).length === 0
-                    "
-                    @click.stop="showTechModal(lineup)"
-                  >
-                    科技
-                  </n-button>
-                  <n-button
-                    size="tiny"
-                    type="error"
-                    @click.stop="deleteLineup(savedLineups.indexOf(lineup))"
-                  >
-                    删除
-                  </n-button>
-                  <n-button
-                    size="tiny"
-                    type="primary"
-                    :disabled="lineup.teamId !== currentTeamId"
-                    :loading="lineup.applying"
-                    @click.stop="
-                      applyLineup(lineup);
-                      savedLineupsModalVisible = false;
-                    "
-                  >
-                    应用
-                  </n-button>
+                  <n-button size="tiny" @click.stop="renameLineup(savedLineups.indexOf(lineup))">重命名</n-button>
+                  <n-button size="tiny" :disabled="!lineup.legionResearch || Object.keys(lineup.legionResearch).length === 0"
+                    @click.stop="showTechModal(lineup)">科技</n-button>
+                  <n-button size="tiny" type="error" @click.stop="deleteLineup(savedLineups.indexOf(lineup))">删除</n-button>
+                  <n-button size="tiny" type="primary" :disabled="lineup.teamId !== currentTeamId"
+                    :loading="lineup.applying" @click.stop="applyLineup(lineup)">应用</n-button>
                 </div>
               </div>
               <div v-if="expandedLineup === lineup" class="lineup-detail">
                 <div class="lineup-heroes-row">
-                  <div
-                    v-for="(hero, hIdx) in lineup.heroes"
-                    :key="hIdx"
-                    class="lineup-hero-card"
-                  >
-                    <img
-                      v-if="getHeroAvatar(hero.heroId)"
-                      class="hero-avatar"
-                      :src="getHeroAvatar(hero.heroId)"
-                    >
-                    <div v-else class="hero-avatar-placeholder">
-                      {{ getHeroName(hero.heroId)?.[0] || "?" }}
-                    </div>
+                  <div v-for="(hero, hIdx) in lineup.heroes" :key="hIdx" class="lineup-hero-card">
+                    <img v-if="getHeroAvatar(hero.heroId)" class="hero-avatar" :src="getHeroAvatar(hero.heroId)">
+                    <div v-else class="hero-avatar-placeholder">{{ getHeroName(hero.heroId)?.[0] || "?" }}</div>
                     <div class="hero-info-small">
                       <div class="hero-header-small">
-                        <div class="hero-name-small">
-                          {{ getHeroName(hero.heroId) || `武将${hero.heroId}` }}
-                        </div>
-                        <div v-if="hero.level" class="hero-level-small">
-                          Lv.{{ formatLevel(hero.level) }}
-                        </div>
+                        <div class="hero-name-small">{{ getHeroName(hero.heroId) || `武将${hero.heroId}` }}</div>
+                        <div v-if="hero.level" class="hero-level-small">Lv.{{ formatLevel(hero.level) }}</div>
                       </div>
                       <div v-if="hero.fishId" class="hero-fish-info">
                         <div class="hero-fish-row">
                           <span class="hero-fish-name">
                             {{ getFishNameById(hero.fishId) }}
-                            <span
-                              v-if="hero.skillId"
-                              class="hero-fish-skill-name"
-                            >
-                              {{ getPearlSkillNameById(hero.skillId) }}
-                            </span>
+                            <span v-if="hero.skillId" class="hero-fish-skill-name">{{ getPearlSkillNameById(hero.skillId) }}</span>
                           </span>
-                          <div
-                            v-if="getSlotColors(hero.slotMap)"
-                            class="hero-fish-slots"
-                          >
-                            <span
-                              v-for="(color, idx) in getSlotColors(
-                                hero.slotMap,
-                              )"
-                              :key="idx"
-                              class="slot-dot"
-                              :style="{ backgroundColor: color }"
-                            ></span>
+                          <div v-if="getSlotColors(hero.slotMap)" class="hero-fish-slots">
+                            <span v-for="(color, idx) in getSlotColors(hero.slotMap)" :key="idx"
+                              class="slot-dot" :style="{ backgroundColor: color }"></span>
                           </div>
                         </div>
                       </div>
                       <div v-if="hero.power" class="hero-stats-small">
                         <div class="stat-row-small">
                           <span class="stat-power">战力{{ formatPower(hero.power) }}</span>
-                          <span
-                            v-if="hero.speed"
-                            class="stat-speed"
-                          >速度{{ hero.speed }}</span>
+                          <span v-if="hero.speed" class="stat-speed">速度{{ hero.speed }}</span>
                         </div>
                         <div class="stat-row-small">
-                          <span
-                            v-if="hero.attack"
-                            class="stat-attack"
-                          >攻击{{ formatPower(hero.attack) }}</span>
-                          <span
-                            v-if="hero.hp"
-                            class="stat-hp"
-                          >血量{{ formatPower(hero.hp) }}</span>
+                          <span v-if="hero.attack" class="stat-attack">攻击{{ formatPower(hero.attack) }}</span>
+                          <span v-if="hero.hp" class="stat-hp">血量{{ formatPower(hero.hp) }}</span>
                         </div>
                       </div>
                     </div>
@@ -343,15 +161,108 @@
                 </div>
               </div>
             </div>
-            <div
-              v-if="getLineupsByTeamId(selectedTeamTab).length === 0"
-              class="no-lineup-tip"
-            >
+            <div v-if="getLineupsByTeamId(selectedTeamTab).length === 0" class="no-lineup-tip">
               暂无保存的阵容
             </div>
           </div>
+          </template>
         </div>
-      </n-modal>
+        </div>
+
+        <!-- 右列：阵容槽位 + 编辑阵容 -->
+        <div class="lineup-right-col">
+          <div class="quick-switch-section">
+            <h4>阵容槽位</h4>
+            <div class="team-selector">
+              <n-button
+                v-for="teamId in availableTeams"
+                :key="teamId"
+                size="small"
+                :loading="switchingTeamId === teamId"
+                :type="currentTeamId === teamId ? 'primary' : 'default'"
+                @click="switchTeam(teamId)"
+              >
+                阵容{{ teamId }}
+              </n-button>
+            </div>
+          </div>
+
+          <div v-if="currentTeamInfo" class="current-team-section">
+            <h4>
+              编辑阵容 (阵容槽位{{ currentTeamId }})
+              <span class="drag-tip">拖拽调整站位</span>
+            </h4>
+            <div class="heroes-grid">
+              <div
+                v-for="(hero, index) in editingHeroes"
+                :key="`${hero.heroId}-${hero.position}`"
+                class="hero-item"
+                draggable="true"
+                :class="{
+                  'dragging': draggedHeroId === hero.heroId,
+                  'drag-over': dragOverPosition === hero.position,
+                }"
+                @dragend="onDragEnd"
+                @dragleave="onDragLeave"
+                @dragover.prevent="onDragOver($event, hero)"
+                @dragstart="onDragStart($event, hero)"
+                @drop="onDrop($event, hero)"
+              >
+                <div class="hero-position">{{ hero.position + 1 }}</div>
+                <div class="hero-left" @click="showHeroRefineModal(hero)">
+                  <div class="hero-avatar">
+                    <img
+                      v-if="getHeroAvatar(hero.heroId)"
+                      :alt="getHeroName(hero.heroId)"
+                      :src="getHeroAvatar(hero.heroId)"
+                    >
+                    <div v-else class="hero-placeholder">
+                      {{ getHeroName(hero.heroId)?.substring(0, 2) || "?" }}
+                    </div>
+                  </div>
+                  <div class="hero-avatar-info">
+                    <div class="hero-name-small-inline">
+                      {{ getHeroName(hero.heroId) || `武将${hero.heroId}` }}
+                    </div>
+                    <div v-if="hero.level" class="hero-level-small-inline">
+                      Lv.{{ hero.level }}
+                    </div>
+                  </div>
+                </div>
+                <div class="hero-info" @click="showHeroRefineModal(hero)">
+                  <div v-if="getFishInfo(hero.artifactId)" class="hero-fish">
+                    {{ getFishInfo(hero.artifactId).name }}
+                    <span v-if="getPearlSkillNameByArtifactId(hero.artifactId)" class="hero-fish-skill-inline">
+                      {{ getPearlSkillNameByArtifactId(hero.artifactId) }}
+                    </span>
+                    <span v-if="getSlotColorsByArtifactId(hero.artifactId)" class="hero-fish-slots-inline">
+                      <span v-for="(color, idx) in getSlotColorsByArtifactId(hero.artifactId)" :key="idx"
+                        class="slot-dot-small" :style="{ backgroundColor: color }"></span>
+                    </span>
+                  </div>
+                  <div v-if="hero.power" class="hero-stats">
+                    <div class="stat-row">
+                      <span class="stat-power">战力{{ formatPower(hero.power) }}</span>
+                      <span v-if="hero.speed" class="stat-speed">速度{{ hero.speed }}</span>
+                    </div>
+                    <div class="stat-row">
+                      <span v-if="hero.attack" class="stat-attack">攻击{{ formatPower(hero.attack) }}</span>
+                      <span v-if="hero.hp" class="stat-hp">血量{{ formatPower(hero.hp) }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="hero-actions">
+                  <n-button class="exchange-btn" size="tiny" type="warning" @click.stop="openExchangeModal(hero)">更换</n-button>
+                  <n-button class="lossless-btn" size="tiny" type="info" @click.stop="openLosslessModal(hero)">无损</n-button>
+                  <n-button class="remove-btn" size="tiny" type="error" @click.stop="removeHero(hero)">下阵</n-button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 已保存阵容已内嵌到左列 -->
 
       <n-modal
         preset="card"
@@ -450,19 +361,19 @@
         style="width: 700px; max-width: 90vw"
         v-model:show="exchangeModalVisible"
         :bordered="false"
-        :title="exchangeMode === 'add' ? '上阵英雄' : '更换武将'"
+        :title="exchangeMode === 'add' ? '上阵英雄' : exchangeMode === 'lossless' ? '无损换将' : '更换武将'"
       >
         <div class="exchange-modal-content">
-          <div v-if="exchangeMode === 'exchange'" class="current-hero-info">
-            <span>当前武将：</span>
-            <n-tag size="large" type="primary">
+          <div v-if="exchangeMode === 'exchange' || exchangeMode === 'lossless'" class="current-hero-info">
+            <span>{{ exchangeMode === 'lossless' ? '无损换将 - 当前武将：' : '当前武将：' }}</span>
+            <n-tag size="large" :type="exchangeMode === 'lossless' ? 'info' : 'primary'">
               {{
                 getHeroName(exchangeHero?.heroId)
                   || `武将${exchangeHero?.heroId}`
               }}
             </n-tag>
           </div>
-          <div v-else class="current-hero-info">
+          <div v-else-if="exchangeMode === 'add'" class="current-hero-info">
             <span>上阵位置：</span>
             <n-tag size="large" type="success">
               位置 {{ getFirstEmptySlot() + 1 }}
@@ -558,7 +469,7 @@
               :loading="exchangeLoading"
               @click="confirmHeroAction"
             >
-              {{ exchangeMode === "add" ? "确认上阵" : "确认更换" }}
+              {{ exchangeMode === "add" ? "确认上阵" : exchangeMode === "lossless" ? "确认无损换将" : "确认更换" }}
             </n-button>
           </div>
         </template>
@@ -583,6 +494,9 @@ import {
   LEGION_TECH_TYPE_NAME,
   PearlMap,
   weapon,
+  QUENCH_COLOR,
+  PET_ID_MAP,
+  getFishByArtifactId,
 } from "@/utils/HeroList.js";
 
 const tokenStore = useTokenStore();
@@ -604,6 +518,15 @@ const pearlMap = ref({});
 let lastRefreshTime = 0;
 const REFRESH_DEBOUNCE = 3000;
 const COMMAND_DELAY = 500;
+
+// 速度系数
+const lineupSpeedFactor = ref(1.0);
+const cmdDelay = computed(() => Math.max(50, Math.round(COMMAND_DELAY * lineupSpeedFactor.value)));
+const speedPresets = [
+  { label: "快速", value: 0.3, color: "#4caf50" },
+  { label: "默认", value: 1.0, color: "#1677ff" },
+  { label: "慢速", value: 2.0, color: "#ff9800" },
+];
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -854,6 +777,39 @@ const getPearlSkillNameById = (skillId) => {
   return skillData ? skillData.name : null;
 };
 
+const getPetTagName = (lineup) => {
+  if (!lineup.petUId) return null;
+  // 尝试从保存的宠物数据中查找
+  const petData = lineup.petData || {};
+  for (const slotInfo of Object.values(petData)) {
+    if (slotInfo.uId === lineup.petUId && slotInfo.petId) {
+      return PET_ID_MAP[slotInfo.petId]?.name || `宠物${slotInfo.petId}`;
+    }
+  }
+  // 兜底: 直接通过 petUId 在 PET_ID_MAP 查找
+  return PET_ID_MAP[lineup.petUId]?.name || `宠物${lineup.petUId}`;
+};
+
+const getPetNameByUId = (petUId, petDataMap) => {
+  if (!petUId || !petDataMap) return null;
+  for (const slotInfo of Object.values(petDataMap)) {
+    if (slotInfo.uId === petUId && slotInfo.petId) {
+      return PET_ID_MAP[slotInfo.petId]?.name || `宠物${slotInfo.petId}`;
+    }
+  }
+  return null;
+};
+
+const hasTrumpInLineup = (lineup) => lineup.heroes?.some(h => h.trumpId > 0) || false;
+
+const getTrumpSummary = (lineup) => {
+  if (!lineup.heroes) return "";
+  return lineup.heroes
+    .filter(h => h.trumpId > 0)
+    .map(h => getHeroName(h.heroId) || `武将${h.heroId}`)
+    .join("、");
+};
+
 const getSlotColors = (slotMap) => {
   if (!slotMap)
     return null;
@@ -898,6 +854,57 @@ const getSlotColorsByArtifactId = (artifactId) => {
     }
   }
   return colors.length > 0 ? colors : null;
+};
+
+// 淬炼辅助函数
+const getQuenchColorName = (colorId) => QUENCH_COLOR[colorId]?.name || "?";
+const getQuenchHex = (colorId) => QUENCH_COLOR[colorId]?.hex || "#888888";
+
+const getQuenchSummary = (equip) => {
+  if (!equip) return "";
+  const parts = [];
+  for (const q of (equip.quenches || [])) {
+    if (q.colorId) {
+      const name = getQuenchColorName(q.colorId);
+      const attrName = attrMap[q.attrId] || `属性${q.attrId}`;
+      parts.push(`${name}${attrName}`);
+    }
+  }
+  return parts.join(" / ");
+};
+
+const calcQuenchSimilarity = (savedEquips, currentEquips) => {
+  if (!savedEquips || !currentEquips) return 0;
+  let score = 0;
+  const savedAttrs = new Map();
+  for (const eq of savedEquips) {
+    for (const q of (eq.quenches || [])) {
+      if (q.attrId) savedAttrs.set(q.attrId, (savedAttrs.get(q.attrId) || 0) + 1);
+    }
+  }
+  for (const eq of currentEquips) {
+    for (const q of (eq.quenches || [])) {
+      if (q.attrId && savedAttrs.has(q.attrId)) {
+        const c = q.colorId || 0;
+        score += c >= 6 ? 100 : c >= 5 ? 30 : 5;
+      }
+    }
+  }
+  return score;
+};
+
+const findEquipHolderByQuench = (savedEquips, currentHeroes) => {
+  if (!savedEquips || !currentHeroes) return null;
+  let bestHero = null;
+  let bestScore = 0;
+  for (const hero of currentHeroes) {
+    const score = calcQuenchSimilarity(savedEquips, hero.equips || []);
+    if (score > bestScore) {
+      bestScore = score;
+      bestHero = hero;
+    }
+  }
+  return bestHero;
 };
 
 const allHeroList = computed(() => {
@@ -1176,6 +1183,16 @@ const openAddHeroModal = () => {
   exchangeModalVisible.value = true;
 };
 
+const openLosslessModal = (hero) => {
+  exchangeMode.value = "lossless";
+  exchangeHero.value = hero;
+  exchangeTargetHeroId.value = null;
+  heroSearchKeyword.value = "";
+  selectedQuality.value = "全部";
+  selectedCountry.value = "全部";
+  exchangeModalVisible.value = true;
+};
+
 const selectExchangeHero = (hero) => {
   exchangeTargetHeroId.value = hero.id;
 };
@@ -1227,7 +1244,7 @@ const confirmHeroAction = async () => {
     message.success(
       `${getHeroName(exchangeTargetHeroId.value)} 已上阵到位置 ${slot + 1}`,
     );
-  } else {
+  } else if (exchangeMode.value === "exchange" || exchangeMode.value === "lossless") {
     if (!exchangeHero.value) {
       message.warning("请选择要更换的武将");
       return;
@@ -1242,9 +1259,13 @@ const confirmHeroAction = async () => {
       level: targetHeroData?.level || null,
       artifactId: originalArtifactId,
       attachmentUid: originalAttachmentUid,
+      lossless: exchangeMode.value === "lossless",
+      originalHeroId: exchangeHero.value.heroId,
     };
     message.success(
-      `已将 ${getHeroName(exchangeHero.value.heroId)} 更换为 ${getHeroName(exchangeTargetHeroId.value)}`,
+      exchangeMode.value === "lossless"
+        ? `已标记无损换将: ${getHeroName(exchangeHero.value.heroId)} → ${getHeroName(exchangeTargetHeroId.value)}`
+        : `已将 ${getHeroName(exchangeHero.value.heroId)} 更换为 ${getHeroName(exchangeTargetHeroId.value)}`,
     );
   }
 
@@ -2685,14 +2706,140 @@ onMounted(() => {
 <style scoped lang="scss">
 .lineup-saver {
   min-height: 300px;
+  overflow: visible !important;
 }
 
 .lineup-container {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: var(--spacing-md);
   max-width: 100%;
+  overflow: visible;
+  align-items: flex-start;
+}
+
+.lineup-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  flex: 1 1 55%;
+  min-width: 0;
+  overflow: visible;
+}
+
+.lineup-right-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  flex: 1 1 45%;
+  min-width: 0;
+  position: sticky;
+  top: 0;
+}
+
+@media (max-width: 768px) {
+  .lineup-container {
+    flex-direction: column;
+  }
+  .lineup-right-col {
+    position: static;
+  }
+}
+
+.speed-control-section {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) 0;
+  flex-wrap: wrap;
+}
+
+.speed-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.speed-presets {
+  display: flex;
+  gap: 4px;
+}
+
+.speed-preset-btn {
+  padding: 2px 8px;
+  border: 1px solid var(--border-color, #555);
+  border-radius: var(--border-radius-small, 4px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &.active {
+    background: rgba(22, 119, 255, 0.1);
+    font-weight: bold;
+  }
+
+  &:hover {
+    opacity: 0.8;
+  }
+}
+
+.speed-slider {
+  flex: 1;
+  min-width: 80px;
+  max-width: 160px;
+  height: 4px;
+  accent-color: #1677ff;
+  cursor: pointer;
+}
+
+.speed-value {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  min-width: 72px;
+}
+
+.saved-lineups-section {
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-medium);
+  padding: var(--spacing-md);
   overflow: hidden;
+
+  h4 {
+    margin: 0 0 var(--spacing-sm) 0;
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+  }
+}
+
+.lineup-pet-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: var(--font-size-xs);
+  background: rgba(102, 204, 0, 0.15);
+  color: #66cc00;
+  margin-left: 4px;
+}
+
+.lineup-title-tags {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.lineup-title-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lossless-btn {
+  /* info type already styled by naive-ui */
 }
 
 .toolbar {
@@ -2741,8 +2888,9 @@ onMounted(() => {
   transition: all 0.2s;
   cursor: grab;
   border: 2px solid transparent;
-  overflow: hidden;
+  overflow: visible;
   box-sizing: border-box;
+  flex-wrap: wrap;
 
   &:hover {
     background: var(--primary-color-light);

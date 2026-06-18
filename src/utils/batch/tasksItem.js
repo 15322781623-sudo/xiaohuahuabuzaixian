@@ -2350,7 +2350,8 @@ export function createTasksItem(deps) {
 
                 let quenchCount = 0;
                 let quenchStopped = false;
-                while (!quenchStopped && !shouldStop.value) {
+                const MAX_QUENCH = 200; // 安全上限，防止无限循环
+                while (!quenchStopped && !shouldStop.value && quenchCount < MAX_QUENCH) {
                   try {
                     const quenchResult = await tokenStore.sendMessageWithPromise(
                       tokenId,
@@ -2413,7 +2414,10 @@ export function createTasksItem(deps) {
                 await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 1000));
 
                 let shouldContinue = true;
-                while (shouldContinue && !shouldStop.value) {
+                let redJadeCount = 0;
+                const MAX_RED_JADE = 50; // 安全上限，防止无限循环
+                while (shouldContinue && !shouldStop.value && redJadeCount < MAX_RED_JADE) {
+                  redJadeCount++;
                   // 执行红玉升级1次
                   let currentUpgradeSuccess = false;
                   try {
@@ -2471,7 +2475,8 @@ export function createTasksItem(deps) {
 
                     let quenchCount = 0;
                     let quenchStopped = false;
-                    while (!quenchStopped && !shouldStop.value) {
+                    const MAX_QUENCH2 = 200; // 安全上限，防止无限循环
+                    while (!quenchStopped && !shouldStop.value && quenchCount < MAX_QUENCH2) {
                       try {
                         const quenchResult = await tokenStore.sendMessageWithPromise(
                           tokenId,

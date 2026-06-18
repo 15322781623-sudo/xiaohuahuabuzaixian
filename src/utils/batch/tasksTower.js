@@ -1590,8 +1590,9 @@ export function createTasksTower(deps) {
 
         let launchCount = 0;
         let hasMoreLaunches = true;
+        const MAX_LAUNCHES = 50; // 安全上限，防止无限循环
         
-        while (hasMoreLaunches) {
+        while (hasMoreLaunches && !shouldStop.value && launchCount < MAX_LAUNCHES) {
           try {
             await callWithRetry(tokenId, "activity_startactegame", { actId: 2605292 });
             launchCount++;
