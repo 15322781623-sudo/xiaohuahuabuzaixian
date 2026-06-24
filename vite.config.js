@@ -138,6 +138,24 @@ export default defineConfig(async () => {
         "@stores": path.resolve(__dirname, "src/stores"),
       },
     },
+    build: {
+      minify: 'terser',
+      terserOptions: {
+        compress: {
+          drop_console: true,   // 移除 console.log
+          drop_debugger: true,  // 移除 debugger
+          pure_funcs: ['console.log', 'console.info'], // 额外清除
+          passes: 2,            // 多轮压缩优化
+        },
+        mangle: {
+          toplevel: true,       // 混淆顶层变量名
+          safari10: true,
+        },
+        output: {
+          comments: false,      // 移除注释
+        },
+      },
+    },
     server: {
       port: 3000,
       open: true,

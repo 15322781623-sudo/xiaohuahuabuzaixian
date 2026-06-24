@@ -5,6 +5,9 @@
         <span class="icon">📊</span>
         <span class="title">消耗活动进度</span>
       </div>
+      <n-button size="tiny" type="primary" @click="showMemberProgressModal = true">
+        成员进度
+      </n-button>
     </div>
 
     <div class="item-header">
@@ -125,16 +128,280 @@
         </n-space>
       </template>
     </a-modal>
+    <!-- 成员进度查询弹窗 -->
+    <n-modal v-model:show="showMemberProgressModal" preset="card" style="width: 95%; max-width: 1000px;" :segmented="{ content: true, footer: 'soft' }">
+      <template #header>
+        <span>📊 成员消耗活动进度查询</span>
+      </template>
+      <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+        <n-button size="small" type="primary" :loading="isQueryingMembers" @click="queryAllMembersProgress">
+          {{ isQueryingMembers ? `查询中 ${queryProgress.current}/${queryProgress.total}` : '🔍 刷新查询' }}
+        </n-button>
+        <span v-if="memberProgressList.length > 0" style="font-size: 12px; color: #888;">
+          共 {{ memberProgressList.length }} 个成员
+        </span>
+        <n-input
+          v-model:value="memberFilterKeyword"
+          size="small"
+          placeholder="搜索成员..."
+          clearable
+          style="width: 150px; margin-left: auto"
+        />
+      </div>
+      <div class="mp-table-wrap">
+        <div v-if="memberProgressList.length === 0 && !isQueryingMembers" class="mp-empty">
+          点击上方"刷新查询"按钮获取所有成员进度
+        </div>
+        <div v-else class="mp-table-container">
+          <n-data-table
+            :columns="memberProgressColumns"
+            :data="filteredMemberProgressList"
+            :bordered="true"
+            :single-line="false"
+            size="small"
+            :max-height="480"
+            :virtual-scroll="filteredMemberProgressList.length > 50"
+            :row-key="(row) => row.id"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end;">
+          <n-button size="small" @click="showMemberProgressModal = false">关闭</n-button>
+        </div>
+      </template>
+    </n-modal>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, h, onMounted, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
 import { useTokenStore } from "@/stores/tokenStore";
+import { gameTokens } from "@/stores/tokenStore";
+import ConsumeActivityManager from "@/utils/consumeActivityManager";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
+const manager = new ConsumeActivityManager();
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+// ====== 成员进度查询 ======
+const showMemberProgressModal = ref(false);
+const isQueryingMembers = ref(false);
+const memberProgressList = ref([]);
+const memberFilterKeyword = ref('');
+const queryProgress = ref({ current: 0, total: 0 });
+const SCAN_CONCURRENCY = 3;
+
+// 格式化数值（>=10000 显示 x.xx万）
+const formatProgressNum = (v) => {
+  if (v == null || v === 0) return '0';
+  if (v >= 10000) return (v / 10000).toFixed(2) + '万';
+  return String(v);
+};
+
+// 高亮颜色判断：值越大越突出
+const getProgressColor = (current, target) => {
+  if (!target || target === 0) return undefined;
+  const ratio = current / target;
+  if (ratio >= 1) return '#52c41a';
+  if (ratio >= 0.8) return '#1890ff';
+  if (ratio >= 0.5) return '#722ed1';
+  return undefined;
+};
+
+// 表格列定义
+const memberProgressColumns = [
+  {
+    title: '成员',
+    key: 'name',
+    width: 120,
+    fixed: 'left',
+    ellipsis: { tooltip: true },
+    render: (row) => h('span', { style: 'font-weight:600' }, row.name),
+  },
+  {
+    title: '招募进度',
+    key: 'recruit',
+    width: 110,
+    render: (row) => {
+      const color = getProgressColor(row.recruit, row.recruitTarget);
+      return h('span', { style: color ? `color:${color};font-weight:600` : '' }, formatProgressNum(row.recruit));
+    },
+  },
+  {
+    title: '宝箱进度',
+    key: 'chest',
+    width: 110,
+    render: (row) => {
+      const color = getProgressColor(row.chest, row.chestTarget);
+      return h('span', { style: color ? `color:${color};font-weight:600` : '' }, formatProgressNum(row.chest));
+    },
+  },
+  {
+    title: '金砖进度',
+    key: 'gold',
+    width: 110,
+    render: (row) => {
+      const color = getProgressColor(row.gold, row.goldTarget);
+      return h('span', { style: color ? `color:${color};font-weight:600` : '' }, formatProgressNum(row.gold));
+    },
+  },
+  {
+    title: '鱼竿进度',
+    key: 'fish',
+    width: 110,
+    render: (row) => {
+      const color = getProgressColor(row.fish, row.fishTarget);
+      return h('span', { style: color ? `color:${color};font-weight:600` : '' }, formatProgressNum(row.fish));
+    },
+  },
+  {
+    title: '盐罐进度',
+    key: 'torch',
+    width: 100,
+    render: (row) => {
+      const color = getProgressColor(row.torch, row.torchTarget);
+      return h('span', { style: color ? `color:${color};font-weight:600` : '' }, String(row.torch || 0));
+    },
+  },
+  {
+    title: '消耗道具',
+    key: 'ordinaryItem',
+    width: 90,
+    render: (row) => h('span', { style: 'color:#722ed1;font-weight:600' }, String(row.ordinaryItem || 0)),
+  },
+  {
+    title: '黄金大枣',
+    key: 'goldItem',
+    width: 90,
+    render: (row) => h('span', { style: 'color:#fa8c16;font-weight:600' }, String(row.goldItem || 0)),
+  },
+];
+
+// 过滤后的列表
+const filteredMemberProgressList = computed(() => {
+  const kw = memberFilterKeyword.value.trim().toLowerCase();
+  if (!kw) return memberProgressList.value;
+  return memberProgressList.value.filter(m =>
+    m.name.toLowerCase().includes(kw)
+  );
+});
+
+// 等待连接建立
+const waitForConnection = async (tokenId, timeout = 8000) => {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const status = tokenStore.getWebSocketStatus(tokenId);
+    if (status === 'connected') return true;
+    await delay(300);
+  }
+  return false;
+};
+
+// 扫描单个成员的消耗活动进度
+const scanMemberProgress = async (token) => {
+  const name = token.name || token.server || token.id.slice(0, 8);
+  const tokenId = token.id;
+
+  // 确保连接
+  const status = tokenStore.getWebSocketStatus(tokenId);
+  if (status !== 'connected') {
+    try {
+      await tokenStore.createWebSocketConnection(tokenId, token.token, token.wsUrl);
+      const connected = await waitForConnection(tokenId, 8000);
+      if (!connected) {
+        return { id: tokenId, name, error: true, recruit: 0, chest: 0, gold: 0, fish: 0, torch: 0, ordinaryItem: 0, goldItem: 0 };
+      }
+    } catch {
+      return { id: tokenId, name, error: true, recruit: 0, chest: 0, gold: 0, fish: 0, torch: 0, ordinaryItem: 0, goldItem: 0 };
+    }
+    await delay(300);
+  }
+
+  // 获取活动数据和角色信息（直接使用返回值，避免从共享gameData读取导致并发数据错乱）
+  let actBody = null;
+  let roleBody = null;
+  try {
+    actBody = await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, 8000);
+  } catch { /* 无活动数据 */ }
+  try {
+    roleBody = await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, 8000);
+  } catch { /* 无角色数据 */ }
+
+  // 解析活动数据（直接使用响应值）
+  const actData = actBody?.activity?.commonActivityInfo || actBody?.commonActivityInfo || actBody || {};
+  const progList = manager.calculateProgressList(actData);
+
+  // 提取各项任务进度
+  const recruitProg = progList.find(p => p.id === 1);
+  const chestProg = progList.find(p => p.id === 2);
+  const fishProg = progList.find(p => p.id === 3);
+  const torchProg = progList.find(p => p.id === 4);
+  const goldProg = progList.find(p => p.id === 5);
+
+  // 提取道具数量（直接使用响应值）
+  const items = roleBody?.role?.items || {};
+  const ordinaryItem = manager.getItemCount(items, 5279); // 消耗活动道具（item_openpack调用）
+  const goldItem = manager.getItemCount(items, 5280);     // 黄金大枣
+
+  return {
+    id: tokenId,
+    name,
+    error: false,
+    recruit: recruitProg?.current || 0,
+    recruitTarget: recruitProg?.nextTarget || 0,
+    chest: chestProg?.current || 0,
+    chestTarget: chestProg?.nextTarget || 0,
+    gold: goldProg?.current || 0,
+    goldTarget: goldProg?.nextTarget || 0,
+    fish: fishProg?.current || 0,
+    fishTarget: fishProg?.nextTarget || 0,
+    torch: torchProg?.current || 0,
+    torchTarget: torchProg?.nextTarget || 0,
+    ordinaryItem,
+    goldItem,
+  };
+};
+
+// 查询所有成员进度
+const queryAllMembersProgress = async () => {
+  const tokens = gameTokens.value || [];
+  if (tokens.length === 0) {
+    message.warning('无Token可查询');
+    return;
+  }
+
+  isQueryingMembers.value = true;
+  memberProgressList.value = [];
+  queryProgress.value = { current: 0, total: tokens.length };
+
+  const savedTokenId = tokenStore.selectedToken?.id;
+
+  // 并发池
+  const results = new Array(tokens.length);
+  let nextIdx = 0;
+  const worker = async () => {
+    while (nextIdx < tokens.length) {
+      const idx = nextIdx++;
+      results[idx] = await scanMemberProgress(tokens[idx]);
+      queryProgress.value.current = idx + 1;
+    }
+  };
+  const workers = Array.from(
+    { length: Math.min(SCAN_CONCURRENCY, tokens.length) },
+    () => worker()
+  );
+  await Promise.all(workers);
+
+  memberProgressList.value = results.filter(Boolean);
+  message.success(`查询完成，共 ${memberProgressList.value.length} 个成员`);
+
+  // 恢复原选中Token
+  if (savedTokenId) tokenStore.selectToken(savedTokenId);
+  isQueryingMembers.value = false;
+};
+
 // 获取活动数据
 const fetchActivityData = () => {
   if (tokenStore.selectedToken) {
@@ -832,5 +1099,31 @@ const feasibleCombos = computed(() => {
 }
 .cp-modal-scroll::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* 成员进度表格 */
+.mp-table-wrap {
+  min-height: 80px;
+}
+.mp-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 80px;
+  color: var(--text-tertiary, #999);
+  font-size: 13px;
+}
+.mp-table-container {
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid var(--border-light, #e8e8e8);
+}
+.mp-table-container :deep(.n-data-table-th) {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+.mp-table-container :deep(.n-data-table-td) {
+  font-size: 12px;
+  padding: 5px 8px;
 }
 </style>

@@ -78,8 +78,6 @@
     <!-- 洗练助手（提取组件） -->
     <RefineHelperCard v-if="activeSection === 'tools'"></RefineHelperCard>
 
-    <!-- 消耗活动进度（提取组件） -->
-    <ConsumptionProgressCard v-if="activeSection === 'tools'"></ConsumptionProgressCard>
     <!-- 咸王宝库（提取组件） -->
     <BossTower v-if="activeSection === 'tools'"></BossTower>
     <!-- 俱乐部排位（暂时隐藏） -->
@@ -160,6 +158,9 @@
     <!-- 俱乐部信息与疯狂赛车（同级卡片，仅俱乐部分区） -->
     <ClubInfo v-if="activeSection === 'club'"></ClubInfo>
     <ClubCarKing v-if="activeSection === 'club'"></ClubCarKing>
+
+    <!-- 消耗活动（占2列宽度） -->
+    <ConsumeActivityCard v-show="activeSection === 'activity'" :active-section="activeSection" class="wide-card"></ConsumeActivityCard>
 
     <!-- 月度任务进度（提取组件） -->
     <MonthlyTasksCard v-show="activeSection === 'activity'"></MonthlyTasksCard>
@@ -360,7 +361,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { useTokenStore } from "@/stores/tokenStore";
 import { useMessage } from "naive-ui";
 
@@ -387,7 +388,7 @@ import FightPvp from "./cards/FightPvp.vue";
 import FightHelperCard from "./cards/FightHelperCard.vue";
 import DreamHelperCard from "./cards/DreamHelperCard.vue";
 import HeroUpgradeCard from "./cards/HeroUpgradeCard.vue";
-import ConsumptionProgressCard from "./cards/ConsumptionProgressCard.vue";
+import ConsumeActivityCard from "./cards/ConsumeActivityCard.vue";
 import RefineHelperCard from "./cards/RefineHelperCard.vue";
 import TowerStatus from "./Tower/TowerStatus.vue";
 import WeirdTowerStatus from "./Tower/WeirdTowerStatus.vue";
@@ -809,9 +810,14 @@ const handleOpenNightmareChallenge = async () => {
 };
 
 // 生命周期
+const route = useRoute();
 onMounted(() => {
   updateGameStatus();
   startTimer();
+  // 从战斗页返回时自动打开十殿挑战 Modal
+  if (route.query.openNightmare === '1') {
+    showNightmareChallengeModal.value = true;
+  }
   // 获取俱乐部信息
   if (
     tokenStore.selectedToken
@@ -820,6 +826,13 @@ onMounted(() => {
     const tokenId = tokenStore.selectedToken.id;
     tokenStore.sendMessage(tokenId, "legion_getinfo");
     hasFetchedLegionOnce.value = true;
+  }
+});
+
+// 监听路由变化：从战斗页返回时自动打开十殿挑战 Modal
+watch(() => route.query.openNightmare, (val) => {
+  if (val === '1') {
+    showNightmareChallengeModal.value = true;
   }
 });
 
@@ -912,6 +925,14 @@ onUnmounted(() => {
   grid-column: 1 / -1;
   border-bottom: 1px solid var(--border-light);
   overflow: auto;
+}
+
+.wide-card {
+  grid-column: span 2;
+
+  @media (max-width: 900px) {
+    grid-column: span 1;
+  }
 }
 
 .section-tabs :deep(.n-tabs-pane-wrapper) {

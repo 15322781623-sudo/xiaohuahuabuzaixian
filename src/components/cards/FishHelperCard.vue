@@ -123,9 +123,9 @@ const handleHelper = async () => {
         },
       );
     }
-    await tokenStore.sendMessage(tokenId, "role_getroleinfo");
+    await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 8000);
     // 更新活动进度
-    tokenStore.sendMessage(tokenId, "activity_get");
+    await tokenStore.sendMessageWithPromise(tokenId, "activity_get", {}, 5000);
     message.success("钓鱼完毕");
     state.value.isRunning = false;
   }

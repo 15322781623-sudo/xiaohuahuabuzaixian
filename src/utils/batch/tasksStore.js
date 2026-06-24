@@ -967,6 +967,38 @@ export function createTasksStore(deps) {
 
         await ensureConnection(tokenId);
 
+        // 读取账号设置的采购清单
+        try {
+          const rawSettings = localStorage.getItem(`daily-settings:${tokenId}`);
+          if (rawSettings) {
+            const accountSettings = JSON.parse(rawSettings);
+            const purchaseList = accountSettings.purchaseList || [];
+            if (purchaseList.length > 0) {
+              const discounts = accountSettings.purchaseDiscounts || {};
+              const purchaseItemList = purchaseList.map(id => ({ itemId: id, discount: discounts[id] ?? 10 }));
+              const purchaseCnt = accountSettings.purchaseCnt ?? 15;
+              await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "store_setpurchase",
+                { purchaseItemList, purchaseCnt },
+                5000,
+              );
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 已设置采购清单 (${purchaseItemList.length}项, 次数${purchaseCnt})`,
+                type: "info",
+              });
+              await new Promise((r) => setTimeout(r, delayConfig.action));
+            }
+          }
+        } catch (e) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 设置采购清单失败: ${e.message}，继续采购`,
+            type: "warning",
+          });
+        }
+
         addLog({
           time: new Date().toLocaleTimeString(),
           message: `${token.name} 发送黑市采购请求...`,

@@ -3446,7 +3446,8 @@ onMounted(() => {
   // 表格容器
   .table-container {
     flex: 1;
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     background: var(--bg-primary);
     height: 100%;
 
@@ -3503,7 +3504,6 @@ onMounted(() => {
 
       &:hover {
         background: var(--bg-secondary);
-        transform: translateX(2px);
         box-shadow: inset 3px 0 0 var(--primary-color);
       }
 
@@ -3723,8 +3723,8 @@ onMounted(() => {
       }
 
       &.first-3 {
-        width: 350px;
-        min-width: 405px;
+        width: 300px;
+        min-width: 300px;
 
         .hero-avatars {
           display: flex;
@@ -3747,9 +3747,9 @@ onMounted(() => {
           border-radius: var(--border-radius-sm);
           border: 1px solid var(--border-light);
           transition: all var(--transition-fast);
-          min-width: 120px;
+          min-width: 90px;
           flex: 1;
-          max-width: 130px;
+          max-width: 100px;
           cursor: pointer;
 
           &:hover {

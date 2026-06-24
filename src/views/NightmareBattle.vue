@@ -10,6 +10,7 @@
       <div class="header-right">
         <span v-if="battleCountdown > 0" class="countdown">{{ battleCountdown }}s</span>
         <n-button size="small" @click="fetchRoomInfo" :loading="isFetchingInfo">刷新</n-button>
+        <n-button size="small" type="warning" @click="goToChallengeCard">返回后台战斗</n-button>
         <n-button size="small" type="error" @click="endBattle" :loading="isDismissing">结束战斗</n-button>
         <n-button size="small" @click="goBack">返回组队</n-button>
       </div>
@@ -361,7 +362,15 @@ const startAttack = async (member) => {
       { roomId: roomId.value, roleId: Number(member.roleId) }, 10000);
     recordMemberFought(member.roleId);
   } catch (err) {
-    addBattleLog(`出战失败: ${err.message || err}`, 'error');
+    const errMsg = err.message || String(err);
+    if (errMsg.includes('6100070')) {
+      addBattleLog(`${member.name} 已出战过（6100070），请选择其他成员`, 'warning');
+      recordMemberFought(member.roleId);
+    } else if (errMsg.includes('7100140')) {
+      addBattleLog(`${member.name} 出战失败，限流中，等待恢复即可`, 'warning');
+    } else {
+      addBattleLog(`出战失败: ${errMsg}`, 'error');
+    }
     battlePhase.value = 'idle';
     return;
   }
@@ -389,16 +398,12 @@ const startAttack = async (member) => {
     // 刷新房间信息
     await fetchRoomInfo();
 
-    // 检查第8关是否全员阵亡（战斗失败）
+    // 检查第8关是否全员阵亡 → 直接结束并解散房间
     const allMembersDead = members.value.length > 0 && members.value.every(m => m.isAllHeroesDead);
     const bossAlive = monsters.value.some(m => m.isBoss && m.curHp > 0);
     if (currentLevel.value === 8 && allMembersDead && bossAlive) {
-      addBattleLog('❌ 第8关挑战失败，全员阵亡！', 'error');
-      // 检查重试次数（最多3次）
-      const retryKey = 'nightmare-retry-count';
-      const maxRetries = 3;
-      const retryCount = Number(sessionStorage.getItem(retryKey) || '0') + 1;
-      sessionStorage.setItem(retryKey, String(retryCount));
+      addBattleLog('❌ 第8关挑战失败，全员阵亡！直接结束并解散房间', 'error');
+      message.error('第8关全员阵亡，解散房间');
 
       // 解散房间
       try {
@@ -412,30 +417,11 @@ const startAttack = async (member) => {
       }
       battlePhase.value = 'idle';
 
-      if (retryCount <= maxRetries) {
-        // 将当前预设重新放入队列头部，以便重试
-        addBattleLog(`🔁 第 ${retryCount}/${maxRetries} 次重试，即将重新挑战...`, 'info');
-        message.warning(`第8关全员阵亡，第 ${retryCount} 次重试`);
-        try {
-          const currentPreset = JSON.parse(sessionStorage.getItem('nightmare-current-preset') || 'null');
-          const queue = JSON.parse(sessionStorage.getItem('nightmare-preset-queue') || '[]');
-          if (currentPreset) {
-            queue.unshift(currentPreset);
-            sessionStorage.setItem('nightmare-preset-queue', JSON.stringify(queue));
-          }
-        } catch { /* ignore */ }
-        await new Promise(r => setTimeout(r, 2000));
+      // 检查队列是否有下一个预设
+      await new Promise(r => setTimeout(r, 2000));
+      const queue = JSON.parse(sessionStorage.getItem('nightmare-preset-queue') || '[]');
+      if (queue.length > 0) {
         router.replace({ name: 'BatchDailyTasks', query: { nextPreset: 'true' } });
-      } else {
-        addBattleLog(`⚠️ 已达最大重试次数 (${maxRetries})，跳过此预设`, 'warning');
-        message.error(`第8关挑战失败，已重试 ${maxRetries} 次，跳过此预设`);
-        sessionStorage.removeItem(retryKey);
-        await new Promise(r => setTimeout(r, 2000));
-        // 检查队列是否有下一个预设
-        const queue = JSON.parse(sessionStorage.getItem('nightmare-preset-queue') || '[]');
-        if (queue.length > 0) {
-          router.replace({ name: 'BatchDailyTasks', query: { nextPreset: 'true' } });
-        }
       }
       return;
     }
@@ -450,8 +436,6 @@ const startAttack = async (member) => {
       isCompleted.value = true;
       addBattleLog('🎉 恭喜通关十殿阎罗挑战！', 'success');
       message.success('十殿阎罗挑战通关！正在解散房间...');
-      // 通关成功，重置重试计数器
-      sessionStorage.removeItem('nightmare-retry-count');
       // 自动遣散房间
       try {
         await tokenStore.sendMessageWithPromise(
@@ -651,7 +635,12 @@ const applyTestSnapshot = async () => {
 // ====== 导航 ======
 const goBack = () => {
   if (countdownTimer) clearInterval(countdownTimer);
-  router.back();
+  router.push({ name: 'BatchDailyTasks', query: { openNightmare: '1' } });
+};
+
+const goToChallengeCard = () => {
+  if (countdownTimer) clearInterval(countdownTimer);
+  router.push({ name: 'BatchDailyTasks', query: { openNightmare: '1' } });
 };
 
 // ====== 结束战斗（遣散房间） ======
@@ -673,7 +662,7 @@ const endBattle = async () => {
     addBattleLog('战斗房间已遣散', 'success');
     message.success('战斗已结束');
     if (countdownTimer) clearInterval(countdownTimer);
-    router.back();
+    router.push({ name: 'BatchDailyTasks', query: { openNightmare: '1' } });
   } catch (err) {
     addBattleLog(`遣散失败: ${err.message || err}`, 'error');
     message.error(`结束战斗失败: ${err.message || err}`);

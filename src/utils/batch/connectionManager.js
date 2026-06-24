@@ -77,7 +77,7 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
       if (status === "connecting") {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `连接中，等待建立... (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          message: `${latestToken.name} 连接中，等待建立... (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
           type: "info",
         });
 
@@ -91,7 +91,7 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
       if (!connected) {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `正在连接... (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          message: `${latestToken.name} 正在连接... (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
           type: "info",
         });
 
@@ -106,7 +106,7 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
       if (!connected && maxRetries > 0) {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `连接超时，尝试重连...`,
+          message: `${latestToken.name} 连接超时，尝试重连...`,
           type: "warning",
         });
 
@@ -115,7 +115,7 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
 
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `正在重连...`,
+          message: `${latestToken.name} 正在重连...`,
           type: "info",
         });
 
@@ -144,7 +144,7 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
         if (isKickedError) {
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `当前账号在其他地方有登录，无法连接成功`,
+            message: `${latestToken.name} 当前账号在其他地方有登录，无法连接成功`,
             type: "error",
           });
           throw new Error("当前账号在其他地方有登录，无法连接成功");
@@ -187,7 +187,7 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
       if (isConnectionTimeout) {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `初始化数据失败: WebSocket未连接，跳过该账号`,
+          message: `${latestToken.name} 初始化数据失败: WebSocket未连接，跳过该账号`,
           type: "warning",
         });
 
@@ -200,7 +200,7 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
       } else {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `初始化数据失败: ${e.message}`,
+          message: `${latestToken.name} 初始化数据失败: ${e.message}`,
           type: "warning",
         });
       }

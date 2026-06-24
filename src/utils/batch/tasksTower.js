@@ -1755,7 +1755,7 @@ export function createTasksTower(deps) {
           const result = await tokenStore.sendMessageWithPromise(
             tokenId,
             "activity_commonbuygoods",
-            { goodsId: 26052931 },
+            { goodsId: 26052931, num: 1 },
             10000
           );
           

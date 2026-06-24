@@ -83,7 +83,7 @@
     <!-- 任务设置模态框 -->
     <n-modal
       preset="card"
-      style="width: 90%; max-width: 400px"
+      style="width: 90%; max-width: 560px"
       title="任务设置"
       v-model:show="showSettings"
     >
@@ -190,6 +190,46 @@
             <div class="switch-row">
               <span class="switch-label">黑市购买物品</span>
               <n-switch v-model:value="settings.blackMarketPurchase"></n-switch>
+            </div>
+            <!-- 采购清单多选 -->
+            <div v-if="settings.blackMarketPurchase" class="purchase-config-area">
+              <div class="switch-row" style="margin-bottom: 6px;">
+                <span class="switch-label">采购次数</span>
+                <n-input-number
+                  v-model:value="settings.purchaseCnt"
+                  :min="1" :max="15" :step="1"
+                  size="tiny" style="width: 80px;"
+                />
+                <n-button
+                  size="tiny"
+                  :disabled="!isConnected || syncPurchaseBusy"
+                  @click="syncPurchaseToGame"
+                  style="margin-left: 8px;"
+                >
+                  {{ syncPurchaseBusy ? '同步中...' : '同步到游戏' }}
+                </n-button>
+              </div>
+              <div class="purchase-list-grid">
+                <label
+                  v-for="item in purchaseItemOptions"
+                  :key="item.itemId"
+                  class="purchase-item-label"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="settings.purchaseList.includes(item.itemId)"
+                    @change="togglePurchaseItem(settings.purchaseList, settings.purchaseDiscounts, item.itemId)"
+                  />
+                  <span>{{ item.name }}</span>
+                  <input type="number" class="discount-input"
+                    :value="getDiscount(settings.purchaseDiscounts, item.itemId)"
+                    @input="(e) => setDiscount(settings.purchaseDiscounts, item.itemId, e.target.value)"
+                    min="1" max="10"
+                    :disabled="!settings.purchaseList.includes(item.itemId)"
+                  />
+                  <span class="discount-unit">折</span>
+                </label>
+              </div>
             </div>
 
             <div class="switch-row">
@@ -330,9 +370,95 @@ const settings = reactive({
   claimHangUp: true,
   claimEmail: true,
   blackMarketPurchase: true,
+  purchaseList: [],
+  purchaseDiscounts: {},
+  purchaseCnt: 15,
   commandDelay: 500,
   taskDelay: 500,
 });
+
+// 采购清单可选项
+const purchaseItemOptions = [
+  { itemId: 2002, name: '青铜宝箱' },
+  { itemId: 2003, name: '黄金宝箱' },
+  { itemId: 2004, name: '铂金宝箱' },
+  { itemId: 3007, name: '武将包(红)' },
+  { itemId: 3006, name: '武将包(橙)' },
+  { itemId: 3005, name: '武将包(紫)' },
+  { itemId: 1011, name: '普通鱼竿' },
+  { itemId: 1012, name: '黄金鱼竿' },
+  { itemId: 1022, name: '白玉' },
+  { itemId: 1023, name: '彩玉' },
+  { itemId: 1003, name: '进阶石' },
+  { itemId: 1006, name: '精铁' },
+  { itemId: 1026, name: '扳手' },
+  { itemId: 1001, name: '招募令' },
+  { itemId: 1007, name: '竞技券' },
+  { itemId: 1016, name: '梦魇晶石' },
+];
+
+// 采购清单 checkbox 切换辅助函数
+const togglePurchaseItem = (arr, discounts, itemId) => {
+  const idx = arr.indexOf(itemId);
+  if (idx >= 0) {
+    arr.splice(idx, 1);
+  } else {
+    arr.push(itemId);
+    if (!discounts) discounts = {};
+    if (discounts[itemId] == null) discounts[itemId] = 10;
+  }
+};
+
+// 确保采购清单折扣全部初始化（返回新对象触发响应式更新）
+const initPurchaseDiscounts = (discounts) => {
+  const result = { ...(discounts || {}) };
+  purchaseItemOptions.forEach(item => {
+    if (result[item.itemId] == null) result[item.itemId] = 10;
+  });
+  return result;
+};
+
+// 获取折扣值（始终返回数字，避免 undefined 导致 n-input-number 显示空白）
+const getDiscount = (discounts, itemId) => {
+  return discounts?.[itemId] ?? 10;
+};
+
+// 设置折扣值（显式赋值确保响应式更新）
+const setDiscount = (discounts, itemId, val) => {
+  const num = (val != null && val !== '') ? Number(val) : 10;
+  discounts[itemId] = Math.max(1, Math.min(10, isNaN(num) ? 10 : num));
+};
+
+// 同步采购清单到游戏
+const syncPurchaseBusy = ref(false);
+const syncPurchaseToGame = async () => {
+  if (!tokenStore.selectedToken || !isConnected.value) {
+    message.warning('WebSocket未连接，无法同步');
+    return;
+  }
+  const purchaseList = settings.purchaseList || [];
+  if (purchaseList.length === 0) {
+    message.warning('请先勾选采购商品');
+    return;
+  }
+  syncPurchaseBusy.value = true;
+  try {
+    const discounts = settings.purchaseDiscounts || {};
+    const purchaseItemList = purchaseList.map(id => ({ itemId: id, discount: discounts[id] ?? 10 }));
+    const purchaseCnt = settings.purchaseCnt ?? 15;
+    await tokenStore.sendMessageWithPromise(
+      tokenStore.selectedToken.id,
+      'store_setpurchase',
+      { purchaseItemList, purchaseCnt },
+      8000,
+    );
+    message.success(`采购清单已同步到游戏 (${purchaseItemList.length}项, 次数${purchaseCnt})`);
+  } catch (e) {
+    message.error(`同步失败: ${e.message}`);
+  } finally {
+    syncPurchaseBusy.value = false;
+  }
+};
 
 // 每日任务列表
 const tasks = ref([
@@ -610,9 +736,21 @@ watch(
       const saved = loadSettings(newToken.id);
       if (saved)
         Object.assign(settings, saved);
+      settings.purchaseDiscounts = initPurchaseDiscounts(settings.purchaseDiscounts);
 
-      // 如果WebSocket已连接，尝试获取最新角色信息
+      // 如果WebSocket已连接，自动获取采购清单
       if (isConnected.value) {
+        try {
+          const result = await tokenStore.sendMessageWithPromise(newToken.id, 'store_getpurchase', {}, 5000);
+          if (result?.purchaseItemList?.length > 0) {
+            settings.purchaseList = result.purchaseItemList.map(i => i.itemId);
+            const discounts = {};
+            result.purchaseItemList.forEach(i => { if (i.discount != null) discounts[i.itemId] = i.discount; });
+            settings.purchaseDiscounts = initPurchaseDiscounts(discounts);
+            if (result.purchaseCnt != null) settings.purchaseCnt = result.purchaseCnt;
+          }
+        } catch (e) { /* 获取失败不阻塞 */ }
+
         try {
           await refreshRoleInfo();
         } catch (error) {
@@ -643,6 +781,17 @@ onMounted(async () => {
   // 首次拉取角色信息（如果有选中的token且已连接）
   if (tokenStore.selectedToken && isConnected.value) {
     try {
+      const result = await tokenStore.sendMessageWithPromise(tokenStore.selectedToken.id, 'store_getpurchase', {}, 5000);
+      if (result?.purchaseItemList?.length > 0) {
+        settings.purchaseList = result.purchaseItemList.map(i => i.itemId);
+        const discounts = {};
+        result.purchaseItemList.forEach(i => { if (i.discount != null) discounts[i.itemId] = i.discount; });
+        settings.purchaseDiscounts = initPurchaseDiscounts(discounts);
+        if (result.purchaseCnt != null) settings.purchaseCnt = result.purchaseCnt;
+      }
+    } catch (e) { /* 获取失败不阻塞 */ }
+
+    try {
       await refreshRoleInfo();
     } catch (error) {
       console.warn("初始化时获取角色信息失败:", error.message);
@@ -654,6 +803,7 @@ onMounted(async () => {
     const saved = loadSettings(role.roleId);
     if (saved)
       Object.assign(settings, saved);
+    settings.purchaseDiscounts = initPurchaseDiscounts(settings.purchaseDiscounts);
   }
 
   // 初始化时的任务状态同步会通过 watch selectedTokenRoleInfo 自动处理
@@ -980,5 +1130,72 @@ onBeforeUnmount(() => {
     justify-content: space-between;
     margin-top: var(--spacing-sm);
   }
+}
+</style>
+
+<!-- 采购清单样式（非scoped，因为n-modal被传送到body） -->
+<style>
+.purchase-config-area {
+  margin: 4px 0 8px;
+}
+.purchase-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+}
+.purchase-item-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  min-width: 0;
+  border: 1px solid var(--n-border-color, #e5e7eb);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.purchase-item-label:hover {
+  background: var(--n-color-hover, #f0f0f0);
+}
+.purchase-item-label input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+}
+.purchase-item-label > span {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.discount-input {
+  width: 38px;
+  height: 24px;
+  padding: 0 4px;
+  border: 1px solid var(--n-border-color, #e0e0e6);
+  border-radius: 3px;
+  font-size: 12px;
+  text-align: center;
+  background: var(--n-color, #fff);
+  color: var(--n-text-color, #333);
+  flex-shrink: 0;
+  -moz-appearance: textfield;
+}
+.discount-input::-webkit-inner-spin-button,
+.discount-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.discount-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.discount-input:focus {
+  outline: none;
+  border-color: var(--n-color-focus, #36ad6a);
+}
+.discount-unit {
+  font-size: 11px;
+  color: var(--n-text-color-3, #9ca3af);
+  flex-shrink: 0;
 }
 </style>

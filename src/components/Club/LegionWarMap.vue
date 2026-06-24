@@ -87,7 +87,25 @@
           <!-- 地图区域 -->
           <div class="map-container-wrapper">
             <div class="map-container">
-              <canvas ref="legionWarMapDom" class="mapCanvas"></canvas>
+              <canvas
+                ref="legionWarMapDom"
+                class="mapCanvas"
+                @mousedown="onMapMouseDown"
+                @mousemove="onMapMouseMove"
+                @mouseup="onMapMouseUp"
+                @mouseleave="onMapMouseUp"
+                @wheel.prevent="onMapWheel"
+                @touchstart="onMapTouchStart"
+                @touchmove="onMapTouchMove"
+                @touchend="onMapTouchEnd"
+              ></canvas>
+            </div>
+
+            <!-- 缩放控件 -->
+            <div v-if="validData" class="map-controls">
+              <n-button size="tiny" circle @click="zoomIn"><template #icon><n-icon>➕</n-icon></template></n-button>
+              <n-button size="tiny" circle @click="zoomOut"><template #icon><n-icon>➖</n-icon></template></n-button>
+              <n-button size="tiny" circle @click="resetView"><template #icon><n-icon>↺</n-icon></template></n-button>
             </div>
 
             <div v-if="!validData" class="empty-state-overlay">
@@ -335,6 +353,132 @@ const arr = Array.from({ length: 41 }, () =>
   Array.from({ length: 41 }, () => 0));
 const leftMaxPoint = [0, 0];
 
+// 拖拽平移与缩放
+let panX = 0;
+let panY = 0;
+let scale = 1;
+let isDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let lastTouchDist = 0;
+let lastTouchX = 0;
+let lastTouchY = 0;
+
+const onMapMouseDown = (e) => {
+  isDragging = true;
+  dragStartX = e.clientX - panX;
+  dragStartY = e.clientY - panY;
+  e.target.style.cursor = 'grabbing';
+};
+const onMapMouseMove = (e) => {
+  if (!isDragging) return;
+  panX = e.clientX - dragStartX;
+  panY = e.clientY - dragStartY;
+  redrawWithTransform();
+};
+const onMapMouseUp = (e) => {
+  isDragging = false;
+  if (e.target) e.target.style.cursor = 'grab';
+};
+const onMapWheel = (e) => {
+  const rect = e.target.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const newScale = Math.max(0.3, Math.min(3, scale * delta));
+  // 以鼠标位置为缩放中心
+  panX = mx - (mx - panX) * (newScale / scale);
+  panY = my - (my - panY) * (newScale / scale);
+  scale = newScale;
+  redrawWithTransform();
+};
+// 触摸支持
+const onMapTouchStart = (e) => {
+  if (e.touches.length === 1) {
+    isDragging = true;
+    dragStartX = e.touches[0].clientX - panX;
+    dragStartY = e.touches[0].clientY - panY;
+  } else if (e.touches.length === 2) {
+    isDragging = false;
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastTouchDist = Math.sqrt(dx * dx + dy * dy);
+    lastTouchX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    lastTouchY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+  }
+};
+const onMapTouchMove = (e) => {
+  e.preventDefault();
+  if (e.touches.length === 1 && isDragging) {
+    panX = e.touches[0].clientX - dragStartX;
+    panY = e.touches[0].clientY - dragStartY;
+    redrawWithTransform();
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (lastTouchDist > 0) {
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const rect = e.target.getBoundingClientRect();
+      const mx = midX - rect.left;
+      const my = midY - rect.top;
+      const newScale = Math.max(0.3, Math.min(3, scale * (dist / lastTouchDist)));
+      panX = mx - (mx - panX) * (newScale / scale);
+      panY = my - (my - panY) * (newScale / scale);
+      scale = newScale;
+      redrawWithTransform();
+    }
+    lastTouchDist = dist;
+  }
+};
+const onMapTouchEnd = () => {
+  isDragging = false;
+  lastTouchDist = 0;
+};
+const zoomIn = () => {
+  const canvas = legionWarMapDom.value;
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const cx = rect.width / 2;
+  const cy = rect.height / 2;
+  const newScale = Math.min(3, scale * 1.2);
+  panX = cx - (cx - panX) * (newScale / scale);
+  panY = cy - (cy - panY) * (newScale / scale);
+  scale = newScale;
+  redrawWithTransform();
+};
+const zoomOut = () => {
+  const canvas = legionWarMapDom.value;
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const cx = rect.width / 2;
+  const cy = rect.height / 2;
+  const newScale = Math.max(0.3, scale / 1.2);
+  panX = cx - (cx - panX) * (newScale / scale);
+  panY = cy - (cy - panY) * (newScale / scale);
+  scale = newScale;
+  redrawWithTransform();
+};
+const resetView = () => {
+  panX = 0;
+  panY = 0;
+  scale = 1;
+  resizeAndRedraw();
+};
+const redrawWithTransform = () => {
+  if (!ctx || !legionWarMapDom.value) return;
+  const canvas = legionWarMapDom.value;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(dpr, dpr);
+  ctx.save();
+  ctx.translate(panX, panY);
+  ctx.scale(scale, scale);
+  drawCanvasContent();
+  ctx.restore();
+};
+
 // 颜色映射
 const typeBg = (type) => {
   switch (type) {
@@ -411,9 +555,6 @@ const drawCanvasContent = () => {
   if (!ctx)
     return;
 
-  // 清空画布
-  ctx.clearRect(0, 0, ctx.canvas.width / dpr, ctx.canvas.height / dpr);
-
   // 重置 arr 数组
   arr.forEach((row) => row.fill(0));
 
@@ -421,21 +562,28 @@ const drawCanvasContent = () => {
   const graph = HexGraph.getInstance();
   graph.removeAllNode();
 
-  // 计算需要绘制的行列数以铺满画布
+  // 计算需要绘制的行列数以铺满可视区域（考虑平移和缩放）
   const canvasWidth = ctx.canvas.width / dpr;
   const canvasHeight = ctx.canvas.height / dpr;
+  // 可视区域在世界坐标中的范围
+  const viewLeft = -panX / scale;
+  const viewTop = -panY / scale;
+  const viewRight = viewLeft + canvasWidth / scale;
+  const viewBottom = viewTop + canvasHeight / scale;
   const horizontalStep = hexWidth * 0.75 + gap;
   const verticalStep = hexHeight + gap;
 
-  const maxCols = Math.ceil(canvasWidth / horizontalStep) + 2;
-  const maxRows = Math.ceil(canvasHeight / verticalStep) + 2;
+  const startCol = Math.max(0, Math.floor(viewLeft / horizontalStep) - 1);
+  const endCol = Math.ceil(viewRight / horizontalStep) + 2;
+  const startRow = Math.max(0, Math.floor(viewTop / verticalStep) - 1);
+  const endRow = Math.ceil(viewBottom / verticalStep) + 2;
 
   // 绘制背景网格
-  ctx.strokeStyle = "#e0e0e0"; // 浅灰色边框
+  ctx.strokeStyle = "#e0e0e0";
   ctx.lineWidth = 1;
 
-  for (let row = 0; row < maxRows; row++) {
-    for (let col = 0; col < maxCols; col++) {
+  for (let row = startRow; row < endRow; row++) {
+    for (let col = startCol; col < endCol; col++) {
       // 背景网格从第0行开始绘制，铺满全屏
       const x = col * (hexWidth * 0.75) + hexSize + gap * col;
       const y = row * hexHeight + (col % 2 === 1 ? hexHeight / 2 : 0) + gap * row;
@@ -456,9 +604,7 @@ const drawCanvasContent = () => {
   }
 
   // 平移画布以居中显示有效区域
-  // 假设有效区域左上角偏移约为 (-2, -3) 个六边形
   ctx.save();
-  ctx.translate(2 * (hexWidth * 0.75 + gap), -1 * (hexHeight + gap));
 
   // 使用静态数据作为基础，结合 validData 处理颜色和状态
   // 1. 准备数据
@@ -574,6 +720,7 @@ const drawCanvasContent = () => {
       }
     });
   }
+  ctx.restore();
 };
 const resizeAndRedraw = () => {
   if (!legionWarMapDom.value)
@@ -613,15 +760,14 @@ const resizeAndRedraw = () => {
   hexSize = Math.min(sizeW, sizeH);
 
   // 限制最大最小尺寸，避免极端情况
-  hexSize = Math.max(12, Math.min(hexSize, 30));
+  hexSize = Math.max(8, Math.min(hexSize, 30));
 
   // 更新依赖变量
   hexWidth = 2 * hexSize;
   hexHeight = Math.sqrt(3) * hexSize;
 
   if (ctx) {
-    ctx.scale(dpr, dpr);
-    drawCanvasContent();
+    redrawWithTransform();
   }
 };
 
@@ -779,7 +925,9 @@ onUnmounted(() => {
     .main-content-layout {
       position: relative;
       width: 100%;
-      height: 960px;
+      height: calc(100vh - 220px);
+      min-height: 400px;
+      max-height: 960px;
       display: flex;
       overflow: hidden;
 
@@ -798,7 +946,21 @@ onUnmounted(() => {
             width: 100%;
             height: 100%;
             display: block;
+            cursor: grab;
           }
+        }
+
+        .map-controls {
+          position: absolute;
+          bottom: 12px;
+          left: 12px;
+          display: flex;
+          gap: 6px;
+          z-index: 15;
+          background: rgba(255,255,255,0.85);
+          padding: 4px 8px;
+          border-radius: 6px;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.12);
         }
 
         .empty-state-overlay {
@@ -955,6 +1117,15 @@ onUnmounted(() => {
 
 // 响应式调整
 @media (max-width: 768px) {
+  .legion-war-map-container {
+    .main-content-layout {
+      height: calc(100vh - 200px) !important;
+      min-height: 350px !important;
+      max-height: none !important;
+      flex-direction: column;
+    }
+  }
+
   .header-section {
     flex-direction: column;
     align-items: flex-start;
@@ -990,19 +1161,27 @@ onUnmounted(() => {
   }
 
   .map-container-wrapper {
-    height: 250px !important;
+    height: 100% !important;
+    flex: 1;
   }
 
   .map-container {
     width: 100% !important;
     max-width: 100% !important;
-    overflow: auto;
+    overflow: hidden;
   }
 
   .mapCanvas {
     width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     max-width: 100%;
+  }
+
+  .side-info-panel {
+    width: 100% !important;
+    height: 200px !important;
+    border-left: none !important;
+    border-top: 1px solid #eee;
   }
 
   // 侧边栏紧凑

@@ -72,6 +72,9 @@
           <n-button :disabled="!canSendMessage" @click="sendSignIn">
             📅 签到
           </n-button>
+          <n-button :disabled="!canSendMessage" @click="sendActivityGet">
+            🎯 获取活动数据
+          </n-button>
         </div>
 
         <!-- 自定义消息发送 -->
@@ -685,6 +688,25 @@ const sendSignIn = () => {
     message.success("签到请求已发送");
   } else {
     message.error("签到请求发送失败");
+  }
+};
+
+const sendActivityGet = async () => {
+  if (!canSendMessage.value)
+    return;
+
+  try {
+    const result = await tokenStore.sendMessageWithPromise(
+      selectedTokenId.value,
+      "activity_get",
+      {},
+      8000,
+    );
+    addToHistory("received", result, "activity_get");
+    message.success("活动数据获取成功");
+  } catch (e) {
+    addToHistory("error", { error: e.message }, "activity_get");
+    message.error(`活动数据获取失败: ${e.message}`);
   }
 };
 

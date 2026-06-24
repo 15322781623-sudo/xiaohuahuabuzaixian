@@ -99,6 +99,9 @@ const DEFAULT_SETTINGS = {
   claimHangUp: true,
   claimEmail: true,
   blackMarketPurchase: true,
+  purchaseList: [],
+  purchaseDiscounts: {},
+  purchaseCnt: 15,
   blackMarketStandalonePurchase: false,
   legacyGiftPassword: '',
 };
@@ -999,6 +1002,21 @@ export class DailyTaskRunner {
 
     return [async () => {
       try {
+        // 如果配置了采购清单，先设置再采购
+        const purchaseList = this.settings.purchaseList || [];
+        if (purchaseList.length > 0) {
+          try {
+            const discounts = this.settings.purchaseDiscounts || {};
+            const purchaseItemList = purchaseList.map(id => ({ itemId: id, discount: discounts[id] ?? 10 }));
+            const purchaseCnt = this.settings.purchaseCnt ?? 15;
+            await this.sendCommand('store_setpurchase', { purchaseItemList, purchaseCnt },
+              { description: '设置采购清单', timeout: 5000 });
+            this.info(`已设置采购清单 (${purchaseItemList.length}项, 次数${purchaseCnt})`);
+          } catch (e) {
+            this.warn(`设置采购清单失败: ${e.message}`);
+          }
+        }
+
         // 尝试黑市采购
         const result = await this.sendCommand('store_purchase', { goodsId: 1 }, 
           { context: 'blackMarket' });

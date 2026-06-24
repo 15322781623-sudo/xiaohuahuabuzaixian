@@ -225,7 +225,7 @@ export function createTasksCar(deps) {
           } else {
             console.error(error);
             tokenStatus.value[tokenId] = "failed";
-            addLog({ time: new Date().toLocaleTimeString(), message: `智能发车失败: ${error.message}`, type: "error" });
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 智能发车失败: ${error.message}`, type: "error" });
             closeConnection(tokenId, token.name);
           }
         }

@@ -56,23 +56,13 @@
         <!-- 月度竞技场补齐按钮 -->
         <n-button circle quaternary size="small" type="warning" :disabled="!isConnected" @click.stop="completeMonthlyArena" title="月度竞技场补齐">
           <template #icon>
-            <n-icon>
-              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-              </svg>
-            </n-icon>
+            <img src="/icons/竞技场.png" alt="竞技场补齐" style="width: 14px; height: 14px; object-fit: contain;">
           </template>
         </n-button>
         <!-- 月度钓鱼补齐按钮 -->
         <n-button circle quaternary size="small" type="info" :disabled="!isConnected" @click.stop="completeMonthlyFish" title="月度钓鱼补齐">
           <template #icon>
-            <n-icon>
-              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path d="M2 16c2-2 4-3 7-3s5 1 7 3" />
-                <circle cx="12" cy="10" r="3" />
-                <path d="M12 7V3M8 5l4-2 4 2" />
-              </svg>
-            </n-icon>
+            <img src="/icons/钓鱼.png" alt="钓鱼补齐" style="width: 14px; height: 14px; object-fit: contain;">
           </template>
         </n-button>
         <!-- 打开游戏按钮 -->
@@ -111,12 +101,12 @@
     <div class="status-tags">
       <!-- 盐罐时间 -->
       <div class="status-tag salt-tag" style="cursor: pointer;" title="点击重置盐罐" :class="{ 'is-active': saltJar.isRunning }" @click.stop="resetSaltJar">
-        <span class="tag-icon">🧂</span>
+        <img class="tag-icon tag-icon-img" src="/icons/saltJar.png" alt="盐罐">
         <span class="tag-text">{{ formatShortTime(saltJar.remainingTime) }}</span>
       </div>
       <!-- 挂机时间 -->
       <div class="status-tag hangup-tag" style="cursor: pointer;" :class="{ 'is-active': hangUp.isActive }" :title="hangUp.isActive ? '点击领取挂机奖励' : '点击一键加钟'" @click.stop="handleHangUp">
-        <span class="tag-icon">⏱️</span>
+        <img class="tag-icon tag-icon-img" src="/icons/挂机.png" alt="挂机">
         <span class="tag-text">
           <span class="hangup-elapsed">{{ formatShortTime(hangUp.elapsedTime) }}</span>
           <span class="hangup-separator">/</span>
@@ -125,7 +115,7 @@
       </div>
       <!-- 答题状态 -->
       <div class="status-tag study-tag" style="cursor: pointer;" :class="{ 'is-completed': displayStudyInfo.isCompleted, 'is-answering': studyStatus.isAnswering }" @click.stop="startOneClickAnswer">
-        <span class="tag-icon">📚</span>
+        <img class="tag-icon tag-icon-img" src="/icons/study.png" alt="答题">
         <span class="tag-text">
           <span v-if="studyStatus.isAnswering">
             {{ studyStatus.answeredCount }}/{{ studyStatus.questionCount }}
@@ -140,7 +130,7 @@
       </div>
       <!-- 刷新状态 -->
       <div class="status-tag refresh-tag" :class="{ 'is-refreshing': isRefreshing }">
-        <span class="tag-icon">🔄</span>
+        <img class="tag-icon tag-icon-img" src="/icons/刷新.png" alt="刷新">
         <span class="tag-text">
           <span v-if="isRefreshing">
             刷新中
@@ -155,7 +145,7 @@
       </div>
       <!-- 残卷状态 -->
       <div class="status-tag legacy-tag" style="cursor: pointer; min-width: 70px; justify-content: center;" :class="{ 'is-available': legacyStatus.isAvailable }" :title="legacyStatus.isAvailable ? '点击领取功法残卷' : '当前残卷数量'" @click.stop="handleLegacyClaim">
-        <span class="tag-icon">📜</span>
+        <img class="tag-icon tag-icon-img" src="/icons/残卷.png" alt="残卷">
         <span class="tag-text">
           <span v-if="legacyStatus.isAvailable">
             可领取
@@ -173,10 +163,35 @@
         :title="`星级挑战总星数: ${starChallengeTotalStars}/24 (点击挑战)`"
         @click.stop="handleStarChallenge"
       >
-        <span class="tag-icon">⭐</span>
+        <img class="tag-icon tag-icon-img" src="/icons/星级.png" alt="星级">
         <span class="tag-text">
           <span v-if="isStarChallenging">挑战中...</span>
           <span v-else>{{ starChallengeTotalStars }}/24</span>
+        </span>
+      </div>
+      <!-- 功德簿 -->
+      <div
+        class="status-tag merit-book-tag"
+        style="min-width: 70px; justify-content: center; cursor: pointer;"
+        :class="{ 'merit-full': meritBookStars >= 120 }"
+        :title="`功德簿: ${meritBookStars}/120 (队伍成员本周星数总和)`"
+        @click.stop="handleRefreshMeritBook"
+      >
+        <img class="tag-icon tag-icon-img" src="/icons/残卷.png" alt="功德">
+        <span class="tag-text">{{ meritBookStars }}/120</span>
+      </div>
+      <!-- 十殿通关8状态 -->
+      <div
+        class="status-tag nightmare-tag"
+        style="min-width: 70px; justify-content: center;"
+        :class="{ 'nightmare-cleared': nightmareMaxLevel >= 8, 'nightmare-uncleared': nightmareMaxLevel > 0 && nightmareMaxLevel < 8, 'nightmare-none': nightmareMaxLevel === 0 }"
+        :title="nightmareMaxLevel >= 8 ? `十殿已通关第8关` : nightmareMaxLevel > 0 ? `十殿通关至第${nightmareMaxLevel}关` : '本周未通关'"
+      >
+        <img class="tag-icon tag-icon-img" src="/icons/十殿.png" alt="十殿">
+        <span class="tag-text">
+          <span v-if="nightmareMaxLevel >= 8">通关8</span>
+          <span v-else-if="nightmareMaxLevel > 0">Lv.{{ nightmareMaxLevel }}</span>
+          <span v-else>未通关</span>
         </span>
       </div>
       <!-- 金鱼达标 -->
@@ -188,7 +203,7 @@
             style="min-width: 70px; justify-content: center; cursor: pointer;"
             :class="{ 'all-met': goldFishStatus.allMet, 'not-met': !goldFishStatus.allMet }"
           >
-            <span class="tag-icon">🐟</span>
+            <img class="tag-icon tag-icon-img" src="/icons/金鱼.png" alt="金鱼达标">
             <span class="tag-text">
               {{ goldFishStatus.allMet ? '已达标' : '未达标' }}
             </span>
@@ -222,7 +237,7 @@
         :title="arenaRank > 0 ? `点击挑战竞技场(3次)` : '竞技场排名: 未知'"
         @click.stop="handleArenaFight"
       >
-        <span class="tag-icon">🏆</span>
+        <img class="tag-icon tag-icon-img" src="/icons/排名.png" alt="排名">
         <span class="tag-text">
           <span v-if="isArenaFighting">战斗中...</span>
           <span v-else-if="arenaRank > 0">排名{{ arenaRank }}</span>
@@ -233,10 +248,10 @@
       <div class="module-grid">
         <div class="tower-status-container">
           <div class="tower-status-header" :title="isTowerExpanded ? '点击最小化' : '点击展开'" @click.stop="isTowerExpanded = !isTowerExpanded">
-            <span class="tag-icon">🏰</span>
+            <img class="tag-icon tag-icon-img" src="/icons/闯关.png" alt="闯关">
             <span class="tag-text">闯关</span>
             <span class="expand-icon">{{ isTowerExpanded ? '▼' : '▶' }}</span>
-            <span class="refresh-icon" title="点击刷新闯关进度" @click.stop="refreshTowerInfo">🔄</span>
+            <img class="refresh-icon refresh-icon-img" title="点击刷新闯关进度" @click.stop="refreshTowerInfo" src="/icons/刷新.png" alt="刷新">
           </div>
           <div v-if="isTowerExpanded" class="tower-grid">
             <div
@@ -273,10 +288,10 @@
         <!-- 爬塔状态 -->
         <div class="climb-tower-container">
           <div class="climb-tower-header" :title="towerData.isExpanded ? '点击最小化' : '点击展开'" @click.stop="toggleClimbTower">
-            <span class="tag-icon">🗼</span>
+            <img class="tag-icon tag-icon-img" src="/icons/ta.png" alt="爬塔">
             <span class="tag-text">爬塔</span>
             <span class="expand-icon">{{ towerData.isExpanded ? '▼' : '▶' }}</span>
-            <span class="refresh-icon" title="点击刷新爬塔数据" @click.stop="refreshTowerData">🔄</span>
+            <img class="refresh-icon refresh-icon-img" title="点击刷新爬塔数据" @click.stop="refreshTowerData" src="/icons/刷新.png" alt="刷新">
           </div>
           <div v-if="towerData.isExpanded" class="climb-tower-grid">
             <div class="climb-tower-item">
@@ -299,10 +314,10 @@
         <!-- 怪异塔状态 -->
         <div class="weird-tower-container">
           <div class="weird-tower-header" :title="weirdTowerData.isExpanded ? '点击最小化' : '点击展开'" @click.stop="toggleWeirdTower">
-            <span class="tag-icon">🏰</span>
+            <img class="tag-icon tag-icon-img" src="/icons/ta.png" alt="怪塔">
             <span class="tag-text">怪塔</span>
             <span class="expand-icon">{{ weirdTowerData.isExpanded ? '▼' : '▶' }}</span>
-            <span class="refresh-icon" title="点击刷新怪异塔数据" @click.stop="refreshWeirdTowerData">🔄</span>
+            <img class="refresh-icon refresh-icon-img" title="点击刷新怪异塔数据" @click.stop="refreshWeirdTowerData" src="/icons/刷新.png" alt="刷新">
           </div>
           <div v-if="weirdTowerData.isExpanded" class="weird-tower-grid">
             <div class="weird-tower-item" style="cursor: pointer;" title="点击一键爬怪异塔" @click="climbWeirdTower">
@@ -325,10 +340,10 @@
         <!-- 赛车状态 -->
         <div class="car-status-container">
           <div class="car-status-header" :title="isCarExpanded ? '点击最小化' : '点击展开'" @click.stop="toggleCar">
-            <span class="tag-icon">🏎️</span>
+            <img class="tag-icon tag-icon-img" src="/icons/疯狂赛车.png" alt="赛车">
             <span class="tag-text">赛车</span>
             <span class="expand-icon">{{ isCarExpanded ? '▼' : '▶' }}</span>
-            <span class="refresh-icon" title="点击刷新赛车状态" @click.stop="refreshCarInfo">🔄</span>
+            <img class="refresh-icon refresh-icon-img" title="点击刷新赛车状态" @click.stop="refreshCarInfo" src="/icons/刷新.png" alt="刷新">
             <span v-if="carStatus.isLoading && isCarExpanded" class="loading-indicator">
               <span class="loading-dot"></span>
               <span class="loading-dot"></span>
@@ -392,7 +407,7 @@
     <!-- 每日任务进度 -->
     <div class="task-progress">
       <div class="progress-header">
-        <span class="progress-label">📋 每日任务</span>
+        <span class="progress-label"><img class="progress-icon-img" src="/icons/每日.png" alt="每日任务"> 每日任务</span>
         <span class="progress-value">{{ dailyTask.progress }}/110</span>
       </div>
       <div class="progress-bar-container">
@@ -403,7 +418,7 @@
     <!-- 月度任务进度 -->
     <div class="task-progress">
       <div class="progress-header">
-        <span class="progress-label">📅 月度任务</span>
+        <span class="progress-label"><img class="progress-icon-img" src="/icons/月度.png" alt="月度任务"> 月度任务</span>
         <span class="progress-value">{{ monthlyTask.fish }}/{{ monthlyTask.fishTarget }} 钓鱼 | {{ monthlyTask.arena }}/{{ monthlyTask.arenaTarget }} 竞技场</span>
       </div>
       <div class="progress-bar-container">
@@ -898,6 +913,9 @@ const legacyStatus = ref({
 // 星级挑战总星数
 const starChallengeTotalStars = ref(0);
 
+// 功德簿星数（队伍成员本周星数总和，上限120）
+const meritBookStars = ref(0);
+
 // 星级挑战状态
 const isStarChallenging = ref(false);
 
@@ -906,6 +924,9 @@ const arenaRank = ref(0);
 
 // 竞技场战斗状态
 const isArenaFighting = ref(false);
+
+// 十殿阎罗通关等级
+const nightmareMaxLevel = ref(0);
 
 // 爬塔数据（普通爬塔）
 const towerData = ref({
@@ -982,6 +1003,8 @@ const saveCardStatus = async () => {
       starChallengeTotalStars: starChallengeTotalStars.value,
       // 竞技场排名
       arenaRank: arenaRank.value,
+      // 十殿阎罗通关等级
+      nightmareMaxLevel: nightmareMaxLevel.value,
       // 答题状态
       studyStatus: studyStatus.value,
       // 普通爬塔
@@ -1065,6 +1088,9 @@ const restoreCardStatus = async () => {
     }
     if (statusData.arenaRank !== undefined) {
       arenaRank.value = statusData.arenaRank;
+    }
+    if (statusData.nightmareMaxLevel !== undefined) {
+      nightmareMaxLevel.value = statusData.nightmareMaxLevel;
     }
     if (statusData.studyStatus) {
       studyStatus.value = { ...studyStatus.value, ...statusData.studyStatus };
@@ -1777,6 +1803,8 @@ watch(() => props.token.id, (newTokenId, oldTokenId) => {
     };
     // 重置星级挑战数据
     starChallengeTotalStars.value = 0;
+    // 重置功德簿数据
+    meritBookStars.value = 0;
     // 重置竞技场排名
     arenaRank.value = 0;
   }
@@ -1789,6 +1817,7 @@ watch(() => tokenGameData.value, syncGameData, { deep: true, immediate: true });
 watch(() => isConnected.value, (connected) => {
   if (connected) {
     loadStarChallengeStars();
+    loadMeritBookStars();
     loadArenaRank(); // 加载竞技场排名
   }
 });
@@ -2145,6 +2174,48 @@ const loadArenaRank = async () => {
   }
 };
 
+// 获取十殿阎罗通关等级
+const fetchNightmareData = async () => {
+  try {
+    const tokenId = props.token.id;
+    const tokenStore = useTokenStore();
+    const roleInfo = tokenStore.gameData?.roleInfo?.role || {};
+    const roleId = roleInfo.roleId;
+
+    if (!roleId) {
+      console.warn("[Nightmare] 无法获取 roleId，跳过十殿数据查询");
+      return;
+    }
+
+    const resp = await tokenStore.sendMessageWithPromise(
+      tokenId,
+      "nightmare_getroleinfo",
+      { roleId: Number(roleId) },
+      5000,
+    );
+
+    // maxLevel 嵌套在 weekAward[周标识].maxLevel 中
+    // 周标识为每周一的日期（如 20260615），需判断是否本周
+    const weekAward = resp?.nightMareData?.weekAward || resp?.nightmareData?.weekAward || {};
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=周日, 1=周一...
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    const y = monday.getFullYear();
+    const m = String(monday.getMonth() + 1).padStart(2, '0');
+    const d = String(monday.getDate()).padStart(2, '0');
+    const thisWeekKey = `${y}${m}${d}`;
+
+    const thisWeekData = weekAward[thisWeekKey];
+    const maxLevel = thisWeekData?.maxLevel ?? 0;
+
+    nightmareMaxLevel.value = Number(maxLevel);
+    console.log("[Nightmare] 十殿通关等级:", nightmareMaxLevel.value);
+  } catch (err) {
+    console.warn("[Nightmare] 获取十殿数据失败:", err.message);
+  }
+};
+
 // 处理竞技场挑战
 const handleArenaFight = async () => {
   if (!isConnected.value) {
@@ -2333,6 +2404,8 @@ watch(() => isConnected.value, (connected) => {
         refreshCarInfo();
         // 怪异塔：只在黑市周开放时获取
         refreshWeirdTowerData();
+        // 十殿阎罗通关等级
+        fetchNightmareData();
 
         // 连接成功后，等待数据刷新完成再保存状态
         setTimeout(async () => {
@@ -2574,6 +2647,106 @@ const loadStarChallengeStars = async () => {
     console.error("[StarChallenge] 加载星级挑战数据失败:", error);
     starChallengeTotalStars.value = 0;
   }
+};
+
+/** 加载功德簿星数（队伍成员本周星数总和） */
+const loadMeritBookStars = async () => {
+  try {
+    if (!isConnected.value) return;
+    const tokenId = props.token.id;
+    const roleInfo = tokenStore.gameData.roleInfo;
+    const roleID = roleInfo?.role?.roleId;
+    if (!roleID) {
+      // 尝试从 localStorage 恢复
+      loadMeritBookFromStorage();
+      return;
+    }
+
+    // 1. 获取队伍信息
+    const roleTeamRes = await tokenStore.sendMessageWithPromise(
+      tokenId, 'matchteam_getroleteaminfo', { roleID }, 5000
+    );
+    if (!roleTeamRes) {
+      loadMeritBookFromStorage();
+      return;
+    }
+
+    const gDMTData = roleTeamRes.roleMTData?.gDMTData || {};
+    const teamKeys = Object.keys(gDMTData);
+    if (teamKeys.length === 0) { meritBookStars.value = 0; return; }
+
+    const teamId = gDMTData[teamKeys[0]]?.teamId;
+    if (!teamId) { meritBookStars.value = 0; return; }
+
+    // 2. 获取队伍详情
+    const teamInfoRes = await tokenStore.sendMessageWithPromise(
+      tokenId, 'matchteam_getteaminfo', { teamId }, 5000
+    );
+    if (!teamInfoRes) {
+      loadMeritBookFromStorage();
+      return;
+    }
+
+    // 3. 遍历 fightRoleBase 累加星数
+    const fightRoleBase = teamInfoRes.teamInfo?.fightRoleBase || [];
+    const now = new Date();
+    const day = now.getDay();
+    const diff = day === 0 ? 6 : day - 1;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - diff);
+    const weekSuffix = String(monday.getFullYear()).slice(2) +
+      String(monday.getMonth() + 1).padStart(2, '0') +
+      String(monday.getDate()).padStart(2, '0');
+    const targetKey = `nmExtStarCnt_${weekSuffix}`;
+
+    let totalStars = 0;
+    for (const member of fightRoleBase) {
+      const extParam = member.extParam || {};
+      totalStars += Number(extParam[targetKey]) || 0;
+    }
+
+    meritBookStars.value = totalStars;
+    console.log("[MeritBook] 功德簿星数已刷新:", totalStars);
+  } catch (e) {
+    console.warn("[MeritBook] 功德簿查询异常:", e.message);
+    loadMeritBookFromStorage();
+  }
+};
+
+/** 从 localStorage 恢复功德簿数据 */
+const loadMeritBookFromStorage = () => {
+  try {
+    const raw = localStorage.getItem("batch_star_challenge_data");
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    const stored = data[props.token.id];
+    if (!stored) return;
+
+    const getWeekStartMs = () => {
+      const now = new Date();
+      const day = now.getDay();
+      const diff = day === 0 ? 6 : day - 1;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - diff);
+      monday.setHours(0, 0, 0, 0);
+      return monday.getTime();
+    };
+
+    if ((stored.weekStart || 0) === getWeekStartMs()) {
+      meritBookStars.value = stored.meritBookStars || 0;
+    }
+  } catch (e) { /* 静默 */ }
+};
+
+/** 点击功德簿标签手动刷新 */
+const handleRefreshMeritBook = async () => {
+  if (!isConnected.value) {
+    message.warning("请先连接账号");
+    return;
+  }
+  message.info("正在刷新功德簿...");
+  await loadMeritBookStars();
+  message.success(`功德簿: ${meritBookStars.value}/120`);
 };
 
 // 获取进度条颜色
@@ -4413,6 +4586,7 @@ const challengeTower = async (type) => {
   position: relative;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  container-type: inline-size;
   border: 1px solid rgba(0, 0, 0, 0.06);
 
   // 防止拖动时选择文本
@@ -4530,13 +4704,16 @@ const challengeTower = async (type) => {
     .token-name {
       flex-basis: 100%;
       font-weight: 600;
-      font-size: clamp(11px, 2vw, 15px);
+      font-size: clamp(8px, 7cqi, 15px);
       color: #000000;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      word-break: break-all;
+      line-height: 1.3;
       letter-spacing: 0.3px;
       padding-left: 2px;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
     }
   }
 
@@ -4604,7 +4781,7 @@ const challengeTower = async (type) => {
     gap: 3px;
     padding: 3px 8px;
     min-width: fit-content;
-    flex-shrink: 0;
+    flex-shrink: 1;
     border-radius: 14px;
     font-size: 10px;
     font-weight: 500;
@@ -4613,6 +4790,7 @@ const challengeTower = async (type) => {
     z-index: 1;
     transition: all 0.3s ease;
     border: 1px solid transparent;
+    overflow: hidden;
 
     &:hover {
       transform: translateY(-1px);
@@ -4640,6 +4818,13 @@ const challengeTower = async (type) => {
     }
 
     &.hangup-tag {
+      .tag-icon-img {
+        width: 14px;
+        height: 14px;
+        object-fit: contain;
+        margin-right: 3px;
+      }
+
       &.is-active {
         background: rgba(220, 252, 231, 0.8) !important;
         color: #059669 !important;
@@ -4677,6 +4862,13 @@ const challengeTower = async (type) => {
     }
 
     &.refresh-tag {
+      .tag-icon-img {
+        width: 14px;
+        height: 14px;
+        object-fit: contain;
+        margin-right: 3px;
+      }
+
       min-width: 80px;
       justify-content: center;
 
@@ -4689,6 +4881,13 @@ const challengeTower = async (type) => {
     }
 
     &.legacy-tag {
+      .tag-icon-img {
+        width: 14px;
+        height: 14px;
+        object-fit: contain;
+        margin-right: 3px;
+      }
+
       &.is-available {
         background: rgba(220, 252, 231, 0.8) !important;
         color: #059669 !important;
@@ -4698,6 +4897,13 @@ const challengeTower = async (type) => {
     }
 
     &.star-challenge-tag {
+      .tag-icon-img {
+        width: 14px;
+        height: 14px;
+        object-fit: contain;
+        margin-right: 3px;
+      }
+
       font-weight: 600;
 
       // 连接成功且0星时标记为黄色
@@ -4719,7 +4925,68 @@ const challengeTower = async (type) => {
       }
     }
 
+    &.merit-book-tag {
+      .tag-icon-img {
+        width: 14px;
+        height: 14px;
+        object-fit: contain;
+        margin-right: 3px;
+      }
+
+      font-weight: 600;
+      background: rgba(253, 230, 138, 0.6) !important;
+      color: #92400e !important;
+      border-color: rgba(252, 211, 77, 0.5) !important;
+
+      // 满120星时显示金色
+      &.merit-full {
+        background: linear-gradient(135deg, rgba(251, 191, 36, 0.8), rgba(245, 158, 11, 0.8)) !important;
+        color: #78350f !important;
+        border-color: rgba(245, 158, 11, 0.6) !important;
+        animation: pulse-glow 2s infinite;
+      }
+    }
+
+    &.nightmare-tag {
+      .tag-icon-img {
+        width: 14px;
+        height: 14px;
+        object-fit: contain;
+        margin-right: 3px;
+      }
+
+      font-weight: 600;
+
+      // 通关8关：绿色
+      &.nightmare-cleared {
+        background: rgba(134, 239, 172, 0.8) !important;
+        color: #059669 !important;
+        border-color: rgba(110, 231, 183, 0.6) !important;
+      }
+
+      // 未通关8关：橙色
+      &.nightmare-uncleared {
+        background: rgba(254, 215, 170, 0.8) !important;
+        color: #9a3412 !important;
+        border-color: rgba(253, 186, 116, 0.6) !important;
+      }
+
+      // 本周未通关：灰色
+      &.nightmare-none {
+        background: rgba(203, 213, 225, 0.5) !important;
+        color: #64748b !important;
+        border-color: rgba(203, 213, 225, 0.4) !important;
+      }
+    }
+
     &.arena-rank-tag {
+      .tag-icon-img {
+        width: 14px;
+        height: 14px;
+        object-fit: contain;
+        margin-right: 3px;
+      }
+
       font-weight: 600;
 
       // 有排名时显示绿色
@@ -4740,6 +5007,24 @@ const challengeTower = async (type) => {
 
     .tag-icon {
       font-size: 13px;
+    }
+
+    .tag-icon-img {
+      width: 14px;
+      height: 14px;
+      object-fit: contain;
+    }
+
+    .refresh-icon-img {
+      width: 12px;
+      height: 12px;
+      object-fit: contain;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+
+      &:hover {
+        transform: rotate(180deg);
+      }
     }
   }
 }
@@ -4789,6 +5074,13 @@ const challengeTower = async (type) => {
     font-size: 11px;
   }
 
+  .tag-icon-img {
+    width: 14px;
+    height: 14px;
+    object-fit: contain;
+    margin-right: 3px;
+  }
+
   .tag-text {
     flex: 1;
   }
@@ -4812,6 +5104,18 @@ const challengeTower = async (type) => {
 
     &:hover {
       color: #000000;
+      transform: rotate(180deg);
+    }
+  }
+
+  .refresh-icon-img {
+    width: 11px;
+    height: 11px;
+    object-fit: contain;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+
+    &:hover {
       transform: rotate(180deg);
     }
   }
@@ -4936,6 +5240,12 @@ const challengeTower = async (type) => {
     font-size: 11px;
   }
 
+  .tag-icon-img {
+    width: 14px;
+    height: 14px;
+    margin-right: 3px;
+  }
+
   .tag-text {
     flex: 1;
   }
@@ -4959,6 +5269,18 @@ const challengeTower = async (type) => {
 
     &:hover {
       color: #000000;
+      transform: rotate(180deg);
+    }
+  }
+
+  .refresh-icon-img {
+    width: 11px;
+    height: 11px;
+    object-fit: contain;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+
+    &:hover {
       transform: rotate(180deg);
     }
   }
@@ -5064,6 +5386,12 @@ const challengeTower = async (type) => {
     font-size: 11px;
   }
 
+  .tag-icon-img {
+    width: 14px;
+    height: 14px;
+    margin-right: 3px;
+  }
+
   .tag-text {
     flex: 1;
   }
@@ -5087,6 +5415,18 @@ const challengeTower = async (type) => {
 
     &:hover {
       color: #000000;
+      transform: rotate(180deg);
+    }
+  }
+
+  .refresh-icon-img {
+    width: 11px;
+    height: 11px;
+    object-fit: contain;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+
+    &:hover {
       transform: rotate(180deg);
     }
   }
@@ -5169,6 +5509,12 @@ const challengeTower = async (type) => {
     font-size: 11px;
   }
 
+  .tag-icon-img {
+    width: 14px;
+    height: 14px;
+    margin-right: 3px;
+  }
+
   .tag-text {
     flex: 1;
   }
@@ -5203,6 +5549,18 @@ const challengeTower = async (type) => {
       &:nth-child(3) {
         animation-delay: 0.4s;
       }
+    }
+  }
+
+  .refresh-icon-img {
+    width: 11px;
+    height: 11px;
+    object-fit: contain;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+
+    &:hover {
+      transform: rotate(180deg);
     }
   }
 }
@@ -5474,6 +5832,13 @@ html.dark .summary-item .value.warning {
 
 /* 金鱼达标标签样式 */
 .goldfish-tag {
+  .tag-icon-img {
+    width: 14px;
+    height: 14px;
+    object-fit: contain;
+    margin-right: 3px;
+  }
+
   &.all-met {
     background: #d1fae5 !important;
     border-color: #6ee7b7 !important;
@@ -5483,7 +5848,7 @@ html.dark .summary-item .value.warning {
   &.not-met {
     background: #fee2e2 !important;
     border-color: #fca5a5 !important;
-    color: #dc2626 !important;
+    color: #000000 !important;
   }
 }
 
@@ -5501,6 +5866,15 @@ html.dark .summary-item .value.warning {
       color: #000000;
       font-weight: 500;
       font-size: 9px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .progress-icon-img {
+      width: 14px;
+      height: 14px;
+      object-fit: contain;
     }
 
     .progress-value {
@@ -5627,7 +6001,13 @@ html.dark .summary-item .value.warning {
 
       .token-name {
         // 移动端使用更小的字体范围
-        font-size: clamp(9px, 2.5vw, 12px);
+        font-size: clamp(7px, 6cqi, 12px);
+        word-break: break-all;
+        line-height: 1.3;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
       }
     }
 
@@ -5674,10 +6054,16 @@ html.dark .summary-item .value.warning {
       font-size: 10px;
       border-radius: 4px;
       min-width: fit-content;
-      flex-shrink: 0;
+      flex-shrink: 1;
+      overflow: hidden;
 
       .tag-icon {
         font-size: 12px;
+      }
+
+      .tag-icon-img {
+        width: 13px;
+        height: 13px;
       }
 
       .tag-text {
@@ -6019,6 +6405,116 @@ html.dark .summary-item .value.warning {
 
   .tag-text {
     color: var(--text-primary) !important;
+  }
+}
+
+// ====== 窄卡片容器查询适配（卡片宽度 < 220px 时整体缩小） ======
+@container (max-width: 220px) {
+  .token-card {
+    padding: 6px;
+    border-radius: 8px;
+  }
+
+  .card-header {
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+
+    .header-left {
+      gap: 4px;
+
+      .drag-handle {
+        padding: 2px 4px;
+      }
+
+      .token-name {
+        font-size: clamp(7px, 6cqi, 11px);
+      }
+    }
+
+    .header-right {
+      gap: 2px;
+
+      .n-button {
+        width: 20px !important;
+        height: 20px !important;
+        min-width: 20px !important;
+
+        .n-icon {
+          font-size: 12px !important;
+
+          svg {
+            width: 12px !important;
+            height: 12px !important;
+          }
+        }
+      }
+
+      .status-dot {
+        width: 7px;
+        height: 7px;
+        margin-right: 2px;
+      }
+    }
+  }
+
+  .status-tags {
+    gap: 3px;
+    margin-bottom: 6px;
+
+    .status-tag {
+      padding: 2px 5px;
+      font-size: 9px;
+      border-radius: 10px;
+      gap: 2px;
+      min-width: auto !important;
+
+      .tag-icon-img {
+        width: 11px !important;
+        height: 11px !important;
+      }
+    }
+  }
+
+  .module-grid {
+    gap: 4px;
+    margin-top: 4px;
+  }
+
+  .tower-status-container,
+  .climb-tower-container,
+  .weird-tower-container,
+  .car-status-container {
+    padding: 4px;
+    border-radius: 6px;
+
+    .tower-status-header,
+    .climb-tower-header,
+    .weird-tower-header,
+    .car-status-header {
+      font-size: 9px;
+      margin-bottom: 3px;
+
+      .tag-icon-img {
+        width: 11px !important;
+        height: 11px !important;
+      }
+
+      .expand-icon {
+        font-size: 8px;
+      }
+
+      .refresh-icon-img {
+        width: 9px !important;
+        height: 9px !important;
+      }
+    }
+  }
+
+  // 每日任务 / 月度任务行
+  .daily-task-row,
+  .monthly-task-row {
+    font-size: 9px;
+    margin-bottom: 3px;
   }
 }
 

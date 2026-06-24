@@ -6,7 +6,7 @@
       <div class="preset-toolbar">
         <n-button type="primary" size="small" @click="createNewPreset">新建预设</n-button>
         <n-button size="small" type="success" @click="executeAllPresets" :disabled="presets.length === 0">
-          按顺序执行全部 ({{ presets.length }})
+          按顺序执行全部 ({{ presets.filter(p => p.usePresetTeam !== false).length }}/{{ presets.length }})
         </n-button>
         <n-button size="small" @click="exportPresets">导出预设</n-button>
         <n-upload
@@ -16,11 +16,45 @@
         >
           <n-button size="small">导入预设</n-button>
         </n-upload>
+        <n-popconfirm @positive-click="deleteAllPresets">
+          <template #trigger>
+            <n-button size="small" type="error" :disabled="presets.length === 0">删除全部</n-button>
+          </template>
+          确认删除全部 {{ presets.length }} 个预设？此操作不可撤销
+        </n-popconfirm>
+        <div class="toolbar-switch-group" style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 12px; white-space: nowrap;">卡点</span>
+          <n-switch
+            :value="allWaitLevel8"
+            @update:value="toggleAllWaitLevel8"
+            :disabled="presets.length === 0"
+            size="small"
+            class="feature-switch"
+          >
+            <template #checked>启用</template>
+            <template #unchecked>关闭</template>
+          </n-switch>
+          <span style="font-size: 12px; white-space: nowrap;">队伍</span>
+          <n-switch
+            :value="allPresetTeam"
+            @update:value="toggleAllPresetTeam"
+            :disabled="presets.length === 0"
+            size="small"
+            class="feature-switch"
+          >
+            <template #checked>启用</template>
+            <template #unchecked>关闭</template>
+          </n-switch>
+        </div>
       </div>
       <div v-for="(preset, pIdx) in presets" :key="preset.id" class="preset-item">
         <div class="preset-info">
           <span class="preset-name">
             {{ pIdx + 1 }}. {{ preset.name }}
+            <n-tag v-if="preset.waitLevel8" size="tiny" type="warning" :bordered="false" style="margin-left: 4px;">🕐卡点</n-tag>
+            <n-tag v-else size="tiny" :bordered="false" style="margin-left: 4px; opacity: 0.5;">卡点:关</n-tag>
+            <n-tag v-if="preset.usePresetTeam !== false" size="tiny" type="success" :bordered="false">✅队伍</n-tag>
+            <n-tag v-else size="tiny" type="error" :bordered="false" style="opacity: 0.6;">❎队伍</n-tag>
           </span>
           <span class="preset-meta">
             👑{{ getTokenName(preset.captainTokenId) }}
@@ -34,6 +68,15 @@
           <n-button size="tiny" @click="editPreset(preset)">编辑</n-button>
           <n-button size="tiny" type="success" @click="executePreset(preset)">一键挑战</n-button>
           <n-button size="tiny" type="error" @click="deletePreset(preset.id)">删除</n-button>
+          <n-switch
+            :value="preset.usePresetTeam !== false"
+            @update:value="(val) => { preset.usePresetTeam = val; savePresets(); }"
+            size="small"
+            class="team-switch"
+          >
+            <template #checked>队伍</template>
+            <template #unchecked>队伍</template>
+          </n-switch>
         </div>
       </div>
       <div v-if="presets.length === 0" class="preset-empty">暂无预设，点击"新建预设"创建</div>
@@ -81,10 +124,12 @@
           :options="addMemberOptions"
           size="small"
           filterable
-          placeholder="+ 添加成员"
-          style="width: 180px;"
+          clearable
+          placeholder="🔍 搜索并添加成员..."
+          style="width: 260px;"
           @update:value="addMember"
         />
+        <span v-if="addMemberOptions.length === 0" style="font-size: 12px; color: #999;">（无可用成员）</span>
       </div>
 
       <!-- 关卡配置网格 -->
@@ -129,6 +174,38 @@
             </div>
           </template>
         </div>
+      </div>
+
+      <!-- 凌晨卡点开关 -->
+      <div class="editor-row" style="margin-top: 10px; display: flex; align-items: center; padding: 8px; background: var(--bg-secondary, #f5f5f5); border-radius: 6px;">
+        <span class="editor-label">凌晨卡点：</span>
+        <n-switch
+          :value="form.waitLevel8"
+          @update:value="(val) => { form.waitLevel8 = val; }"
+          class="feature-switch"
+        >
+          <template #checked>启用</template>
+          <template #unchecked>关闭</template>
+        </n-switch>
+        <span style="font-size: 12px; color: #888; margin-left: 8px;">
+          开启后，周日执行时打完第7关会等待至周一00:00再挑战第8关
+        </span>
+      </div>
+
+      <!-- 预设队伍开关 -->
+      <div class="editor-row" style="margin-top: 6px; display: flex; align-items: center; padding: 8px; background: var(--bg-secondary, #f5f5f5); border-radius: 6px;">
+        <span class="editor-label">预设队伍：</span>
+        <n-switch
+          :value="form.usePresetTeam !== false"
+          @update:value="(val) => { form.usePresetTeam = val; }"
+          class="feature-switch"
+        >
+          <template #checked>启用</template>
+          <template #unchecked>关闭</template>
+        </n-switch>
+        <span style="font-size: 12px; color: #888; margin-left: 8px;">
+          开启后，执行预设时会自动切换各成员的十殿阵容
+        </span>
       </div>
 
       <!-- 保存按钮 -->
@@ -420,6 +497,8 @@ const createNewPreset = () => {
     memberTokenIds: [...(props.memberTokenIds || [])],
     teamSlots: {},
     levelConfig: {},
+    waitLevel8: false,
+    usePresetTeam: true,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -433,6 +512,8 @@ const editPreset = (preset) => {
   // 补全缺失字段
   if (!form.value.memberTokenIds) form.value.memberTokenIds = [];
   if (!form.value.teamSlots) form.value.teamSlots = {};
+  if (form.value.waitLevel8 === undefined) form.value.waitLevel8 = false;
+  if (form.value.usePresetTeam === undefined) form.value.usePresetTeam = true;
   const currentIds = [
     ...(form.value.memberTokenIds || []),
     ...(form.value.captainTokenId ? [form.value.captainTokenId] : []),
@@ -474,6 +555,13 @@ const deletePreset = (id) => {
   message.success('预设已删除');
 };
 
+const deleteAllPresets = () => {
+  const count = presets.value.length;
+  presets.value = [];
+  savePresets();
+  message.success(`已删除全部 ${count} 个预设`);
+};
+
 const executePreset = (preset) => {
   showPresetList.value = false;
   emit('execute', preset);
@@ -481,9 +569,30 @@ const executePreset = (preset) => {
 
 const executeAllPresets = () => {
   if (presets.value.length === 0) { message.warning('暂无预设可执行'); return; }
+  const activePresets = presets.value.filter(p => p.usePresetTeam !== false);
+  const skippedCount = presets.value.length - activePresets.length;
+  if (activePresets.length === 0) { message.warning('所有预设队伍已关闭，无可执行的预设'); return; }
   showPresetList.value = false;
-  message.info(`开始按顺序执行 ${presets.value.length} 个预设...`);
-  emit('execute-all', [...presets.value]);
+  if (skippedCount > 0) {
+    message.info(`跳过 ${skippedCount} 个队伍关闭的预设，开始执行 ${activePresets.length} 个预设...`);
+  } else {
+    message.info(`开始按顺序执行 ${activePresets.length} 个预设...`);
+  }
+  emit('execute-all', [...activePresets]);
+};
+
+// ====== 卡点 + 队伍 独立开关 ======
+const allWaitLevel8 = computed(() => presets.value.length > 0 && presets.value.every(p => p.waitLevel8));
+const allPresetTeam = computed(() => presets.value.length > 0 && presets.value.every(p => p.usePresetTeam !== false));
+
+const toggleAllWaitLevel8 = (val) => {
+  presets.value.forEach(p => { p.waitLevel8 = val; });
+  savePresets();
+};
+
+const toggleAllPresetTeam = (val) => {
+  presets.value.forEach(p => { p.usePresetTeam = val; });
+  savePresets();
 };
 
 // ====== 导入/导出 ======
@@ -512,6 +621,12 @@ const handleImportPresets = async ({ file }) => {
     imported.forEach((p) => {
       if (!p.id || !p.name) return;
       if (existingIds.has(p.id)) return; // 跳过重复
+      // 补充缺失的卡点/队伍默认值
+      if (p.waitLevel8 === undefined) p.waitLevel8 = false;
+      if (p.usePresetTeam === undefined) p.usePresetTeam = true;
+      if (!p.teamSlots) p.teamSlots = {};
+      if (!p.levelConfig) p.levelConfig = {};
+      if (!p.memberTokenIds) p.memberTokenIds = [];
       presets.value.push(p);
       added++;
     });
@@ -549,7 +664,7 @@ defineExpose({ open, close });
       .preset-name { font-weight: bold; display: block; }
       .preset-meta { font-size: 12px; color: var(--text-tertiary); }
     }
-    .preset-actions { display: flex; gap: 4px; }
+    .preset-actions { display: flex; gap: 4px; align-items: center; }
   }
   .preset-empty { text-align: center; color: var(--text-tertiary); padding: 20px; }
 }
@@ -598,5 +713,18 @@ defineExpose({ open, close });
     .btn-active { font-weight: bold; }
   }
   .editor-actions { display: flex; gap: 8px; margin-top: 16px; }
+}
+// 绿色开关样式（工具栏 + 编辑器 + 列表）
+:deep(.feature-switch) {
+  --n-rail-color-active: #18a058 !important;
+  --n-rail-color: #ccc !important;
+  min-width: 64px;
+  .n-switch__rail {
+    min-width: 64px;
+  }
+}
+:deep(.team-switch) {
+  --n-rail-color-active: #18a058 !important;
+  --n-rail-color: #ccc !important;
 }
 </style>

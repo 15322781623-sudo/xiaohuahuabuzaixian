@@ -591,7 +591,7 @@ export function createCarManager({ tokenStore, connectionManager, batchSettings,
       tokenStatus[tokenId] = "failed";
       addLog({
         time: new Date().toLocaleTimeString(),
-        message: `智能发车失败: ${error.message}`,
+        message: `${token.name} 智能发车失败: ${error.message}`,
         type: "error",
       });
     } finally {

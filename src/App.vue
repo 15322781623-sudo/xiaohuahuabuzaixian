@@ -4,9 +4,11 @@
       <n-loading-bar-provider>
         <n-notification-provider>
           <n-dialog-provider>
-            <div id="app">
-              <router-view></router-view>
-            </div>
+            <ApkUpdateHandler>
+              <div id="app">
+                <router-view></router-view>
+              </div>
+            </ApkUpdateHandler>
           </n-dialog-provider>
         </n-notification-provider>
       </n-loading-bar-provider>
@@ -18,6 +20,7 @@
 import { computed, onMounted, onUnmounted } from "vue";
 import { darkTheme } from "naive-ui";
 import { useTheme } from "@/composables/useTheme";
+import ApkUpdateHandler from "@/components/ApkUpdateHandler.vue";
 
 const { isDark, initTheme, setupSystemThemeListener, updateReactiveState }
   = useTheme();
@@ -46,6 +49,8 @@ onMounted(() => {
 
   // 初始化时更新状态
   updateReactiveState();
+
+  // APK更新检查已移至 ApkUpdateHandler 组件
 });
 
 onUnmounted(() => {

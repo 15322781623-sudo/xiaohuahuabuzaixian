@@ -21,8 +21,18 @@
             :step="100"
           ></n-input-number>
         </div>
+        <div class="setting-item">
+          <span class="label">鱼灵目标星级</span>
+          <n-select
+            v-model:value="fishTargetStar"
+            :options="fishStarOptions"
+            size="small"
+            style="width: 100px"
+          />
+        </div>
         <div class="status-row">
           <span>英雄数量：{{ heroIds.length }}</span>
+          <span>鱼灵数量：{{ fishArtifactIds.length }}</span>
         </div>
       </div>
       <div class="progress-row">
@@ -47,6 +57,22 @@
           @click="startBookUpgrade"
         >
           图鉴
+        </a-button>
+        <a-button
+          size="small"
+          type="primary"
+          :disabled="state.isRunning"
+          @click="startFishBookUpgrade"
+        >
+          鱼图鉴
+        </a-button>
+        <a-button
+          size="small"
+          type="primary"
+          :disabled="state.isRunning"
+          @click="startFishUpgrade"
+        >
+          鱼升星
         </a-button>
         <a-button
           size="small"
@@ -81,12 +107,20 @@ import { computed, ref } from "vue";
 import { useMessage } from "naive-ui";
 import { useTokenStore } from "@/stores/tokenStore";
 import MyCard from "../Common/MyCard.vue";
-import { HERO_DICT } from "@/utils/HeroList";
+import { HERO_DICT, FishMap } from "@/utils/HeroList";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
 
 const delay = ref(300);
+const fishTargetStar = ref(5);
+const fishStarOptions = [
+  { label: '1星', value: 1 },
+  { label: '2星', value: 2 },
+  { label: '3星', value: 3 },
+  { label: '4星', value: 4 },
+  { label: '5星', value: 5 },
+];
 const logs = ref([]);
 const state = ref({
   isRunning: false,
@@ -98,6 +132,7 @@ const state = ref({
 });
 
 const heroIds = computed(() => Object.keys(HERO_DICT).map(Number));
+const fishArtifactIds = computed(() => Object.keys(FishMap).map(Number));
 
 const percent = computed(() =>
   state.value.total > 0
@@ -124,12 +159,28 @@ const startHeroUpgrade = async () => {
   await runHeroUpgrade({ delay: delay.value });
 };
 
-/** 启动仅图鉴升星 */
+/** 启动仅图鉴升星（英雄+鱼灵） */
 const startBookUpgrade = async () => {
   state.value.stopRequested = false;
-  state.value.total = heroIds.value.length;
+  state.value.total = heroIds.value.length + fishArtifactIds.value.length;
   state.value.done = 0;
   await runBookUpgrade({ delay: delay.value });
+};
+
+/** 启动仅鱼灵图鉴升星 */
+const startFishBookUpgrade = async () => {
+  state.value.stopRequested = false;
+  state.value.total = fishArtifactIds.value.length;
+  state.value.done = 0;
+  await runFishBookUpgrade({ delay: delay.value });
+};
+
+/** 启动仅鱼灵升星 */
+const startFishUpgrade = async () => {
+  state.value.stopRequested = false;
+  state.value.total = fishArtifactIds.value.length;
+  state.value.done = 0;
+  await runFishUpgrade({ delay: delay.value });
 };
 
 /** 启动仅领取奖励 */
@@ -179,7 +230,7 @@ const executeUpgradeStarTask = async (mod) => {
 
     state.value.progressText = "领取奖励";
     message.success("图鉴升星完成，开始领取奖励");
-    addLog("图鉴升星全部完成", "success");
+    addLog("图鉴升星全部完成（含鱼灵）", "success");
 
     await runClaimRewards(mod);
 
@@ -212,37 +263,38 @@ const runHeroUpgrade = async (mod) => {
   }
   try {
     state.value.isRunning = true;
+    let heroSuccessCount = 0;
+    let heroTotalStars = 0;
+    addLog(`开始英雄升星，共${heroIds.value.length}个英雄`, "info");
     for (const heroId of heroIds.value) {
       if (state.value.stopRequested)
         break;
-      let skip = false;
+      let heroStars = 0;
       for (let i = 1; i <= 10; i++) {
-        if (state.value.stopRequested) {
-          skip = true;
+        if (state.value.stopRequested)
           break;
-        }
         try {
-          const res = await tokenStore.sendMessageWithPromise(
+          await tokenStore.sendMessageWithPromise(
             tokenId,
             "hero_heroupgradestar",
             { heroId },
             8000,
           );
-          const ok
-            = res && (res.code === 0 || res.success === true || res.result === 0);
-          addLog(`英雄ID:${heroId} 升星第${i}/10次`, ok ? "success" : "error");
-          if (!ok)
-            throw new Error("升星失败");
+          // sendWithPromise resolve即为成功
+          heroStars++;
+          heroTotalStars++;
         } catch (err) {
-          addLog(`英雄ID:${heroId} 升星第${i}/10次失败，跳过剩余次数`, "error");
-          skip = true;
+          break;
         }
         await sleep(mod.delay);
-        if (skip)
-          break;
+      }
+      if (heroStars > 0) {
+        heroSuccessCount++;
+        addLog(`英雄:${HERO_DICT[heroId]?.name || heroId} 升星成功 ×${heroStars}`, "success");
       }
       state.value.done++;
     }
+    addLog(`英雄升星完成：${heroSuccessCount}个英雄升星，共${heroTotalStars}星`, "success");
     message.success(state.value.stopRequested ? "已停止" : "英雄升星完成");
   } finally {
     state.value.isRunning = false;
@@ -267,44 +319,302 @@ const runBookUpgrade = async (mod) => {
   }
   try {
     state.value.isRunning = true;
+    let heroSuccessCount = 0;
+    let heroTotalStars = 0;
+    let heroSkippedCount = 0;
+
+    // === 英雄图鉴升星（双轮尝试） ===
+    addLog(`开始英雄图鉴升星，共${heroIds.value.length}个英雄`, "info");
+
+    // 第一轮：尝试所有英雄
+    const firstPassFailed = [];
     for (const heroId of heroIds.value) {
-      if (state.value.stopRequested)
-        break;
-      let skip = false;
+      if (state.value.stopRequested) break;
+      let heroStars = 0;
       for (let i = 1; i <= 10; i++) {
-        if (state.value.stopRequested) {
-          skip = true;
-          break;
-        }
+        if (state.value.stopRequested) break;
         try {
-          const res = await tokenStore.sendMessageWithPromise(
-            tokenId,
-            "book_upgrade",
-            { heroId },
-            8000,
+          await tokenStore.sendMessageWithPromise(
+            tokenId, "book_upgrade", { heroId }, 8000,
           );
-          const ok
-            = res && (res.code === 0 || res.success === true || res.result === 0);
-          addLog(
-            `英雄ID:${heroId} 图鉴升星第${i}/10次`,
-            ok ? "success" : "error",
-          );
-          if (!ok)
-            throw new Error("图鉴升星失败");
+          heroStars++;
+          heroTotalStars++;
         } catch (err) {
-          addLog(
-            `英雄ID:${heroId} 图鉴升星第${i}/10次失败，跳过剩余次数`,
-            "error",
-          );
-          skip = true;
+          break;
         }
         await sleep(mod.delay);
-        if (skip)
-          break;
+      }
+      if (heroStars > 0) {
+        heroSuccessCount++;
+        addLog(`英雄:${HERO_DICT[heroId]?.name || heroId} 图鉴升星成功 ×${heroStars}`, "success");
+      } else {
+        firstPassFailed.push(heroId);
       }
       state.value.done++;
     }
+
+    // 第二轮：重试第一轮失败的英雄
+    if (firstPassFailed.length > 0 && !state.value.stopRequested) {
+      await sleep(1000);
+      addLog(`第二轮重试 ${firstPassFailed.length} 个未成功英雄`, "info");
+      let retrySuccessCount = 0;
+      for (const heroId of firstPassFailed) {
+        if (state.value.stopRequested) break;
+        let heroStars = 0;
+        for (let i = 1; i <= 10; i++) {
+          if (state.value.stopRequested) break;
+          try {
+            await tokenStore.sendMessageWithPromise(
+              tokenId, "book_upgrade", { heroId }, 8000,
+            );
+            heroStars++;
+            heroTotalStars++;
+          } catch (err) {
+            break;
+          }
+          await sleep(mod.delay);
+        }
+        if (heroStars > 0) {
+          retrySuccessCount++;
+          heroSuccessCount++;
+          addLog(`英雄:${HERO_DICT[heroId]?.name || heroId} 重试升星成功 ×${heroStars}`, "success");
+        }
+      }
+      heroSkippedCount = firstPassFailed.length - retrySuccessCount;
+    }
+
+    addLog(`英雄图鉴升星完成：${heroSuccessCount}个英雄升星，共${heroTotalStars}星，${heroSkippedCount}个已满星跳过`, "success");
+
+    // 鱼灵图鉴升星（最高5星）- 先查询当前星级，跳过已满星
+    const maxFishStar = fishTargetStar.value;
+    let fishSuccessCount = 0;
+    let fishTotalStars = 0;
+    let fishSkippedCount = 0;
+
+    // 查询角色信息获取鱼灵当前星级
+    let fishStarMap = {};
+    try {
+      const roleInfo = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 8000);
+      const role = roleInfo?.role || roleInfo;
+      const books = role?.artifactBooks || {};
+      for (const [fishId, book] of Object.entries(books)) {
+        fishStarMap[Number(fishId)] = book.claimedStar || 0;
+      }
+    } catch (e) {
+      addLog("查询鱼灵星级数据失败，将尝试全部鱼灵", "error");
+    }
+
+    // 筛选需要升星的鱼灵：已满星跳过，未拥有和未满星都尝试
+    const fishToUpgrade = fishArtifactIds.value.filter(id => {
+      const currentStar = fishStarMap[id];
+      if (currentStar !== undefined && currentStar >= maxFishStar) {
+        fishSkippedCount++;
+        return false; // 已满星，跳过
+      }
+      return true; // 未拥有或未满星，都尝试升星
+    });
+
+    addLog(`开始鱼灵图鉴升星：${fishToUpgrade.length}个需升星，${fishSkippedCount}个已满星跳过，目标${maxFishStar}星`, "info");
+    for (const artifactId of fishToUpgrade) {
+      if (state.value.stopRequested)
+        break;
+      const startStar = fishStarMap[artifactId] || 0;
+      const isUnowned = fishStarMap[artifactId] === undefined;
+      let fishStars = 0;
+      for (let star = startStar + 1; star <= maxFishStar; star++) {
+        if (state.value.stopRequested)
+          break;
+        try {
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "book_upgradeartifact",
+            { artifactId },
+            8000,
+          );
+          fishStars++;
+          fishTotalStars++;
+        } catch (err) {
+          // 未拥有鱼灵第一次失败则跳过，已拥有则继续尝试
+          if (isUnowned && star === 1) break;
+        }
+        await sleep(mod.delay);
+      }
+      if (fishStars > 0) {
+        fishSuccessCount++;
+        addLog(`鱼灵:${FishMap[artifactId]?.name || artifactId} ${startStar}→${startStar + fishStars}星`, "success");
+      }
+      state.value.done++;
+    }
+    addLog(`鱼灵图鉴升星完成：${fishSuccessCount}个升星，共${fishTotalStars}星，${fishSkippedCount}个跳过`, "success");
     message.success(state.value.stopRequested ? "已停止" : "图鉴升星完成");
+  } finally {
+    state.value.isRunning = false;
+  }
+};
+
+/**
+ * 仅执行鱼灵图鉴升星
+ * @param {{ delay: number }} mod
+ */
+const runFishBookUpgrade = async (mod) => {
+  const token = tokenStore.selectedToken;
+  if (!token) {
+    message.warning("请先选择Token");
+    return;
+  }
+  const tokenId = token.id;
+  const status = tokenStore.getWebSocketStatus(tokenId);
+  if (status !== "connected") {
+    message.error("WebSocket未连接");
+    return;
+  }
+  try {
+    state.value.isRunning = true;
+    const maxFishStar = fishTargetStar.value;
+    let fishSuccessCount = 0;
+    let fishTotalStars = 0;
+    let fishSkippedCount = 0;
+
+    // 查询角色信息获取鱼灵当前星级
+    let fishStarMap = {};
+    try {
+      const roleInfo = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 8000);
+      const role = roleInfo?.role || roleInfo;
+      const books = role?.artifactBooks || {};
+      for (const [fishId, book] of Object.entries(books)) {
+        fishStarMap[Number(fishId)] = book.claimedStar || 0;
+      }
+    } catch (e) {
+      addLog("查询鱼灵星级数据失败，将尝试全部鱼灵", "error");
+    }
+
+    // 筛选需要升星的鱼灵：已满星跳过，未拥有和未满星都尝试
+    const fishToUpgrade = fishArtifactIds.value.filter(id => {
+      const currentStar = fishStarMap[id];
+      if (currentStar !== undefined && currentStar >= maxFishStar) {
+        fishSkippedCount++;
+        return false;
+      }
+      return true;
+    });
+
+    addLog(`开始鱼灵图鉴升星：${fishToUpgrade.length}个需升星，${fishSkippedCount}个已满星跳过，目标${maxFishStar}星`, "info");
+    for (const artifactId of fishToUpgrade) {
+      if (state.value.stopRequested)
+        break;
+      const startStar = fishStarMap[artifactId] || 0;
+      const isUnowned = fishStarMap[artifactId] === undefined;
+      let fishStars = 0;
+      for (let star = startStar + 1; star <= maxFishStar; star++) {
+        if (state.value.stopRequested)
+          break;
+        try {
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "book_upgradeartifact",
+            { artifactId },
+            8000,
+          );
+          fishStars++;
+          fishTotalStars++;
+        } catch (err) {
+          // 未拥有鱼灵第一次失败则跳过，已拥有则继续尝试
+          if (isUnowned && star === 1) break;
+        }
+        await sleep(mod.delay);
+      }
+      if (fishStars > 0) {
+        fishSuccessCount++;
+        addLog(`鱼灵:${FishMap[artifactId]?.name || artifactId} ${startStar}→${startStar + fishStars}星`, "success");
+      }
+      state.value.done++;
+    }
+    addLog(`鱼灵图鉴升星完成：${fishSuccessCount}个升星，共${fishTotalStars}星，${fishSkippedCount}个跳过`, "success");
+    message.success(state.value.stopRequested ? "已停止" : "鱼灵图鉴升星完成");
+  } finally {
+    state.value.isRunning = false;
+  }
+};
+
+/**
+ * 仅执行鱼灵升星（artifact_upgradestar）
+ * itemId 规则：14030+star，如14031=2星、14034=5星
+ * @param {{ delay: number }} mod
+ */
+const runFishUpgrade = async (mod) => {
+  const token = tokenStore.selectedToken;
+  if (!token) {
+    message.warning("请先选择Token");
+    return;
+  }
+  const tokenId = token.id;
+  const status = tokenStore.getWebSocketStatus(tokenId);
+  if (status !== "connected") {
+    message.error("WebSocket未连接");
+    return;
+  }
+  try {
+    state.value.isRunning = true;
+    const maxFishStar = fishTargetStar.value;
+    let fishSuccessCount = 0;
+    let fishSkippedCount = 0;
+
+    // 查询角色信息获取鱼灵当前星级
+    let fishStarMap = {};
+    try {
+      const roleInfo = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 8000);
+      const role = roleInfo?.role || roleInfo;
+      const books = role?.artifactBooks || {};
+      for (const [fishId, book] of Object.entries(books)) {
+        fishStarMap[Number(fishId)] = book.claimedStar || 0;
+      }
+    } catch (e) {
+      addLog("查询鱼灵星级数据失败，将尝试全部鱼灵", "error");
+    }
+
+    // 筛选：已满星跳过
+    const fishToUpgrade = fishArtifactIds.value.filter(id => {
+      const currentStar = fishStarMap[id];
+      if (currentStar !== undefined && currentStar >= maxFishStar) {
+        fishSkippedCount++;
+        return false;
+      }
+      return true;
+    });
+
+    addLog(`开始鱼灵升星：${fishToUpgrade.length}个需升星，${fishSkippedCount}个已满星跳过，目标${maxFishStar}星`, "info");
+    for (const artifactId of fishToUpgrade) {
+      if (state.value.stopRequested)
+        break;
+      const startStar = fishStarMap[artifactId] || 0;
+      const isUnowned = fishStarMap[artifactId] === undefined;
+      let fishStars = 0;
+      for (let star = startStar + 1; star <= maxFishStar; star++) {
+        if (state.value.stopRequested)
+          break;
+        const itemId = 14029 + star;
+        try {
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "artifact_upgradestar",
+            { heroId: -1, itemId },
+            8000,
+          );
+          fishStars++;
+        } catch (err) {
+          // 未拥有鱼灵第一次失败则跳过，已拥有则继续尝试
+          if (isUnowned && star === 1) break;
+        }
+        await sleep(mod.delay);
+      }
+      if (fishStars > 0) {
+        fishSuccessCount++;
+        addLog(`鱼灵:${FishMap[artifactId]?.name || artifactId} ${startStar}→${startStar + fishStars}星`, "success");
+      }
+      state.value.done++;
+    }
+    addLog(`鱼灵升星完成：${fishSuccessCount}个升星，${fishSkippedCount}个跳过`, "success");
+    message.success(state.value.stopRequested ? "已停止" : "鱼灵升星完成");
   } finally {
     state.value.isRunning = false;
   }
@@ -331,28 +641,20 @@ const runClaimRewards = async (mod) => {
     for (let i = 1; i <= 10; i++) {
       if (state.value.stopRequested)
         break;
-      let success = true;
       try {
-        const res = await tokenStore.sendMessageWithPromise(
+        await tokenStore.sendMessageWithPromise(
           tokenId,
           "book_claimpointreward",
           {},
           8000,
         );
-        const ok
-          = res && (res.code === 0 || res.success === true || res.result === 0);
-        addLog(`领取图鉴奖励第${i}/10次`, ok ? "success" : "error");
-        if (!ok)
-          throw new Error("领取奖励失败");
+        // sendWithPromise resolve即为成功
+        addLog(`领取图鉴奖励第${i}/10次`, "success");
         state.value.done++;
       } catch (err) {
-        addLog(`领取图鉴奖励第${i}/10次失败，跳过剩余次数`, "error");
-        state.value.done++;
-        success = false;
+        break;
       }
       await sleep(mod.delay);
-      if (!success)
-        break;
     }
     message.success(state.value.stopRequested ? "已停止" : "领取奖励完成");
   } finally {

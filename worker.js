@@ -1,4 +1,18 @@
 
+// APK 版本管理配置（更新APK时修改此处）
+// downloadUrl 支持两种模式：
+//   1. 外部链接模式（推荐）：直接指向 GitHub Releases 等下载地址
+//   2. R2模式："/api/apk/download" — 从 Cloudflare R2 存储桶下载（需启用R2）
+const APK_VERSION_CONFIG = {
+  latestVersion: "1.0.0",
+  versionCode: 1,
+  // 外部下载链接（GitHub Releases格式：https://github.com/用户名/仓库名/releases/download/v版本号/文件名.apk）
+  downloadUrl: "https://github.com/YOUR_USERNAME/YOUR_REPO/releases/latest/download/xyzw-helper.apk",
+  changelog: "初始版本",
+  minVersionCode: 1,  // 低于此版本强制更新
+  forceUpdate: false,  // 是否强制更新
+};
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -14,6 +28,57 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
     }
+
+    // ==================== APK 版本管理接口 ====================
+    
+    // 获取最新版本信息
+    if (url.pathname === '/api/apk/version') {
+      const versionInfo = {
+        ...APK_VERSION_CONFIG,
+        checkTime: new Date().toISOString(),
+      };
+      return new Response(JSON.stringify(versionInfo), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // APK 下载（外部链接重定向或 R2 存储桶）
+    if (url.pathname === '/api/apk/download') {
+      const dlUrl = APK_VERSION_CONFIG.downloadUrl;
+      
+      // 外部链接模式：直接重定向到 GitHub Releases 等外部地址
+      if (dlUrl.startsWith('http://') || dlUrl.startsWith('https://')) {
+        return Response.redirect(dlUrl, 302);
+      }
+      
+      // R2 模式：从 Cloudflare R2 存储桶获取
+      try {
+        if (env.APK_BUCKET) {
+          const apkFile = await env.APK_BUCKET.get(`xyzw-helper-${APK_VERSION_CONFIG.latestVersion}.apk`);
+          if (apkFile) {
+            const headers = new Headers(corsHeaders);
+            headers.set('Content-Type', 'application/vnd.android.package-archive');
+            headers.set('Content-Disposition', `attachment; filename="xyzw-helper-${APK_VERSION_CONFIG.latestVersion}.apk"`);
+            return new Response(apkFile.body, { headers });
+          }
+        }
+        
+        return new Response(JSON.stringify({ 
+          error: 'APK文件暂未上传，请联系开发者',
+          version: APK_VERSION_CONFIG.latestVersion 
+        }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // ==================== 原有代理逻辑 ====================
 
     // Proxy configuration
     const proxies = [

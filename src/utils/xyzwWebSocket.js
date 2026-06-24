@@ -34,6 +34,7 @@ const errorCodeMap = {
 12000050: "今日发车次数已达上限",
   12000060: "不在发车时间内",
   400190: "没有可领取的签到奖励",
+  400180: "没有可领取的鱼竿",
   1000020: "今天已经领取过奖励了",
   3300050: "购买数量超出限制",
   700020: "已经领取过这个任务",
@@ -50,6 +51,11 @@ const errorCodeMap = {
   3000280: "已领取过100金砖奖励",
   200370: "已领取完累抽奖励",
   7100022: "当前账号已加入其他房间",
+  7100140: "限流中，等待恢复即可",
+  3200010: "档位未达标无法领取",
+  3200020: "已领取消耗道具",
+  [-10006]: "当前未满足无法领取",
+  1100010: "当前免费道具已领取",
 };
 
 // 事件节流定义表，根据实际需要调整命令和节流时间
@@ -159,10 +165,12 @@ export function registerDefaultCommands(reg) {
     })
     .register("system_getdatabundlever", { isAudit: false })
     .register("system_buygold", { buyNum: 1 })
+    .register("system_buyitem", { itemId: 0, buyNum: 1 })
     .register("system_claimhangupreward")
     .register("system_signinreward")
     .register("system_mysharecallback", { isSkipShareCard: true, type: 2 })
     .register("system_custom", { key: "", value: 0 })
+    .register("system_claimcdkreward") // 兑换码领取
 
     // 任务相关
     .register("task_claimdailypoint", { taskId: 1 })
@@ -195,10 +203,13 @@ export function registerDefaultCommands(reg) {
     .register("store_buy", { goodsId: 1 })
     .register("store_purchase", { goodsId: 1 })
     .register("store_getpurchase")
+    .register("store_setpurchase")
     .register("store_refresh", { storeId: 1 })
     .register("activity_buystoregoods")
     .register("activity_claimrolluppack")
     .register("activity_claimredquenchreward")
+    .register("activity_claimtaskreward") // 领取消耗活动任务奖励
+    .register("activity_commonbuygoods", { goodsId: 26061941, num: 1 }) // 领取消耗活动免费道具
     .register("activity_claimweekactreward") // 宝箱周任务达标奖励
     .register("activity_claimweekactreward", { typ: 2, selectRewardsMap: { "0": 1 } }) // 万能红将碎片
     .register("activity_claimweekactreward", { typ: 2, selectRewardsMap: { "1": 1 } }) // 梦魇晶石
@@ -210,6 +221,10 @@ export function registerDefaultCommands(reg) {
     .register("item_openpack") // 砸金蛋
     .register("item_openbox")
     .register("item_batchclaimboxpointreward") // 领取积分值宝箱奖励
+    .register("item_consume", { itemId: 1008, quantity: 10 }) // 火把等消耗道具
+    .register("activity_exchange") // 消耗活动兑换商店购买
+    .register("activity_claimmilestone") // 消耗活动领取里程碑进度奖励
+    .register("autumn_useitem") // 挥鼓助威消耗
 
     // 折扣
     .register("discount_getdiscountinfo")
@@ -327,7 +342,6 @@ export function registerDefaultCommands(reg) {
     // 换皮闯关活动相关
     .register("activity_startactegame", { actId: 2605292 })
     .register("activity_actegamestageclaim", { actId: 2605292 })
-    .register("activity_commonbuygoods", { goodsId: 26052931 })
 
     // 队伍相关
     .register("presetteam_getinfo")
@@ -367,6 +381,8 @@ export function registerDefaultCommands(reg) {
     // 升星相关
     .register("hero_heroupgradestar")
     .register("book_upgrade")
+    .register("book_upgradeartifact")
+    .register("artifact_upgradestar")
     .register("book_claimpointreward")
 
     // 排名相关
@@ -416,6 +432,8 @@ export function registerDefaultCommands(reg) {
     // 珍宝阁相关
     .register("collection_claimfreereward")
     .register("collection_goodslist")
+    .register("collection_activate", { poolType: 2, id: 0, isAll: false, seriesId: 0 })
+    .register("collection_claimtotal")
 
     // 车辆相关
     .register("car_getrolecar")
@@ -478,6 +496,7 @@ export function registerDefaultCommands(reg) {
     .register("matchteam_dismiss")
     .register("matchteam_setleader")
     .register("matchteam_kick")
+    .register("matchteam_lock")
     .register("bosstower_getinfo")
     .register("bosstower_startboss")
     .register("bosstower_startbox")
@@ -487,6 +506,9 @@ export function registerDefaultCommands(reg) {
     .register("towers_getinfo")
     .register("towers_start")
     .register("towers_fight")
+
+    // 竞技大厅（逐鹿盐山）
+    .register("apex_taskclaim", { confId: 1 })
 
     // 发送游戏内消息
     .register("system_sendchatmessage");
@@ -1268,8 +1290,14 @@ export class XyzwWebSocketClient {
 
   /** 处理 Promise 响应 */
   _handlePromiseResponse(packet) {
+    const debugCmd = typeof packet?.cmd === 'string' ? packet.cmd : '';
+    const isMatchTeam = debugCmd.toLowerCase().includes('matchteam');
+
     // 优先使用resp字段进行响应匹配（新的正确方式）
-    if (packet.resp !== undefined && this.promises[packet.resp]) {
+    if (packet.resp !== undefined && packet.resp !== null && this.promises[packet.resp]) {
+      if (isMatchTeam) {
+        console.log(`[Promise匹配] resp=${packet.resp} 精确匹配成功 cmd=${debugCmd}`);
+      }
       const promiseData = this.promises[packet.resp];
       delete this.promises[packet.resp];
 
@@ -1295,6 +1323,11 @@ export class XyzwWebSocketClient {
       return;
     }
 
+    // resp字段存在但无匹配promise时，输出调试日志
+    if (isMatchTeam && packet.resp !== undefined) {
+      console.log(`[Promise匹配] resp=${packet.resp} 无匹配promise，回退cmd匹配 cmd=${debugCmd}, 等待中的promises:`, Object.keys(this.promises));
+    }
+
     // 兼容旧的基于cmd名称的匹配方式（保留为向后兼容）
     const cmd = packet.cmd;
     if (!cmd)
@@ -1309,6 +1342,8 @@ export class XyzwWebSocketClient {
       charge_claimaddupresp: "charge_claimaddup",
       collection_goodslistresp: "collection_goodslist",
       collection_claimfreerewardresp: "collection_claimfreereward",
+      collection_activateresp: "collection_activate",
+      collection_claimtotalresp: "collection_claimtotal",
       legion_getarearankresp: "legion_getarearank",
       legionwar_getgoldmonthwarrankresp: "legionwar_getgoldmonthwarrank",
       nightmare_getroleinforesp: "nightmare_getroleinfo",
@@ -1323,8 +1358,10 @@ export class XyzwWebSocketClient {
       hero_recruitresp: "hero_recruit",
       friend_batchresp: "friend_batch",
       system_claimhanguprewardresp: "system_claimhangupreward",
+      system_claimcdkrewardresp: "system_claimcdkreward",
       item_openboxresp: ["item_openbox", "item_batchclaimboxpointreward"],
       item_openpackresp: "item_openpack", // 砸金蛋响应
+      item_consumeresp: "item_consume", // 火把等消耗道具响应
       bottlehelper_claimresp: "bottlehelper_claim",
       bottlehelper_startresp: "bottlehelper_start",
       bottlehelper_stopresp: "bottlehelper_stop",
@@ -1363,6 +1400,7 @@ export class XyzwWebSocketClient {
       mail_deleteallunreceivedwithcategoryresp: "mail_deleteallunreceivedwithcategory",
       store_buyresp: "store_purchase",
       store_getpurchaseresp: "store_getpurchase",
+      store_setpurchaseresp: "store_setpurchase",
       discount_getdiscountinforesp: "discount_getdiscountinfo",
       system_getdatabundleverresp: "system_getdatabundlever",
       tower_claimrewardresp: "tower_claimreward",
@@ -1417,6 +1455,7 @@ export class XyzwWebSocketClient {
       matchteam_dismissresp: "matchteam_dismiss",
       matchteam_setleaderresp: "matchteam_setleader",
       matchteam_kickresp: "matchteam_kick",
+      matchteam_lockresp: "matchteam_lock",
       bosstower_getinforesp: "bosstower_getinfo",
       bosstower_startbossresp: "bosstower_startboss",
       bosstower_startboxresp: "bosstower_startbox",
@@ -1424,6 +1463,8 @@ export class XyzwWebSocketClient {
       // 升星相关响应映射
       hero_heroupgradestarresp: "hero_heroupgradestar",
       book_upgraderesp: "book_upgrade",
+      book_upgradeartifactresp: "book_upgradeartifact",
+      artifact_upgradestarresp: "artifact_upgradestar",
       book_claimpointrewardresp: "book_claimpointreward",
       // 军团信息
       legion_getinforesp: "legion_getinfo",
@@ -1441,6 +1482,12 @@ export class XyzwWebSocketClient {
       car_claimpartconsumerewardresp: "car_claimpartconsumereward",
       role_gettargetteamresp: "role_gettargetteam",
       activity_warorderclaimresp: "activity_recyclewarorderrewardclaim",
+      activity_claimtaskrewardresp: "activity_claimtaskreward",
+      activity_commonbuygoodsresp: "activity_commonbuygoods",
+      activity_notify: "activity_commonbuygoods",
+      autumn_useitemresp: "autumn_useitem",
+      activity_exchangeresp: "activity_exchange",
+      activity_claimmilestoneresp: "activity_claimmilestone",
       arena_getarearankresp: "arena_getarearank",
       bosstower_gethelprankresp: "bosstower_gethelprank",
       // 功法相关响应映射
@@ -1481,6 +1528,7 @@ export class XyzwWebSocketClient {
       ],
       syncrewardresp: [
         "system_buygold",
+        "system_buyitem",
         "discount_claimreward",
         "card_claimreward",
         "artifact_lottery",
@@ -1502,9 +1550,15 @@ export class XyzwWebSocketClient {
     }
 
     // 查找对应的 Promise - 遍历所有等待中的 Promise（向后兼容）
+    if (isMatchTeam) {
+      console.log(`[Promise匹配] cmd回退匹配 respCmdKey=${respCmdKey}, originalCmds=${JSON.stringify(originalCmds)}, 等待promises:`, Object.entries(this.promises).map(([k,v]) => `${k}:${v.originalCmd}`));
+    }
     for (const [requestId, promiseData] of Object.entries(this.promises)) {
       // 检查 Promise 是否匹配当前响应的任一原始命令
       if (originalCmds.includes(promiseData.originalCmd)) {
+        if (isMatchTeam) {
+          console.log(`[Promise匹配] ✅ cmd回退匹配成功 requestId=${requestId} originalCmd=${promiseData.originalCmd}`);
+        }
         delete this.promises[requestId];
 
         // 获取响应数据，优先使用 rawData（ProtoMsg 自动解码），然后 decodedBody（手动解码），最后 body

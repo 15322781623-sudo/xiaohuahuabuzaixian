@@ -644,6 +644,20 @@ export function createTasksLegacy(deps) {
             while (remaining > 0 && !hitServerLimit) {
               batchNum++;
               const batchQty = Math.min(remaining, 9999);
+
+              // 批次间等待30秒，避免触发服务器限制(400312)
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 等待30秒后赠送第${batchNum}批（剩余: ${remaining}，本次: ${batchQty}）...`,
+                type: "info",
+              });
+              // 每5秒检查一次shouldStop，最多等30秒
+              for (let w = 0; w < 6; w++) {
+                if (shouldStop.value) { hitServerLimit = true; break; }
+                await new Promise(r => setTimeout(r, 5000));
+              }
+              if (hitServerLimit || shouldStop.value) break;
+
               addLog({
                 time: new Date().toLocaleTimeString(),
                 message: `${token.name} 特权模式第${batchNum}批，剩余: ${remaining}，本次赠送: ${batchQty}`,
@@ -698,11 +712,6 @@ export function createTasksLegacy(deps) {
                   });
                   break;
                 }
-              }
-
-              // 批次间延迟，避免请求过快
-              if (remaining > 0 && !hitServerLimit) {
-                await new Promise(r => setTimeout(r, 5000));
               }
             }
           }

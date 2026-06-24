@@ -397,6 +397,13 @@
                 </n-button>
                 <n-button
                   size="small"
+                  @click="openBatchPurchaseConfig"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  同步采购清单
+                </n-button>
+                <n-button
+                  size="small"
                   @click="batch_mail_claim_and_cleanup"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
@@ -721,6 +728,56 @@
                 >
                   盐锭商店购买
                 </n-button>
+                <n-button
+                  size="small"
+                  @click="showConsumeModal = true"
+                  :disabled="isRunning"
+                  type="warning"
+                >
+                  消耗活动
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="batchClaimConsumeRewards"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  领取消耗活动道具
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="openHelperModal('cheer')"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  挥鼓助威消耗
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="batchUseActivityItem"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  使用消耗活动道具
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="openHelperModal('cdk')"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  兑换码领取
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="openActivityExchangeModal"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  消耗活动兑换购买
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="batchClaimApexRewards"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  领取竞技大厅道具
+                </n-button>
               </n-space>
             </n-tab-pane>
             <n-tab-pane name="pet" tab="宠物">
@@ -787,10 +844,24 @@
                 </n-button>
                 <n-button
                   size="small"
+                  @click="batchFishUpgrade"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  一键鱼灵升星
+                </n-button>
+                <n-button
+                  size="small"
                   @click="batchClaimStarRewards"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键领取图鉴奖励
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="batchCollectionActivate"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  橱窗咸将激活
                 </n-button>
               </n-space>
             </n-tab-pane>
@@ -831,6 +902,13 @@
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   十殿星级挑战
+                </n-button>
+                <n-button
+                  size="small"
+                  type="info"
+                  @click="showStarTeamModal = true"
+                >
+                  星级队伍
                 </n-button>
               </n-space>
             </n-tab-pane>
@@ -940,6 +1018,18 @@
                 <span style="font-size: 14px;">💡</span>
               </template>
               温馨提示
+            </n-button>
+            <n-button 
+              size="small" 
+              @click="showQQGroupModal = true"
+              style="margin-right: 8px; color: #1890ff;"
+              type="info"
+              ghost
+            >
+              <template #icon>
+                <span style="font-size: 14px;">👥</span>
+              </template>
+              QQ群
             </n-button>
             <n-button 
               size="small" 
@@ -1304,7 +1394,7 @@
       v-model:show="showSettingsModal"
       preset="card"
       :title="`任务设置 - ${currentSettingsTokenName}`"
-      style="width: 90%; max-width: 400px"
+      style="width: 90%; max-width: 560px"
     >
       <div class="settings-content">
         <div class="settings-grid">
@@ -1381,6 +1471,46 @@
               <span class="switch-label">黑市购买物品</span
               ><n-switch v-model:value="currentSettings.blackMarketPurchase" />
             </div>
+            <!-- 采购清单多选 -->
+            <div v-if="currentSettings.blackMarketPurchase" class="purchase-config-area">
+              <div class="switch-row" style="margin-bottom: 6px;">
+                <span class="switch-label">采购次数</span>
+                <n-input-number
+                  v-model:value="currentSettings.purchaseCnt"
+                  :min="1" :max="15" :step="1"
+                  size="tiny" style="width: 80px;"
+                />
+                <n-button
+                  size="tiny"
+                  :disabled="syncPurchaseBusy || !currentSettingsTokenId"
+                  @click="syncPurchaseToGame"
+                  style="margin-left: 8px;"
+                >
+                  {{ syncPurchaseBusy ? '同步中...' : '同步到游戏' }}
+                </n-button>
+              </div>
+              <div class="purchase-list-grid">
+                <label
+                  v-for="item in purchaseItemOptions"
+                  :key="item.itemId"
+                  class="purchase-item-label"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="currentSettings.purchaseList.includes(item.itemId)"
+                    @change="togglePurchaseItem(currentSettings.purchaseList, currentSettings.purchaseDiscounts, item.itemId)"
+                  />
+                  <span>{{ item.name }}</span>
+                  <input type="number" class="discount-input"
+                    :value="getDiscount(currentSettings.purchaseDiscounts, item.itemId)"
+                    @input="(e) => setDiscount(currentSettings.purchaseDiscounts, item.itemId, e.target.value)"
+                    min="1" max="10"
+                    :disabled="!currentSettings.purchaseList.includes(item.itemId)"
+                  />
+                  <span class="discount-unit">折</span>
+                </label>
+              </div>
+            </div>
             <div class="switch-row">
               <span class="switch-label">付费招募</span
               ><n-switch v-model:value="currentSettings.payRecruit" />
@@ -1408,7 +1538,7 @@
       v-model:show="showTaskTemplateModal"
       preset="card"
       :title="currentTemplateId ? '编辑任务模板' : '任务模板设置'"
-      style="width: 90%; max-width: 400px"
+      style="width: 90%; max-width: 560px"
     >
       <div class="settings-content">
         <div class="settings-grid">
@@ -1492,6 +1622,38 @@
             <div class="switch-row">
               <span class="switch-label">黑市购买物品</span
               ><n-switch v-model:value="currentTemplate.blackMarketPurchase" />
+            </div>
+            <!-- 采购清单多选（仅在黑市购买开启时显示） -->
+            <div v-if="currentTemplate.blackMarketPurchase" class="purchase-config-area">
+              <div class="switch-row" style="margin-bottom: 6px;">
+                <span class="switch-label">采购次数</span>
+                <n-input-number
+                  v-model:value="currentTemplate.purchaseCnt"
+                  :min="1" :max="15" :step="1"
+                  size="tiny" style="width: 80px;"
+                />
+              </div>
+              <div class="purchase-list-grid">
+                <label
+                  v-for="item in purchaseItemOptions"
+                  :key="item.itemId"
+                  class="purchase-item-label"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="currentTemplate.purchaseList.includes(item.itemId)"
+                    @change="togglePurchaseItem(currentTemplate.purchaseList, currentTemplate.purchaseDiscounts, item.itemId)"
+                  />
+                  <span>{{ item.name }}</span>
+                  <input type="number" class="discount-input"
+                    :value="getDiscount(currentTemplate.purchaseDiscounts, item.itemId)"
+                    @input="(e) => setDiscount(currentTemplate.purchaseDiscounts, item.itemId, e.target.value)"
+                    min="1" max="10"
+                    :disabled="!currentTemplate.purchaseList.includes(item.itemId)"
+                  />
+                  <span class="discount-unit">折</span>
+                </label>
+              </div>
             </div>
 
             <div class="switch-row">
@@ -2191,7 +2353,27 @@
               ⚠️ 当前不是宝箱周，此功能仅在宝箱周期间可用
             </div>
           </n-alert>
-          <div class="setting-item" v-if="helperType !== 'pointsBox' && helperType !== 'weeklyMarket'">
+          <div class="setting-item" v-if="helperType === 'cdk'" style="flex-direction: column; align-items: flex-start;">
+            <label class="setting-label" style="margin-bottom: 8px;">兑换码</label>
+            <n-input
+              v-model:value="helperSettings.cdkCode"
+              placeholder="请输入兑换码"
+              size="small"
+              clearable
+            />
+          </div>
+          <div class="setting-item" v-if="helperType === 'cheer'" style="flex-direction: column; align-items: flex-start;">
+            <label class="setting-label" style="margin-bottom: 8px;">助威数量（0 = 使用全部道具，上限3000）</label>
+            <n-input-number
+              v-model:value="helperSettings.cheerQty"
+              :min="0"
+              :max="99999"
+              :step="100"
+              size="small"
+              placeholder="0=全部使用"
+            />
+          </div>
+          <div class="setting-item" v-if="helperType !== 'pointsBox' && helperType !== 'weeklyMarket' && helperType !== 'cdk' && helperType !== 'cheer'">
             <label class="setting-label">消耗数量（10的倍数）</label>
             <n-input-number
               v-model:value="helperSettings.count"
@@ -2403,6 +2585,26 @@
       style="width: 95%; max-width: 850px;"
       :segmented="{ content: true }"
     >
+      <!-- 全局操作按钮 -->
+      <div v-if="scheduledTasks.length > 0" style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+        <n-button
+          size="small"
+          :type="allTasksEnabled ? 'error' : 'success'"
+          @click="allTasksEnabled ? disableAllScheduledTasks() : enableAllScheduledTasks()"
+        >
+          {{ allTasksEnabled ? '关闭所有任务' : '启动所有任务' }}
+        </n-button>
+        <n-button
+          size="small"
+          type="error"
+          @click="deleteAllScheduledTasks"
+        >
+          <template #icon>
+            <n-icon><TrashOutline /></n-icon>
+          </template>
+          批量删除所有任务
+        </n-button>
+      </div>
       <div class="tasks-list-container" style="max-height: 70vh; overflow-y: auto;">
         <n-empty 
           v-if="scheduledTasks.length === 0" 
@@ -2431,9 +2633,10 @@
               <n-switch
                 v-model:value="task.enabled"
                 @update:value="toggleTaskEnabled(task.id, $event)"
-                size="medium"
+                size="small"
+                class="feature-switch"
               >
-                <template #checked>启用</template>
+                <template #checked>禁用</template>
                 <template #unchecked>禁用</template>
               </n-switch>
             </div>
@@ -2503,6 +2706,16 @@
                   <span class="info-value">
                     <n-tag size="small" type="blue" :bordered="false">
                       {{ Object.values(task.legionStoreItems).filter(i => i && i.selected).length }} 件商品
+                    </n-tag>
+                  </span>
+                </div>
+
+                <!-- 消耗活动兑换商店配置 -->
+                <div class="task-info-item" v-if="task.selectedTasks && task.selectedTasks.includes('batchActivityExchange') && task.activityExchangeItems">
+                  <span class="info-label">兑换商店</span>
+                  <span class="info-value">
+                    <n-tag size="small" type="blue" :bordered="false">
+                      {{ Object.values(task.activityExchangeItems).filter(i => i && i.selected).length }} 件商品
                     </n-tag>
                   </span>
                 </div>
@@ -2801,6 +3014,44 @@
             </div>
           </div>
 
+          <!-- 消耗活动兑换商店购买配置 -->
+          <div v-if="taskForm.selectedTasks.includes('batchActivityExchange')" class="task-config-card">
+            <div class="config-card-header">
+              <span class="config-card-title">🏪 消耗活动兑换商店 - 选择商品</span>
+            </div>
+            <div class="config-card-content">
+              <n-grid :cols="2" :x-gap="12" :y-gap="8">
+                <n-grid-item v-for="item in activityExchangeItemOptions" :key="item.suffix">
+                  <div class="store-item" style="display: flex; align-items: center; gap: 8px;">
+                    <n-checkbox
+                      :checked="taskForm.activityExchangeItems && taskForm.activityExchangeItems[item.suffix] && taskForm.activityExchangeItems[item.suffix].selected"
+                      @update:checked="(checked) => {
+                        if (!taskForm.activityExchangeItems) taskForm.activityExchangeItems = {};
+                        if (!taskForm.activityExchangeItems[item.suffix]) {
+                          taskForm.activityExchangeItems[item.suffix] = { selected: false, count: item.maxCount };
+                        }
+                        taskForm.activityExchangeItems[item.suffix].selected = checked;
+                      }"
+                    >
+                      {{ item.name }} (限购{{ item.maxCount }})
+                    </n-checkbox>
+                    <n-input-number
+                      v-if="item.maxCount > 1 && taskForm.activityExchangeItems && taskForm.activityExchangeItems[item.suffix] && taskForm.activityExchangeItems[item.suffix].selected"
+                      v-model:value="taskForm.activityExchangeItems[item.suffix].count"
+                      :min="1"
+                      :max="item.maxCount"
+                      size="small"
+                      style="width: 80px"
+                    />
+                  </div>
+                </n-grid-item>
+              </n-grid>
+              <n-alert v-if="!taskForm.activityExchangeItems || Object.values(taskForm.activityExchangeItems).filter(i => i && i.selected).length === 0" type="warning" size="small" style="margin-top: 12px;">
+                请至少选择一个商品
+              </n-alert>
+            </div>
+          </div>
+
           <!-- 盐晶商店购买配置 -->
           <div v-if="taskForm.selectedTasks.includes('salt_crystal_shop_buy')" class="task-config-card">
             <div class="config-card-header">
@@ -3015,6 +3266,37 @@
                   </n-switch>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- 十殿阎罗挑战预设选择 -->
+          <div v-if="taskForm.selectedTasks.includes('batchNightmareChallengePresets')" class="task-config-card">
+            <div class="config-card-header">
+              <span class="config-card-title">⚔️ 十殿阎罗挑战 - 选择预设</span>
+            </div>
+            <div class="config-card-content">
+              <n-alert type="info" size="small" style="margin-bottom: 12px;">
+                选择要执行的十殿预设，按顺序依次执行（后台模式）。如无可选预设，请先在十殿挑战弹窗中创建预设
+              </n-alert>
+              <div v-if="nightmarePresetOptions.length > 0" class="nightmare-preset-list">
+                <div v-for="preset in nightmarePresetOptions" :key="preset.id" class="nightmare-preset-item">
+                  <n-checkbox
+                    :checked="taskForm.nightmarePresetIds.includes(preset.id)"
+                    @update:checked="(checked) => onNightmarePresetToggle(preset, checked)"
+                  >
+                    <span class="preset-item-label">
+                      {{ preset.name }}
+                      <n-tag size="tiny" type="info" :bordered="false" style="margin-left: 4px;">👑{{ preset.captainName }}</n-tag>
+                      <n-tag size="tiny" :type="preset.totalMembers > 1 ? 'success' : 'default'" :bordered="false">
+                        👥{{ preset.totalMembers }}人
+                      </n-tag>
+                    </span>
+                  </n-checkbox>
+                </div>
+              </div>
+              <n-alert v-else type="warning" size="small">
+                暂无可用预设，请先在「十殿挑战」弹窗中创建预设
+              </n-alert>
             </div>
           </div>
         </div>
@@ -3313,7 +3595,7 @@
               </div>
               <div class="setting-item-responsive" v-if="batchSettings.enableRefresh">
                 <label class="setting-label-responsive">刷新间隔(分钟)</label>
-                <n-input-number v-model:value="batchSettings.refreshInterval" :min="10" :max="1440" :step="30" size="small" class="input-responsive" />
+                <n-input-number v-model:value="batchSettings.refreshInterval" :min="1" :max="1440" :step="1" size="small" class="input-responsive" />
               </div>
             </div>
           </n-grid-item>
@@ -3483,6 +3765,63 @@
             type="primary" 
             @click="handleLegionStoreBuy" 
             :disabled="Object.values(legionStoreSelections).filter(s => s.selected).length === 0 || isRunning"
+          >
+            开始购买
+          </n-button>
+        </div>
+      </div>
+    </n-modal>
+
+    <!-- 消耗活动兑换商店多选购买弹窗 -->
+    <n-modal
+      v-model:show="showActivityExchangeModal"
+      preset="card"
+      title="消耗活动兑换商店购买"
+      style="width: 90%; max-width: 700px"
+    >
+      <div class="settings-content">
+        <div style="margin-bottom: 16px;">
+          <div style="font-size: 14px; color: #666; margin-bottom: 12px;">
+            选择要购买的商品（可多选），购买后自动领取里程碑进度奖励：
+          </div>
+          <n-grid :cols="2" :x-gap="12" :y-gap="8">
+            <n-grid-item v-for="suffix in [1,2,3,4,5,6,7,8,9,10,11,12,13,14]" :key="suffix">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <n-checkbox
+                  :checked="activityExchangeSelections[suffix].selected"
+                  @update:checked="(val) => { activityExchangeSelections[suffix].selected = val; }"
+                >
+                  <span style="font-size: 13px;">{{ activityExchangeSelections[suffix].name }}</span>
+                </n-checkbox>
+                <n-input-number
+                  v-if="activityExchangeSelections[suffix].maxCount > 1"
+                  v-model:value="activityExchangeSelections[suffix].count"
+                  :min="1"
+                  :max="activityExchangeSelections[suffix].maxCount"
+                  :disabled="!activityExchangeSelections[suffix].selected"
+                  size="small"
+                  style="width: 90px"
+                  placeholder="数量"
+                  @update:value="handleActivityExchangeCountChange(suffix)"
+                />
+                <n-tag v-else size="small" type="info" :bordered="false" style="font-size: 11px;">限购1</n-tag>
+              </div>
+            </n-grid-item>
+          </n-grid>
+        </div>
+
+        <div style="margin-top: 12px; padding: 10px; background: #f5f5f5; border-radius: 4px;">
+          <div style="font-size: 12px; color: #999;">
+            已选 {{ Object.values(activityExchangeSelections).filter(s => s.selected).length }} 个商品，购买后自动领取里程碑进度奖励
+          </div>
+        </div>
+
+        <div class="modal-actions" style="margin-top: 20px; text-align: right; display: flex; gap: 12px; justify-content: flex-end;">
+          <n-button @click="showActivityExchangeModal = false">取消</n-button>
+          <n-button
+            type="primary"
+            @click="handleActivityExchangeBuy"
+            :disabled="Object.values(activityExchangeSelections).filter(s => s.selected).length === 0 || isRunning"
           >
             开始购买
           </n-button>
@@ -3839,6 +4178,45 @@
       </div>
     </n-modal>
 
+    <!-- QQ群弹窗 -->
+    <n-modal
+      v-model:show="showQQGroupModal"
+      preset="card"
+      title="👥 加入QQ群"
+      style="width: 90%; max-width: 420px;"
+      :bordered="false"
+    >
+      <div style="text-align: center; padding: 16px 0;">
+        <p style="margin-bottom: 16px; color: #333; font-size: 15px; font-weight: 500;">欢迎加入QQ群交流群</p>
+        <div style="background: linear-gradient(135deg, #e8f4ff, #f0e6ff); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+          <img
+            src="https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=https%3A%2F%2Fqm.qq.com%2Fq%2FPAPE6cThmw&margin=10"
+            alt="QQ群二维码"
+            style="max-width: 240px; width: 100%; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08);"
+            @error="(e) => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'block'; }"
+          />
+          <p style="display: none; color: #999; font-size: 13px; margin-bottom: 12px;">二维码加载失败，请点击下方按钮加群</p>
+          <p style="font-size: 14px; color: #666; margin-bottom: 8px;">QQ群号</p>
+          <p style="font-size: 28px; font-weight: bold; color: #1890ff; letter-spacing: 2px; margin-bottom: 12px;">723315066</p>
+          <p style="font-size: 13px; color: #888;">【咸鱼之王开源】</p>
+        </div>
+        <n-button
+          type="primary"
+          size="large"
+          tag="a"
+          href="https://qm.qq.com/q/PAPE6cThmw"
+          target="_blank"
+          style="width: 200px; border-radius: 24px; font-size: 16px; height: 44px;"
+        >
+          <template #icon>
+            <span style="font-size: 18px;">🚀</span>
+          </template>
+          加入群聊
+        </n-button>
+        <p style="margin-top: 12px; color: #999; font-size: 12px;">扫描二维码或点击按钮加入QQ群</p>
+      </div>
+    </n-modal>
+
     <!-- 温馨提示弹窗 -->
     <n-modal
       v-model:show="showTipsModal"
@@ -3853,6 +4231,10 @@
         <div style="background: #f7f8fa; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px;">
           <p style="margin-bottom: 6px;"><span style="color: #c0392b; font-weight: bold;">1.</span> 无使用说明，请自行研究。</p>
           <p><span style="color: #c0392b; font-weight: bold;">2.</span> 本软件承诺不存在任何数据上传行为。</p>
+        </div>
+        <div style="background: linear-gradient(135deg, #e8f4ff, #f0e6ff); border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; text-align: center;">
+          <p style="margin-bottom: 6px; color: #1890ff; font-weight: 500;">👥 加入QQ群：723315066</p>
+          <a href="https://qm.qq.com/q/PAPE6cThmw" target="_blank" style="color: #1890ff; font-size: 13px; text-decoration: underline;">点击加入【咸鱼之王开源】群聊 →</a>
         </div>
         <p style="text-align: center; color: #999; font-size: 12px; margin-top: 8px;">本软件仅供个人非商业学习使用</p>
       </div>
@@ -3870,6 +4252,90 @@
       :mask-closable="true"
     >
       <NightmareChallengeCard />
+    </n-modal>
+
+    <!-- 星级队伍管理弹窗 -->
+    <n-modal
+      v-model:show="showStarTeamModal"
+      preset="card"
+      title="星级队伍管理"
+      style="width: 90%; max-width: 800px"
+      :bordered="true"
+      :segmented="{ content: true, footer: true }"
+      :closable="true"
+      :mask-closable="true"
+    >
+      <StarTeamCard />
+    </n-modal>
+
+    <!-- 批量采购清单配置弹窗 -->
+    <n-modal
+      v-model:show="showBatchPurchaseConfigModal"
+      preset="card"
+      title="批量同步采购清单"
+      style="width: 90%; max-width: 560px"
+    >
+      <div class="settings-content">
+        <div style="margin-bottom: 12px; color: var(--text-secondary, #666); font-size: 13px;">
+          勾选要采购的商品并设置折扣，确认后同步到所有已勾选的 {{ selectedTokens.length }} 个账号
+        </div>
+        <div class="switch-row" style="margin-bottom: 10px;">
+          <span class="switch-label">采购次数</span>
+          <n-input-number
+            v-model:value="batchPurchaseCnt"
+            :min="1" :max="15" :step="1"
+            size="small" style="width: 80px;"
+          />
+          <n-button
+            size="small"
+            style="margin-left: auto;"
+            @click="batchPurchaseList = purchaseItemOptions.map(i => i.itemId)"
+          >全选</n-button>
+          <n-button
+            size="small"
+            style="margin-left: 6px;"
+            @click="batchPurchaseList = []"
+          >清空</n-button>
+        </div>
+        <div class="purchase-list-grid">
+          <label
+            v-for="item in purchaseItemOptions"
+            :key="item.itemId"
+            class="purchase-item-label"
+          >
+            <input
+              type="checkbox"
+              :checked="batchPurchaseList.includes(item.itemId)"
+              @change="togglePurchaseItem(batchPurchaseList, batchPurchaseDiscounts, item.itemId)"
+            />
+            <span>{{ item.name }}</span>
+            <input type="number" class="discount-input"
+              :value="getDiscount(batchPurchaseDiscounts, item.itemId)"
+              @input="(e) => setDiscount(batchPurchaseDiscounts, item.itemId, e.target.value)"
+              min="1" max="10"
+              :disabled="!batchPurchaseList.includes(item.itemId)"
+            />
+            <span class="discount-unit">折</span>
+          </label>
+        </div>
+        <div style="margin-top: 16px; text-align: right;">
+          <n-button @click="showBatchPurchaseConfigModal = false" style="margin-right: 12px;">取消</n-button>
+          <n-button type="primary" @click="applyBatchPurchaseConfig" :loading="batchPurchaseSyncing">
+            同步到 {{ selectedTokens.length }} 个账号
+          </n-button>
+        </div>
+      </div>
+    </n-modal>
+
+    <!-- 消耗活动弹窗 -->
+    <n-modal
+      v-model:show="showConsumeModal"
+      preset="card"
+      title="消耗活动"
+      style="width: 95%; max-width: 900px"
+      :segmented="{ content: true }"
+    >
+      <ConsumeActivityCard />
     </n-modal>
   </div>
 </template>
@@ -3904,6 +4370,9 @@ import BinTokenForm from "@/views/TokenImport/bin.vue";
 import SingleBinTokenForm from "@/views/TokenImport/singlebin.vue";
 import WxQrcodeForm from "@/views/TokenImport/wxqrcode.vue";
 import NightmareChallengeCard from "@/components/cards/NightmareChallengeCard.vue";
+import StarTeamCard from "@/components/cards/StarTeamCard.vue";
+import ConsumeActivityCard from "@/components/cards/ConsumeActivityCard.vue";
+import { NightmareAutoBattleService } from "@/utils/nightmareAutoBattle";
 
 // Import batch task modules
 import {
@@ -4430,6 +4899,56 @@ const legionStoreSelections = ref({
   11: { selected: false, count: 20, maxCount: 20, disabled: false }, // 精铁
 });
 
+// 消耗活动兑换商店
+const showActivityExchangeModal = ref(false);
+const activityExchangeSelections = ref({
+  1:  { selected: false, count: 1, maxCount: 1, disabled: false, name: '惊雷' },
+  2:  { selected: false, count: 1, maxCount: 1, disabled: false, name: '月华' },
+  3:  { selected: false, count: 1, maxCount: 1, disabled: false, name: '回响' },
+  4:  { selected: false, count: 1, maxCount: 1, disabled: false, name: '琴心公' },
+  5:  { selected: false, count: 1, maxCount: 1, disabled: false, name: '琴心母' },
+  6:  { selected: false, count: 1, maxCount: 1, disabled: false, name: '璇玑' },
+  7:  { selected: false, count: 1, maxCount: 1, disabled: false, name: '剑胆公' },
+  8:  { selected: false, count: 1, maxCount: 1, disabled: false, name: '剑胆母' },
+  9:  { selected: false, count: 1, maxCount: 1, disabled: false, name: '阵容编组' },
+  10: { selected: false, count: 30, maxCount: 30, disabled: false, name: '珍珠' },
+  11: { selected: false, count: 200, maxCount: 200, disabled: false, name: '万能红将碎片' },
+  12: { selected: false, count: 200, maxCount: 200, disabled: false, name: '随机红将碎片' },
+  13: { selected: false, count: 999, maxCount: 999, disabled: false, name: '白玉' },
+  14: { selected: false, count: 999, maxCount: 999, disabled: false, name: '精铁' },
+});
+
+const openActivityExchangeModal = () => {
+  showActivityExchangeModal.value = true;
+};
+
+const handleActivityExchangeCountChange = (suffix) => {
+  const item = activityExchangeSelections.value[suffix];
+  if (item.count > item.maxCount) item.count = item.maxCount;
+  if (item.count < 1) item.count = 1;
+  // 限购1次的商品不允许修改次数
+  if (item.maxCount === 1) item.count = 1;
+};
+
+const handleActivityExchangeBuy = async () => {
+  const selectedSuffixes = [];
+  const buyCounts = {};
+  Object.keys(activityExchangeSelections.value).forEach(key => {
+    const item = activityExchangeSelections.value[key];
+    if (item.selected) {
+      const suffix = parseInt(key);
+      selectedSuffixes.push(suffix);
+      buyCounts[suffix] = item.count;
+    }
+  });
+  if (selectedSuffixes.length === 0) {
+    message.warning("请至少选择一个商品");
+    return;
+  }
+  showActivityExchangeModal.value = false;
+  await batchActivityExchange(selectedSuffixes, buyCounts);
+};
+
 const formatPower = (power) => {
   if (!power) return "0";
   if (power >= 100000000) {
@@ -4651,6 +5170,9 @@ const currentSettings = reactive({
   claimHangUp: true,
   claimEmail: true,
   blackMarketPurchase: true,
+  purchaseList: [],
+  purchaseDiscounts: {},
+  purchaseCnt: 15,
   legacyGiftPassword: '', // 功法赠送验证密码
 });
 
@@ -4678,6 +5200,9 @@ const currentTemplate = reactive({
   claimHangUp: true,
   claimEmail: true,
   blackMarketPurchase: true,
+  purchaseList: [],
+  purchaseDiscounts: {},
+  purchaseCnt: 15,
   legacyGiftPassword: '', // 新增: 功法赠送验证密码
 });
 
@@ -4742,6 +5267,7 @@ const formatDate = (dateStr) => {
 
 // Helper Modal State
 const showHelperModal = ref(false);
+const showConsumeModal = ref(false);
 const helperType = ref("box"); // 'box' | 'fish' | 'recruit'
 const helperSettings = reactive({
   boxType: 2001,
@@ -4749,10 +5275,12 @@ const helperSettings = reactive({
   count: 100,
   targetRounds: 1,  // 目标轮数（1-4轮）
   weeklyMarketItems: [],  // 黑市周购买的商品列表
+  cdkCode: '',  // 兑换码
+  cheerQty: 0,  // 挥鼓助威数量，0=全部
 });
 
 const helperModalTitle = computed(() => {
-  const titles = { box: "批量开宝箱", fish: "批量钓鱼", recruit: "批量招募", pointsBox: "一键宝箱周开箱", weeklyMarket: "黑市周购买" };
+  const titles = { box: "批量开宝箱", fish: "批量钓鱼", recruit: "批量招募", pointsBox: "一键宝箱周开箱", weeklyMarket: "黑市周购买", cdk: "兑换码领取", cheer: "挥鼓助威消耗" };
   return titles[helperType.value] || "批量助手";
 });
 
@@ -4861,6 +5389,24 @@ const legionStoreItemOptions = [
   { label: "精铁", value: "11", min: 1, max: 20 },
 ];
 
+// 消耗活动兑换商店商品选项
+const activityExchangeItemOptions = [
+  { name: '惊雷', suffix: 1, maxCount: 1 },
+  { name: '月华', suffix: 2, maxCount: 1 },
+  { name: '回响', suffix: 3, maxCount: 1 },
+  { name: '琴心公', suffix: 4, maxCount: 1 },
+  { name: '琴心母', suffix: 5, maxCount: 1 },
+  { name: '璇玑', suffix: 6, maxCount: 1 },
+  { name: '剑胆公', suffix: 7, maxCount: 1 },
+  { name: '剑胆母', suffix: 8, maxCount: 1 },
+  { name: '阵容编组', suffix: 9, maxCount: 1 },
+  { name: '珍珠', suffix: 10, maxCount: 30 },
+  { name: '万能红将碎片', suffix: 11, maxCount: 200 },
+  { name: '随机红将碎片', suffix: 12, maxCount: 200 },
+  { name: '白玉', suffix: 13, maxCount: 999 },
+  { name: '精铁', suffix: 14, maxCount: 999 },
+];
+
 // 盐晶商店商品选项
 const saltCrystalShopItemOptions = [
   { label: "四圣蓝玉", value: "201", min: 1, max: 60 },
@@ -4879,6 +5425,58 @@ const saltIngotShopItemOptions = [
   { label: "白玉", value: "5", min: 1, max: 1 },
   { label: "四圣宝珠碎片", value: "6", min: 1, max: 1 },
 ];
+
+// 十殿预设选项（从 localStorage 加载）
+const nightmarePresetOptions = computed(() => {
+  try {
+    const raw = localStorage.getItem('nightmare-presets');
+    const presets = raw ? JSON.parse(raw) : [];
+    return presets.map(p => ({
+      id: p.id,
+      name: p.name || '未命名预设',
+      captainTokenId: p.captainTokenId,
+      memberTokenIds: p.memberTokenIds || [],
+      captainName: tokenStore.gameTokens.find(t => t.id === p.captainTokenId)?.name || '未知',
+      totalMembers: (p.captainTokenId ? 1 : 0) + (p.memberTokenIds || []).length,
+    }));
+  } catch {
+    return [];
+  }
+});
+
+// 勾选/取消十殿预设时，自动同步对应账号到 selectedTokens
+const onNightmarePresetToggle = (preset, checked) => {
+  if (checked) {
+    if (!taskForm.nightmarePresetIds.includes(preset.id)) {
+      taskForm.nightmarePresetIds.push(preset.id);
+    }
+    // 自动勾选队长和队员到账号列表
+    const allIds = [preset.captainTokenId, ...preset.memberTokenIds].filter(Boolean);
+    for (const tid of allIds) {
+      if (!taskForm.selectedTokens.includes(tid)) {
+        taskForm.selectedTokens.push(tid);
+      }
+    }
+  } else {
+    taskForm.nightmarePresetIds = taskForm.nightmarePresetIds.filter(id => id !== preset.id);
+    // 收集该预设的所有 token ID
+    const removeIds = new Set([preset.captainTokenId, ...preset.memberTokenIds].filter(Boolean));
+    // 检查这些 token 是否被其他已勾选的预设引用
+    const usedByOtherPresets = new Set();
+    for (const pid of taskForm.nightmarePresetIds) {
+      const p = nightmarePresetOptions.value.find(opt => opt.id === pid);
+      if (p) {
+        [p.captainTokenId, ...p.memberTokenIds].filter(Boolean).forEach(id => usedByOtherPresets.add(id));
+      }
+    }
+    // 只移除不被其他预设使用的 token
+    for (const tid of removeIds) {
+      if (!usedByOtherPresets.has(tid)) {
+        taskForm.selectedTokens = taskForm.selectedTokens.filter(id => id !== tid);
+      }
+    }
+  }
+};
 
 // 计算总次数
 const totalBoxWeeklyRewardCount = computed(() => {
@@ -5015,6 +5613,8 @@ const batchSettings = reactive({
   // 宠物合成等级限制
   petMergeMaxLevelEnabled: false,   // 是否启用宠物合成等级限制，默认关闭
   petMergeMaxLevel: 4,              // 合成等级上限（1-7），默认4级
+  // 兑换码
+  cdkCode: '',                      // 兑换码（定时任务使用）
 });
 
 // 账号搜索关键词
@@ -5275,6 +5875,7 @@ const taskForm = reactive({
     refreshDelay: 2, // 刷新后等待同步延迟（秒）
     requireMinColorWithConditions: false, // 满足自定义条件时是否还必须满足最低品质
   },
+  nightmarePresetIds: [], // 十殿阎罗挑战预设ID列表
 });
 
 // 任务分组定义
@@ -5284,10 +5885,10 @@ const taskGroupDefinitions = [
   { name: 'dungeon', label: '副本', tasks: ['climbTower', 'batchmengjing', 'skinChallenge', 'batchClaimPeachTasks', 'batchBuyDreamItems'] },
   { name: 'baoku', label: '宝库', tasks: ['batchbaoku13', 'batchbaoku45'] },
   { name: 'weirdTower', label: '怪异塔', tasks: ['climbWeirdTower', 'batchUseItems', 'batchMergeItems', 'batchClaimFreeEnergy', 'claim_weird_tower_all', 'claim_weird_tower_pass'] },
-  { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchClaimStarRewards'] },
+  { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
   { name: 'pet', label: '宠物', tasks: ['legion_buy_spotted_egg', 'use_spotted_egg', 'claim_pet_book', 'batch_pet_merge', 'batch_pet_upgrade'] },
-  { name: 'nightmare', label: '十殿', tasks: ['nightmare_draw_lottery', 'nightmare_claim_book_reward', 'star_drawturntable', 'batch_star_challenge'] },
-  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'store_buy_bronze', 'store_buy_platinum', 'store_buy_gold_rod', 'store_buy_jade', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep'] },
+  { name: 'nightmare', label: '十殿', tasks: ['batchNightmareChallengePresets', 'nightmare_draw_lottery', 'nightmare_claim_book_reward', 'star_drawturntable', 'batch_star_challenge'] },
+  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'store_buy_bronze', 'store_buy_platinum', 'store_buy_gold_rod', 'store_buy_jade', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchConsumeActivity', 'batchClaimConsumeRewards', 'batchAutumnUseItem', 'batchUseActivityItem', 'batchActivityExchange', 'batchClaimCdkReward', 'batchClaimApexRewards'] },
   { name: 'legacy', label: '功法', tasks: ['batchLegacyHangup', 'batchLegacyClaim', 'batchLegacyGiftSendEnhanced', 'batchLegacyClaimGiftTask'] },
   { name: 'monthly', label: '月度', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items'] }
 ];
@@ -5524,6 +6125,7 @@ const cancelTaskEdit = () => {
     };
     
     taskForm.boxWeeklyRewards = {5: 1};
+    taskForm.nightmarePresetIds = [];
     taskScheduleSelectedGroupIds.value = [];
   }, 300);
 };
@@ -5587,6 +6189,9 @@ const openTaskModal = () => {
     5: { selected: false, count: 0, label: "白玉", min: 1, max: 1 },
     6: { selected: false, count: 1, label: "四圣宝珠碎片", min: 1, max: 1 },
   };
+
+  // 十殿预设配置
+  taskForm.nightmarePresetIds = [];
   
   console.log('[新增任务] 初始化完成');
   console.log('[新增任务] weeklyMarketItems:', taskForm.weeklyMarketItems);
@@ -5712,6 +6317,7 @@ const editTask = (task) => {
       refreshDelay: 2,
       requireMinColorWithConditions: false,
     },
+    nightmarePresetIds: task.nightmarePresetIds || [],
   };
   
   if (
@@ -5792,8 +6398,18 @@ const saveTask = () => {
     }
   }
 
-  if (taskForm.selectedTokens.length === 0) {
+  // 十殿阎罗挑战预设自带账号（队长+队员），无需额外选择账号
+  const hasNightmarePresets = taskForm.selectedTasks.includes('batchNightmareChallengePresets') && (taskForm.nightmarePresetIds?.length > 0);
+  // 其他需要账号的任务（排除十殿预设）
+  const nonNightmareTasks = taskForm.selectedTasks.filter(t => t !== 'batchNightmareChallengePresets');
+  
+  if (taskForm.selectedTokens.length === 0 && nonNightmareTasks.length > 0 && !hasNightmarePresets) {
     message.warning("请选择至少一个账号");
+    return;
+  }
+  // 如果只有十殿预设任务且未选预设，提示选择预设
+  if (taskForm.selectedTokens.length === 0 && nonNightmareTasks.length === 0 && !hasNightmarePresets) {
+    message.warning("请选择至少一个账号，或选择十殿阎罗挑战预设（预设自带账号）");
     return;
   }
 
@@ -5807,6 +6423,15 @@ const saveTask = () => {
     const hasSelectedItem = Object.values(taskForm.legionStoreItems).some(item => item.selected);
     if (!hasSelectedItem) {
       message.warning("助威商店多选购买需要至少选择一个商品");
+      return;
+    }
+  }
+
+  // 验证消耗活动兑换商店是否选择了商品
+  if (taskForm.selectedTasks.includes('batchActivityExchange')) {
+    const hasSelectedItem = taskForm.activityExchangeItems && Object.values(taskForm.activityExchangeItems).some(item => item && item.selected);
+    if (!hasSelectedItem) {
+      message.warning("消耗活动兑换购买需要至少选择一个商品");
       return;
     }
   }
@@ -5834,6 +6459,14 @@ const saveTask = () => {
     const hasSelectedItem = Object.values(taskForm.weeklyMarketItems).some(item => item.selected);
     if (!hasSelectedItem) {
       message.warning("黑市周购买需要至少选择一个商品");
+      return;
+    }
+  }
+
+  // 验证十殿阎罗挑战是否选择了预设
+  if (taskForm.selectedTasks.includes('batchNightmareChallengePresets')) {
+    if (!taskForm.nightmarePresetIds || taskForm.nightmarePresetIds.length === 0) {
+      message.warning("十殿阎罗挑战需要至少选择一个预设");
       return;
     }
   }
@@ -5874,6 +6507,7 @@ const saveTask = () => {
     saltIngotShopItems: JSON.parse(JSON.stringify(taskForm.saltIngotShopItems)),
     boxWeeklyRewards: {...taskForm.boxWeeklyRewards},
     smartDeparture: JSON.parse(JSON.stringify(taskForm.smartDeparture)),
+    nightmarePresetIds: [...(taskForm.nightmarePresetIds || [])],
   };
 
   let isNew = !editingTask.value;
@@ -5915,6 +6549,23 @@ const deleteTask = (taskId) => {
   }
 };
 
+// Delete all scheduled tasks
+const deleteAllScheduledTasks = () => {
+  const count = scheduledTasks.value.length;
+  if (count === 0) return;
+  
+  if (!confirm(`确定要删除全部 ${count} 个定时任务吗？此操作不可恢复！`)) return;
+  
+  scheduledTasks.value = [];
+  saveScheduledTasks();
+  addLog({
+    time: new Date().toLocaleTimeString(),
+    message: `=== 已批量删除 ${count} 个定时任务 ===`,
+    type: "info",
+  });
+  message.success(`已删除 ${count} 个定时任务`);
+};
+
 // Toggle task enabled state
 const toggleTaskEnabled = (taskId, enabled) => {
   const task = scheduledTasks.value.find((t) => t.id === taskId);
@@ -5928,6 +6579,35 @@ const toggleTaskEnabled = (taskId, enabled) => {
       type: "info",
     });
   }
+};
+
+// 启动/关闭所有定时任务
+const allTasksEnabled = computed(() =>
+  scheduledTasks.value.length > 0 && scheduledTasks.value.every(t => t.enabled)
+);
+
+const enableAllScheduledTasks = () => {
+  if (scheduledTasks.value.length === 0) { message.warning("暂无定时任务"); return; }
+  scheduledTasks.value.forEach(t => { t.enabled = true; });
+  saveScheduledTasks();
+  message.success(`已启动所有 ${scheduledTasks.value.length} 个定时任务`);
+  addLog({
+    time: new Date().toLocaleTimeString(),
+    message: `=== 已启动所有 ${scheduledTasks.value.length} 个定时任务 ===`,
+    type: "success",
+  });
+};
+
+const disableAllScheduledTasks = () => {
+  if (scheduledTasks.value.length === 0) { message.warning("暂无定时任务"); return; }
+  scheduledTasks.value.forEach(t => { t.enabled = false; });
+  saveScheduledTasks();
+  message.success(`已关闭所有 ${scheduledTasks.value.length} 个定时任务`);
+  addLog({
+    time: new Date().toLocaleTimeString(),
+    message: `=== 已关闭所有 ${scheduledTasks.value.length} 个定时任务 ===`,
+    type: "info",
+  });
 };
 
 // 注: addTaskSaveLog 已从 @/utils/batch 导入，调用时需传入 addLog
@@ -6945,6 +7625,12 @@ const importConfig = async ({ file }) => {
         importData.nightmarePresets.forEach((p) => {
           if (!p.id || !p.name) return;
           if (existingIds.has(p.id)) return;
+          // 补充缺失的卡点/队伍默认值
+          if (p.waitLevel8 === undefined) p.waitLevel8 = false;
+          if (p.usePresetTeam === undefined) p.usePresetTeam = true;
+          if (!p.teamSlots) p.teamSlots = {};
+          if (!p.levelConfig) p.levelConfig = {};
+          if (!p.memberTokenIds) p.memberTokenIds = [];
           existing.push(p);
           added++;
         });
@@ -7352,6 +8038,26 @@ const startScheduler = () => {
           });
         }
       }
+    
+      // ✅ 调度器统一处理延迟刷新：在所有任务处理和队列处理完毕后，检查是否需要刷新页面
+      // 这样可以确保当前没有运行中的任务，且队列中没有待执行的任务
+      if (shouldRefreshAfterTask.value && !isRunning.value && !isScheduledTaskRunning.value && pendingTaskQueue.length === 0) {
+        console.log(`[${new Date().toISOString()}] All tasks completed, executing postponed page refresh from scheduler tick`);
+        shouldRefreshAfterTask.value = false;
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `✅ 所有任务已完成，定时刷新页面将在 3 秒后执行...`,
+          type: "info",
+        });
+        setTimeout(() => {
+          // 再次确认没有新任务启动
+          if (!isRunning.value && !isScheduledTaskRunning.value && pendingTaskQueue.length === 0) {
+            window.location.reload();
+          } else {
+            shouldRefreshAfterTask.value = true; // 重新标记，等待下次调度器检查
+          }
+        }, 3000);
+      }
     } catch (error) {
       console.error(
         `[${new Date().toISOString()}] Error in task scheduler:`,
@@ -7527,10 +8233,26 @@ onMounted(() => {
     } catch { /* ignore */ }
   }
 
+  // 从战斗页面返回时自动打开十殿弹窗（读取后立即移除参数，防止刷新重复触发）
+  if (route.query.openNightmare === '1') {
+    showNightmareChallengeModal.value = true;
+    const { openNightmare, ...restQuery } = route.query;
+    router.replace({ ...route, query: restQuery });
+  }
+
   // 启动响应式时间更新（每30秒更新一次，让活动开放时间computed属性正确响应）
   currentTimeTimer = setInterval(() => {
     currentTime.value = new Date();
   }, 30000);
+});
+
+// 监听路由变化：从战斗页返回时自动打开十殿挑战 Modal
+watch(() => route.query.openNightmare, (val) => {
+  if (val === '1') {
+    showNightmareChallengeModal.value = true;
+    const { openNightmare, ...restQuery } = route.query;
+    router.replace({ ...route, query: restQuery });
+  }
 });
 
 // Cleanup countdown interval on unmount
@@ -7836,13 +8558,24 @@ const executeScheduledTask = async (task) => {
       });
     }
 
-    if (availableTokens.length === 0) {
+    // 十殿预设任务自带账号，无需检查 availableTokens
+    const taskHasNightmarePresets = task.selectedTasks.includes('batchNightmareChallengePresets') && (task.nightmarePresetIds?.length > 0);
+    
+    if (availableTokens.length === 0 && !taskHasNightmarePresets) {
       addLog({
         time: new Date().toLocaleTimeString(),
         message: `=== 定时任务 ${task.name} 没有可用的Token，取消执行 ===`,
         type: "error",
       });
       return;  // ✅ finally块会清理状态
+    }
+    
+    if (availableTokens.length === 0 && taskHasNightmarePresets) {
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `=== 定时任务 ${task.name} 使用十殿预设自带账号执行 ===`,
+        type: "info",
+      });
     }
 
     // 任务执行前检查不上线时段（只检查一次）
@@ -8337,6 +9070,12 @@ const executeScheduledTask = async (task) => {
                 "batchRecruit",
                 "batchLegacyGiftSendEnhanced",
                 "heroFourSaintsUpgrade",
+                "batchConsumeActivity",
+                "batchClaimConsumeRewards",
+                "batchAutumnUseItem",
+                "batchUseActivityItem",
+                "batchClaimCdkReward",
+                "batchClaimApexRewards",
               ].includes(taskName)
             ) {
               await taskFunction(true);
@@ -8359,6 +9098,27 @@ const executeScheduledTask = async (task) => {
                 addLog({
                   time: new Date().toLocaleTimeString(),
                   message: `⚠️ 助威商店多选购买未配置商品，跳过`,
+                  type: "warning",
+                });
+              }
+            } else if (taskName === 'batchActivityExchange') {
+              // 消耗活动兑换商店多选购买，传递选中的商品后缀和购买次数
+              const exchangeConfig = task.activityExchangeItems || {};
+              const selectedSuffixes = [];
+              const buyCounts = {};
+              Object.keys(exchangeConfig).forEach(key => {
+                if (exchangeConfig[key] && exchangeConfig[key].selected) {
+                  const suffix = parseInt(key);
+                  selectedSuffixes.push(suffix);
+                  buyCounts[suffix] = exchangeConfig[key].count || 1;
+                }
+              });
+              if (selectedSuffixes.length > 0) {
+                await taskFunction(selectedSuffixes, buyCounts, true);
+              } else {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `⚠️ 消耗活动兑换购买未配置商品，跳过`,
                   type: "warning",
                 });
               }
@@ -8460,6 +9220,23 @@ const executeScheduledTask = async (task) => {
                 await taskFunction(smartDeparture);
               } else {
                 await taskFunction();
+              }
+            } else if (taskName === 'batchNightmareChallengePresets') {
+              // 十殿阎罗挑战，根据勾选的预设执行
+              const presetIds = task.nightmarePresetIds || [];
+              if (presetIds.length > 0) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `⚔️ 十殿阎罗挑战：执行 ${presetIds.length} 个预设`,
+                  type: "info",
+                });
+                await batchNightmareChallengePresets();
+              } else {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `⚠️ 十殿阎罗挑战未配置预设，跳过`,
+                  type: "warning",
+                });
               }
             } else {
               await taskFunction();
@@ -8623,16 +9400,10 @@ const executeScheduledTask = async (task) => {
       });
     }
 
-    // 检查是否需要在定时任务完成后刷新页面
-    // 注意：需同时确认队列中没有待执行任务，避免刷新中断后续队列任务
-    if (shouldRefreshAfterTask.value && !isRunning.value && !isScheduledTaskRunning.value && pendingTaskQueue.length === 0) {
-      console.log(`[${new Date().toISOString()}] Scheduled task completed, executing postponed page refresh`);
-      shouldRefreshAfterTask.value = false; // 重置标记
-      // 稍等片刻再刷新
-      setTimeout(() => {
-        window.location.reload();
-      }, 1500);
-    }
+    // ✅ 不再在 finally 块中立即触发刷新
+    // 原因：nextTick 中的队列处理还未执行，此时检查 pendingTaskQueue 不准确
+    // 改为由调度器 10 秒 tick 统一检查 shouldRefreshAfterTask 并在无任务运行时刷新
+    // 这样可以确保所有队列任务都被处理完毕后，才真正刷新页面
   }
 };
 
@@ -8901,6 +9672,20 @@ const executeHelper = () => {
     showHelperModal.value = false;
     // 传递选中的商品列表
     weeklyMarketBuy({ selectedItems: [...helperSettings.weeklyMarketItems] });
+  } else if (helperType.value === 'cdk') {
+    // 兑换码领取
+    if (!helperSettings.cdkCode || !helperSettings.cdkCode.trim()) {
+      message.warning("请输入兑换码");
+      return;
+    }
+    // 同步到batchSettings（定时任务使用）
+    batchSettings.cdkCode = helperSettings.cdkCode.trim();
+    showHelperModal.value = false;
+    batchClaimCdkReward(false, helperSettings.cdkCode.trim());
+  } else if (helperType.value === 'cheer') {
+    // 挥鼓助威消耗
+    showHelperModal.value = false;
+    batchAutumnUseItem({ value: helperSettings.cheerQty || 0 });
   } else {
     if (helperSettings.count % 10 !== 0 || helperSettings.count < 10) {
       message.warning("消耗数量必须是10的整数倍，最小为10");
@@ -8997,6 +9782,9 @@ const loadSettings = (tokenId) => {
       claimHangUp: true,
       claimEmail: true,
       blackMarketPurchase: true,
+  purchaseList: [],
+  purchaseDiscounts: {},
+  purchaseCnt: 15,
       blackMarketStandalonePurchase: false,
       legacyGiftPassword: '', // 新增
     };
@@ -9012,7 +9800,26 @@ const openSettings = (token) => {
   currentSettingsTokenName.value = token.name;
   const saved = loadSettings(token.id);
   Object.assign(currentSettings, saved);
+  currentSettings.purchaseDiscounts = initPurchaseDiscounts(currentSettings.purchaseDiscounts);
   showSettingsModal.value = true;
+
+  // 自动获取黑市采购清单（需WebSocket已连接）
+  const wsStatus = tokenStore.getWebSocketStatus(token.id);
+  if (wsStatus === 'connected') {
+    tokenStore.sendMessageWithPromise(token.id, 'store_getpurchase', {}, 5000)
+      .then((result) => {
+        if (result?.purchaseItemList?.length > 0) {
+          currentSettings.purchaseList = result.purchaseItemList.map(i => i.itemId);
+          // 回填折扣
+          const discounts = {};
+          result.purchaseItemList.forEach(i => { if (i.discount != null) discounts[i.itemId] = i.discount; });
+          currentSettings.purchaseDiscounts = initPurchaseDiscounts(discounts);
+          // 回填采购次数
+          if (result.purchaseCnt != null) currentSettings.purchaseCnt = result.purchaseCnt;
+        }
+      })
+      .catch(() => {});
+  }
 };
 
 const saveSettings = () => {
@@ -9044,9 +9851,13 @@ const openTaskTemplateModal = () => {
     claimHangUp: true,
     claimEmail: true,
     blackMarketPurchase: true,
+  purchaseList: [],
+  purchaseDiscounts: {},
+  purchaseCnt: 15,
     legacyGiftPassword: '',
   });
   currentTemplateName.value = "";
+  currentTemplate.purchaseDiscounts = initPurchaseDiscounts(currentTemplate.purchaseDiscounts);
   showTaskTemplateModal.value = true;
 };
 
@@ -9138,6 +9949,7 @@ const openEditTemplateModal = (template) => {
   currentTemplateId.value = template.id;
   currentTemplateName.value = template.name;
   Object.assign(currentTemplate, template.settings);
+  currentTemplate.purchaseDiscounts = initPurchaseDiscounts(currentTemplate.purchaseDiscounts);
   showTaskTemplateModal.value = true;
 };
 
@@ -9243,6 +10055,9 @@ const resetTemplateForm = () => {
     claimHangUp: true,
     claimEmail: true,
     blackMarketPurchase: true,
+  purchaseList: [],
+  purchaseDiscounts: {},
+  purchaseCnt: 15,
     blackMarketStandalonePurchase: false, // 黑市单独购买，默认不启用
   });
 };
@@ -9671,11 +10486,30 @@ const isIndeterminate = computed(() => {
   );
 });
 
-// 模块展开/收起状态
-const isTokenListExpanded = ref(true); // 账号列表展开/收起状态，默认展开
+// 模块展开/收起状态（持久化到 localStorage）
+const LS_EXPAND_KEY = 'batch_expand_state';
+const loadExpandState = () => {
+  try {
+    const saved = localStorage.getItem(LS_EXPAND_KEY);
+    return saved ? JSON.parse(saved) : { functions: false, tokens: true };
+  } catch { return { functions: false, tokens: true }; }
+};
+const saveExpandState = () => {
+  try {
+    localStorage.setItem(LS_EXPAND_KEY, JSON.stringify({
+      functions: isBatchFunctionsExpanded.value,
+      tokens: isTokenListExpanded.value
+    }));
+  } catch {}
+};
+const _initExpand = loadExpandState();
+const isTokenListExpanded = ref(_initExpand.tokens); // 账号列表展开/收起状态
 const showSponsorModal = ref(false); // 赞助弹窗显示状态
 const showTipsModal = ref(false); // 温馨提示弹窗显示状态
-const isBatchFunctionsExpanded = ref(true); // 批量功能列表展开/收起状态，默认展开
+const showQQGroupModal = ref(false); // QQ群弹窗显示状态
+const isBatchFunctionsExpanded = ref(_initExpand.functions); // 批量功能列表展开/收起状态
+watch(isBatchFunctionsExpanded, saveExpandState);
+watch(isTokenListExpanded, saveExpandState);
 const isTowerExpandedForAll = ref(false);
 const isCarExpandedForAll = ref(false);
 const isClimbTowerExpandedForAll = ref(false);
@@ -10836,10 +11670,19 @@ const {
   batchRecruit,
   batchHeroUpgrade,
   batchBookUpgrade,
+  batchFishUpgrade,
   batchClaimStarRewards,
   batchClaimPeachTasks,
   batchGenieSweep,
   heroFourSaintsUpgrade,
+  batchConsumeActivity,
+  batchClaimConsumeRewards,
+  batchAutumnUseItem,
+  batchUseActivityItem,
+  batchClaimCdkReward,
+  batchActivityExchange,
+  batchClaimApexRewards,
+  batchCollectionActivate,
 } = tasksItem;
 
 const tasksDungeon = createTasksDungeon(createTaskDeps());
@@ -10849,13 +11692,254 @@ const tasksArena = createTasksArena(createTaskDeps());
 const { batcharenafight, batchTopUpFish, batchTopUpArena } = tasksArena;
 
 const tasksStore = createTasksStore(createTaskDeps());
-const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_bronze, store_buy_platinum, store_buy_gold_rod, store_buy_jade, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, batch_mail_claim_and_cleanup } = tasksStore;
+const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_bronze, store_buy_platinum, store_buy_gold_rod, store_buy_jade, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, buy_top_rod_package, buy_super_spirit_shell, batch_mail_claim_and_cleanup } = tasksStore;
+
+// ====== 采购清单配置 ======
+// 采购清单可选项（用于任务模板中多选）
+const purchaseItemOptions = [
+  // 宝箱类
+  { itemId: 2002, name: '青铜宝箱' },
+  { itemId: 2003, name: '黄金宝箱' },
+  { itemId: 2004, name: '铂金宝箱' },
+  // 武将包类
+  { itemId: 3007, name: '武将包(红)' },
+  { itemId: 3006, name: '武将包(橙)' },
+  { itemId: 3005, name: '武将包(紫)' },
+  // 鱼竿类
+  { itemId: 1011, name: '普通鱼竿' },
+  { itemId: 1012, name: '黄金鱼竿' },
+  // 玉石类
+  { itemId: 1022, name: '白玉' },
+  { itemId: 1023, name: '彩玉' },
+  // 材料类
+  { itemId: 1003, name: '进阶石' },
+  { itemId: 1006, name: '精铁' },
+  { itemId: 1026, name: '扳手' },
+  // 券类
+  { itemId: 1001, name: '招募令' },
+  { itemId: 1007, name: '竞技券' },
+  // 特殊类
+  { itemId: 1016, name: '梦魇晶石' },
+];
+
+// 采购清单 checkbox 切换辅助函数
+const togglePurchaseItem = (arr, discounts, itemId) => {
+  const idx = arr.indexOf(itemId);
+  if (idx >= 0) {
+    arr.splice(idx, 1);
+  } else {
+    arr.push(itemId);
+    // 勾选时确保折扣值存在
+    if (!discounts) discounts = {};
+    if (discounts[itemId] == null) discounts[itemId] = 10;
+  }
+};
+
+// 确保采购清单折扣全部初始化（返回新对象触发响应式更新）
+const initPurchaseDiscounts = (discounts) => {
+  const result = { ...(discounts || {}) };
+  purchaseItemOptions.forEach(item => {
+    if (result[item.itemId] == null) result[item.itemId] = 10;
+  });
+  return result;
+};
+
+// 获取折扣值（始终返回数字，避免 undefined 导致 n-input-number 显示空白）
+const getDiscount = (discounts, itemId) => {
+  return discounts?.[itemId] ?? 10;
+};
+
+// 设置折扣值（显式赋值确保响应式更新）
+const setDiscount = (discounts, itemId, val) => {
+  const num = (val != null && val !== '') ? Number(val) : 10;
+  discounts[itemId] = Math.max(1, Math.min(10, isNaN(num) ? 10 : num));
+};
+
+// 同步采购清单到游戏
+const syncPurchaseBusy = ref(false);
+const syncPurchaseToGame = async () => {
+  const tokenId = currentSettingsTokenId.value;
+  if (!tokenId) return;
+  const wsStatus = tokenStore.getWebSocketStatus(tokenId);
+  if (wsStatus !== 'connected') {
+    message.warning('该账号WebSocket未连接，请先连接后再同步');
+    return;
+  }
+  const purchaseList = currentSettings.purchaseList || [];
+  if (purchaseList.length === 0) {
+    message.warning('请先勾选采购商品');
+    return;
+  }
+  syncPurchaseBusy.value = true;
+  try {
+    const discounts = currentSettings.purchaseDiscounts || {};
+    const purchaseItemList = purchaseList.map(id => ({ itemId: id, discount: discounts[id] ?? 10 }));
+    const purchaseCnt = currentSettings.purchaseCnt ?? 15;
+    await tokenStore.sendMessageWithPromise(tokenId, 'store_setpurchase', { purchaseItemList, purchaseCnt }, 8000);
+    message.success(`采购清单已同步到游戏 (${purchaseItemList.length}项, 次数${purchaseCnt})`);
+  } catch (e) {
+    message.error(`同步失败: ${e.message}`);
+  } finally {
+    syncPurchaseBusy.value = false;
+  }
+};
+
+// 同步采购清单到勾选的账号（自动连接）
+const batchSyncPurchaseToGame = async () => {
+  if (selectedTokens.value.length === 0) return;
+  let successCount = 0;
+  let skipCount = 0;
+  let failCount = 0;
+
+  for (const tokenId of selectedTokens.value) {
+    if (shouldStop.value) break;
+    const token = tokens.value.find(t => t.id === tokenId);
+    if (!token) continue;
+
+    // 读取该账号的日常设置
+    let settings = null;
+    try {
+      const raw = localStorage.getItem(`daily-settings:${tokenId}`);
+      if (raw) settings = JSON.parse(raw);
+    } catch (e) {}
+
+    const purchaseList = settings?.purchaseList || [];
+    if (purchaseList.length === 0) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 未配置采购清单，跳过`, type: "info" });
+      skipCount++;
+      continue;
+    }
+
+    try {
+      // 自动连接
+      await ensureConnection(tokenId);
+      await new Promise(r => setTimeout(r, 2000));
+
+      const discounts = settings.purchaseDiscounts || {};
+      const purchaseItemList = purchaseList.map(id => ({ itemId: id, discount: discounts[id] ?? 10 }));
+      const purchaseCnt = settings.purchaseCnt ?? 15;
+      await tokenStore.sendMessageWithPromise(tokenId, 'store_setpurchase', { purchaseItemList, purchaseCnt }, 8000);
+      addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 采购清单同步成功 (${purchaseItemList.length}项, 次数${purchaseCnt})`, type: "success" });
+      successCount++;
+    } catch (e) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 采购清单同步失败: ${e.message}`, type: "error" });
+      failCount++;
+    } finally {
+      tokenStore.closeWebSocketConnection(tokenId);
+      releaseConnectionSlot();
+      addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 连接已关闭 (队列: ${connectionQueue.active}/${batchSettings.maxActive})`, type: "info" });
+    }
+  }
+
+  const summary = `同步完成: 成功${successCount}个, 跳过${skipCount}个, 失败${failCount}个`;
+  addLog({ time: new Date().toLocaleTimeString(), message: `=== ${summary} ===`, type: "info" });
+  message.success(summary);
+};
+
+// ====== 批量采购清单配置弹窗 ======
+const showBatchPurchaseConfigModal = ref(false);
+const batchPurchaseList = ref([]);
+const batchPurchaseDiscounts = ref({});
+const batchPurchaseCnt = ref(15);
+const batchPurchaseSyncing = ref(false);
+
+// 打开弹窗：从第一个勾选账号读取现有配置作为默认值
+const openBatchPurchaseConfig = () => {
+  if (selectedTokens.value.length === 0) {
+    message.warning('请先勾选账号');
+    return;
+  }
+  // 从第一个账号读取现有配置
+  const firstTokenId = selectedTokens.value[0];
+  try {
+    const raw = localStorage.getItem(`daily-settings:${firstTokenId}`);
+    if (raw) {
+      const settings = JSON.parse(raw);
+      batchPurchaseList.value = [...(settings.purchaseList || [])];
+      batchPurchaseDiscounts.value = initPurchaseDiscounts(settings.purchaseDiscounts);
+      batchPurchaseCnt.value = settings.purchaseCnt ?? 15;
+    } else {
+      batchPurchaseList.value = [];
+      batchPurchaseDiscounts.value = initPurchaseDiscounts({});
+      batchPurchaseCnt.value = 15;
+    }
+  } catch (e) {
+    batchPurchaseList.value = [];
+    batchPurchaseDiscounts.value = initPurchaseDiscounts({});
+    batchPurchaseCnt.value = 15;
+  }
+  showBatchPurchaseConfigModal.value = true;
+};
+
+// 保存并同步采购清单到所有勾选账号
+const applyBatchPurchaseConfig = async () => {
+  if (batchPurchaseList.value.length === 0) {
+    message.warning('请先勾选至少一个采购商品');
+    return;
+  }
+  showBatchPurchaseConfigModal.value = false;
+  batchPurchaseSyncing.value = true;
+
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const tokenId of selectedTokens.value) {
+    if (shouldStop.value) break;
+    const token = tokens.value.find(t => t.id === tokenId);
+    if (!token) continue;
+
+    // 1. 保存到该账号的 localStorage
+    try {
+      let settings = {};
+      try {
+        const raw = localStorage.getItem(`daily-settings:${tokenId}`);
+        if (raw) settings = JSON.parse(raw);
+      } catch (e) {}
+      settings.purchaseList = [...batchPurchaseList.value];
+      settings.purchaseDiscounts = { ...batchPurchaseDiscounts.value };
+      settings.purchaseCnt = batchPurchaseCnt.value;
+      settings.blackMarketPurchase = true;
+      localStorage.setItem(`daily-settings:${tokenId}`, JSON.stringify(settings));
+    } catch (e) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 保存采购清单到本地失败: ${e.message}`, type: "warning" });
+    }
+
+    // 2. 自动连接并同步到游戏
+    try {
+      await ensureConnection(tokenId);
+      await new Promise(r => setTimeout(r, 2000));
+
+      const purchaseItemList = batchPurchaseList.value.map(id => ({
+        itemId: id,
+        discount: batchPurchaseDiscounts.value[id] ?? 10,
+      }));
+      await tokenStore.sendMessageWithPromise(tokenId, 'store_setpurchase', {
+        purchaseItemList,
+        purchaseCnt: batchPurchaseCnt.value,
+      }, 8000);
+      addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 采购清单同步成功 (${purchaseItemList.length}项, 次数${batchPurchaseCnt.value})`, type: "success" });
+      successCount++;
+    } catch (e) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 采购清单同步失败: ${e.message}`, type: "error" });
+      failCount++;
+    } finally {
+      tokenStore.closeWebSocketConnection(tokenId);
+      releaseConnectionSlot();
+    }
+  }
+
+  const summary = `采购清单同步完成: 成功${successCount}个, 失败${failCount}个`;
+  addLog({ time: new Date().toLocaleTimeString(), message: `=== ${summary} ===`, type: "info" });
+  message.success(summary);
+  batchPurchaseSyncing.value = false;
+};
 
 const tasksLegacy = createTasksLegacy(createTaskDeps());
 const { batchLegacyClaim, batchLegacyHangup, batchLegacyGiftSendEnhanced, batchLegacyClaimGiftTask } = tasksLegacy;
 
 // ====== 十殿阎罗挑战（弹窗打开组队界面） ======
 const showNightmareChallengeModal = ref(false);
+const showStarTeamModal = ref(false);
 const batchNightmareChallenge = async () => {
   // 当未勾选账号时直接打开弹窗，由十殿卡片内的队长下拉框选择队长
   if (selectedTokens.value.length === 0) {
@@ -10896,6 +11980,492 @@ const batchNightmareChallenge = async () => {
   }
   // 打开组队弹窗
   showNightmareChallengeModal.value = true;
+};
+
+// ====== 定时任务：十殿阎罗挑战（根据勾选预设执行） ======
+const batchNightmareChallengePresets = async (silent) => {
+  // silent 参数兼容定时任务调用，此处不使用
+  const nmTask = currentScheduledTask;
+  const presetIds = nmTask?.nightmarePresetIds || [];
+  if (presetIds.length === 0) {
+    addLog({ time: new Date().toLocaleTimeString(), message: '十殿挑战：未配置预设，跳过', type: 'warning' });
+    return;
+  }
+
+  // 加载全部预设
+  let allPresets = [];
+  try {
+    const raw = localStorage.getItem('nightmare-presets');
+    allPresets = raw ? JSON.parse(raw) : [];
+  } catch { allPresets = []; }
+
+  // 过滤出选中的预设
+  const presets = allPresets.filter(p => presetIds.includes(p.id));
+  if (presets.length === 0) {
+    addLog({ time: new Date().toLocaleTimeString(), message: '十殿挑战：选中的预设不存在，跳过', type: 'warning' });
+    return;
+  }
+
+  addLog({ time: new Date().toLocaleTimeString(), message: `=== 十殿阎罗挑战：开始执行 ${presets.length} 个预设 ===`, type: 'info' });
+
+  // 构建队员使用计数（用于共享队员检测 + 延迟断连）
+  const memberUsageCount = new Map(); // tokenId → 使用该队员的预设数量
+  const memberLastPresetIndex = new Map(); // tokenId → 最后使用该队员的预设索引
+  for (let idx = 0; idx < presets.length; idx++) {
+    const p = presets[idx];
+    const allIds = [p.captainTokenId, ...(p.memberTokenIds || [])].filter(Boolean);
+    for (const tid of allIds) {
+      memberUsageCount.set(tid, (memberUsageCount.get(tid) || 0) + 1);
+      memberLastPresetIndex.set(tid, idx); // 不断更新，最终值为最后使用的索引
+    }
+  }
+
+  // 检测共享队长（严重冲突）
+  const captainIds = presets.map(p => p.captainTokenId).filter(Boolean);
+  const duplicateCaptains = captainIds.filter((id, i) => captainIds.indexOf(id) !== i);
+  if (duplicateCaptains.length > 0) {
+    const names = [...new Set(duplicateCaptains)].map(id => tokenStore.gameTokens.find(t => t.id === id)?.name || id.slice(0, 8));
+    addLog({ time: new Date().toLocaleTimeString(), message: `⚠️ 多个预设使用相同队长: ${names.join('、')}，后续预设将自动跳过`, type: 'warning' });
+  }
+
+  // 检测共享队员（可能导致前预设战斗异常）
+  const sharedMembers = [...memberUsageCount.entries()]
+    .filter(([tid, count]) => count > 1 && !duplicateCaptains.includes(tid))
+    .map(([tid]) => tokenStore.gameTokens.find(t => t.id === tid)?.name || tid.slice(0, 8));
+  if (sharedMembers.length > 0) {
+    addLog({ time: new Date().toLocaleTimeString(), message: `⚠️ 以下队员被多个预设共享: ${sharedMembers.join('、')}，加入新房间后可能从前一个房间被移除`, type: 'warning' });
+  }
+
+  // 输出预设概览
+  for (let idx = 0; idx < presets.length; idx++) {
+    const p = presets[idx];
+    const capName = tokenStore.gameTokens.find(t => t.id === p.captainTokenId)?.name || '未知';
+    const memberNames = (p.memberTokenIds || []).map(mid => tokenStore.gameTokens.find(t => t.id === mid)?.name || mid.slice(0, 8)).join('、') || '无';
+    const totalCount = (p.captainTokenId ? 1 : 0) + (p.memberTokenIds || []).length;
+    addLog({ time: new Date().toLocaleTimeString(), message: `  预设${idx + 1}:「${p.name || '未命名'}」👑${capName} 👥${totalCount}人(队员: ${memberNames})`, type: 'info' });
+  }
+
+  const delay = (ms) => new Promise(r => setTimeout(r, ms));
+  const activeBattles = [];
+  const MAX_RETRY = 2; // 每个预设最多重试2次
+  const retryCountMap = new Map(); // presetId → 重试次数
+
+  // 初始化 sessionStorage（清除上次的批量数据）
+  try { sessionStorage.removeItem('nightmare-batch-battles'); } catch { /* ignore */ }
+
+  // ====== 单预设执行函数（初始执行和重试共用） ======
+  const executeOnePreset = async (preset, label, presetIndex = -1) => {
+    const captainTokenId = preset.captainTokenId;
+    const captainToken = tokenStore.gameTokens.find(t => t.id === captainTokenId);
+    if (!captainToken) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `预设「${preset.name}」队长Token不存在，跳过`, type: 'warning' });
+      return null;
+    }
+
+    addLog({ time: new Date().toLocaleTimeString(), message: `▶ ${label} 队长: ${captainToken.name}`, type: 'info' });
+
+    // 1. 确保队长连接
+    if (tokenStore.getWebSocketStatus(captainTokenId) !== 'connected') {
+      addLog({ time: new Date().toLocaleTimeString(), message: `连接队长 ${captainToken.name}...`, type: 'info' });
+      await tokenStore.createWebSocketConnection(captainTokenId, captainToken.token, captainToken.wsUrl || null);
+      let retries = 0;
+      while (tokenStore.getWebSocketStatus(captainTokenId) !== 'connected' && retries < 30) {
+        await delay(1000);
+        retries++;
+      }
+    }
+    if (tokenStore.getWebSocketStatus(captainTokenId) !== 'connected') {
+      addLog({ time: new Date().toLocaleTimeString(), message: `队长 ${captainToken.name} 连接失败，跳过预设`, type: 'error' });
+      return null;
+    }
+
+    // 2. 获取队长 roleId
+    let captainRoleId = '';
+    try {
+      const roleInfo = await tokenStore.sendGetRoleInfo(captainTokenId, {});
+      captainRoleId = String(roleInfo?.role?.roleId || '');
+      if (!captainRoleId) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `获取队长 roleId 失败，跳过预设`, type: 'error' });
+        return null;
+      }
+    } catch (err) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `获取队长 roleId 异常: ${err.message || err}，跳过`, type: 'error' });
+      return null;
+    }
+
+    // 3. 检查现有队伍和战斗房间
+    let teamId = '';
+    let hasActiveBattle = false;
+    let existingRoomId = null;
+
+    // 3a. 先检查是否已有活跃后台战斗（防止重复启动同一队长的战斗）
+    const alreadyRunning = activeBattles.find(b =>
+      b.preset.captainTokenId === captainTokenId &&
+      (b.status === 'running' || b.status === 'cooling' || b.status === 'waiting_midnight')
+    );
+    if (alreadyRunning) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `队长 ${captainToken.name} 已有后台战斗「${alreadyRunning.preset.name}」运行中，跳过`, type: 'warning' });
+      return null;
+    }
+
+    // 3b. 查询队长是否有队伍
+    let existingTeamId = null;
+    try {
+      const roleTeamRes = await tokenStore.sendMessageWithPromise(
+        captainTokenId, 'matchteam_getroleteaminfo',
+        { roleID: Number(captainRoleId) }, 10000
+      );
+      existingTeamId = roleTeamRes?.teamInfo?.teamId;
+    } catch { /* 无队伍 */ }
+
+    // 3c. 独立检查是否有进行中的战斗房间（无论是否有队伍）
+    try {
+      const nightResp = await tokenStore.sendMessageWithPromise(
+        captainTokenId, 'nightmare_getroleinfo',
+        { roleId: Number(captainRoleId) }, 10000
+      );
+      existingRoomId = nightResp?.nightMareData?.roomId
+        || nightResp?.nightmareData?.roomId
+        || nightResp?.roomId
+        || nightResp?.roomid
+        || null;
+    } catch { /* 没有战斗房间 */ }
+
+    if (existingRoomId) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `✅ 发现进行中的战斗 RoomId: ${existingRoomId}，接管继续挑战`, type: 'success' });
+      teamId = existingTeamId ? String(existingTeamId) : '';
+      hasActiveBattle = true;
+    } else if (existingTeamId) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `发现过期残留队伍 TeamId: ${existingTeamId}，正在解散...`, type: 'warning' });
+      try {
+        await tokenStore.sendMessageWithPromise(
+          captainTokenId, 'matchteam_dismiss',
+          { teamId: Number(existingTeamId) }, 10000
+        );
+        addLog({ time: new Date().toLocaleTimeString(), message: '残留队伍已解散', type: 'success' });
+      } catch (dismissErr) {
+        const errMsg = dismissErr.message || String(dismissErr);
+        if (!errMsg.includes('200020') && !errMsg.includes('6100020')) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `解散失败: ${errMsg}，跳过`, type: 'error' });
+          return null;
+        }
+      }
+      await delay(1000);
+    }
+
+    // 4. 创建房间（如果没有活跃战斗）
+    if (!hasActiveBattle) {
+      try {
+        await tokenStore.sendMessageWithPromise(
+          captainTokenId, 'matchteam_getrandteamlist',
+          { teamCfgId: 1, param: 0, custom: {} }, 10000
+        );
+        const createResp = await tokenStore.sendMessageWithPromise(
+          captainTokenId, 'matchteam_create',
+          {
+            teamCfgId: 1,
+            setting: { name: '十殿先锋队', notice: '', secret: 1, apply: 0, applyList: [] },
+            param: 0, custom: {}, extParam: 0,
+          }, 10000
+        );
+        teamId = String(createResp?.teamInfo?.teamId || '');
+        if (!teamId) {
+          addLog({ time: new Date().toLocaleTimeString(), message: '创建房间失败，跳过预设', type: 'error' });
+          return null;
+        }
+        addLog({ time: new Date().toLocaleTimeString(), message: `房间创建成功 TeamId: ${teamId}`, type: 'success' });
+      } catch (err) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `创建房间异常: ${err.message || err}，跳过`, type: 'error' });
+        return null;
+      }
+      await delay(3000);
+    }
+
+    // 5. 队员加入并准备
+    const memberTokenIds = (preset.memberTokenIds || []).slice(0, 4)
+      .filter(tid => tokenStore.gameTokens.some(t => t.id === tid));
+
+    if (!hasActiveBattle && memberTokenIds.length > 0) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `队员加入并准备 (${memberTokenIds.length}人)...`, type: 'info' });
+      const alreadyJoined = new Set();
+
+      for (const tid of memberTokenIds) {
+        const token = tokenStore.gameTokens.find(t => t.id === tid);
+        const name = token ? token.name : tid.slice(0, 8);
+
+        if (tokenStore.getWebSocketStatus(tid) !== 'connected') {
+          tokenStore.createWebSocketConnection(tid, token.token, token.wsUrl || null).catch(() => {});
+          let retries = 0;
+          while (tokenStore.getWebSocketStatus(tid) !== 'connected' && retries < 20) {
+            await delay(1000);
+            retries++;
+          }
+        }
+        if (tokenStore.getWebSocketStatus(tid) !== 'connected') {
+          addLog({ time: new Date().toLocaleTimeString(), message: `[${name}] 连接失败，跳过该成员`, type: 'warning' });
+          continue;
+        }
+
+        try {
+          if (preset.usePresetTeam !== false && preset.teamSlots?.[tid]) {
+            const slot = preset.teamSlots[tid];
+            try {
+              await tokenStore.sendMessageWithPromise(
+                tid, 'presetteam_saveteam', { teamId: slot }, 8000
+              );
+              addLog({ time: new Date().toLocaleTimeString(), message: `[${name}] 已切换到阵容槽位 ${slot}`, type: 'info' });
+            } catch { /* 阵容切换失败不阻塞 */ }
+          }
+
+          await tokenStore.sendMessageWithPromise(
+            tid, 'matchteam_getrandteamlist',
+            { teamCfgId: 1, param: 0, custom: {} }, 10000
+          );
+
+          if (!alreadyJoined.has(tid)) {
+            try {
+              await tokenStore.sendMessageWithPromise(
+                tid, 'matchteam_join', { teamId: Number(teamId) }, 10000
+              );
+              alreadyJoined.add(tid);
+            } catch (joinErr) {
+              const joinMsg = joinErr.message || String(joinErr);
+              if (joinMsg.includes('7100020')) {
+                alreadyJoined.add(tid);
+              } else {
+                addLog({ time: new Date().toLocaleTimeString(), message: `[${name}] 加入房间失败: ${joinMsg}`, type: 'warning' });
+                continue;
+              }
+            }
+          }
+          await delay(1000);
+
+          await tokenStore.sendMessageWithPromise(
+            tid, 'matchteam_memberprepare', { teamId: Number(teamId) }, 10000
+          );
+          addLog({ time: new Date().toLocaleTimeString(), message: `[${name}] 加入并准备成功`, type: 'success' });
+        } catch (err) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `[${name}] 操作失败: ${err.message || err}`, type: 'warning' });
+        }
+
+        // BUG2修复：共享队员延迟断连 - 如果后续预设还需要该队员，不断开连接
+        const isSharedMember = memberUsageCount.get(tid) > 1;
+        const lastPresetIdx = memberLastPresetIndex.get(tid) ?? -1;
+        if (isSharedMember && presetIndex >= 0 && presetIndex < lastPresetIdx) {
+          // 后续预设还需要该队员，保持连接（避免从前预设房间被移除）
+          addLog({ time: new Date().toLocaleTimeString(), message: `[${name}] 共享队员，保持连接供后续预设使用`, type: 'info' });
+        } else {
+          try { await tokenStore.closeWebSocketConnection(tid); } catch { /* ignore */ }
+        }
+        await delay(500);
+      }
+    }
+
+    // 6. 获取 RoomId
+    addLog({ time: new Date().toLocaleTimeString(), message: '开始战斗，获取 RoomId...', type: 'info' });
+    let roomId = existingRoomId;
+
+    if (!roomId) {
+      try {
+        const openResp = await tokenStore.sendMessageWithPromise(
+          captainTokenId, 'matchteam_openteam',
+          { teamId: Number(teamId) }, 10000
+        );
+        roomId = openResp?.roomId || openResp?.roomid || openResp?.roomInfo?.roomId || null;
+      } catch (err) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `开启房间失败: ${err.message || err}`, type: 'error' });
+        return null;
+      }
+
+      if (!roomId && captainRoleId) {
+        for (let attempt = 1; attempt <= 10; attempt++) {
+          try {
+            const resp = await tokenStore.sendMessageWithPromise(
+              captainTokenId, 'nightmare_getroleinfo',
+              { roleId: Number(captainRoleId) }, 10000
+            );
+            roomId = resp?.nightMareData?.roomId || resp?.nightmareData?.roomId || resp?.roomId || resp?.roomid || null;
+            if (roomId) break;
+            await delay(3000);
+          } catch { await delay(3000); }
+        }
+      }
+    }
+
+    if (!roomId) {
+      addLog({ time: new Date().toLocaleTimeString(), message: '无法获取 RoomId，跳过预设', type: 'error' });
+      return null;
+    }
+
+    // 7. 启动后台战斗服务
+    addLog({ time: new Date().toLocaleTimeString(), message: `RoomId: ${roomId}，启动后台战斗服务`, type: 'info' });
+
+    const battleEntry = { preset, battle: null, roomId, teamId, status: 'running', currentLevel: 0, failReason: null };
+
+    const battle = new NightmareAutoBattleService({
+      captainTokenId,
+      roomId,
+      teamId,
+      presetData: preset,
+      captainRoleId,
+      tokenStore,
+      onLog: (msg, type) => addLog({ time: new Date().toLocaleTimeString(), message: `[${preset.name}] ${msg}`, type: type || 'info' }),
+      onStatusChange: (info) => {
+        if (battleEntry) {
+          battleEntry.status = info.status;
+          if (info.currentLevel !== undefined) battleEntry.currentLevel = info.currentLevel;
+          if (info.reason) battleEntry.failReason = info.reason;
+        }
+        if (info.status === 'running' && info.currentLevel > 0) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `[${preset.name}] 当前挑战第${info.currentLevel}关`, type: 'info' });
+        }
+      },
+      onComplete: (result) => {
+        const levelInfo = result?.level ? ` (第${result.level}关)` : '';
+        addLog({ time: new Date().toLocaleTimeString(), message: `✅ 预设「${preset.name}」挑战完成${levelInfo}！`, type: 'success' });
+      },
+      onError: (err) => {
+        addLog({ time: new Date().toLocaleTimeString(), message: `❌ 预设「${preset.name}」战斗异常: ${err.message || err}`, type: 'error' });
+      },
+    });
+
+    battleEntry.battle = battle;
+    activeBattles.push(battleEntry);
+    battle.start();
+
+    addLog({ time: new Date().toLocaleTimeString(), message: `✅ 预设「${preset.name}」已在后台启动战斗`, type: 'success' });
+
+    // BUG1修复：批量模式用数组存储所有活跃预设，避免覆盖
+    try {
+      const existing = JSON.parse(sessionStorage.getItem('nightmare-batch-battles') || '[]');
+      existing.push({
+        presetId: preset.id,
+        presetName: preset.name,
+        captainTokenId,
+        captainRoleId,
+        memberTokenIds: preset.memberTokenIds || [],
+        teamSlots: preset.teamSlots || {},
+        roomId: battle.getRoomId(),
+        startedAt: new Date().toISOString(),
+      });
+      sessionStorage.setItem('nightmare-batch-battles', JSON.stringify(existing));
+      // 同时保留最后一个单预设记录（兼容旧逻辑）
+      sessionStorage.setItem('nightmare-last-battle-preset', JSON.stringify(existing[existing.length - 1]));
+    } catch { /* ignore */ }
+
+    return battleEntry;
+  };
+
+  // ====== 主执行循环：逐个启动预设 ======
+  for (let i = 0; i < presets.length; i++) {
+    if (shouldStop.value) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `⏹ 收到停止信号，取消剩余 ${presets.length - i} 个预设`, type: 'warning' });
+      break;
+    }
+    const preset = presets[i];
+    const entry = await executeOnePreset(preset, `执行预设「${preset.name}」(${i + 1}/${presets.length})`, i);
+    if (!entry) continue;
+
+    // 预设间错开延迟（避免服务器压力）
+    if (i < presets.length - 1) {
+      addLog({ time: new Date().toLocaleTimeString(), message: '等待8秒后启动下一个预设...', type: 'info' });
+      await delay(8000);
+    }
+  }
+
+  // ====== 等待所有战斗完成 + 失败重试 ======
+  if (activeBattles.length > 0) {
+    addLog({ time: new Date().toLocaleTimeString(), message: `⏳ 等待 ${activeBattles.length} 个后台战斗完成...`, type: 'info' });
+    const maxWait = 2 * 60 * 60 * 1000; // 2小时超时
+    const startTime = Date.now();
+    let reportInterval = 0;
+    while (Date.now() - startTime < maxWait && !shouldStop.value) {
+      // 检测失败的预设并触发重试
+      const failedBattles = activeBattles.filter(b =>
+        b.status === 'failed' && !b._retried
+      );
+      for (const fb of failedBattles) {
+        const currentRetries = retryCountMap.get(fb.preset.id) || 0;
+        if (currentRetries < MAX_RETRY) {
+          retryCountMap.set(fb.preset.id, currentRetries + 1);
+          fb._retried = true; // 标记已处理，避免重复重试
+          fb.status = 'retrying'; // 标记为重试中
+
+          const retryNum = currentRetries + 1;
+          addLog({ time: new Date().toLocaleTimeString(), message: `🔄 预设「${fb.preset.name}」第${retryNum}次重试（失败原因: ${fb.failReason || '未知'}）`, type: 'warning' });
+
+          // 确保旧战斗已完全解散（NightmareAutoBattleService 已在失败时调用 _dismissRoom）
+          await delay(3000);
+
+          // 从 activeBattles 移除旧条目（避免重复统计和 allDone 误判）
+          const oldIdx = activeBattles.indexOf(fb);
+          if (oldIdx !== -1) activeBattles.splice(oldIdx, 1);
+
+          // 重新执行完整流程：连接队长→创建房间→队员加入→启动战斗
+          const newEntry = await executeOnePreset(
+            fb.preset,
+            `重试预设「${fb.preset.name}」(第${retryNum}次)`
+          );
+          if (newEntry) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `✅ 预设「${fb.preset.name}」重试已启动`, type: 'success' });
+            await delay(5000); // 重试后等待一会再检测
+          } else {
+            addLog({ time: new Date().toLocaleTimeString(), message: `❌ 预设「${fb.preset.name}」重试启动失败`, type: 'error' });
+          }
+        } else {
+          fb._retried = true; // 已达重试上限，标记避免重复检测
+          addLog({ time: new Date().toLocaleTimeString(), message: `⚠️ 预设「${fb.preset.name}」已达最大重试次数(${MAX_RETRY})，不再重试`, type: 'warning' });
+        }
+      }
+
+      const allDone = activeBattles.every(b =>
+        b.status === 'completed' || b.status === 'failed' || b.status === 'stopped'
+      );
+      if (allDone) break;
+      await delay(10000);
+      reportInterval++;
+      // 每60秒输出一次进度
+      if (reportInterval >= 6) {
+        reportInterval = 0;
+        const running = activeBattles.filter(b => b.status === 'running');
+        const done = activeBattles.filter(b => b.status === 'completed');
+        const failed = activeBattles.filter(b => b.status === 'failed');
+        const retrying = activeBattles.filter(b => b.status === 'retrying');
+        const elapsed = Math.floor((Date.now() - startTime) / 60000);
+        const runningDetail = running.map(b => `「${b.preset.name}」${b.currentLevel ? `第${b.currentLevel}关` : ''}`).join('、');
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `⏳ 十殿挑战进行中 (${elapsed}分钟) - 运行中: ${runningDetail || '无'} | 已完成: ${done.length}个 | 失败: ${failed.length}个${retrying.length > 0 ? ` | 重试中: ${retrying.length}个` : ''}`,
+          type: 'info',
+        });
+      }
+    }
+    
+    // 最终汇总
+    const completed = activeBattles.filter(b => b.status === 'completed');
+    const failed = activeBattles.filter(b => b.status === 'failed');
+    const stopped = activeBattles.filter(b => b.status === 'stopped');
+    const timeout = Date.now() - startTime >= maxWait;
+    const totalElapsed = Math.floor((Date.now() - startTime) / 60000);
+    
+    addLog({ time: new Date().toLocaleTimeString(), message: `=== 十殿阎罗挑战执行完毕 (${totalElapsed}分钟) ===`, type: 'info' });
+    if (completed.length > 0) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `✅ 成功: ${completed.map(b => `「${b.preset.name}」`).join('、')}`, type: 'success' });
+    }
+    if (failed.length > 0) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `❌ 失败: ${failed.map(b => `「${b.preset.name}」${b.failReason ? `(${b.failReason})` : ''}`).join('、')}`, type: 'error' });
+    }
+    if (stopped.length > 0) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `⏹ 已停止: ${stopped.map(b => `「${b.preset.name}」`).join('、')}`, type: 'warning' });
+    }
+    if (timeout) {
+      const running = activeBattles.filter(b => b.status === 'running');
+      addLog({ time: new Date().toLocaleTimeString(), message: `⚠️ 超时2小时，${running.length}个预设未完成: ${running.map(b => `「${b.preset.name}」`).join('、')}`, type: 'warning' });
+    }
+
+    // 清理 sessionStorage 批量战斗数据
+    try { sessionStorage.removeItem('nightmare-batch-battles'); } catch { /* ignore */ }
+  }
 };
 
 const startBatch = async () => {
@@ -11096,7 +12666,6 @@ const startBatch = async () => {
           console.log(`[${token.name}] roleInfoResp?.role:`, roleInfoResp?.role);
           console.log(`[${token.name}] roleInfoResp?.role?.dailyTask:`, roleInfoResp?.role?.dailyTask);
           
-          // sendGetRoleInfo返回的是roleInfo对象（包含role字段）
           // 消息监听器会自动更新tokenGameDataMap，但为了确保，我们再手动更新一次
           if (roleInfoResp) {
             const roleData = roleInfoResp?.role || roleInfoResp;
@@ -11104,21 +12673,25 @@ const startBatch = async () => {
             
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `📊 ${token.name} 解析活跃度: ${activityPoints}/100`,
+              message: `📊 ${token.name} 解析活跃度: ${activityPoints}/110`,
               type: "info",
             });
+            
+            // 显式设置活跃度到tokenActivityMap，确保排序时能正确获取
+            tokenStore.setTokenActivity(tokenId, activityPoints);
             
             if (roleData) {
               // 更新到tokenGameDataMap
               tokenStore.updateTokenGameData(tokenId, { roleInfo: roleInfoResp });
               
-              // 验证更新
+              // 验证更新（数据路径：roleInfo.role.dailyTask.dailyPoint）
               const cached = tokenStore.getTokenGameData(tokenId);
-              const cachedActivity = cached?.roleInfo?.dailyTask?.dailyPoint ?? 0;
+              const cachedActivity = cached?.roleInfo?.role?.dailyTask?.dailyPoint 
+                ?? cached?.roleInfo?.dailyTask?.dailyPoint ?? 0;
               
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `✅ ${token.name} 活跃度已缓存: ${cachedActivity}/100`,
+                message: `✅ ${token.name} 活跃度已缓存: ${cachedActivity}/110`,
                 type: "success",
               });
             }
@@ -11366,7 +12939,13 @@ const startBatch = async () => {
     shouldRefreshAfterTask.value = false; // 重置标记
     // 稍等片刻再刷新，让用户看到任务完成的消息
     setTimeout(() => {
-      window.location.reload();
+      // ✅ 二次确认：防止 1.5 秒内调度器启动了新任务
+      if (!isRunning.value && !isScheduledTaskRunning.value && pendingTaskQueue.length === 0) {
+        window.location.reload();
+      } else {
+        shouldRefreshAfterTask.value = true; // 重新标记，等待下次调度器检查
+        console.log(`[${new Date().toISOString()}] Postponed refresh: new task started during delay`);
+      }
     }, 1500);
     return; // 提前返回，不显示成功消息
   }
@@ -11385,8 +12964,8 @@ const stopBatch = () => {
 
 /**
  * 日常任务执行完成后，根据活跃度自动排序账号
- * 0-90活跃度的账号排到前面，90-100活跃度的账号排到后面
- * 注意：只有执行多个账号时才会排序
+ * 低活跃度（<100）的账号排到前面，高活跃度（>=100）的账号排到后面
+ * 注意：只对本次执行的selectedTokens排序，不影响未执行的token顺序
  */
 const sortByActivityAfterDailyTask = async () => {
   try {
@@ -11407,46 +12986,50 @@ const sortByActivityAfterDailyTask = async () => {
       type: "info",
     });
 
-    // 获取所有token的活跃度
+    // 活跃度阈值：100为分界线（满值110，>=105跳过任务）
+    const ACTIVITY_THRESHOLD = 100;
+
+    // 获取本次执行的token的活跃度
     const activityMap = new Map();
     
-    // 从tokenActivityMap中获取活跃度
-    for (const token of tokenStore.gameTokens) {
-      const tokenId = token.id;
+    for (const tokenId of selectedTokens.value) {
+      const token = tokenStore.gameTokens.find(t => t.id === tokenId);
       
       try {
-        // 使用tokenStore.getTokenActivity直接获取活跃度
         const activityPoints = tokenStore.getTokenActivity(tokenId);
-        
         activityMap.set(tokenId, activityPoints);
         
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} 活跃度: ${activityPoints}/100`,
+          message: `${token?.name || tokenId} 活跃度: ${activityPoints}/110`,
           type: "info",
         });
       } catch (error) {
-        console.error(`获取${token.name}活跃度失败:`, error);
-        activityMap.set(tokenId, 0); // 默认为0
+        console.error(`获取活跃度失败:`, error);
+        activityMap.set(tokenId, 0);
       }
     }
 
-    // 根据活跃度排序
-    const sortedTokenIds = [...tokenStore.gameTokens].sort((a, b) => {
-      const activityA = activityMap.get(a.id) || 0;
-      const activityB = activityMap.get(b.id) || 0;
+    // 只对selectedTokens按活跃度排序
+    const sortedExecutedIds = [...selectedTokens.value].sort((a, b) => {
+      const activityA = activityMap.get(a) || 0;
+      const activityB = activityMap.get(b) || 0;
       
-      // 0-90活跃度的排前面，90-100活跃度的排后面
-      const isLowA = activityA < 90;
-      const isLowB = activityB < 90;
+      // 低活跃度(<100)排前面，高活跃度(>=100)排后面
+      const isLowA = activityA < ACTIVITY_THRESHOLD;
+      const isLowB = activityB < ACTIVITY_THRESHOLD;
       
-      // 如果一个是低活跃度，一个是高活跃度
-      if (isLowA && !isLowB) return -1; // 低活跃度排前面
-      if (!isLowA && isLowB) return 1;  // 高活跃度排后面
+      if (isLowA && !isLowB) return -1;
+      if (!isLowA && isLowB) return 1;
       
-      // 如果都是低活跃度或都是高活跃度，按活跃度升序排列
+      // 同组内按活跃度升序排列
       return activityA - activityB;
-    }).map(token => token.id);
+    });
+
+    // 合并：已执行的token（按活跃度排序）+ 未执行的token（保持原顺序）
+    const executedSet = new Set(selectedTokens.value);
+    const nonExecutedIds = tokenOrder.value.filter(id => !executedSet.has(id));
+    const sortedTokenIds = [...sortedExecutedIds, ...nonExecutedIds];
 
     // 更新tokenOrder
     tokenOrder.value = sortedTokenIds;
@@ -11455,11 +13038,11 @@ const sortByActivityAfterDailyTask = async () => {
     await saveTokenOrder(sortedTokenIds);
 
     // 统计信息
-    const lowActivityTokens = tokenStore.gameTokens.filter(
-      token => (activityMap.get(token.id) || 0) < 90
+    const lowActivityTokens = selectedTokens.value.filter(
+      id => (activityMap.get(id) || 0) < ACTIVITY_THRESHOLD
     );
-    const highActivityTokens = tokenStore.gameTokens.filter(
-      token => (activityMap.get(token.id) || 0) >= 90
+    const highActivityTokens = selectedTokens.value.filter(
+      id => (activityMap.get(id) || 0) >= ACTIVITY_THRESHOLD
     );
 
     addLog({
@@ -11469,12 +13052,12 @@ const sortByActivityAfterDailyTask = async () => {
     });
     addLog({
       time: new Date().toLocaleTimeString(),
-      message: `📊 低活跃度(0-89): ${lowActivityTokens.length}个账号 → 排到前面`,
+      message: `📊 低活跃度(0-99): ${lowActivityTokens.length}个账号 → 排到前面`,
       type: "info",
     });
     addLog({
       time: new Date().toLocaleTimeString(),
-      message: `📊 高活跃度(90-100): ${highActivityTokens.length}个账号 → 排到后面`,
+      message: `📊 高活跃度(100-110): ${highActivityTokens.length}个账号 → 排到后面`,
       type: "info",
     });
     addLog({
@@ -12356,6 +13939,35 @@ const sortByActivityAfterDailyTask = async () => {
     }
   }
 
+  /* 账号列表头部按钮移动端自适应 */
+  :deep(.n-card-header) {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  :deep(.n-card-header__title) {
+    white-space: nowrap;
+    font-size: 15px;
+  }
+
+  :deep(.n-card-header__extra) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  :deep(.n-card-header__extra .n-button) {
+    font-size: 12px !important;
+    padding: 4px 10px !important;
+    height: 28px !important;
+  }
+
+  :deep(.n-card-header__extra .n-button .n-button__content) {
+    font-size: 12px !important;
+  }
+
   /* 响应式设计 */
   @media (max-width: 600px) {
     .recipient-info {
@@ -12776,6 +14388,69 @@ const sortByActivityAfterDailyTask = async () => {
   font-size: 12px;
   color: var(--n-text-color-3, #9ca3af);
 }
+
+/* 采购清单网格 */
+.purchase-config-area {
+  margin: 4px 0 8px;
+}
+.purchase-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+}
+.purchase-item-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  min-width: 0;
+  border: 1px solid var(--n-border-color, #e5e7eb);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  &:hover { background: var(--n-color-hover, #f0f0f0); }
+  input[type="checkbox"] { margin: 0; flex-shrink: 0; }
+  > span { white-space: nowrap; flex-shrink: 0; }
+}
+.discount-input {
+  width: 38px;
+  height: 24px;
+  padding: 0 4px;
+  border: 1px solid var(--n-border-color, #e0e0e6);
+  border-radius: 3px;
+  font-size: 12px;
+  text-align: center;
+  background: var(--n-color, #fff);
+  color: var(--n-text-color, #333);
+  flex-shrink: 0;
+  -moz-appearance: textfield;
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  &:focus {
+    outline: none;
+    border-color: var(--n-color-focus, #36ad6a);
+  }
+}
+.discount-unit {
+  font-size: 11px;
+  color: var(--n-text-color-3, #9ca3af);
+  flex-shrink: 0;
+}
+/* 绿色开关样式（与预设卡点开关一致） */
+:deep(.feature-switch) {
+  --n-rail-color-active: #18a058 !important;
+  --n-rail-color: #ccc !important;
+  min-width: 64px;
+}
+:deep(.feature-switch .n-switch__rail) {
+  min-width: 64px;
+}
 </style>
 
 <!-- 添加Token弹窗样式（非scoped，因为n-modal被传送到body） -->
@@ -12878,5 +14553,32 @@ const sortByActivityAfterDailyTask = async () => {
   .import-method-tabs .n-radio-button__state-border {
     padding: 0 6px;
   }
+}
+
+/* 十殿预设选择列表 */
+.nightmare-preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nightmare-preset-item {
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fafafa;
+  transition: all 0.2s;
+}
+
+.nightmare-preset-item:hover {
+  background: #f0f0f0;
+  border-color: #c0c0c0;
+}
+
+.preset-item-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 </style>

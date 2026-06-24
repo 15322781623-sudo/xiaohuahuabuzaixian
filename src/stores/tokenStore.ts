@@ -93,12 +93,18 @@ export const useTokenStore = defineStore("tokens", () => {
     roleInfo: null,
     legionInfo: null,
     carInfo: null, // 赛车信息
-    commonActivityInfo: null, // 消耗活动进度
+    commonActivityInfo: null, // 消耗活动进度（完整body，向后兼容）
+    activityInfo: null, // activity_get 完整活动数据
+    myMonthInfo: null, // 月度任务数据（鱼竿等）
+    myArenaInfo: null, // 竞技场月任务
+    warOrderActivityInfo: null, // 竞技场通行证进度
+    actEGameInfo: null, // 换皮闯关活动
     bossTowerInfo: null, // 宝库
     evoTowerInfo: null, // 怪异塔
     monthActivity: null, // 月度任务数据
     presetTeam: null,
     nmextInfo: null, // 星级挑战信息
+    purchaseInfo: null, // 采购清单状态
     battleVersion: null as number | null, // 战斗版本号
     studyStatus: {
       isAnswering: false,
@@ -129,11 +135,12 @@ export const useTokenStore = defineStore("tokens", () => {
       lastUpdated: new Date().toISOString(),
     };
 
-    // 同时更新活跃度
+    // 同时更新活跃度（兼容两种数据路径：roleInfo.role.dailyTask 和 roleInfo.dailyTask）
     const roleInfo = data.roleInfo || tokenGameDataMap.value[tokenId]?.roleInfo;
-    if (roleInfo?.dailyTask?.dailyPoint !== undefined) {
-      tokenActivityMap.value[tokenId] = roleInfo.dailyTask.dailyPoint;
-      wsLogger.debug(`更新活跃度 [${tokenId}]: ${roleInfo.dailyTask.dailyPoint}/100`);
+    const dailyTask = roleInfo?.role?.dailyTask || roleInfo?.dailyTask;
+    if (dailyTask?.dailyPoint !== undefined) {
+      tokenActivityMap.value[tokenId] = dailyTask.dailyPoint;
+      wsLogger.debug(`更新活跃度 [${tokenId}]: ${dailyTask.dailyPoint}/110`);
     }
   };
 
@@ -512,12 +519,18 @@ export const useTokenStore = defineStore("tokens", () => {
       roleInfo: null,
       legionInfo: null,
       carInfo: null, // 赛车信息
-      commonActivityInfo: null, // 消耗活动进度
+      commonActivityInfo: null, // 消耗活动进度（完整body，向后兼容）
+      activityInfo: null, // activity_get 完整活动数据
+      myMonthInfo: null, // 月度任务数据（鱼竿等）
+      myArenaInfo: null, // 竞技场月任务
+      warOrderActivityInfo: null, // 竞技场通行证进度
+      actEGameInfo: null, // 换皮闯关活动
       bossTowerInfo: null, // 宝库
       evoTowerInfo: null, // 怪异塔
       monthActivity: null, // 月度任务数据
       presetTeam: null,
       nmextInfo: null, // 星级挑战信息
+      purchaseInfo: null, // 采购清单状态
       battleVersion: null as number | null, // 战斗版本号
       studyStatus: {
         isAnswering: false,
@@ -926,6 +939,50 @@ export const useTokenStore = defineStore("tokens", () => {
           // 同时更新到tokenGameDataMap（用于批量显示）
           updateTokenGameData(tokenId, { nmextInfo: nmextData });
         }
+      } else if (cmd === "activity_getresp" || cmd === "activity_notify") {
+        // 更新活动数据（当前选中token）
+        if (body) {
+          // 完整body保持向后兼容
+          gameData.value.commonActivityInfo = body;
+          gameData.value.lastUpdated = new Date().toISOString();
+
+          // 提取 activity 子对象中的各活动数据
+          const activity = body.activity || body;
+          if (activity) {
+            gameData.value.activityInfo = activity;
+
+            if (activity.myMonthInfo) {
+              gameData.value.myMonthInfo = activity.myMonthInfo;
+            }
+            if (activity.myArenaInfo) {
+              gameData.value.myArenaInfo = activity.myArenaInfo;
+            }
+            if (activity.warOrderActivityInfo) {
+              gameData.value.warOrderActivityInfo = activity.warOrderActivityInfo;
+            }
+            if (activity.actEGameInfo) {
+              gameData.value.actEGameInfo = activity.actEGameInfo;
+            }
+          }
+
+          wsLogger.debug(`更新活动数据 [${tokenId}]`);
+
+          // 同时更新到tokenGameDataMap（用于批量显示）
+          const updateData: any = { commonActivityInfo: body, activityInfo: gameData.value.activityInfo };
+          if (gameData.value.myMonthInfo) updateData.myMonthInfo = gameData.value.myMonthInfo;
+          if (gameData.value.myArenaInfo) updateData.myArenaInfo = gameData.value.myArenaInfo;
+          if (gameData.value.warOrderActivityInfo) updateData.warOrderActivityInfo = gameData.value.warOrderActivityInfo;
+          if (gameData.value.actEGameInfo) updateData.actEGameInfo = gameData.value.actEGameInfo;
+          updateTokenGameData(tokenId, updateData);
+        }
+      } else if (cmd === "store_setpurchaseresp" || cmd === "store_getpurchaseresp") {
+        // 更新采购清单状态
+        if (body) {
+          gameData.value.purchaseInfo = body;
+          gameData.value.lastUpdated = new Date().toISOString();
+          wsLogger.debug(`更新采购清单状态 [${tokenId}]`);
+          updateTokenGameData(tokenId, { purchaseInfo: body });
+        }
       }
 
       emitPlus(cmd, {
@@ -1284,6 +1341,33 @@ export const useTokenStore = defineStore("tokens", () => {
         } catch (error) {
           wsLogger.warn(`初始化角色信息请求失败 [${tokenId}]`, error);
         }
+        // 连接成功后自动获取游戏采购清单并同步到本地设置
+        setTimeout(async () => {
+          try {
+            const conn = wsConnections.value[tokenId];
+            if (conn?.status === "connected") {
+              const result = await sendMessageWithPromise(tokenId, 'store_getpurchase', {}, 8000);
+              if (result?.purchaseItemList?.length > 0) {
+                // 读取现有本地设置
+                let settings: any = {};
+                try {
+                  const raw = localStorage.getItem(`daily-settings:${tokenId}`);
+                  if (raw) settings = JSON.parse(raw);
+                } catch (e) {}
+                // 用游戏数据覆盖本地采购清单
+                settings.purchaseList = result.purchaseItemList.map((i: any) => i.itemId);
+                const discounts: Record<number, number> = {};
+                result.purchaseItemList.forEach((i: any) => { if (i.discount != null) discounts[i.itemId] = i.discount; });
+                settings.purchaseDiscounts = discounts;
+                if (result.purchaseCnt != null) settings.purchaseCnt = result.purchaseCnt;
+                localStorage.setItem(`daily-settings:${tokenId}`, JSON.stringify(settings));
+                wsLogger.info(`已同步采购清单到本地 [${tokenId}]: ${result.purchaseItemList.length}项, 次数${result.purchaseCnt ?? '未设置'}`);
+              }
+            }
+          } catch (e: any) {
+            wsLogger.debug(`获取采购清单失败 [${tokenId}]: ${e.message}`);
+          }
+        }, 3000);
         // 调用传入的onConnect回调
         if (onConnect) {
           try {
