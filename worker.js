@@ -7,7 +7,7 @@ const APK_VERSION_CONFIG = {
   latestVersion: "1.0.0",
   versionCode: 1,
   // 外部下载链接（GitHub Releases格式：https://github.com/用户名/仓库名/releases/download/v版本号/文件名.apk）
-  downloadUrl: "https://github.com/YOUR_USERNAME/YOUR_REPO/releases/latest/download/xyzw-helper.apk",
+  downloadUrl: "https://github.com/15322781623-sudo/xyzw-web-helper/releases/latest/download/xyzw-helper.apk",
   changelog: "初始版本",
   minVersionCode: 1,  // 低于此版本强制更新
   forceUpdate: false,  // 是否强制更新
