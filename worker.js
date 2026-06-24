@@ -4,11 +4,11 @@
 //   1. 外部链接模式（推荐）：直接指向 GitHub Releases 等下载地址
 //   2. R2模式："/api/apk/download" — 从 Cloudflare R2 存储桶下载（需启用R2）
 const APK_VERSION_CONFIG = {
-  latestVersion: "1.0.0",
-  versionCode: 1,
+  latestVersion: "1.1.0",
+  versionCode: 2,
   // 外部下载链接（GitHub Releases格式：https://github.com/用户名/仓库名/releases/download/v版本号/文件名.apk）
   downloadUrl: "https://github.com/15322781623-sudo/xyzw-web-helper/releases/latest/download/xyzw-helper.apk",
-  changelog: "初始版本",
+  changelog: "初始版本发布",
   minVersionCode: 1,  // 低于此版本强制更新
   forceUpdate: false,  // 是否强制更新
 };
