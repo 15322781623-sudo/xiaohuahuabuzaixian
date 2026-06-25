@@ -22,6 +22,7 @@ export function createTasksItem(deps) {
     shouldStop,
     ensureConnection,
     releaseConnectionSlot,
+    runStreaming,
     connectionQueue,
     batchSettings,
     tokenStore,
@@ -64,41 +65,142 @@ export function createTasksItem(deps) {
         return;
 
       tokenStatus.value[tokenId] = "running";
+      currentRunningTokenId.value = tokenId;
       const token = tokens.value.find((t) => t.id === tokenId);
 
       try {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `=== 开始英雄升星: ${token.name} ===`,
+          message: `=== 开始英雄升星: ${token.name}（共${heroIds.length}个英雄）===`,
           type: "info",
         });
 
         await ensureConnection(tokenId);
 
+        // 等待连接完全稳定
+        await new Promise((r) => setTimeout(r, 3000));
+
+        // 连接验证：发送一个轻量命令确认连接真正可用
+        let connectionVerified = false;
+        for (let verifyAttempt = 1; verifyAttempt <= 3; verifyAttempt++) {
+          try {
+            await tokenStore.sendMessageWithPromise(
+              tokenId, "role_getroleinfo", {}, batchSettings.defaultCommandTimeout || 5000,
+            );
+            connectionVerified = true;
+            break;
+          } catch (e) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 连接验证失败(第${verifyAttempt}次)，等待2秒重试...`,
+              type: "warning",
+            });
+            await new Promise((r) => setTimeout(r, 10000));
+          }
+        }
+        if (!connectionVerified) {
+          throw new Error("连接验证失败，无法执行升星操作");
+        }
+
+        // === 智能筛选：获取英雄星级和背包数据 ===
+        let roleRes;
+        try {
+          roleRes = await tokenStore.sendMessageWithPromise(
+            tokenId, "role_getroleinfo", {}, batchSettings.defaultCommandTimeout || 5000,
+          );
+        } catch (e) {
+          throw new Error("获取角色信息失败，无法执行智能筛选");
+        }
+
+        const heroes = roleRes?.role?.heroes || {};
+        const items = roleRes?.role?.items || {};
+        // 升星消耗表（按星级索引，0-based）
+        const STAR_COST = [8,8,8,8,8,40,40,40,40,40,80,80,80,80,80,200,200,200,200,200,400,400,400,400,400,400,400,400,400,400];
+
+        // 筛选可升星英雄
+        const eligibleHeroes = [];
+        const skippedReasons = [];
+        for (const heroId of heroIds) {
+          const heroData = heroes[heroId];
+          if (!heroData) {
+            skippedReasons.push(`${HERO_DICT[heroId]?.name || heroId}: 未拥有`);
+            continue;
+          }
+          const currentStar = Number(heroData.star || 0);
+          if (currentStar >= 30) {
+            skippedReasons.push(`${HERO_DICT[heroId]?.name || heroId}: 已满星(${currentStar})`);
+            continue;
+          }
+          // 检查碎片是否足够
+          const fragmentCost = STAR_COST[currentStar] || 999;
+          const fragmentCount = Number(items[heroId]?.quantity || items[heroId]?.num || 0);
+          if (fragmentCount < fragmentCost) {
+            skippedReasons.push(`${HERO_DICT[heroId]?.name || heroId}: 碎片不足(${fragmentCount}/${fragmentCost})`);
+            continue;
+          }
+          eligibleHeroes.push({ heroId, currentStar, fragmentCount, fragmentCost });
+        }
+
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 筛选结果: ${eligibleHeroes.length}个可升星，${skippedReasons.length}个跳过`,
+          type: "info",
+        });
+        if (eligibleHeroes.length > 0) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 可升星: ${eligibleHeroes.map(h => `${HERO_DICT[h.heroId]?.name || h.heroId}(${h.currentStar}星)`).join(", ")}`,
+            type: "info",
+          });
+        }
+        if (skippedReasons.length <= 10) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 跳过: ${skippedReasons.join(", ")}`,
+            type: "info",
+          });
+        }
+
+        if (eligibleHeroes.length === 0) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 无满足条件的英雄可升星`,
+            type: "warning",
+          });
+          tokenStatus.value[tokenId] = "completed";
+          return;
+        }
+
+        // 第一轮：对筛选出的英雄逐个升星
+        // 关键：检查响应码 _code，与油猴脚本 res._code !== 0 判断一致
         let heroUpgradeCount = 0;
         let heroTotalStars = 0;
-        for (const heroId of heroIds) {
+        const firstPassFailed = [];
+
+        for (const { heroId } of eligibleHeroes) {
           if (shouldStop.value)
             break;
 
-          // 每个英雄尝试最多10次升星（只要成功就继续，失败则跳过该英雄）
           let heroStars = 0;
-          for (let i = 1; i <= 10; i++) {
+          // 最多尝试30次（游戏星级上限30星）
+          for (let i = 1; i <= 30; i++) {
             if (shouldStop.value)
               break;
 
             try {
-              await tokenStore.sendMessageWithPromise(
+              const res = await tokenStore.sendMessageWithPromise(
                 tokenId,
                 "hero_heroupgradestar",
                 { heroId },
-                5000,
+                batchSettings.defaultCommandTimeout || 5000,
               );
-              // sendWithPromise resolve即为成功
+              // 检查响应码：与油猴脚本 res._code !== 0 判断一致
+              if (res && res._code !== undefined && res._code !== 0) {
+                break;
+              }
               heroStars++;
               heroTotalStars++;
             } catch (err) {
-              // 失败则停止当前英雄的升星尝试
               break;
             }
             await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -110,13 +212,58 @@ export function createTasksItem(deps) {
               message: `${token.name} 英雄:${HERO_DICT[heroId]?.name || heroId} 升星成功 ×${heroStars}`,
               type: "success",
             });
+          } else {
+            firstPassFailed.push(heroId);
+          }
+        }
+
+        // 第二轮：重试第一轮失败的英雄（等待更长时间确保连接稳定）
+        if (firstPassFailed.length > 0 && !shouldStop.value) {
+          await new Promise((r) => setTimeout(r, 2000));
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 第二轮重试 ${firstPassFailed.length} 个未成功英雄`,
+            type: "info",
+          });
+          for (const heroId of firstPassFailed) {
+            if (shouldStop.value) break;
+
+            let heroStars = 0;
+            for (let i = 1; i <= 30; i++) {
+              if (shouldStop.value) break;
+
+              try {
+                const res = await tokenStore.sendMessageWithPromise(
+                  tokenId,
+                  "hero_heroupgradestar",
+                  { heroId },
+                  batchSettings.defaultCommandTimeout || 5000,
+                );
+                if (res && res._code !== undefined && res._code !== 0) {
+                  break;
+                }
+                heroStars++;
+                heroTotalStars++;
+              } catch (err) {
+                break;
+              }
+              await new Promise((r) => setTimeout(r, delayConfig.action));
+            }
+            if (heroStars > 0) {
+              heroUpgradeCount++;
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 英雄:${HERO_DICT[heroId]?.name || heroId} 重试升星成功 ×${heroStars}`,
+                type: "success",
+              });
+            }
           }
         }
 
         tokenStatus.value[tokenId] = "completed";
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} === 英雄升星完成（${heroUpgradeCount}个英雄升星，共${heroTotalStars}星）===`,
+          message: `${token.name} === 英雄升星完成（${heroUpgradeCount}个英雄升星，共${heroTotalStars}星，${eligibleHeroes.length - heroUpgradeCount}个未能升星）===`,
           type: "success",
         });
       } catch (error) {
@@ -130,11 +277,30 @@ export function createTasksItem(deps) {
       } finally {
         tokenStore.closeWebSocketConnection(tokenId);
         releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+        currentRunningTokenId.value = null;
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processHeroUpgrade(tokenId));
-    await Promise.all(taskPromises);
+    // 分批执行：每批 maxActive 个，一批完成后再执行下一批
+    const maxConcurrent = batchSettings.maxActive || 5;
+    const allTokenIds = [...selectedTokens.value];
+    for (let i = 0; i < allTokenIds.length; i += maxConcurrent) {
+      if (shouldStop.value) break;
+      const batch = allTokenIds.slice(i, i + maxConcurrent);
+      const batchNum = Math.floor(i / maxConcurrent) + 1;
+      const totalBatches = Math.ceil(allTokenIds.length / maxConcurrent);
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `执行第 ${batchNum}/${totalBatches} 批（${batch.length}个账号）`,
+        type: "info",
+      });
+      await Promise.all(batch.map(tokenId => processHeroUpgrade(tokenId)));
+    }
 
     // 批量重试失败账号
     const retryMax = batchSettings.defaultRetryCount || 2;
@@ -145,7 +311,12 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processHeroUpgrade(t)));
+      // 重试也分批执行
+      for (let i = 0; i < cur.length; i += maxConcurrent) {
+        if (shouldStop.value) break;
+        const batch = cur.slice(i, i + maxConcurrent);
+        await Promise.all(batch.map(tokenId => processHeroUpgrade(tokenId)));
+      }
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -186,7 +357,8 @@ export function createTasksItem(deps) {
 
         await ensureConnection(tokenId);
 
-        // === 英雄图鉴升星（双轮尝试） ===
+        // === 英雄图鉴升星（双轮尝试）===
+        // 核心：检查响应码 _code，与油猴脚本 res._code !== 0 判断一致
         let heroSuccessCount = 0;
         let heroTotalStars = 0;
         let heroSkippedCount = 0;
@@ -206,9 +378,13 @@ export function createTasksItem(deps) {
             if (shouldStop.value) break;
 
             try {
-              await tokenStore.sendMessageWithPromise(
-                tokenId, "book_upgrade", { heroId }, 8000,
+              const res = await tokenStore.sendMessageWithPromise(
+                tokenId, "book_upgrade", { heroId }, batchSettings.defaultCommandTimeout || 8000,
               );
+              // 检查响应码：与油猴脚本 res._code !== 0 判断一致
+              if (res && res._code !== undefined && res._code !== 0) {
+                break;
+              }
               heroStars++;
               heroTotalStars++;
             } catch (err) {
@@ -230,7 +406,7 @@ export function createTasksItem(deps) {
 
         // 第二轮：重试第一轮失败的英雄
         if (firstPassFailed.length > 0 && !shouldStop.value) {
-          await new Promise((r) => setTimeout(r, 1000));
+          await new Promise((r) => setTimeout(r, delayConfig.command));
           addLog({
             time: new Date().toLocaleTimeString(),
             message: `${token.name} 第二轮重试 ${firstPassFailed.length} 个未成功英雄`,
@@ -245,9 +421,12 @@ export function createTasksItem(deps) {
               if (shouldStop.value) break;
 
               try {
-                await tokenStore.sendMessageWithPromise(
-                  tokenId, "book_upgrade", { heroId }, 8000,
+                const res = await tokenStore.sendMessageWithPromise(
+                  tokenId, "book_upgrade", { heroId }, batchSettings.defaultCommandTimeout || 8000,
                 );
+                if (res && res._code !== undefined && res._code !== 0) {
+                  break;
+                }
                 heroStars++;
                 heroTotalStars++;
               } catch (err) {
@@ -282,7 +461,7 @@ export function createTasksItem(deps) {
 
         let fishStarMap = {};
         try {
-          const roleInfo = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 8000);
+          const roleInfo = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, batchSettings.defaultCommandTimeout || 8000);
           const role = roleInfo?.role || roleInfo;
           const books = role?.artifactBooks || {};
           for (const [fishId, book] of Object.entries(books)) {
@@ -324,12 +503,17 @@ export function createTasksItem(deps) {
               break;
 
             try {
-              await tokenStore.sendMessageWithPromise(
+              const res = await tokenStore.sendMessageWithPromise(
                 tokenId,
                 "book_upgradeartifact",
                 { artifactId },
-                8000,
+                batchSettings.defaultCommandTimeout || 8000,
               );
+              // 检查响应码：与油猴脚本 res._code !== 0 判断一致
+              if (res && res._code !== undefined && res._code !== 0) {
+                if (isUnowned && star === 1) break;
+                break;
+              }
               fishStars++;
               fishTotalStars++;
             } catch (err) {
@@ -369,7 +553,7 @@ export function createTasksItem(deps) {
             await tokenStore.sendMessageWithPromise(
               tokenId, "collection_activate",
               { poolType: 2, id: Number(skinId), isAll: false, seriesId: info.heroId },
-              8000,
+              batchSettings.defaultCommandTimeout || 8000,
             );
             skinSuccessCount++;
           } catch (err) {
@@ -382,7 +566,7 @@ export function createTasksItem(deps) {
         let claimTotalCount = 0;
         while (!shouldStop.value) {
           try {
-            await tokenStore.sendMessageWithPromise(tokenId, "collection_claimtotal", {}, 8000);
+            await tokenStore.sendMessageWithPromise(tokenId, "collection_claimtotal", {}, batchSettings.defaultCommandTimeout || 8000);
             claimTotalCount++;
           } catch (err) {
             break;
@@ -420,11 +604,16 @@ export function createTasksItem(deps) {
       } finally {
         tokenStore.closeWebSocketConnection(tokenId);
         releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+        currentRunningTokenId.value = null;
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processBookUpgrade(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processBookUpgrade);
 
     // 批量重试失败账号
     const retryMax = batchSettings.defaultRetryCount || 2;
@@ -435,7 +624,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processBookUpgrade(t)));
+      await runStreaming(cur, processBookUpgrade);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -446,8 +635,8 @@ export function createTasksItem(deps) {
 
   /**
    * 批量鱼灵升星（artifact_upgradestar）
-   * itemId 规则：14029+star，如14031=2星、14034=5星
-   * 与单账号版本 runFishUpgrade 逻辑对齐
+   * itemId 规则：parseInt(fishId + '' + star)，如 1201→12011、1601→16013
+   * 与油猴脚本逻辑对齐
    */
   const batchFishUpgrade = async () => {
     if (selectedTokens.value.length === 0)
@@ -471,80 +660,73 @@ export function createTasksItem(deps) {
       try {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `=== 开始鱼灵升星: ${token.name} ===`,
+          message: `=== 开始鱼灵升星: ${token.name}（共${fishArtifactIds.length}个鱼灵）===`,
           type: "info",
         });
 
         await ensureConnection(tokenId);
 
+        // 等待连接完全稳定
+        await new Promise((r) => setTimeout(r, 3000));
+
+        // 连接验证
+        let connectionVerified = false;
+        for (let verifyAttempt = 1; verifyAttempt <= 3; verifyAttempt++) {
+          try {
+            await tokenStore.sendMessageWithPromise(
+              tokenId, "role_getroleinfo", {}, batchSettings.defaultCommandTimeout || 5000,
+            );
+            connectionVerified = true;
+            break;
+          } catch (e) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 连接验证失败(第${verifyAttempt}次)，等待2秒重试...`,
+              type: "warning",
+            });
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+        }
+        if (!connectionVerified) {
+          throw new Error("连接验证失败，无法执行鱼灵升星");
+        }
+
+        // 与油猴脚本对齐：直接遍历全部鱼灵，不依赖 role_getroleinfo 预查询
+        // itemId 规则：parseInt(fishId + '' + star)，如 1201 + '1' = 12011
         const maxFishStar = 5;
         let fishSuccessCount = 0;
         let fishTotalStars = 0;
-        let fishSkippedCount = 0;
-
-        // 查询角色信息获取鱼灵当前星级
-        let fishStarMap = {};
-        try {
-          const roleInfo = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 8000);
-          const role = roleInfo?.role || roleInfo;
-          const books = role?.artifactBooks || {};
-          for (const [fishId, book] of Object.entries(books)) {
-            fishStarMap[Number(fishId)] = book.claimedStar || 0;
-          }
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 已获取${Object.keys(fishStarMap).length}个鱼灵星级数据`,
-            type: "info",
-          });
-        } catch (e) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 查询鱼灵星级数据失败，将尝试全部鱼灵: ${e.message}`,
-            type: "warning",
-          });
-        }
-
-        // 筛选：已满星跳过
-        const fishToUpgrade = fishArtifactIds.filter(id => {
-          const currentStar = fishStarMap[id];
-          if (currentStar !== undefined && currentStar >= maxFishStar) {
-            fishSkippedCount++;
-            return false;
-          }
-          return true;
-        });
 
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} 开始鱼灵升星：${fishToUpgrade.length}个需升星，${fishSkippedCount}个已满星跳过，目标${maxFishStar}星`,
+          message: `${token.name} 开始鱼灵升星，共${fishArtifactIds.length}个鱼灵，目标${maxFishStar}星`,
           type: "info",
         });
 
-        for (const artifactId of fishToUpgrade) {
+        for (const fishId of fishArtifactIds) {
           if (shouldStop.value)
             break;
 
-          const startStar = fishStarMap[artifactId] || 0;
-          const isUnowned = fishStarMap[artifactId] === undefined;
           let fishStars = 0;
-
-          for (let star = startStar + 1; star <= maxFishStar; star++) {
+          for (let star = 1; star <= maxFishStar; star++) {
             if (shouldStop.value)
               break;
 
-            const itemId = 14029 + star;
+            // 关键修复：itemId = fishId拼接star，如 1201→12011, 1601→16013
+            const itemId = parseInt(fishId + '' + star);
             try {
               await tokenStore.sendMessageWithPromise(
                 tokenId,
                 "artifact_upgradestar",
                 { heroId: -1, itemId },
-                8000,
+                batchSettings.defaultCommandTimeout || 8000,
               );
               fishStars++;
               fishTotalStars++;
             } catch (err) {
-              // 未拥有鱼灵第一次失败则跳过，已拥有则继续尝试
-              if (isUnowned && star === 1) break;
+              // 第一次失败且是第1星，说明未拥有该鱼灵，跳过
+              if (star === 1) break;
+              // 已拥有但中间失败，继续尝试下一星
             }
             await new Promise((r) => setTimeout(r, delayConfig.action));
           }
@@ -552,7 +734,7 @@ export function createTasksItem(deps) {
             fishSuccessCount++;
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 鱼灵:${FishMap[artifactId]?.name || artifactId} ${startStar}→${startStar + fishStars}星`,
+              message: `${token.name} 鱼灵:${FishMap[fishId]?.name || fishId} 升星成功 ×${fishStars}`,
               type: "success",
             });
           }
@@ -561,7 +743,7 @@ export function createTasksItem(deps) {
         tokenStatus.value[tokenId] = "completed";
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} === 鱼灵升星完成（${fishSuccessCount}个升星，共${fishTotalStars}星，${fishSkippedCount}个跳过）===`,
+          message: `${token.name} === 鱼灵升星完成（${fishSuccessCount}个升星，共${fishTotalStars}星）===`,
           type: "success",
         });
       } catch (error) {
@@ -575,11 +757,30 @@ export function createTasksItem(deps) {
       } finally {
         tokenStore.closeWebSocketConnection(tokenId);
         releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+        currentRunningTokenId.value = null;
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processFishUpgrade(tokenId));
-    await Promise.all(taskPromises);
+    // 分批执行：每批 maxActive 个，一批完成后再执行下一批
+    const maxConcurrent = batchSettings.maxActive || 5;
+    const allTokenIds = [...selectedTokens.value];
+    for (let i = 0; i < allTokenIds.length; i += maxConcurrent) {
+      if (shouldStop.value) break;
+      const batch = allTokenIds.slice(i, i + maxConcurrent);
+      const batchNum = Math.floor(i / maxConcurrent) + 1;
+      const totalBatches = Math.ceil(allTokenIds.length / maxConcurrent);
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `执行第 ${batchNum}/${totalBatches} 批（${batch.length}个账号）`,
+        type: "info",
+      });
+      await Promise.all(batch.map(tokenId => processFishUpgrade(tokenId)));
+    }
 
     // 批量重试失败账号
     const retryMax = batchSettings.defaultRetryCount || 2;
@@ -590,7 +791,11 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processFishUpgrade(t)));
+      for (let i = 0; i < cur.length; i += maxConcurrent) {
+        if (shouldStop.value) break;
+        const batch = cur.slice(i, i + maxConcurrent);
+        await Promise.all(batch.map(tokenId => processFishUpgrade(tokenId)));
+      }
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -618,6 +823,7 @@ export function createTasksItem(deps) {
         return;
 
       tokenStatus.value[tokenId] = "running";
+      currentRunningTokenId.value = tokenId;
       const token = tokens.value.find((t) => t.id === tokenId);
 
       try {
@@ -629,17 +835,21 @@ export function createTasksItem(deps) {
 
         await ensureConnection(tokenId);
 
+        // 与油猴脚本领取图鉴奖励逻辑一致：最多10次，响应码检查
         for (let i = 1; i <= 10; i++) {
           if (shouldStop.value)
             break;
           try {
-            await tokenStore.sendMessageWithPromise(
+            const res = await tokenStore.sendMessageWithPromise(
               tokenId,
               "book_claimpointreward",
               {},
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
-            // sendWithPromise resolve即为成功
+            // 检查响应码：与油猴脚本 res._code !== 0 判断一致
+            if (res && res._code !== undefined && res._code !== 0) {
+              break;
+            }
             addLog({
               time: new Date().toLocaleTimeString(),
               message: `${token.name} 领取图鉴奖励成功`,
@@ -669,11 +879,16 @@ export function createTasksItem(deps) {
       } finally {
         tokenStore.closeWebSocketConnection(tokenId);
         releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+        currentRunningTokenId.value = null;
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processClaimStar(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processClaimStar);
 
     // 批量重试失败账号
     const retryMax = batchSettings.defaultRetryCount || 2;
@@ -684,7 +899,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processClaimStar(t)));
+      await runStreaming(cur, processClaimStar);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -728,7 +943,7 @@ export function createTasksItem(deps) {
           tokenId,
           "item_batchclaimboxpointreward",
           {},
-          5000,
+          batchSettings.defaultCommandTimeout || 5000,
         );
         addLog({
           time: new Date().toLocaleTimeString(),
@@ -762,8 +977,7 @@ export function createTasksItem(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processClaimBoxPoint(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processClaimBoxPoint);
 
     const retryMax = batchSettings.defaultRetryCount || 2;
     const retryWait = batchSettings.retryDelay || 60000;
@@ -773,7 +987,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processClaimBoxPoint(t)));
+      await runStreaming(cur, processClaimBoxPoint);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -901,8 +1115,7 @@ export function createTasksItem(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processClaimWeekly(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processClaimWeekly);
 
     const retryMax = batchSettings.defaultRetryCount || 2;
     const retryWait = batchSettings.retryDelay || 60000;
@@ -912,7 +1125,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processClaimWeekly(t)));
+      await runStreaming(cur, processClaimWeekly);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -1121,8 +1334,7 @@ export function createTasksItem(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processPeachTasks(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processPeachTasks);
 
     const retryMax = batchSettings.defaultRetryCount || 2;
     const retryWait = batchSettings.retryDelay || 60000;
@@ -1132,7 +1344,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processPeachTasks(t)));
+      await runStreaming(cur, processPeachTasks);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -1176,7 +1388,7 @@ export function createTasksItem(deps) {
           tokenId,
           "role_getroleinfo",
           {},
-          10000,
+          batchSettings.defaultCommandTimeout || 5000,
         );
 
         // 解析灯神进度和扫荡券
@@ -1251,7 +1463,7 @@ export function createTasksItem(deps) {
                 genieId: bestGenieId,
                 sweepCnt,
               },
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
 
             const ok = res && (res.role || res.role.items);
@@ -1307,8 +1519,7 @@ export function createTasksItem(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processGenieSweep(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processGenieSweep);
 
     const retryMax = batchSettings.defaultRetryCount || 2;
     const retryWait = batchSettings.retryDelay || 60000;
@@ -1318,7 +1529,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processGenieSweep(t)));
+      await runStreaming(cur, processGenieSweep);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -1381,7 +1592,7 @@ export function createTasksItem(deps) {
             tokenId,
             "role_getroleinfo",
             {},
-            8000,
+            batchSettings.defaultCommandTimeout || 5000,
           );
 
           const items = roleRes?.role?.items || {};
@@ -1414,7 +1625,7 @@ export function createTasksItem(deps) {
                     tokenId,
                     "item_openpack",
                     { itemId: pack.itemId, number: openNumber, index: 0 },
-                    10000,
+                    batchSettings.battleCommandTimeout || 15000,
                   );
 
                   openedCount += openNumber;
@@ -1484,8 +1695,7 @@ export function createTasksItem(deps) {
         }
       };
 
-      const taskPromises = selectedTokens.value.map((tokenId) => processFragmentPacks(tokenId));
-      await Promise.all(taskPromises);
+      await runStreaming(selectedTokens.value, processFragmentPacks);
 
       const retryMax = batchSettings.defaultRetryCount || 2;
       const retryWait = batchSettings.retryDelay || 60000;
@@ -1495,7 +1705,7 @@ export function createTasksItem(deps) {
         addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
         await new Promise(r2 => setTimeout(r2, retryWait));
         const cur = [...failed]; failed = [];
-        await Promise.all(cur.map(t => processFragmentPacks(t)));
+        await runStreaming(cur, processFragmentPacks);
         cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
       }
 
@@ -1607,8 +1817,7 @@ export function createTasksItem(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processOpenBox(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processOpenBox);
 
     const retryMax = batchSettings.defaultRetryCount || 2;
     const retryWait = batchSettings.retryDelay || 60000;
@@ -1618,13 +1827,169 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processOpenBox(t)));
+      await runStreaming(cur, processOpenBox);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
     isRunning.value = false;
     currentRunningTokenId.value = null;
     message.success("批量开箱结束");
+  };
+
+  /**
+   * 批量开钻石宝箱
+   * 查询背包中钻石宝箱(itemId:2005)数量，全部开启
+   */
+  const batchOpenDiamondBox = async (isScheduledTask = false) => {
+    if (selectedTokens.value.length === 0) return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    const DIAMOND_BOX_ID = 2005;
+
+    const processOpenDiamondBox = async (tokenId) => {
+      if (shouldStop.value) return;
+
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始开钻石宝箱: ${token.name} ===`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        // 查询角色信息获取钻石宝箱数量
+        const roleRes = await tokenStore.sendMessageWithPromise(
+          tokenId,
+          "role_getroleinfo",
+          {},
+          batchSettings.defaultCommandTimeout || 5000,
+        );
+
+        const items = roleRes?.role?.items || roleRes?.data?.role?.items || {};
+        const boxCount = Number(items[DIAMOND_BOX_ID]?.quantity || 0);
+
+        if (boxCount <= 0) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 没有钻石宝箱，跳过`,
+            type: "warning",
+          });
+          tokenStatus.value[tokenId] = "completed";
+          return;
+        }
+
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 拥有钻石宝箱 x${boxCount}，开始开启`,
+          type: "info",
+        });
+
+        // 每次最多开启999个，循环开启
+        let remaining = boxCount;
+        let totalOpened = 0;
+
+        while (remaining > 0 && !shouldStop.value) {
+          const openNumber = Math.min(remaining, 999);
+
+          try {
+            await tokenStore.sendMessageWithPromise(
+              tokenId,
+              "item_openbox",
+              { itemId: DIAMOND_BOX_ID, number: openNumber, index: 0 },
+              batchSettings.battleCommandTimeout || 15000,
+            );
+
+            totalOpened += openNumber;
+            remaining -= openNumber;
+
+            if (remaining > 0) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 开启钻石宝箱 x${openNumber} 成功，剩余 ${remaining} 个`,
+                type: "success",
+              });
+            }
+          } catch (error) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 开启钻石宝箱 x${openNumber} 失败: ${error.message}`,
+              type: "error",
+            });
+            break;
+          }
+
+          await new Promise((r) => setTimeout(r, delayConfig.action));
+        }
+
+        // 领取宝箱积分奖励
+        try {
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "item_batchclaimboxpointreward",
+            {},
+            batchSettings.defaultCommandTimeout || 5000,
+          );
+        } catch (e) { /* ignore */ }
+
+        await tokenStore.sendMessage(tokenId, "role_getroleinfo");
+
+        if (totalOpened > 0) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} === 钻石宝箱开启完成，共开启 ${totalOpened} 个 ===`,
+            type: "success",
+          });
+        }
+
+        tokenStatus.value[tokenId] = "completed";
+      } catch (error) {
+        console.error(error);
+        tokenStatus.value[tokenId] = "failed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 开钻石宝箱失败: ${error.message}`,
+          type: "error",
+        });
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+      }
+    };
+
+    await runStreaming(selectedTokens.value, processOpenDiamondBox);
+
+    const retryMax = batchSettings.defaultRetryCount || 2;
+    const retryWait = batchSettings.retryDelay || 60000;
+    let failed = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+    for (let r = 0; r < retryMax && failed.length > 0; r++) {
+      if (shouldStop.value) break;
+      addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
+      await new Promise(r2 => setTimeout(r2, retryWait));
+      const cur = [...failed]; failed = [];
+      await runStreaming(cur, processOpenDiamondBox);
+      cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
+    }
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    if (!isScheduledTask) {
+      message.success("批量开钻石宝箱结束");
+    }
   };
 
   /**
@@ -1654,7 +2019,7 @@ export function createTasksItem(deps) {
     const retryTokens = [];
     const MAX_RETRIES = batchSettings.defaultRetryCount !== undefined ? batchSettings.defaultRetryCount : 2;
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    const processFishBody = async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -1860,9 +2225,9 @@ export function createTasksItem(deps) {
         tokenStore.closeWebSocketConnection(tokenId);
         releaseConnectionSlot();
       }
-    });
+    };
 
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processFishBody);
 
     // 处理需要重试的账号
     if (retryTokens.length > 0 && !shouldStop.value) {
@@ -2081,8 +2446,7 @@ export function createTasksItem(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processRecruit(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processRecruit);
 
     const retryMax = batchSettings.defaultRetryCount || 2;
     const retryWait = batchSettings.retryDelay || 60000;
@@ -2092,7 +2456,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processRecruit(t)));
+      await runStreaming(cur, processRecruit);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -2533,8 +2897,7 @@ export function createTasksItem(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processOpenBoxByPoints(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processOpenBoxByPoints);
 
     const retryMax = batchSettings.defaultRetryCount || 2;
     const retryWait = batchSettings.retryDelay || 60000;
@@ -2544,7 +2907,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processOpenBoxByPoints(t)));
+      await runStreaming(cur, processOpenBoxByPoints);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -2638,7 +3001,7 @@ export function createTasksItem(deps) {
                   tokenId,
                   "hb_upgradeorder",
                   { heroId },
-                  5000,
+                  batchSettings.defaultCommandTimeout || 5000,
                 );
 
                 if (upgradeResult && upgradeResult.error) {
@@ -2676,7 +3039,7 @@ export function createTasksItem(deps) {
               // 2. 不管红玉是否成功，都要执行蓝玉升级循环
               if (!shouldStop.value) {
                 // 延迟
-                await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 1000));
+                await new Promise((r) => setTimeout(r, delayConfig.command));
 
                 let quenchCount = 0;
                 let quenchStopped = false;
@@ -2687,7 +3050,7 @@ export function createTasksItem(deps) {
                       tokenId,
                       "hb_quench",
                       { heroId },
-                      5000,
+                      batchSettings.defaultCommandTimeout || 5000,
                     );
 
                     if (quenchResult && quenchResult.error) {
@@ -2707,7 +3070,7 @@ export function createTasksItem(deps) {
                         type: "success",
                       });
                       // 延迟后继续
-                      await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 1000));
+                      await new Promise((r) => setTimeout(r, delayConfig.command));
                     }
                   } catch (error) {
                     // 错误码200020表示已达上限，400000表示物品不存在（缺少蓝玉）
@@ -2741,7 +3104,7 @@ export function createTasksItem(deps) {
               // 3. 如果第一次红玉成功，进入循环：红玉1次 → 成功则蓝玉循环 → 失败则停止
               if (firstUpgradeSuccess && !shouldStop.value) {
                 // 延迟后进入循环
-                await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 1000));
+                await new Promise((r) => setTimeout(r, delayConfig.command));
 
                 let shouldContinue = true;
                 let redJadeCount = 0;
@@ -2755,7 +3118,7 @@ export function createTasksItem(deps) {
                       tokenId,
                       "hb_upgradeorder",
                       { heroId },
-                      5000,
+                      batchSettings.defaultCommandTimeout || 5000,
                     );
 
                     if (upgradeResult && upgradeResult.error) {
@@ -2801,7 +3164,7 @@ export function createTasksItem(deps) {
                   // 如果红玉成功，执行蓝玉升级循环
                   if (currentUpgradeSuccess && !shouldStop.value) {
                     // 延迟
-                    await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 500));
+                    await new Promise((r) => setTimeout(r, delayConfig.command));
 
                     let quenchCount = 0;
                     let quenchStopped = false;
@@ -2812,7 +3175,7 @@ export function createTasksItem(deps) {
                           tokenId,
                           "hb_quench",
                           { heroId },
-                          5000,
+                          batchSettings.defaultCommandTimeout || 5000,
                         );
 
                         if (quenchResult && quenchResult.error) {
@@ -2832,7 +3195,7 @@ export function createTasksItem(deps) {
                             type: "success",
                           });
                           // 延迟后继续
-                          await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 500));
+                          await new Promise((r) => setTimeout(r, delayConfig.command));
                         }
                       } catch (error) {
                         // 错误码200020表示已达上限，400000表示物品不存在（缺少蓝玉）
@@ -2863,7 +3226,7 @@ export function createTasksItem(deps) {
                     }
 
                     // 延迟后继续下一轮红玉升级
-                    await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 500));
+                    await new Promise((r) => setTimeout(r, delayConfig.command));
                   }
                 }
               }
@@ -2875,7 +3238,7 @@ export function createTasksItem(deps) {
               });
 
               // 英雄间延迟
-              await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 500));
+              await new Promise((r) => setTimeout(r, delayConfig.command));
             } catch (error) {
               addLog({
                 time: new Date().toLocaleTimeString(),
@@ -2907,11 +3270,11 @@ export function createTasksItem(deps) {
             message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
             type: "info",
           });
+          currentRunningTokenId.value = null;
         }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processFourSaints(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processFourSaints);
 
     const retryMax = batchSettings.defaultRetryCount || 2;
     const retryWait = batchSettings.retryDelay || 60000;
@@ -2921,7 +3284,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processFourSaints(t)));
+      await runStreaming(cur, processFourSaints);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -2934,7 +3297,7 @@ export function createTasksItem(deps) {
 
   // ====== 消耗活动共享辅助函数 ======
   const _consumeActivityBatchCmd = async (tokenId, cmd, getParams, totalQty, label) => {
-    const DELAY = batchSettings.commandDelay || 200;
+    const DELAY = delayConfig.command;
     const batchSize = 10;
     const batches = Math.floor(totalQty / batchSize);
     const remainder = totalQty % batchSize;
@@ -3033,7 +3396,7 @@ export function createTasksItem(deps) {
     shouldStop.value = false;
 
     const manager = new ConsumeActivityManager();
-    const DELAY = batchSettings.commandDelay || 200;
+    const DELAY = delayConfig.command;
 
     // 宝箱优先级
     const chestPriority = [
@@ -3065,15 +3428,15 @@ export function createTasksItem(deps) {
       const sendWithRetry = async (qty) => {
         for (let attempt = 0; attempt <= MAX_400340_RETRIES; attempt++) {
           try {
-            await tokenStore.sendMessageWithPromise(tokenId, cmd, getParams(qty), 15000);
+            await tokenStore.sendMessageWithPromise(tokenId, cmd, getParams(qty), batchSettings.battleCommandTimeout || 15000);
             return;
           } catch (e) {
             if (e.message?.includes('400340') && attempt < MAX_400340_RETRIES) {
               addLog({ time: new Date().toLocaleTimeString(), message: `⚠️ ${label}服务器限流(400340)，等待10秒后重试(${attempt+1}/${MAX_400340_RETRIES})...`, type: "warning" });
               await new Promise(r => setTimeout(r, 10000));
               try {
-                await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, 8000);
-                await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, 5000);
+                await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000);
+                await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, batchSettings.defaultCommandTimeout || 5000);
               } catch (_) {}
               continue;
             }
@@ -3157,7 +3520,7 @@ export function createTasksItem(deps) {
             roundPoints += chest.qty * chest.points;
             totalOpened += chest.qty;
             totalPoints += chest.qty * chest.points;
-            await new Promise(r => setTimeout(r, 300));
+            await new Promise(r => setTimeout(r, delayConfig.action));
           } catch (e) {
             if (e.message === '用户停止') throw e;
             addLog({ time: new Date().toLocaleTimeString(), message: `开${chest.name}失败: ${e.message}`, type: "warning" });
@@ -3167,21 +3530,21 @@ export function createTasksItem(deps) {
         // 领取积分奖励
         try {
           addLog({ time: new Date().toLocaleTimeString(), message: `领取宝箱积分奖励...`, type: "info" });
-          await tokenStore.sendMessageWithPromise(tokenId, 'item_batchclaimboxpointreward', {}, 15000);
+          await tokenStore.sendMessageWithPromise(tokenId, 'item_batchclaimboxpointreward', {}, batchSettings.battleCommandTimeout || 15000);
         } catch (e) {
           // 静默处理
         }
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, delayConfig.action));
 
         addLog({ time: new Date().toLocaleTimeString(), message: `第${round}轮执行完毕: 开${roundOpened}个, ${formatNum(roundPoints)}分`, type: "info" });
 
         // 刷新数据
         addLog({ time: new Date().toLocaleTimeString(), message: `刷新数据，重新计算积分...`, type: "info" });
         try {
-          await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, 8000);
-          await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, 5000);
+          await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000);
+          await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, batchSettings.defaultCommandTimeout || 5000);
         } catch (e) {}
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, delayConfig.action));
 
         // 重新读取进度
         const newData = tokenStore.gameData?.commonActivityInfo;
@@ -3210,11 +3573,11 @@ export function createTasksItem(deps) {
       // 最终领取一次积分（确保最后一轮的积分奖励被领取）
       try {
         addLog({ time: new Date().toLocaleTimeString(), message: `最终领取宝箱积分奖励...`, type: "info" });
-        await tokenStore.sendMessageWithPromise(tokenId, 'item_batchclaimboxpointreward', {}, 15000);
+        await tokenStore.sendMessageWithPromise(tokenId, 'item_batchclaimboxpointreward', {}, batchSettings.battleCommandTimeout || 15000);
       } catch (e) {
         // 静默处理：可能没有新的积分可领
       }
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, delayConfig.action));
 
       return { rounds: round, totalOpened, totalPoints };
     };
@@ -3233,12 +3596,12 @@ export function createTasksItem(deps) {
 
         // 1. 获取活动数据
         try {
-          await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, 5000);
-          await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, 8000);
+          await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, batchSettings.defaultCommandTimeout || 5000);
+          await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000);
         } catch (e) {
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 获取活动数据失败: ${e.message}`, type: "warning" });
         }
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, delayConfig.action));
 
         const gameData = tokenStore.gameData;
         const roleInfo = gameData?.roleInfo;
@@ -3352,14 +3715,14 @@ export function createTasksItem(deps) {
             addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} [钓鱼] 黄金鱼竿 当前${formatNum(current)}，目标${fishTarget}，还需${gap}`, type: "info" });
             // 先领取金鱼竿
             try {
-              await tokenStore.sendMessageWithPromise(tokenId, 'artifact_exchange', {}, 5000);
+              await tokenStore.sendMessageWithPromise(tokenId, 'artifact_exchange', {}, batchSettings.defaultCommandTimeout || 5000);
               addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} [钓鱼] 金鱼竿领取成功`, type: "success" });
             } catch (e) {
               if (!e.message?.includes('400180')) {
                 addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} [钓鱼] 金鱼竿领取失败: ${e.message}，继续钓鱼`, type: "warning" });
               }
             }
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, delayConfig.action));
 
             // 检查黄金鱼竿库存
             const freshRole = tokenStore.gameData?.roleInfo?.role || role;
@@ -3378,8 +3741,8 @@ export function createTasksItem(deps) {
               // 刷新数据
               addLog({ time: new Date().toLocaleTimeString(), message: `刷新数据...`, type: "info" });
               try {
-                await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, 8000);
-                await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, 5000);
+                await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000);
+                await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, batchSettings.defaultCommandTimeout || 5000);
               } catch (e) {}
             } else {
               addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} [钓鱼] 黄金鱼竿不足（需${gap}，有${rodCount}），跳过`, type: "warning" });
@@ -3398,7 +3761,7 @@ export function createTasksItem(deps) {
 
         // 输出执行后进度
         try {
-          await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, 5000);
+          await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, batchSettings.defaultCommandTimeout || 5000);
         } catch (e) {}
         const endActivityData = tokenStore.gameData?.commonActivityInfo?.activity?.commonActivityInfo
           || tokenStore.gameData?.commonActivityInfo?.commonActivityInfo;
@@ -3448,15 +3811,14 @@ export function createTasksItem(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processToken(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processToken);
 
     // 优先重试400340限流账号（等10秒后立即重试）
     let throttledTokens = selectedTokens.value.filter(id => tokenStatus.value[id] === "waiting_retry");
     if (throttledTokens.length > 0 && !shouldStop.value) {
       addLog({ time: new Date().toLocaleTimeString(), message: `\n=== 发现 ${throttledTokens.length} 个账号出现400340限流，10秒后重试 ===`, type: "info" });
       await new Promise(r => setTimeout(r, 10000));
-      await Promise.all(throttledTokens.map(t => processToken(t)));
+      await runStreaming(throttledTokens, processToken);
     }
 
     // 批量重试失败账号
@@ -3468,7 +3830,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processToken(t)));
+      await runStreaming(cur, processToken);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -3490,7 +3852,7 @@ export function createTasksItem(deps) {
     isRunning.value = true;
     shouldStop.value = false;
 
-    const DELAY = batchSettings.commandDelay || 200;
+    const DELAY = delayConfig.command;
 
     selectedTokens.value.forEach((id) => {
       tokenStatus.value[id] = "waiting";
@@ -3516,9 +3878,9 @@ export function createTasksItem(deps) {
         // 仅首次获取活动数据（免费道具需要，档位奖励不需要）
         if (!activityFetched) {
           try {
-            await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, 5000);
-            await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, 8000);
-            await new Promise(r => setTimeout(r, 500));
+            await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, batchSettings.defaultCommandTimeout || 5000);
+            await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000);
+            await new Promise(r => setTimeout(r, delayConfig.action));
 
             const gameData = tokenStore.gameData;
             const commonActivityInfo = gameData?.commonActivityInfo;
@@ -3559,7 +3921,7 @@ export function createTasksItem(deps) {
           const goodsId = globalFreeGoodsId || Number(String(globalFreeActivityId) + '1');
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领取免费道具 (goodsId: ${goodsId})...`, type: "info" });
           try {
-            await tokenStore.sendMessageWithPromise(tokenId, 'activity_commonbuygoods', { goodsId, num: 1 }, 5000);
+            await tokenStore.sendMessageWithPromise(tokenId, 'activity_commonbuygoods', { goodsId, num: 1 }, batchSettings.defaultCommandTimeout || 5000);
             addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 免费道具领取成功`, type: "success" });
           } catch (e) {
             if (e.message?.includes('700010') || e.message?.includes('1100010') || e.message?.includes('already')) {
@@ -3579,7 +3941,7 @@ export function createTasksItem(deps) {
         for (let missionId = 1; missionId <= 100; missionId++) {
           if (shouldStop.value) break;
           try {
-            await tokenStore.sendMessageWithPromise(tokenId, 'activity_claimtaskreward', { activityId: globalConsumeActivityId, missionId }, 5000);
+            await tokenStore.sendMessageWithPromise(tokenId, 'activity_claimtaskreward', { activityId: globalConsumeActivityId, missionId }, batchSettings.defaultCommandTimeout || 5000);
             claimedCount++;
             addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领取第${missionId}档奖励成功`, type: "success" });
           } catch (e) {
@@ -3600,7 +3962,7 @@ export function createTasksItem(deps) {
 
         // 刷新数据
         try {
-          await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, 8000);
+          await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000);
         } catch (e) {}
 
         tokenStatus.value[tokenId] = "completed";
@@ -3624,8 +3986,7 @@ export function createTasksItem(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processToken(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processToken);
 
     // 批量重试失败账号
     const retryMax = batchSettings.defaultRetryCount || 2;
@@ -3636,7 +3997,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processToken(t)));
+      await runStreaming(cur, processToken);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -3802,7 +4163,7 @@ export function createTasksItem(deps) {
         await ensureConnection(tokenId);
 
         try {
-          await tokenStore.sendMessageWithPromise(tokenId, 'system_claimcdkreward', { key: cdkCode, platformType: 'h5' }, 10000);
+          await tokenStore.sendMessageWithPromise(tokenId, 'system_claimcdkreward', { key: cdkCode, platformType: 'h5' }, batchSettings.defaultCommandTimeout || 5000);
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 兑换码 ${cdkCode} 领取成功`, type: "success" });
         } catch (e) {
           const errMsg = e.message || '';
@@ -3817,7 +4178,7 @@ export function createTasksItem(deps) {
 
         // 刷新数据
         try {
-          await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, 8000);
+          await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000);
         } catch (e) {}
 
         tokenStatus.value[tokenId] = "completed";
@@ -3841,8 +4202,7 @@ export function createTasksItem(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processToken(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processToken);
 
     // 批量重试失败账号
     const retryMax = batchSettings.defaultRetryCount || 2;
@@ -3853,7 +4213,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processToken(t)));
+      await runStreaming(cur, processToken);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -3893,9 +4253,9 @@ export function createTasksItem(deps) {
 
         // 获取角色信息，查询道具数量
         try {
-          await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, 8000);
+          await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000);
         } catch (e) {}
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, delayConfig.action));
 
         const role = tokenStore.gameData?.roleInfo?.role;
         const quantity = Number(role?.items?.[ACTIVITY_ITEM_ID]?.quantity || 0);
@@ -3913,7 +4273,7 @@ export function createTasksItem(deps) {
             tokenId,
             'item_openpack',
             { itemId: ACTIVITY_ITEM_ID, number: quantity, index: 0 },
-            15000,
+            batchSettings.battleCommandTimeout || 15000,
           );
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 消耗活动道具 x${quantity} 使用成功`, type: "success" });
         } catch (e) {
@@ -3926,9 +4286,9 @@ export function createTasksItem(deps) {
         }
 
         // 刷新数据
-        try { await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, 8000); } catch (e) {}
-        try { await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, 5000); } catch (e) {}
-        await new Promise(r => setTimeout(r, 500));
+        try { await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000); } catch (e) {}
+        try { await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, batchSettings.defaultCommandTimeout || 5000); } catch (e) {}
+        await new Promise(r => setTimeout(r, delayConfig.action));
 
         // 检查是否达标
         const manager = new ConsumeActivityManager();
@@ -4067,8 +4427,7 @@ export function createTasksItem(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processToken(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processToken);
 
     // 批量重试失败账号
     const retryMax = batchSettings.defaultRetryCount || 2;
@@ -4079,7 +4438,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processToken(t)));
+      await runStreaming(cur, processToken);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -4107,7 +4466,7 @@ export function createTasksItem(deps) {
     isRunning.value = true;
     shouldStop.value = false;
 
-    const DELAY = batchSettings.commandDelay || 300;
+    const DELAY = delayConfig.command;
 
     selectedTokens.value.forEach((id) => {
       tokenStatus.value[id] = "waiting";
@@ -4201,7 +4560,7 @@ export function createTasksItem(deps) {
               activityId: globalExchangeActivityId,
               goodsId,
               quantity,
-            }, 8000);
+            }, batchSettings.defaultCommandTimeout || 5000);
             addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 购买 ${goods.name} x${quantity} 成功`, type: "success" });
             successCount++;
           } catch (e) {
@@ -4224,7 +4583,7 @@ export function createTasksItem(deps) {
           try {
             await tokenStore.sendMessageWithPromise(tokenId, 'activity_claimmilestone', {
               activityId: globalMilestoneActivityId,
-            }, 8000);
+            }, batchSettings.defaultCommandTimeout || 5000);
             addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 里程碑进度奖励领取成功`, type: "success" });
           } catch (e) {
             const errMsg = e.message || '';
@@ -4238,7 +4597,7 @@ export function createTasksItem(deps) {
 
         // 刷新数据
         try {
-          await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, 8000);
+          await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000);
         } catch (e) {}
 
         tokenStatus.value[tokenId] = "completed";
@@ -4330,7 +4689,7 @@ export function createTasksItem(deps) {
               tokenId,
               'apex_taskclaim',
               { confId: reward.confId },
-              8000
+              batchSettings.defaultCommandTimeout || 5000
             );
             addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ✅ ${reward.name}`, type: "success" });
             claimedCount++;
@@ -4346,7 +4705,7 @@ export function createTasksItem(deps) {
               addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${reward.name}: ${errMsg}`, type: "warning" });
             }
           }
-          await new Promise(r => setTimeout(r, batchSettings.commandDelay || 200));
+          await new Promise(r => setTimeout(r, delayConfig.command));
         }
 
         tokenStatus.value[tokenId] = "completed";
@@ -4442,7 +4801,7 @@ export function createTasksItem(deps) {
               tokenId,
               "collection_activate",
               { poolType: 2, id: Number(skinId), isAll: false, seriesId: info.heroId },
-              8000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
             successCount++;
             addLog({
@@ -4451,7 +4810,15 @@ export function createTasksItem(deps) {
               type: "success",
             });
           } catch (err) {
-            // 已激活或无资格视为跳过
+            // 已激活或无资格视为跳过，但记录非预期错误
+            const errMsg = err.message || '';
+            if (!errMsg.includes('400010') && !errMsg.includes('已激活')) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 激活 ${info.name} 失败: ${errMsg}`,
+                type: "warning",
+              });
+            }
             skipCount++;
           }
           await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -4462,7 +4829,7 @@ export function createTasksItem(deps) {
         while (!shouldStop.value) {
           try {
             await tokenStore.sendMessageWithPromise(
-              tokenId, "collection_claimtotal", {}, 8000,
+              tokenId, "collection_claimtotal", {}, batchSettings.defaultCommandTimeout || 5000,
             );
             claimTotalCount++;
           } catch (err) {
@@ -4504,8 +4871,7 @@ export function createTasksItem(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processActivate(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processActivate);
 
     const retryMax = batchSettings.defaultRetryCount || 2;
     const retryWait = batchSettings.retryDelay || 60000;
@@ -4515,7 +4881,7 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processActivate(t)));
+      await runStreaming(cur, processActivate);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -4527,6 +4893,7 @@ export function createTasksItem(deps) {
   return {
     batchOpenBox,
     batchOpenBoxByPoints,
+    batchOpenDiamondBox,
     batchOpenFragmentPacks,
     batchClaimBoxWeeklyRewards,
     batchClaimBoxPointReward,

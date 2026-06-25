@@ -17,6 +17,7 @@ export function createTasksBottle(deps) {
     shouldStop,
     ensureConnection,
     releaseConnectionSlot,
+    runStreaming,
     connectionQueue,
     batchSettings,
     tokenStore,
@@ -39,7 +40,7 @@ export function createTasksBottle(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -108,8 +109,6 @@ export function createTasksBottle(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     isRunning.value = false;
     currentRunningTokenId.value = null;
     message.success("批量重置罐子结束");
@@ -128,7 +127,7 @@ export function createTasksBottle(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
       tokenStatus.value[tokenId] = "running";
@@ -173,8 +172,6 @@ export function createTasksBottle(deps) {
         });
       }
     });
-
-    await Promise.all(taskPromises);
     isRunning.value = false;
     currentRunningTokenId.value = null;
     message.success("批量领取盐罐结束");

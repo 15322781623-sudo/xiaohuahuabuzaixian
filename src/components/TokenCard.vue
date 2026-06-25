@@ -2850,7 +2850,7 @@ const completeDailyTasks = async () => {
 
     // 刷新角色信息以更新任务状态
     setTimeout(() => {
-      tokenStore.sendGetRoleInfo(props.token.id);
+      tokenStore.sendGetRoleInfo(props.token.id).catch(() => {});
     }, 1000);
 
     // 5秒后自动关闭日志显示

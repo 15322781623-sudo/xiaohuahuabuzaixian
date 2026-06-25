@@ -17,6 +17,7 @@ export function createTasksTower(deps) {
     shouldStop,
     ensureConnection,
     releaseConnectionSlot,
+    runStreaming,
     connectionQueue,
     batchSettings,
     tokenStore,
@@ -631,8 +632,7 @@ export function createTasksTower(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processClimbTower(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processClimbTower);
 
     // 批量重试失败账号
     const retryCount_max = batchSettings.defaultRetryCount || 2;
@@ -645,7 +645,7 @@ export function createTasksTower(deps) {
       await safeDelay(retryWaitMs);
       const currentRetry = [...failedTokenIds];
       failedTokenIds = [];
-      await Promise.all(currentRetry.map((tokenId) => processClimbTower(tokenId)));
+      await runStreaming(currentRetry, processClimbTower);
       currentRetry.forEach(id => { if (tokenStatus.value[id] === "failed") failedTokenIds.push(id); });
     }
 
@@ -1084,9 +1084,7 @@ export function createTasksTower(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processClimbWeirdTower(tokenId));
-
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processClimbWeirdTower);
 
     // 批量重试失败账号
     const retryCount_max = batchSettings.defaultRetryCount || 2;
@@ -1099,8 +1097,7 @@ export function createTasksTower(deps) {
       await safeDelay(retryWaitMs);
       const currentRetry = [...failedTokenIds];
       failedTokenIds = [];
-      const retryPromises = currentRetry.map((tokenId) => processClimbWeirdTower(tokenId));
-      await Promise.all(retryPromises);
+      await runStreaming(currentRetry, processClimbWeirdTower);
       currentRetry.forEach(id => { if (tokenStatus.value[id] === "failed") failedTokenIds.push(id); });
     }
 
@@ -1184,9 +1181,7 @@ export function createTasksTower(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processClaimFreeEnergy(tokenId));
-
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processClaimFreeEnergy);
 
     // 批量重试失败账号
     const retryCount_max = batchSettings.defaultRetryCount || 2;
@@ -1199,8 +1194,7 @@ export function createTasksTower(deps) {
       await safeDelay(retryWaitMs);
       const currentRetry = [...failedTokenIds];
       failedTokenIds = [];
-      const retryPromises = currentRetry.map((tokenId) => processClaimFreeEnergy(tokenId));
-      await Promise.all(retryPromises);
+      await runStreaming(currentRetry, processClaimFreeEnergy);
       currentRetry.forEach(id => { if (tokenStatus.value[id] === "failed") failedTokenIds.push(id); });
     }
 
@@ -1222,7 +1216,7 @@ export function createTasksTower(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value) return;
 
       tokenStatus.value[tokenId] = "running";
@@ -1861,8 +1855,6 @@ export function createTasksTower(deps) {
         await safeCloseConnection(tokenId, token.name);
       }
     });
-
-    await Promise.all(taskPromises);
     
     isRunning.value = false;
     currentRunningTokenId.value = null;
@@ -1969,9 +1961,7 @@ export function createTasksTower(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processUseItems(tokenId));
-
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processUseItems);
 
     // 批量重试失败账号
     const retryCount_max = batchSettings.defaultRetryCount || 2;
@@ -1984,8 +1974,7 @@ export function createTasksTower(deps) {
       await safeDelay(retryWaitMs);
       const currentRetry = [...failedTokenIds];
       failedTokenIds = [];
-      const retryPromises = currentRetry.map((tokenId) => processUseItems(tokenId));
-      await Promise.all(retryPromises);
+      await runStreaming(currentRetry, processUseItems);
       currentRetry.forEach(id => { if (tokenStatus.value[id] === "failed") failedTokenIds.push(id); });
     }
     
@@ -2152,9 +2141,7 @@ export function createTasksTower(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processMergeItems(tokenId));
-
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processMergeItems);
 
     // 批量重试失败账号
     const retryCount_max = batchSettings.defaultRetryCount || 2;
@@ -2167,8 +2154,7 @@ export function createTasksTower(deps) {
       await safeDelay(retryWaitMs);
       const currentRetry = [...failedTokenIds];
       failedTokenIds = [];
-      const retryPromises = currentRetry.map((tokenId) => processMergeItems(tokenId));
-      await Promise.all(retryPromises);
+      await runStreaming(currentRetry, processMergeItems);
       currentRetry.forEach(id => { if (tokenStatus.value[id] === "failed") failedTokenIds.push(id); });
     }
     

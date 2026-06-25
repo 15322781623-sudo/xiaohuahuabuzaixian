@@ -19,6 +19,7 @@ export function createTasksDungeon(deps) {
     shouldStop,
     ensureConnection,
     releaseConnectionSlot,
+    runStreaming,
     connectionQueue,
     batchSettings,
     tokenStore,
@@ -105,8 +106,7 @@ export function createTasksDungeon(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processBaoku13(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processBaoku13);
 
     // 批量重试失败账号
     const retryMax = batchSettings.defaultRetryCount || 2;
@@ -117,7 +117,7 @@ export function createTasksDungeon(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processBaoku13(t)));
+      await runStreaming(cur, processBaoku13);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -194,8 +194,7 @@ export function createTasksDungeon(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processBaoku45(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processBaoku45);
 
     // 批量重试失败账号
     const retryMax = batchSettings.defaultRetryCount || 2;
@@ -206,7 +205,7 @@ export function createTasksDungeon(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processBaoku45(t)));
+      await runStreaming(cur, processBaoku45);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -483,8 +482,7 @@ export function createTasksDungeon(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processMengjing(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processMengjing);
 
     // 批量重试失败账号
     const retryMax = batchSettings.defaultRetryCount || 2;
@@ -495,7 +493,7 @@ export function createTasksDungeon(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processMengjing(t)));
+      await runStreaming(cur, processMengjing);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -652,8 +650,7 @@ export function createTasksDungeon(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processBuyDream(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processBuyDream);
 
     // 批量重试失败账号
     const retryMax = batchSettings.defaultRetryCount || 2;
@@ -664,7 +661,7 @@ export function createTasksDungeon(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processBuyDream(t)));
+      await runStreaming(cur, processBuyDream);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 

@@ -19,6 +19,7 @@ export function createTasksStore(deps) {
     shouldStop,
     ensureConnection,
     releaseConnectionSlot,
+    runStreaming,
     connectionQueue,
     batchSettings,
     tokenStore,
@@ -67,7 +68,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -93,7 +94,7 @@ export function createTasksStore(deps) {
           tokenId,
           "legion_storebuygoods",
           { id: 6 },
-          5000,
+          batchSettings.defaultCommandTimeout || 5000,
         );
 
         await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -146,8 +147,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -167,7 +166,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -198,7 +197,7 @@ export function createTasksStore(deps) {
             tokenId,
             "legion_storebuygoods",
             { id: 1 },
-            5000,
+            batchSettings.defaultCommandTimeout || 5000,
           );
 
           await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -252,8 +251,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -273,7 +270,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -305,7 +302,7 @@ export function createTasksStore(deps) {
             tokenId,
             "legion_storebuygoods",
             { id: 202 },
-            5000,
+            batchSettings.defaultCommandTimeout || 5000,
           );
 
           await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -364,8 +361,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -385,7 +380,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -417,7 +412,7 @@ export function createTasksStore(deps) {
             tokenId,
             "legion_storebuygoods",
             { id: 205 },
-            5000,
+            batchSettings.defaultCommandTimeout || 5000,
           );
 
           await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -476,8 +471,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -513,7 +506,7 @@ export function createTasksStore(deps) {
       return;
     }
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value) return;
       tokenStatus.value[tokenId] = "running";
 
@@ -650,8 +643,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -686,7 +677,7 @@ export function createTasksStore(deps) {
       return;
     }
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value) return;
       tokenStatus.value[tokenId] = "running";
 
@@ -821,8 +812,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -840,7 +829,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -866,7 +855,7 @@ export function createTasksStore(deps) {
           tokenId,
           "collection_claimfreereward",
           {},
-          5000,
+          batchSettings.defaultCommandTimeout || 5000,
         );
 
         await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -914,8 +903,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -935,7 +922,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -981,7 +968,7 @@ export function createTasksStore(deps) {
                 tokenId,
                 "store_setpurchase",
                 { purchaseItemList, purchaseCnt },
-                5000,
+                batchSettings.defaultCommandTimeout || 5000,
               );
               addLog({
                 time: new Date().toLocaleTimeString(),
@@ -1008,7 +995,7 @@ export function createTasksStore(deps) {
           tokenId,
           "store_purchase",
           {},
-          5000,
+          batchSettings.defaultCommandTimeout || 5000,
         );
 
         await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -1028,7 +1015,7 @@ export function createTasksStore(deps) {
                 tokenId,
                 "market_buy",
                 { goodsId: 1, buyNum: 1 },
-                5000,
+                batchSettings.defaultCommandTimeout || 5000,
               );
 
               await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -1094,8 +1081,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -1118,7 +1103,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -1154,7 +1139,7 @@ export function createTasksStore(deps) {
           tokenId,
           "store_buy",
           { goodsId },
-          5000,
+          batchSettings.defaultCommandTimeout || 5000,
         );
 
         await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -1186,7 +1171,7 @@ export function createTasksStore(deps) {
               tokenId,
               "task_claimdailypoint",
               {},
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
             await new Promise((r) => setTimeout(r, delayConfig.action));
           } catch (error) {
@@ -1203,7 +1188,7 @@ export function createTasksStore(deps) {
               tokenId,
               "task_claimdailyreward",
               {},
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
             await new Promise((r) => setTimeout(r, delayConfig.action));
           } catch (error) {
@@ -1220,7 +1205,7 @@ export function createTasksStore(deps) {
               tokenId,
               "task_claimweekreward",
               {},
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
             await new Promise((r) => setTimeout(r, delayConfig.action));
           } catch (error) {
@@ -1256,8 +1241,6 @@ export function createTasksStore(deps) {
         });
       }
     });
-
-    await Promise.all(taskPromises);
 
     currentRunningTokenId.value = null;
     isRunning.value = false;
@@ -1310,7 +1293,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -1336,7 +1319,7 @@ export function createTasksStore(deps) {
           tokenId,
           "gacha_drawreward",
           { isGroup: false, num: 1 },
-          5000,
+          batchSettings.defaultCommandTimeout || 5000,
         );
 
         await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -1380,7 +1363,7 @@ export function createTasksStore(deps) {
               tokenId,
               "gacha_claimstagereward",
               { stageId },
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
 
             await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -1422,8 +1405,6 @@ export function createTasksStore(deps) {
         });
       }
     });
-
-    await Promise.all(taskPromises);
 
     // 处理需要重试的账号（200020错误）
     if (retryTokens.length > 0) {
@@ -1468,7 +1449,7 @@ export function createTasksStore(deps) {
               tokenId,
               "gacha_drawreward",
               { isGroup: false, num: 1 },
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
 
             await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -1509,7 +1490,7 @@ export function createTasksStore(deps) {
 
           // 重试间隔1秒
           if (!shouldStop.value) {
-            await new Promise((r) => setTimeout(r, 1000));
+            await new Promise((r) => setTimeout(r, delayConfig.command));
           }
         }
 
@@ -1587,7 +1568,7 @@ export function createTasksStore(deps) {
       { itemId: 36999, name: "三星级抽奖", maxDraws: 3 },
     ];
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -1616,7 +1597,7 @@ export function createTasksStore(deps) {
             tokenId,
             "nmext_claimstarreward",
             {},
-            5000,
+            batchSettings.defaultCommandTimeout || 5000,
           );
 
           if (starRewardResult && starRewardResult.error) {
@@ -1667,7 +1648,7 @@ export function createTasksStore(deps) {
                 tokenId,
                 "nmext_drawturntable",
                 { itemId: pool.itemId },
-                5000,
+                batchSettings.defaultCommandTimeout || 5000,
               );
 
               await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -1775,8 +1756,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -1816,7 +1795,7 @@ export function createTasksStore(deps) {
             tokenId,
             "nightmare_claimturnrewardtimes",
             {},
-            5000,
+            batchSettings.defaultCommandTimeout || 5000,
           );
           await new Promise((r) => setTimeout(r, delayConfig.action));
 
@@ -1825,7 +1804,7 @@ export function createTasksStore(deps) {
             tokenId,
             "nightmare_clickturntable",
             {},
-            5000,
+            batchSettings.defaultCommandTimeout || 5000,
           );
           await new Promise((r) => setTimeout(r, delayConfig.action));
 
@@ -1919,7 +1898,7 @@ export function createTasksStore(deps) {
     };
 
     // 并发执行账号
-    await Promise.all(selectedTokens.value.map(processSingleToken));
+    await runStreaming(selectedTokens.value, processSingleToken);
 
     // ==================== 400340/200750/11800010 重试逻辑 ====================
     if (retryableTokens.length > 0) {
@@ -1994,7 +1973,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -2021,7 +2000,7 @@ export function createTasksStore(deps) {
           tokenId,
           "nightmare_claimbook",
           {},
-          5000,
+          batchSettings.defaultCommandTimeout || 5000,
         );
 
         await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -2059,8 +2038,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -2077,7 +2054,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -2101,7 +2078,7 @@ export function createTasksStore(deps) {
             tokenId,
             "pkroom_appoint",
             {},
-            5000,
+            batchSettings.defaultCommandTimeout || 5000,
           );
 
           await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -2201,8 +2178,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -2222,7 +2197,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -2264,7 +2239,7 @@ export function createTasksStore(deps) {
           tokenId,
           "warguess_getguessinfo",
           {},
-          5000,
+          batchSettings.defaultCommandTimeout || 5000,
         );
 
         await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -2330,7 +2305,7 @@ export function createTasksStore(deps) {
           tokenId,
           "warguess_guessclaim",
           { guessId, legionId },
-          5000,
+          batchSettings.defaultCommandTimeout || 5000,
         );
 
         await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -2377,8 +2352,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -2408,7 +2381,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -2592,8 +2565,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -2633,7 +2604,7 @@ export function createTasksStore(deps) {
       type: "info",
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -2718,7 +2689,7 @@ export function createTasksStore(deps) {
 
             // 每个商品之间等待2秒
             if (goodsIndex !== selectedItems[selectedItems.length - 1]) {
-              await new Promise((r) => setTimeout(r, 2000));
+              await new Promise((r) => setTimeout(r, delayConfig.action));
             }
           } catch (error) {
             const errorMsg = error.message || "";
@@ -2773,8 +2744,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     isRunning.value = false;
     currentRunningTokenId.value = null;
     message.success("黑市周购买结束");
@@ -2794,7 +2763,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -2826,7 +2795,7 @@ export function createTasksStore(deps) {
               tokenId,
               "charge_claimaddup",
               { id },
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
 
             await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -2952,8 +2921,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -3007,7 +2974,7 @@ export function createTasksStore(deps) {
               tokenId,
               "evotower_claimtask",
               { taskId },
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
 
             if (result.error) {
@@ -3077,7 +3044,7 @@ export function createTasksStore(deps) {
               tokenId,
               "evotower_claimlegiontask",
               { taskId },
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
 
             if (result.error) {
@@ -3161,7 +3128,7 @@ export function createTasksStore(deps) {
               tokenId,
               "evotower_claimlegionprivilege",
               {},
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
 
             if (result.error) {
@@ -3227,7 +3194,7 @@ export function createTasksStore(deps) {
             tokenId,
             "activity_battlepassrewardclaim",
             { battlePassId: 1003 },
-            5000,
+            batchSettings.defaultCommandTimeout || 5000,
           );
 
           if (result.error) {
@@ -3297,9 +3264,7 @@ export function createTasksStore(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processClaimWeirdTowerAll(tokenId));
-
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processClaimWeirdTowerAll);
 
     // 批量重试失败账号
     const maxRetries = batchSettings.defaultRetryCount || 2;
@@ -3312,8 +3277,7 @@ export function createTasksStore(deps) {
       await new Promise((r) => setTimeout(r, retryWaitMs));
       const currentRetry = [...failedTokenIds];
       failedTokenIds = [];
-      const retryPromises = currentRetry.map((tokenId) => processClaimWeirdTowerAll(tokenId));
-      await Promise.all(retryPromises);
+      await runStreaming(currentRetry, processClaimWeirdTowerAll);
       currentRetry.forEach(id => { if (tokenStatus.value[id] === "failed") failedTokenIds.push(id); });
     }
 
@@ -3427,9 +3391,7 @@ export function createTasksStore(deps) {
       }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processClaimWeirdTowerPass(tokenId));
-
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processClaimWeirdTowerPass);
 
     // 批量重试失败账号
     const maxRetries = batchSettings.defaultRetryCount || 2;
@@ -3442,8 +3404,7 @@ export function createTasksStore(deps) {
       await new Promise((r) => setTimeout(r, retryWaitMs));
       const currentRetry = [...failedTokenIds];
       failedTokenIds = [];
-      const retryPromises = currentRetry.map((tokenId) => processClaimWeirdTowerPass(tokenId));
-      await Promise.all(retryPromises);
+      await runStreaming(currentRetry, processClaimWeirdTowerPass);
       currentRetry.forEach(id => { if (tokenStatus.value[id] === "failed") failedTokenIds.push(id); });
     }
 
@@ -3466,7 +3427,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -3520,7 +3481,7 @@ export function createTasksStore(deps) {
               tokenId,
               "pet_openegg",
               { itemId: 37011 },
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
 
             if (result.error) {
@@ -3591,8 +3552,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -3612,7 +3571,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -3657,7 +3616,7 @@ export function createTasksStore(deps) {
                 tokenId,
                 "pet_activatebook",
                 { petId },
-                5000,
+                batchSettings.defaultCommandTimeout || 5000,
               );
               await new Promise((r) => setTimeout(r, delayConfig.action));
             } catch (error) {
@@ -3670,7 +3629,7 @@ export function createTasksStore(deps) {
                 tokenId,
                 "pet_claimbookreward",
                 { petId },
-                5000,
+                batchSettings.defaultCommandTimeout || 5000,
               );
 
               if (result.error) {
@@ -3750,8 +3709,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -3777,7 +3734,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -3995,8 +3952,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -4020,7 +3975,7 @@ export function createTasksStore(deps) {
 
     const cmdTimeout = batchSettings.value?.commandTimeout || 8000;
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value) return;
       tokenStatus.value[tokenId] = "running";
 
@@ -4164,8 +4119,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -4182,7 +4135,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -4213,7 +4166,7 @@ export function createTasksStore(deps) {
             goodsIndex: 8,
             buyNum: 1,
           },
-          5000,
+          batchSettings.defaultCommandTimeout || 5000,
         );
 
         await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -4282,8 +4235,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -4303,7 +4254,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -4334,7 +4285,7 @@ export function createTasksStore(deps) {
             goodsIndex: 6,
             buyNum: 1,
           },
-          5000,
+          batchSettings.defaultCommandTimeout || 5000,
         );
 
         await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -4403,8 +4354,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
@@ -4463,7 +4412,7 @@ export function createTasksStore(deps) {
       },
     ];
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -4540,7 +4489,7 @@ export function createTasksStore(deps) {
               tokenId,
               gift.cmd,
               gift.params,
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
 
             await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -4692,7 +4641,7 @@ export function createTasksStore(deps) {
           }
 
           // 每个礼包之间稍作延迟
-          await new Promise((r) => setTimeout(r, 300));
+          await new Promise((r) => setTimeout(r, delayConfig.action));
         }
 
         // 领取战排金砖奖励（每日可领，不受活动周限制）
@@ -4756,7 +4705,7 @@ export function createTasksStore(deps) {
                   tokenId,
                   "legion_claimwarrankreward",
                   { date: warDate },
-                  5000,
+                  batchSettings.defaultCommandTimeout || 5000,
                 );
 
                 await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -4840,8 +4789,6 @@ export function createTasksStore(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     isRunning.value = false;
     currentRunningTokenId.value = null;
     message.success("周免费礼领取结束");
@@ -4868,7 +4815,7 @@ export function createTasksStore(deps) {
       { activityId: 9, goodsIndex: 4, buyNum: 1, name: "中级黑市包" },
     ];
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -4908,7 +4855,7 @@ export function createTasksStore(deps) {
                 goodsIndex: gift.goodsIndex,
                 buyNum: gift.buyNum,
               },
-              5000,
+              batchSettings.defaultCommandTimeout || 5000,
             );
 
             await new Promise((r) => setTimeout(r, delayConfig.action));
@@ -4986,8 +4933,6 @@ export function createTasksStore(deps) {
         });
       }
     });
-
-    await Promise.all(taskPromises);
 
     currentRunningTokenId.value = null;
     isRunning.value = false;
@@ -5374,8 +5319,7 @@ export function createTasksStore(deps) {
         }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processStarChallenge(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processStarChallenge);
 
     // 批量重试失败账号
     const retryMax = batchSettings.defaultRetryCount || 2;
@@ -5386,7 +5330,7 @@ export function createTasksStore(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      await Promise.all(cur.map(t => processStarChallenge(t)));
+      await runStreaming(cur, processStarChallenge);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
@@ -5407,7 +5351,7 @@ export function createTasksStore(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -5587,8 +5531,6 @@ export function createTasksStore(deps) {
         });
       }
     });
-
-    await Promise.all(taskPromises);
     isRunning.value = false;
     currentRunningTokenId.value = null;
     message.success("批量邮箱领取与清理结束");

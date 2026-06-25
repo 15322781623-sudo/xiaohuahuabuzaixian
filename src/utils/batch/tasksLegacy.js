@@ -120,6 +120,7 @@ export function createTasksLegacy(deps) {
     shouldStop,
     ensureConnection,
     releaseConnectionSlot,
+    runStreaming,
     connectionQueue,
     batchSettings,
     tokenStore,
@@ -145,7 +146,7 @@ export function createTasksLegacy(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
       tokenStatus.value[tokenId] = "running";
@@ -212,8 +213,6 @@ export function createTasksLegacy(deps) {
       }
     });
 
-    await Promise.all(taskPromises);
-
     isRunning.value = false;
     currentRunningTokenId.value = null;
     message.success("批量领取功法残卷结束");
@@ -232,7 +231,7 @@ export function createTasksLegacy(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
       tokenStatus.value[tokenId] = "running";
@@ -300,8 +299,6 @@ export function createTasksLegacy(deps) {
         });
       }
     });
-
-    await Promise.all(taskPromises);
 
     isRunning.value = false;
     currentRunningTokenId.value = null;
@@ -772,8 +769,7 @@ export function createTasksLegacy(deps) {
         }
     };
 
-    const taskPromises = selectedTokens.value.map((tokenId) => processLegacyGift(tokenId));
-    await Promise.all(taskPromises);
+    await runStreaming(selectedTokens.value, processLegacyGift);
 
     // 第一轮全部完成，检查是否有需要重试的账号
     const retryableIds = selectedTokens.value.filter((id) => tokenStatus.value[id] === "retryable");
@@ -796,8 +792,7 @@ export function createTasksLegacy(deps) {
       // 重置状态为 running
       currentRetryIds.forEach((id) => { tokenStatus.value[id] = "running"; });
       await new Promise((resolve) => setTimeout(resolve, retryWait));
-      const retryPromises = currentRetryIds.map((tokenId) => processLegacyGift(tokenId));
-      await Promise.all(retryPromises);
+      await runStreaming(currentRetryIds, processLegacyGift);
       currentRetryIds = selectedTokens.value.filter((id) => tokenStatus.value[id] === "retryable");
     }
     // 剩余仍为 retryable 的标记为 failed
@@ -839,7 +834,7 @@ export function createTasksLegacy(deps) {
     // 任务ID列表（1-6）
     const taskIds = [1, 2, 3, 4, 5, 6];
 
-    const taskPromises = selectedTokens.value.map(async (tokenId) => {
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
       tokenStatus.value[tokenId] = "running";
@@ -946,8 +941,6 @@ export function createTasksLegacy(deps) {
         });
       }
     });
-
-    await Promise.all(taskPromises);
 
     isRunning.value = false;
     currentRunningTokenId.value = null;

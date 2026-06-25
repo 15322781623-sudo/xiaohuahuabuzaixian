@@ -877,7 +877,7 @@ export class NightmareAutoBattleService {
   async _waitForMidnight() {
     this._status = 'waiting_midnight';
     this._waitStartTime = Date.now();
-    this._onStatusChange({ status: 'waiting_midnight', currentLevel: 7 });
+    this._onStatusChange({ status: 'waiting_midnight', currentLevel: this._currentLevel });
     this._onLog(`第7关完成，等待周一00:00后继续挑战第8关...`, 'info');
 
     while (!this._stopped) {
@@ -886,8 +886,15 @@ export class NightmareAutoBattleService {
       const hours = now.getHours();
 
       // 周一 00:00 之后即可继续
-      if (day === 1 && hours === 0) break;
-      if (day !== 0) break; // 非周日说明已过周一
+      if (day === 1 && hours === 0) break; // 周一 00:00-00:59，精确匹配午夜窗口
+      if (day !== 0) {
+        // ✅ BUG修复：非周日直接跳出，但增加安全检查
+        // 如果已经是周一凌晨1点之后，说明已错过午夜窗口但仍可继续挑战
+        if (day === 1 && hours >= 1) {
+          this._onLog(`已过周一00:00（当前${hours}时），直接继续挑战`, 'info');
+        }
+        break;
+      }
 
       // 等待超时保护
       if (Date.now() - this._waitStartTime > this._MAX_WAIT_TIME) {

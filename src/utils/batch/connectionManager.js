@@ -1,9 +1,16 @@
 /**
- * WebSocket连接管理器
+ * WebSocket连接管理器 - 基于 WebSocketPool
  */
 
-// 全局连接队列控制 - 限制并发连接数
-export const connectionQueue = { active: 0 };
+import { WebSocketPool } from "@/utils/WebSocketPool";
+
+// 全局连接池实例（供 connectionManager 使用）
+const globalPool = new WebSocketPool({ poolSize: 20, connectionInterval: 300 });
+
+// 兼容性导出
+export const connectionQueue = {
+  get active() { return globalPool.activeCount; }
+};
 
 /**
  * 创建连接管理器
@@ -14,28 +21,21 @@ export const connectionQueue = { active: 0 };
  * @returns {object} - 连接管理器对象
  */
 export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
+  // 同步连接池大小
+  globalPool.setPoolSize(batchSettings.maxActive);
+
   /**
-   * 等待连接槽位（带超时和停止信号检测）
-   * @param {number} timeout - 超时时间（ms），默认60秒
+   * 等待连接槽位（基于连接池）
    */
   const waitForConnectionSlot = async (timeout = 60000) => {
-    const start = Date.now();
-    while (connectionQueue.active >= batchSettings.maxActive) {
-      if (Date.now() - start > timeout) {
-        throw new Error(`等待连接槽位超时（${timeout / 1000}秒），当前 ${connectionQueue.active}/${batchSettings.maxActive} 个槽位已占满`);
-      }
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-    connectionQueue.active++;
+    await globalPool.acquire('_cm_', timeout);
   };
 
   /**
    * 释放连接槽位
    */
   const releaseConnectionSlot = () => {
-    if (connectionQueue.active > 0) {
-      connectionQueue.active--;
-    }
+    globalPool.release('_cm_');
   };
 
   /**
@@ -177,33 +177,16 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
         tokenStore.setBattleVersion(res.battleData.version);
       }
     } catch (e) {
-      // 检查是否是连接超时错误
-      const isConnectionTimeout = e.message && (
-        e.message.includes("WebSocket未连接")
-        || e.message.includes("连接超时")
-        || e.message.includes("connection timeout")
-      );
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `${latestToken.name} 初始化数据失败: ${e.message}`,
+        type: "warning",
+      });
 
-      if (isConnectionTimeout) {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${latestToken.name} 初始化数据失败: WebSocket未连接，跳过该账号`,
-          type: "warning",
-        });
+      // 关闭连接，槽位由调用方 finally 块统一释放
+      tokenStore.closeWebSocketConnection(tokenId);
 
-        // 关闭当前连接并释放槽位
-        tokenStore.closeWebSocketConnection(tokenId);
-        releaseConnectionSlot();
-
-        // 抛出错误让调用方跳过该账号
-        throw new Error("WebSocket未连接，跳过该账号");
-      } else {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${latestToken.name} 初始化数据失败: ${e.message}`,
-          type: "warning",
-        });
-      }
+      throw new Error(`初始化数据失败: ${e.message}`);
     }
 
     return true;

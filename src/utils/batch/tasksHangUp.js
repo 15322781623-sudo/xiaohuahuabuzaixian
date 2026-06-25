@@ -17,6 +17,7 @@ export function createTasksHangUp(deps) {
     shouldStop,
     ensureConnection,
     releaseConnectionSlot,
+    runStreaming,
     connectionQueue,
     batchSettings,
     tokenStore,
@@ -216,7 +217,7 @@ export function createTasksHangUp(deps) {
     const retryTokens = [];
 
     // 首次执行
-    const taskPromises = tokenIds.map(async (tokenId) => {
+    await runStreaming(tokenIds, async (tokenId) => {
       if (shouldStop.value) return;
       tokenStatus.value[tokenId] = "running";
       const token = tokens.value.find((t) => t.id === tokenId);
@@ -242,7 +243,6 @@ export function createTasksHangUp(deps) {
         if (conn) await safeCloseConnection(tokenId, token.name);
       }
     });
-    await Promise.all(taskPromises);
 
     // 重试循环
     let currentRetryTokens = retryTokens;
@@ -277,7 +277,6 @@ export function createTasksHangUp(deps) {
           if (conn) await safeCloseConnection(tokenId, token.name);
         }
       });
-      await Promise.all(retryPromises);
       currentRetryTokens = nextRetryTokens;
     }
 
@@ -597,7 +596,7 @@ export function createTasksHangUp(deps) {
       };
 
       // 首次执行所有账号
-      const firstRound = selectedTokens.value.map(async (tokenId) => {
+      await runStreaming(selectedTokens.value, async (tokenId) => {
         if (shouldStop.value)
           return;
         tokenStatus.value[tokenId] = "running";
@@ -613,7 +612,6 @@ export function createTasksHangUp(deps) {
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 答题失败: ${err.message}`, type: "error" });
         }
       });
-      await Promise.all(firstRound);
 
       // 批量重试200350错误的账号（最多2轮）
       let currentRetry = 0;

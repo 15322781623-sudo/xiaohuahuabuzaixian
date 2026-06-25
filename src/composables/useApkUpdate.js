@@ -7,17 +7,18 @@ import { CapacitorHttp } from '@capacitor/core';
  * 通过 Cloudflare Worker 检查最新版本并下载安装
  */
 
-// Worker 地址（与 Pages 同域名）
-const WORKER_BASE = '';
+// Worker 地址（Cloudflare Worker 部署地址）
+const WORKER_BASE = 'https://apk.xiaohuaxyzw.top';
 
 // 本地存储的当前APK版本
 const APK_VERSION_KEY = 'apk_current_version';
 const APK_VERSION_CODE_KEY = 'apk_current_version_code';
 const SKIP_VERSION_KEY = 'apk_skip_version';
 
-// 默认当前版本（与 android/app/build.gradle 的 versionCode/versionName 同步）
-const DEFAULT_VERSION_NAME = '1.0.0';
-const DEFAULT_VERSION_CODE = 1;
+// 默认当前版本（构建时由 Vite 从 build.gradle 自动注入，无需手动同步）
+// 开发环境回退值（dev server 不经过构建）
+const DEFAULT_VERSION_NAME = typeof __APK_VERSION_NAME__ !== 'undefined' ? __APK_VERSION_NAME__ : '1.1.3';
+const DEFAULT_VERSION_CODE = typeof __APK_VERSION_CODE__ !== 'undefined' ? __APK_VERSION_CODE__ : 10103;
 
 export function useApkUpdate() {
   const isChecking = ref(false);
@@ -76,23 +77,25 @@ export function useApkUpdate() {
       // 版本比较
       const serverCode = Number(serverInfo.versionCode) || 0;
       const localCode = localVersion.versionCode;
+      const isBelowMinVersion = serverCode > 0 && localCode < (serverInfo.minVersionCode || 0);
+      const hasNewerVersion = serverCode > localCode;
 
-      if (serverCode > localCode) {
+      if (hasNewerVersion || isBelowMinVersion) {
         updateInfo.value = {
           ...serverInfo,
           localVersion: localVersion.versionName,
-          forceUpdate: serverInfo.forceUpdate || serverCode < (serverInfo.minVersionCode || 0),
+          forceUpdate: serverInfo.forceUpdate || isBelowMinVersion,
         };
 
-        if (!silent) {
-          return { hasUpdate: true, info: updateInfo.value };
-        }
+        console.log(`[APK更新] 发现更新: local=${localCode}, server=${serverCode}, force=${updateInfo.value.forceUpdate}`);
         return { hasUpdate: true, info: updateInfo.value };
       }
 
       isChecking.value = false;
+      console.log(`[APK更新] 已是最新版本: local=${localCode}, server=${serverCode}`);
       return { hasUpdate: false, reason: '已是最新版本' };
     } catch (error) {
+      console.error('[APK更新] 检查更新失败:', error.message, error.stack);
       downloadError.value = error.message || '检查更新失败';
       isChecking.value = false;
       if (!silent) {
@@ -103,91 +106,111 @@ export function useApkUpdate() {
   };
 
   /**
-   * 下载并安装APK
+   * 测试下载链接速度（发送 HEAD 请求测量响应时间）
+   */
+  const testDownloadSpeed = async (url, timeout = 5000) => {
+    const start = Date.now();
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+        
+      // 使用 GET + range 请求测试连接速度（比 HEAD 更可靠）
+      const resp = await fetch(url, {
+        method: 'HEAD',
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+        
+      const elapsed = Date.now() - start;
+      const ok = resp.ok || resp.status === 301 || resp.status === 302;
+      console.log(`[APK测速] ${url.substring(0, 50)}... → ${elapsed}ms (${ok ? 'OK' : resp.status})`);
+      return { url, elapsed, ok };
+    } catch {
+      const elapsed = Date.now() - start;
+      console.log(`[APK测速] ${url.substring(0, 50)}... → 失败(${elapsed}ms)`);
+      return { url, elapsed: 99999, ok: false };
+    }
+  };
+  
+  /**
+   * 下载并安装APK（自动测速选择最快代理）
    */
   const downloadAndInstall = async () => {
     if (!updateInfo.value) return;
-
+    // 防止重复下载
+    if (isDownloading.value) return;
+  
     isDownloading.value = true;
     downloadProgress.value = 0;
     downloadError.value = '';
-
+  
     try {
-      const apkFileName = `xyzw-helper-${updateInfo.value.latestVersion}.apk`;
-
-      // 使用 CapacitorHttp 下载 APK（支持进度监听）
-      const response = await CapacitorHttp.get({
-        url: `${WORKER_BASE}${updateInfo.value.downloadUrl}`,
-        responseType: 'blob',
-        headers: { 'Content-Type': 'application/vnd.android.package-archive' },
-      });
-
-      // 通过原生插件安装APK
-      // 使用 Capacitor 的 Filesystem 写入文件，然后通过 Intent 安装
-      const blob = response.data;
-      const arrayBuffer = await blob.arrayBuffer();
-      const base64Data = arrayBufferToBase64(arrayBuffer);
-
-      // 调用原生安装方法
-      const { Filesystem, Directory } = await import('@capacitor/filesystem');
-      const filePath = await Filesystem.writeFile({
-        path: apkFileName,
-        data: base64Data,
-        directory: Directory.External,
-        recursive: true,
-      });
-
-      // 通过自定义原生插件触发安装
-      // 使用 window.Capacitor 调用原生方法
-      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.ApkInstaller) {
-        await window.Capacitor.Plugins.ApkInstaller.install({
-          filePath: filePath.uri,
-        });
+      // 获取所有下载链接
+      const versionResp = await fetch(`${WORKER_BASE}/api/apk/latest`);
+      const downloadInfo = await versionResp.json();
+        
+      const candidateUrls = [
+        ...(downloadInfo.proxyUrls || []).map(p => p.url),
+        downloadInfo.originalUrl,
+      ].filter(Boolean);
+  
+      console.log(`[APK更新] 开始测速，共 ${candidateUrls.length} 个下载源...`);
+      downloadProgress.value = 10;
+  
+      // 并行测试所有下载源速度
+      const speedResults = await Promise.allSettled(
+        candidateUrls.map(url => testDownloadSpeed(url))
+      );
+        
+      const speedData = speedResults
+        .filter(r => r.status === 'fulfilled')
+        .map(r => r.value)
+        .filter(r => r.ok)
+        .sort((a, b) => a.elapsed - b.elapsed);
+  
+      downloadProgress.value = 50;
+  
+      let bestUrl;
+      if (speedData.length > 0) {
+        bestUrl = speedData[0].url;
+        console.log(`[APK更新] 最快下载源: ${bestUrl} (${speedData[0].elapsed}ms)`);
       } else {
-        // 降级方案：通过 WebView 的 Intent 打开文件
-        downloadApkViaIntent(filePath.uri, apkFileName);
+        // 所有测速失败，回退到 Worker 代理
+        bestUrl = downloadInfo.workerProxyUrl || downloadInfo.downloadUrl;
+        console.log(`[APK更新] 测速全部失败，使用 Worker 代理: ${bestUrl}`);
       }
-
+  
+      downloadProgress.value = 80;
+  
+      // 使用系统浏览器下载
+      const downloadSuccess = window.open(bestUrl, '_system');
+  
       downloadProgress.value = 100;
       isDownloading.value = false;
-
-      // 更新本地版本记录
-      localStorage.setItem(APK_VERSION_KEY, updateInfo.value.latestVersion);
-      localStorage.setItem(APK_VERSION_CODE_KEY, String(updateInfo.value.versionCode));
-      // 清除跳过记录
-      localStorage.removeItem(SKIP_VERSION_KEY);
-    } catch (error) {
-      downloadError.value = error.message || '下载安装失败';
-      isDownloading.value = false;
-    }
-  };
-
-  /**
-   * 通过 Intent 下载并安装APK（降级方案）
-   */
-  const downloadApkViaIntent = (fileUri, fileName) => {
-    try {
-      // 使用 Android 的下载管理器
-      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.ApkInstaller) {
-        window.Capacitor.Plugins.ApkInstaller.install({ filePath: fileUri });
+  
+      // 注意：不在此处更新版本号，因为用户可能未完成下载安装
+      // 版本号应在下次启动新版本APK时由 setLocalVersion 设置
+      if (downloadSuccess) {
+        console.log('[APK更新] 已打开浏览器下载');
+      } else {
+        console.warn('[APK更新] 打开浏览器下载失败');
+        downloadError.value = '打开浏览器下载失败';
       }
-    } catch (e) {
-      downloadError.value = '安装失败，请手动安装';
+    } catch (error) {
+      console.error('[APK更新] 下载失败:', error.message);
+      isDownloading.value = false;
+      // 最终回退：直接用原始链接
+      try {
+        const fallbackUrl = updateInfo.value.downloadUrl
+          || updateInfo.value.downloadUrlOriginal
+          || `${WORKER_BASE}/api/apk/download`;
+        window.open(fallbackUrl, '_system');
+        console.log('[APK更新] 使用回退链接:', fallbackUrl);
+      } catch (e) {
+        downloadError.value = error.message || '下载失败';
+        console.error('[APK更新] 回退下载也失败:', e);
+      }
     }
-  };
-
-  /**
-   * ArrayBuffer 转 Base64
-   */
-  const arrayBufferToBase64 = (buffer) => {
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    const chunkSize = 8192;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.subarray(i, i + chunkSize);
-      binary += String.fromCharCode.apply(null, chunk);
-    }
-    return btoa(binary);
   };
 
   /**

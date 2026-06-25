@@ -17,6 +17,7 @@ export function createTasksCar(deps) {
     shouldStop,
     ensureConnection,
     releaseConnectionSlot,
+    runStreaming,
     connectionQueue,
     batchSettings,
     tokenStore,
@@ -202,7 +203,7 @@ export function createTasksCar(deps) {
       };
 
       // 第一批：并行执行所有账号
-      const taskPromises = selectedTokens.value.map(async (tokenId) => {
+      await runStreaming(selectedTokens.value, async (tokenId) => {
         if (shouldStop.value) return;
         const token = tokens.value.find((t) => t.id === tokenId);
 
@@ -230,8 +231,6 @@ export function createTasksCar(deps) {
           }
         }
       });
-
-      await Promise.all(taskPromises);
 
       // ==================== 400340 重试逻辑 ====================
       if (retry400340Tokens.length > 0 && !shouldStop.value) {
@@ -501,7 +500,7 @@ export function createTasksCar(deps) {
       const retryTasks = [];
 
       // 第一轮：执行所有账号的收车
-      const firstRound = selectedTokens.value.map(async (tokenId) => {
+      await runStreaming(selectedTokens.value, async (tokenId) => {
         if (shouldStop.value) return;
         tokenStatus.value[tokenId] = "running";
         const token = tokens.value.find((t) => t.id === tokenId);
@@ -561,8 +560,6 @@ export function createTasksCar(deps) {
           closeConnection(tokenId, token.name);
         }
       });
-
-      await Promise.all(firstRound);
 
       // 重试阶段
       if (retryTasks.length > 0 && !shouldStop.value) {
@@ -646,7 +643,7 @@ export function createTasksCar(deps) {
       shouldStop.value = false;
       selectedTokens.value.forEach((id) => { tokenStatus.value[id] = "waiting"; });
 
-      const taskPromises = selectedTokens.value.map(async (tokenId) => {
+      await runStreaming(selectedTokens.value, async (tokenId) => {
         if (shouldStop.value) return;
         tokenStatus.value[tokenId] = "running";
         const token = tokens.value.find((t) => t.id === tokenId);
@@ -684,8 +681,6 @@ export function createTasksCar(deps) {
           closeConnection(tokenId, token.name);
         }
       });
-
-      await Promise.all(taskPromises);
       refreshCompletedTokens();
       message.success("批量升级改装结束");
     } finally {

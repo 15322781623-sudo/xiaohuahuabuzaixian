@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <div class="wx-qrcode-import">
     <!-- 操作按钮 -->
     <div class="form-actions">

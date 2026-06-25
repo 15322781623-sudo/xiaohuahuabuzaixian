@@ -45,6 +45,19 @@
           <span style="font-size: 11px; color: var(--text-secondary, #888);">{{ isBackgroundMode ? '后台' : '前台' }}</span>
           <n-switch v-model:value="isBackgroundMode" size="small" />
         </div>
+        <div style="display: flex; align-items: center; gap: 4px; margin-left: 4px;" title="预设间执行间隔">
+          <span style="font-size: 11px; color: var(--text-secondary, #888);">间隔</span>
+          <n-input-number
+            v-model:value="presetDelaySec"
+            :min="1"
+            :max="300"
+            :step="1"
+            size="tiny"
+            style="width: 70px;"
+            @update:value="onPresetDelayChange"
+          />
+          <span style="font-size: 11px; color: var(--text-secondary, #888);">秒</span>
+        </div>
         <n-tag type="success" v-if="teamId" size="medium">
           TeamId: {{ teamId }}
         </n-tag>
@@ -360,7 +373,16 @@ const persistActiveBattles = () => {
   );
 };
 const isBackgroundMode = ref(true); // 后台执行 / 前台观看
-const staggerDelay = 8000; // 预设间错开延迟(ms)
+// 预设间错开延迟(ms)，从 localStorage 读取，默认 10 秒
+const staggerDelay = computed(() => {
+  const val = parseInt(localStorage.getItem('nightmare-preset-delay') || '10', 10);
+  return (isNaN(val) || val < 1 ? 10 : val) * 1000;
+});
+const presetDelaySec = ref(parseInt(localStorage.getItem('nightmare-preset-delay') || '10', 10));
+const onPresetDelayChange = (val) => {
+  const v = Math.max(1, Math.min(300, val || 10));
+  localStorage.setItem('nightmare-preset-delay', String(v));
+};
 const presetRef = ref(null); // 预设组件 ref
 
 // ====== 页面状态 ======
@@ -2492,8 +2514,8 @@ const onPresetExecuteAll = async (presets) => {
           }
         } else {
           // 无冲突，按正常间隔启动
-          addLog(`等待 ${staggerDelay/1000}秒后启动下一个预设...`, "info");
-          await delay(staggerDelay);
+          addLog(`等待 ${staggerDelay.value/1000}秒后启动下一个预设...`, "info");
+          await delay(staggerDelay.value);
         }
       }
 

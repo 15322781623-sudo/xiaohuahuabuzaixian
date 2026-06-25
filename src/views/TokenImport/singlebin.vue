@@ -35,6 +35,12 @@
         </div> -->
       </a-upload>
     </NFormItem>
+
+    <!-- 上传进度提示 -->
+    <div v-if="uploadProgress.processing" style="text-align: center; padding: 8px; color: #2080f0; font-size: 13px;">
+      正在处理文件 {{ uploadProgress.current }}/{{ uploadProgress.total }}，请勿重复上传...
+    </div>
+
     <a-list>
       <a-list-item v-for="(role, index) in roleList" :key="index">
         <div>
@@ -64,7 +70,7 @@
 </template>
 
 <script lang="ts" setup>
-import { reactive, ref } from "vue";
+import { reactive, ref, watch } from "vue";
 import { useTokenStore } from "@/stores/tokenStore";
 import { CloudUpload } from "@vicons/ionicons5";
 
@@ -79,7 +85,6 @@ import {
   useMessage,
 } from "naive-ui";
 
-import PQueue from "p-queue";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { getTokenId, transformToken } from "@/utils/token";
 
@@ -112,7 +117,9 @@ const roleList = ref<
   }>
 >([]);
 
-const tQueue = new PQueue({ concurrency: 1, interval: 3000 });
+// 待处理文件队列 + 进度
+const pendingFiles = ref<File[]>([]);
+const uploadProgress = ref({ current: 0, total: 0, processing: false });
 
 const initName = (fileName: string) => {
   if (!fileName)
@@ -155,43 +162,76 @@ const initName = (fileName: string) => {
 };
 
 const uploadBin = (binFile: File) => {
-  tQueue.add(async () => {
-    console.log("上传文件数据:", binFile);
-    const roleMeta = initName(binFile.name) as any;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const userToken = e.target?.result as ArrayBuffer;
-      // console.log('转换Token:', userToken);
+  // 收集文件到队列，通过重新赋值触发 watch
+  pendingFiles.value = [...pendingFiles.value, binFile];
+  return false; // 阻止自动上传
+};
+
+// 监听文件队列，串行逐个处理，每个间隔 2 秒
+let processingStarted = false;
+watch(pendingFiles, async (files) => {
+  if (files.length === 0 || processingStarted) return;
+  processingStarted = true;
+
+  const totalFiles = files.length;
+  uploadProgress.value = { current: 0, total: totalFiles, processing: true };
+
+  for (let i = 0; i < files.length; i++) {
+    const binFile = files[i];
+    if (!binFile) continue;
+    uploadProgress.value.current = i + 1;
+    console.log(`[上传进度] ${i + 1}/${totalFiles} 处理文件:`, binFile.name);
+    message.info(`正在处理第 ${i + 1}/${totalFiles} 个文件: ${binFile.name}`);
+
+    try {
+      const roleMeta = initName(binFile.name) as any;
+
+      // 读取文件
+      const userToken: ArrayBuffer = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result as ArrayBuffer);
+        reader.onerror = () => reject(new Error("读取文件失败"));
+        reader.readAsArrayBuffer(binFile);
+      });
+
       const tokenId = getTokenId(userToken);
-      let roleToken: string;
-      try {
-        roleToken = await transformToken(userToken);
-      } catch (err: any) {
-        console.error("transformToken failed:", err);
-        message.error(`Token转换失败: ${err?.message || String(err)}`);
-        return;
-      }
-      const roleName = roleMeta.roleName || binFile.name.split(".")?.[0] || "";
-      // 刷新indexDB数据库token数据
-      const saved = await storeArrayBuffer(tokenId, userToken);
-      if (!saved) {
-        message.error("保存BIN数据到IndexedDB失败");
-        return;
+
+      // transformToken 带重试（最多 3 次）
+      let roleToken = '';
+      const maxRetries = 3;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          roleToken = await transformToken(userToken);
+          break;
+        } catch (err: any) {
+          console.warn(`transformToken 第${attempt}次失败:`, err.message);
+          if (attempt < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          } else {
+            throw new Error(`Token转换失败(已重试${maxRetries}次): ${err.message}`);
+          }
+        }
       }
 
-      // 上传列表中发现已存在的重复名称，提示消息
-      if (roleList.value.some((role) => role.id === tokenId)) {
-        message.error("上传列表中已存在同名角色! ");
-        return;
+      const roleName = roleMeta.roleName || binFile.name.split(".")?.[0] || "";
+
+      // 保存 bin 到 IndexedDB
+      const saved = await storeArrayBuffer(tokenId, userToken);
+      if (!saved) {
+        throw new Error("保存BIN数据到IndexedDB失败");
       }
-      // 检查待上传的角色是否已在tokenStore中存在
-      const existingToken = tokenStore.gameTokens.find(
-        (t) => t.id === tokenId,
-      );
+
+      // 检查重复
+      if (roleList.value.some((role) => role.id === tokenId)) {
+        message.warning(`上传列表中已存在同名角色: ${roleName}`);
+        continue;
+      }
+
+      const existingToken = tokenStore.gameTokens.find((t) => t.id === tokenId);
       if (existingToken) {
         message.warning(`角色"${roleName}"已存在，将更新该角色的Token`);
       }
-      message.success("Token读取成功，请检查角色名称等信息后提交");
+
       roleList.value.push({
         id: tokenId,
         token: roleToken,
@@ -200,14 +240,24 @@ const uploadBin = (binFile: File) => {
         wsUrl: importForm.wsUrl || "",
         importMethod: "bin",
       });
-    };
-    reader.onerror = () => {
-      message.error("读取文件失败，请重试");
-    };
-    reader.readAsArrayBuffer(binFile);
-  });
-  return false; // 阻止自动上传
-};
+
+      message.success(`第 ${i + 1}/${totalFiles} 个文件处理完成: ${roleName}`);
+    } catch (err: any) {
+      console.error(`文件处理失败: ${binFile.name}`, err);
+      message.error(`第 ${i + 1}/${totalFiles} 个文件处理失败: ${err.message}`);
+    }
+
+    // 每个文件处理完后等待 2 秒再处理下一个
+    if (i < files.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }
+
+  uploadProgress.value.processing = false;
+  message.success(`全部 ${totalFiles} 个文件处理完成，请检查角色信息后提交`);
+  pendingFiles.value = [];
+  processingStarted = false;
+}, { deep: false });
 
 const handleImport = async () => {
   if (roleList.value.length === 0) {

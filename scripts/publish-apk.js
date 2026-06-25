@@ -38,6 +38,9 @@ const hasFlag = (name) => args.includes(`--${name}`);
 const newVersion = getArg('version');
 const changelog = getArg('changelog');
 const githubRepo = getArg('repo');  // GitHub仓库: 用户名/仓库名
+const newVersionCode = getArg('versionCode');
+const forceUpdateFlag = hasFlag('force-update');
+const autoConfirm = hasFlag('yes') || hasFlag('y');
 const skipR2 = hasFlag('skip-r2');
 const skipDeploy = hasFlag('skip-deploy');
 
@@ -67,7 +70,7 @@ async function main() {
     }
   }
 
-  const versionCode = await ask(`请输入 versionCode (数字): `);
+  const versionCode = newVersionCode || await ask(`请输入 versionCode (数字): `);
   if (!versionCode || isNaN(Number(versionCode))) {
     console.error('versionCode 必须是数字');
     process.exit(1);
@@ -80,7 +83,7 @@ async function main() {
     if (!log) log = '版本更新';
   }
 
-  const forceUpdate = (await ask('是否强制更新? (y/N): ')).toLowerCase() === 'y';
+  const forceUpdate = forceUpdateFlag || (await ask('是否强制更新? (y/N): ')).toLowerCase() === 'y';
 
   console.log(`\n📋 发布信息:`);
   console.log(`   版本: ${version}`);
@@ -90,7 +93,7 @@ async function main() {
   console.log(`   跳过R2: ${skipR2 ? '是' : '否'}`);
   console.log(`   跳过部署: ${skipDeploy ? '是' : '否'}`);
 
-  const confirm = await ask('\n确认发布? (y/N): ');
+  const confirm = autoConfirm ? 'y' : await ask('\n确认发布? (y/N): ');
   if (confirm.toLowerCase() !== 'y') {
     console.log('已取消');
     rl.close();

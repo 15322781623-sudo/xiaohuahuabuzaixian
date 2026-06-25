@@ -1,17 +1,131 @@
 
-// APK 版本管理配置（更新APK时修改此处）
-// downloadUrl 支持两种模式：
-//   1. 外部链接模式（推荐）：直接指向 GitHub Releases 等下载地址
-//   2. R2模式："/api/apk/download" — 从 Cloudflare R2 存储桶下载（需启用R2）
-const APK_VERSION_CONFIG = {
-  latestVersion: "1.1.0",
-  versionCode: 2,
-  // 外部下载链接（GitHub Releases格式：https://github.com/用户名/仓库名/releases/download/v版本号/文件名.apk）
-  downloadUrl: "https://github.com/15322781623-sudo/xyzw-web-helper/releases/latest/download/xyzw-helper.apk",
-  changelog: "初始版本发布",
-  minVersionCode: 1,  // 低于此版本强制更新
-  forceUpdate: false,  // 是否强制更新
+// ==================== 配置 ====================
+const GITHUB_REPO = '15322781623-sudo/xiaohuahuabuzaixian';
+const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+
+// GitHub 下载加速代理
+const GITHUB_PROXY_LIST = [
+  'https://ghfast.top/',
+  'https://gh-proxy.com/',
+  'https://mirror.ghproxy.com/',
+];
+
+// 静态兜底配置（R2 和 GitHub 都失败时使用）
+const FALLBACK_CONFIG = {
+  latestVersion: "1.2.1",
+  versionCode: 10201,
+  downloadUrl: `https://ghfast.top/https://github.com/${GITHUB_REPO}/releases/latest/download/xyzw-helper.apk`,
+  downloadUrlOriginal: `https://github.com/${GITHUB_REPO}/releases/latest/download/xyzw-helper.apk`,
+  changelog: "v1.2.1: 升星功能重写，智能筛选 + 响应码检查，鱼灵 itemId 修复",
+  minVersionCode: 10107,
+  forceUpdate: false,
 };
+
+// 缓存
+let _cachedVersionInfo = null;
+let _cacheTime = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
+
+/**
+ * 从 R2 获取版本信息（优先）
+ * R2 中存储 version.json 文件，包含版本元数据
+ */
+async function getVersionFromR2(env) {
+  if (!env.APK_BUCKET) return null;
+  
+  try {
+    const obj = await env.APK_BUCKET.get('version.json');
+    if (!obj) return null;
+    
+    const data = await obj.json();
+    console.log('[版本] R2 返回:', data.latestVersion);
+    return {
+      ...data,
+      downloadUrl: data.downloadUrl || FALLBACK_CONFIG.downloadUrl,
+      downloadUrlOriginal: data.downloadUrlOriginal || FALLBACK_CONFIG.downloadUrlOriginal,
+      source: 'r2',
+    };
+  } catch (e) {
+    console.error('[版本] R2 读取失败:', e.message);
+    return null;
+  }
+}
+
+/**
+ * 从 GitHub Releases API 获取版本信息（备选）
+ */
+async function getVersionFromGitHub(env) {
+  try {
+    const headers = {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'xyzw-apk-updater-worker',
+    };
+    if (env?.GITHUB_TOKEN) {
+      headers['Authorization'] = `token ${env.GITHUB_TOKEN}`;
+    }
+    const resp = await fetch(GITHUB_API, { headers });
+    if (!resp.ok) throw new Error(`GitHub API returned ${resp.status}`);
+
+    const release = await resp.json();
+    const tagName = release.tag_name || '';
+    const versionName = tagName.replace(/^v/, '');
+    const parts = versionName.split('.').map(Number);
+    const versionCode = (parts[0] || 0) * 10000 + (parts[1] || 0) * 100 + (parts[2] || 0);
+
+    const apkAsset = release.assets?.find(a => a.name.endsWith('.apk'));
+    const downloadUrl = apkAsset?.browser_download_url
+      || `https://github.com/${GITHUB_REPO}/releases/download/${tagName}/xyzw-helper.apk`;
+
+    let changelog = release.body || '';
+    changelog = changelog.replace(/^##\s+.*\n?/, '').trim() || versionName;
+
+    console.log('[版本] GitHub 返回:', versionName);
+    return {
+      latestVersion: versionName,
+      versionCode,
+      downloadUrl: GITHUB_PROXY_LIST[0] + downloadUrl,
+      downloadUrlOriginal: downloadUrl,
+      changelog,
+      minVersionCode: FALLBACK_CONFIG.minVersionCode,
+      forceUpdate: FALLBACK_CONFIG.forceUpdate,
+      source: 'github',
+      publishedAt: release.published_at,
+    };
+  } catch (e) {
+    console.error('[版本] GitHub API 失败:', e.message);
+    return null;
+  }
+}
+
+/**
+ * 获取最新版本信息（R2 优先 → GitHub 备选 → 兜底配置）
+ */
+async function getVersionInfo(env) {
+  // 检查缓存
+  if (_cachedVersionInfo && Date.now() - _cacheTime < CACHE_TTL) {
+    return _cachedVersionInfo;
+  }
+
+  // 1. 优先从 R2 获取
+  let info = await getVersionFromR2(env);
+  
+  // 2. R2 失败则从 GitHub 获取
+  if (!info) {
+    info = await getVersionFromGitHub(env);
+  }
+  
+  // 3. 都失败则使用兜底配置
+  if (!info) {
+    info = { ...FALLBACK_CONFIG, source: 'fallback' };
+    console.log('[版本] 使用兜底配置:', info.latestVersion);
+  }
+
+  // 缓存
+  _cachedVersionInfo = info;
+  _cacheTime = Date.now();
+  
+  return info;
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -31,47 +145,120 @@ export default {
 
     // ==================== APK 版本管理接口 ====================
     
-    // 获取最新版本信息
+    // 获取最新版本信息（R2 优先 → GitHub 备选 → 兜底配置）
     if (url.pathname === '/api/apk/version') {
-      const versionInfo = {
-        ...APK_VERSION_CONFIG,
+      const versionInfo = await getVersionInfo(env);
+      return new Response(JSON.stringify({
+        ...versionInfo,
         checkTime: new Date().toISOString(),
-      };
-      return new Response(JSON.stringify(versionInfo), {
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // APK 下载（外部链接重定向或 R2 存储桶）
+    // APK 下载重定向（返回多个下载源，R2 优先）
+    if (url.pathname === '/api/apk/latest') {
+      const versionInfo = await getVersionInfo(env);
+      const originalUrl = versionInfo.downloadUrlOriginal || versionInfo.downloadUrl;
+      
+      // 构建下载源列表（R2 最优先）
+      const downloadSources = [];
+      
+      // R2 直连（Cloudflare CDN，最快最稳）
+      downloadSources.push({
+        url: `${url.origin}/api/apk/download`,
+        name: 'Cloudflare R2',
+        priority: 1,
+      });
+      
+      // GitHub 加速代理
+      GITHUB_PROXY_LIST.forEach((proxy, i) => {
+        downloadSources.push({
+          url: proxy + originalUrl,
+          name: proxy.replace('https://', '').replace('/', ''),
+          priority: i + 2,
+        });
+      });
+      
+      // GitHub 原始链接（最后备选）
+      downloadSources.push({
+        url: originalUrl,
+        name: 'GitHub 直连',
+        priority: 99,
+      });
+      
+      return new Response(JSON.stringify({
+        // 首选下载链接（R2）
+        downloadUrl: `${url.origin}/api/apk/download`,
+        // 原始 GitHub 链接
+        originalUrl: originalUrl,
+        // Worker 代理链接（兼容旧版）
+        workerProxyUrl: `${url.origin}/api/apk/download`,
+        // 所有下载源（供客户端测速选择）
+        proxyUrls: downloadSources,
+        // R2 可用标记
+        r2Available: !!env.APK_BUCKET,
+        version: versionInfo.latestVersion,
+        versionCode: versionInfo.versionCode,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // APK 下载（R2 优先，GitHub 备选）
     if (url.pathname === '/api/apk/download') {
-      const dlUrl = APK_VERSION_CONFIG.downloadUrl;
+      const versionInfo = await getVersionInfo(env);
       
-      // 外部链接模式：直接重定向到 GitHub Releases 等外部地址
-      if (dlUrl.startsWith('http://') || dlUrl.startsWith('https://')) {
-        return Response.redirect(dlUrl, 302);
-      }
-      
-      // R2 模式：从 Cloudflare R2 存储桶获取
       try {
+        // 优先从 R2 存储桶获取
         if (env.APK_BUCKET) {
-          const apkFile = await env.APK_BUCKET.get(`xyzw-helper-${APK_VERSION_CONFIG.latestVersion}.apk`);
+          const apkFile = await env.APK_BUCKET.get(`xyzw-helper-${versionInfo.latestVersion}.apk`);
           if (apkFile) {
             const headers = new Headers(corsHeaders);
             headers.set('Content-Type', 'application/vnd.android.package-archive');
-            headers.set('Content-Disposition', `attachment; filename="xyzw-helper-${APK_VERSION_CONFIG.latestVersion}.apk"`);
+            headers.set('Content-Disposition', `attachment; filename="xyzw-helper-${versionInfo.latestVersion}.apk"`);
             return new Response(apkFile.body, { headers });
           }
         }
-        
-        return new Response(JSON.stringify({ 
-          error: 'APK文件暂未上传，请联系开发者',
-          version: APK_VERSION_CONFIG.latestVersion 
-        }), {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+
+        // R2 没有则从 GitHub 代理下载（优先使用加速链接）
+        const downloadUrl = versionInfo.downloadUrl || versionInfo.downloadUrlOriginal;
+        console.log('[APK下载] 使用链接:', downloadUrl);
+
+        const githubHeaders = {
+          'Accept': 'application/octet-stream',
+          'User-Agent': 'xyzw-apk-updater-worker',
+        };
+        // 只有直连 GitHub 时才需要 Token 认证
+        if (downloadUrl.includes('github.com') && env?.GITHUB_TOKEN) {
+          githubHeaders['Authorization'] = `token ${env.GITHUB_TOKEN}`;
+        }
+
+        const githubResp = await fetch(downloadUrl, {
+          headers: githubHeaders,
+          redirect: 'follow',
+        });
+
+        if (!githubResp.ok) {
+          throw new Error(`GitHub download returned ${githubResp.status}`);
+        }
+
+        // 流式转发 APK 文件
+        const headers = new Headers(corsHeaders);
+        headers.set('Content-Type', 'application/vnd.android.package-archive');
+        headers.set('Content-Disposition', `attachment; filename="xyzw-helper-${versionInfo.latestVersion}.apk"`);
+        headers.set('Content-Length', githubResp.headers.get('Content-Length') || '');
+
+        return new Response(githubResp.body, {
+          status: 200,
+          headers,
         });
       } catch (e) {
-        return new Response(JSON.stringify({ error: e.message }), {
+        console.error('APK 下载代理失败:', e.message);
+        return new Response(JSON.stringify({ 
+          error: 'APK下载失败: ' + e.message,
+          version: versionInfo.latestVersion 
+        }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });

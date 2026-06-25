@@ -36,11 +36,11 @@
             size="small"
             v-model:value="importMethod"
           >
-            <n-radio-button value="manual"> 手动输入 </n-radio-button>
-            <n-radio-button value="url"> URL获取 </n-radio-button>
-            <n-radio-button value="wxQrcode"> 微信扫码获取 </n-radio-button>
-            <n-radio-button value="bin"> BIN多角色获取 </n-radio-button>
-            <n-radio-button value="singlebin"> BIN单角色获取 </n-radio-button>
+            <n-radio-button value="wxQrcode">微信扫码</n-radio-button>
+            <n-radio-button value="bin">BIN多角色</n-radio-button>
+            <n-radio-button value="singlebin">BIN单角色</n-radio-button>
+            <n-radio-button value="manual">手动输入</n-radio-button>
+            <n-radio-button value="url">URL获取</n-radio-button>
           </n-radio-group>
         </div>
         <div class="card-body">
@@ -1905,6 +1905,36 @@ onBeforeUnmount(() => {
     margin-top: var(--spacing-md);
     display: flex;
     justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .import-method-tabs .n-radio-button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 13px;
+    padding: 0 10px;
+  }
+
+  @media (max-width: 480px) {
+    .import-method-tabs {
+      justify-content: flex-start;
+      overflow-x: auto;
+      flex-wrap: nowrap;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-bottom: 2px;
+    }
+
+    .import-method-tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .import-method-tabs .n-radio-button {
+      flex: 0 0 auto;
+      font-size: 12px;
+      padding: 0 8px;
+    }
   }
 }
 

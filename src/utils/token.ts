@@ -117,10 +117,21 @@ export const transformToken = async (arrayBuffer: ArrayBuffer) => {
     throw new Error("authuser: empty response");
   }
 
+  // 响应过小（< 200 字节）通常是服务器错误/限流，不是有效的 Token 响应
+  if ((responseData as ArrayBuffer).byteLength < 200) {
+    console.warn("transformToken: 响应过小，可能是服务器限流或错误", (responseData as ArrayBuffer).byteLength);
+    throw new Error(`authuser: 服务器返回异常响应(${(responseData as ArrayBuffer).byteLength}字节)，可能触发限流，请稍后重试`);
+  }
+
   const msg = g_utils.parse(responseData);
   const data = msg.getData();
   console.log("transformToken data:", data);
 
+  // 检查解析结果是否包含 roleToken
+  if (!data || !data.roleToken) {
+    console.error("transformToken: 响应中缺少 roleToken", data);
+    throw new Error("authuser: 服务器响应中未包含 roleToken，请重试");
+  }
 
   const currentTime = Date.now();
   const sessId = currentTime * 100 + Math.floor(Math.random() * 100);

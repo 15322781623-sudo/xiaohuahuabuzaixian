@@ -124,3 +124,19 @@ repo/
 
 # Documentation folder (Chinese naming)
 MD说明文件夹/
+
+# APK build artifacts
+android/app/build2/
+*.apk
+
+# Screenshots
+screenshot_*.png
+
+# Version files
+version.json
+
+# Reference scripts
+鱼灵武将升星助手.js
+*功能实现代码.md
+*实现代码.md
+*代码实现.md

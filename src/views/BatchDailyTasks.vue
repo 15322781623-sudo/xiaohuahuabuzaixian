@@ -3297,6 +3297,19 @@
               <n-alert v-else type="warning" size="small">
                 暂无可用预设，请先在「十殿挑战」弹窗中创建预设
               </n-alert>
+              <!-- 预设间执行延迟配置 -->
+              <div class="nightmare-delay-config" style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+                <span style="white-space: nowrap; font-size: 13px;">预设间隔：</span>
+                <n-input-number
+                  v-model:value="taskForm.nightmarePresetDelay"
+                  :min="1"
+                  :max="300"
+                  :step="1"
+                  size="small"
+                  style="width: 100px;"
+                />
+                <span style="font-size: 13px; color: var(--text-secondary);">秒（下一个预设启动前的等待时间）</span>
+              </div>
             </div>
           </div>
         </div>
@@ -4126,11 +4139,11 @@
             v-model:value="addTokenImportMethod"
             class="import-method-tabs"
           >
-            <n-radio-button value="manual">手动输入</n-radio-button>
-            <n-radio-button value="url">URL获取</n-radio-button>
             <n-radio-button value="wxQrcode">微信扫码</n-radio-button>
             <n-radio-button value="bin">BIN多角色</n-radio-button>
             <n-radio-button value="singlebin">BIN单角色</n-radio-button>
+            <n-radio-button value="manual">手动输入</n-radio-button>
+            <n-radio-button value="url">URL获取</n-radio-button>
           </n-radio-group>
         </div>
       </template>
@@ -4432,6 +4445,7 @@ import {
 
 import { downloadFile } from "@/utils/imageExport";
 import { wakeLockManager } from "@/utils/wakeLock";
+import { WebSocketPool } from "@/utils/WebSocketPool";
 
 // Refs for file input elements
 const importScheduledTasksInput = ref(null);
@@ -5876,6 +5890,7 @@ const taskForm = reactive({
     requireMinColorWithConditions: false, // 满足自定义条件时是否还必须满足最低品质
   },
   nightmarePresetIds: [], // 十殿阎罗挑战预设ID列表
+  nightmarePresetDelay: 10, // 预设间执行间隔（秒），默认10秒
 });
 
 // 任务分组定义
@@ -6126,6 +6141,7 @@ const cancelTaskEdit = () => {
     
     taskForm.boxWeeklyRewards = {5: 1};
     taskForm.nightmarePresetIds = [];
+    taskForm.nightmarePresetDelay = 10;
     taskScheduleSelectedGroupIds.value = [];
   }, 300);
 };
@@ -6192,6 +6208,7 @@ const openTaskModal = () => {
 
   // 十殿预设配置
   taskForm.nightmarePresetIds = [];
+  taskForm.nightmarePresetDelay = 10;
   
   console.log('[新增任务] 初始化完成');
   console.log('[新增任务] weeklyMarketItems:', taskForm.weeklyMarketItems);
@@ -6318,6 +6335,7 @@ const editTask = (task) => {
       requireMinColorWithConditions: false,
     },
     nightmarePresetIds: task.nightmarePresetIds || [],
+    nightmarePresetDelay: task.nightmarePresetDelay || 10,
   };
   
   if (
@@ -6508,6 +6526,7 @@ const saveTask = () => {
     boxWeeklyRewards: {...taskForm.boxWeeklyRewards},
     smartDeparture: JSON.parse(JSON.stringify(taskForm.smartDeparture)),
     nightmarePresetIds: [...(taskForm.nightmarePresetIds || [])],
+    nightmarePresetDelay: taskForm.nightmarePresetDelay || 10,
   };
 
   let isNew = !editingTask.value;
@@ -9026,6 +9045,8 @@ const executeScheduledTask = async (task) => {
       if (typeof taskFunction === "function") {
         // 根据批次间等待设置，分批执行账号
         const maxConcurrent = batchSettings.maxActive || 5;
+        // 同步连接池大小，确保与当前设置一致
+        wsPool.setPoolSize(maxConcurrent);
         const totalAccounts = availableTokens.length;
         const batches = [];
         
@@ -9057,7 +9078,11 @@ const executeScheduledTask = async (task) => {
           });
           
           // 执行任务函数（带超时保护，防止单个任务卡死导致整个定时任务挂起）
-          const BATCH_TASK_TIMEOUT = (batchSettings.batchTaskTimeout || 15) * 60 * 1000;
+          // ✅ BUG修复：十殿挑战内部有2小时超时保护，外层超时需适配
+          const isNightmareTask = taskName === 'batchNightmareChallengePresets';
+          const BATCH_TASK_TIMEOUT = isNightmareTask
+            ? (150 * 60 * 1000) // 十殿挑战：150分钟（>内部2小时超时+重试余量）
+            : ((batchSettings.batchTaskTimeout || 15) * 60 * 1000);
           try {
             const executeTaskFunction = async () => {
             if (
@@ -11431,30 +11456,81 @@ const waitForConnection = async (
   return false;
 };
 
-// 全局连接队列控制 - 限制并发连接数
-const connectionQueue = { active: 0 };
+// ========== 连接池管理 ==========
+// 连接池：控制并发连接数（信号量模式，实际WS生命周期由调用方管理）
+const wsPool = new WebSocketPool({
+  poolSize: batchSettings.maxActive,
+  connectionInterval: 300,
+});
+
+// 兼容性对象：保持 connectionQueue.active 供日志显示
+const connectionQueue = {
+  get active() { return wsPool.activeCount; }
+};
 
 const waitForConnectionSlot = async (timeout = 60000) => {
-  const start = Date.now();
-  while (connectionQueue.active >= batchSettings.maxActive) {
-    if (shouldStop.value) {
-      throw new Error("用户取消操作");
-    }
-    if (Date.now() - start > timeout) {
-      throw new Error(`等待连接槽位超时（${timeout / 1000}秒），当前 ${connectionQueue.active}/${batchSettings.maxActive} 个槽位已占满`);
-    }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  connectionQueue.active++;
+  // 通用槽位等待（无tokenId时使用默认标识）
+  await wsPool.acquire('_generic_', timeout);
 };
 
 const releaseConnectionSlot = () => {
-  if (connectionQueue.active > 0) {
-    connectionQueue.active--;
+  wsPool.release('_generic_');
+};
+
+/**
+ * 流式执行器：替代 Promise.all，确保同时只有 maxActive 个任务在运行
+ * 当一个任务完成时立即启动下一个，避免所有任务同时排队等待连接槽
+ * @param {string[]} tokenIds - Token ID 列表
+ * @param {Function} processFn - 处理函数 (tokenId) => Promise
+ */
+const runStreaming = async (tokenIds, processFn) => {
+  const maxConcurrent = batchSettings.maxActive || 5;
+  const queue = [...tokenIds];
+  const running = new Set();
+  let completedCount = 0;
+
+  const launchNext = () => {
+    if (queue.length === 0 || shouldStop.value) return;
+    const tokenId = queue.shift();
+    const p = processFn(tokenId)
+      .catch(() => {}) // 确保不抛出未捕获的拒绝
+      .finally(() => {
+        running.delete(p);
+        completedCount++;
+      });
+    running.add(p);
+  };
+
+  // 启动初始批次
+  for (let i = 0; i < Math.min(maxConcurrent, queue.length); i++) {
+    launchNext();
+  }
+
+  // 每当一个任务完成，自动启动下一个
+  while (running.size > 0) {
+    await Promise.race([...running]);
+    launchNext();
+  }
+
+  // 防御性检查：确保所有Token都已处理
+  if (completedCount < tokenIds.length && !shouldStop.value) {
+    console.warn(`[runStreaming] 完成数(${completedCount})少于总数(${tokenIds.length})，补充处理剩余Token`);
+    // 找出未处理的Token（通过检查tokenStatus）
+    const remaining = tokenIds.filter(id => {
+      const status = tokenStatus.value[id];
+      return status === 'waiting' || status === undefined;
+    });
+    for (const tokenId of remaining) {
+      try {
+        await processFn(tokenId).catch(() => {});
+      } catch (e) {
+        console.error(`[runStreaming] 补充处理 ${tokenId} 失败:`, e);
+      }
+    }
   }
 };
 
-const ensureConnection = async (tokenId, maxRetries = 3) => {
+const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
   let retryCount = 0;
   let lastError = null;
   
@@ -11465,8 +11541,10 @@ const ensureConnection = async (tokenId, maxRetries = 3) => {
         throw new Error(`Token not found: ${tokenId}`);
       }
 
-      // 无论是否已连接，都需要获取连接槽位来限制并发数
-      await waitForConnectionSlot();
+      // 获取连接槽位来限制并发数（skipSlot=true时由外层滚动执行控制并发）
+      if (!skipSlot) {
+        await waitForConnectionSlot(60000);
+      }
 
       // 检查现有连接状态
       const connection = tokenStore.wsConnections[tokenId];
@@ -11560,7 +11638,9 @@ const ensureConnection = async (tokenId, maxRetries = 3) => {
       retryCount++;
       
       // 释放连接槽位
-      releaseConnectionSlot();
+      if (!skipSlot) {
+        releaseConnectionSlot();
+      }
       
       // 关闭可能存在的连接
       tokenStore.closeWebSocketConnection(tokenId);
@@ -11604,6 +11684,7 @@ const createTaskDeps = () => ({
   shouldStop,
   ensureConnection,
   releaseConnectionSlot,
+  runStreaming,
   connectionQueue,
   batchSettings,
   tokenStore,
@@ -12368,8 +12449,9 @@ const batchNightmareChallengePresets = async (silent) => {
 
     // 预设间错开延迟（避免服务器压力）
     if (i < presets.length - 1) {
-      addLog({ time: new Date().toLocaleTimeString(), message: '等待8秒后启动下一个预设...', type: 'info' });
-      await delay(8000);
+      const delaySec = nmTask?.nightmarePresetDelay || 10;
+      addLog({ time: new Date().toLocaleTimeString(), message: `等待${delaySec}秒后启动下一个预设...`, type: 'info' });
+      await delay(delaySec * 1000);
     }
   }
 
@@ -12401,10 +12483,27 @@ const batchNightmareChallengePresets = async (silent) => {
           const oldIdx = activeBattles.indexOf(fb);
           if (oldIdx !== -1) activeBattles.splice(oldIdx, 1);
 
+          // ✅ BUG修复：等待旧 NightmareAutoBattleService 的 _dismissRoom 完成清理
+          // 旧战斗在标记 failed 时调用了 _dismissRoom，但 finally 块中的异步清理可能尚未完成
+          const oldBattle = fb.battle;
+          if (oldBattle) {
+            let cleanupWait = 0;
+            while (!oldBattle._cleanupDone && cleanupWait < 10) {
+              await delay(1000);
+              cleanupWait++;
+            }
+            if (cleanupWait > 0) {
+              addLog({ time: new Date().toLocaleTimeString(), message: `等待旧战斗清理完成 (${cleanupWait}秒)`, type: 'info' });
+            }
+          }
+
           // 重新执行完整流程：连接队长→创建房间→队员加入→启动战斗
+          // ✅ BUG修复：传递 presetIndex 确保共享队员延迟断连逻辑正确
+          const retryPresetIndex = presets.findIndex(p => p.id === fb.preset.id);
           const newEntry = await executeOnePreset(
             fb.preset,
-            `重试预设「${fb.preset.name}」(第${retryNum}次)`
+            `重试预设「${fb.preset.name}」(第${retryNum}次)`,
+            retryPresetIndex >= 0 ? retryPresetIndex : i
           );
           if (newEntry) {
             addLog({ time: new Date().toLocaleTimeString(), message: `✅ 预设「${fb.preset.name}」重试已启动`, type: 'success' });
@@ -12485,45 +12584,27 @@ const startBatch = async () => {
     tokenStatus.value[id] = "waiting";
   });
 
-  // 连接错开机制
-  const CONNECTION_INTERVAL = 1000; // 每个连接间隔1秒
-  let lastConnectionTime = 0;
-
   // 400340重试队列：收集第一批执行中遇到400340错误的账号
   const retry400340Tokens = [];
-  const MAX_400340_RETRIES = batchSettings.defaultRetryCount || 2;  // 使用设置中的重试次数
-  const RETRY_WAIT_TIME = batchSettings.retryDelay || 60000;        // 使用设置中的重试延迟
+  const MAX_400340_RETRIES = batchSettings.defaultRetryCount || 2;
+  const RETRY_WAIT_TIME = batchSettings.retryDelay || 60000;
 
-  // 并行执行任务，但通过connectionQueue限制并发连接数
-  // 单账号执行超时保护（默认10分钟），防止个别账号卡死导致整个批次挂起
+  // 单账号执行超时保护（默认10分钟）
   const TOKEN_EXECUTION_TIMEOUT = (batchSettings.taskTimeout || 10) * 60 * 1000;
 
-  const taskPromises = selectedTokens.value.map(async (tokenId) => {
+  // ========== 连接池滚动执行 ==========
+  // 同步连接池大小与当前设置
+  wsPool.setPoolSize(batchSettings.maxActive);
+  const maxConcurrent = batchSettings.maxActive;
+  const tokenQueue = [...selectedTokens.value];
+  const activeTokens = new Set();
+  const completionMap = new Map(); // tokenId -> Promise
+
+  // 定义单个Token执行函数（用于连接池滚动执行）
+  const executeTokenRolling = async (tokenId) => {
     if (shouldStop.value) return;
 
-    // 计算需要等待的时间
-    const now = Date.now();
-    const timeSinceLastConnection = now - lastConnectionTime;
-    const waitTime = Math.max(0, CONNECTION_INTERVAL - timeSinceLastConnection);
-    
-    // 等待指定时间后再执行
-    if (waitTime > 0) {
-      const token = tokens.value.find((t) => t.id === tokenId);
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `⏳ ${token.name} 将在 ${(waitTime/1000).toFixed(1)}秒 后建立连接`,
-        type: "info",
-      });
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-    }
-    
-    // 更新最后连接时间
-    lastConnectionTime = Date.now();
-
     tokenStatus.value[tokenId] = "running";
-
-    // ✅ 超时保护：防止单个账号卡死导致整个批次挂起
-    const executeToken = async () => {
 
     let retryCount = 0;
     const MAX_RETRIES = 1;
@@ -12549,7 +12630,7 @@ const startBatch = async () => {
           });
         }
 
-        await ensureConnection(tokenId, 3);
+        await ensureConnection(tokenId, 3, true); // skipSlot=true，由外层滚动执行控制并发
 
         // 等待连接稳定
         addLog({
@@ -12738,47 +12819,83 @@ const startBatch = async () => {
           });
         }
       } finally {
-        // 完成后关闭连接并释放槽位
+        // 完成后关闭连接（skipSlot模式不需要释放槽位，由外层滚动循环控制）
         tokenStore.closeWebSocketConnection(tokenId);
-        releaseConnectionSlot();
         // ✅ 修复：每个账号完成时更新 lastTaskExecution，作为心跳防止 healthCheck 误判
         lastTaskExecution = Date.now();
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          message: `${token.name} 连接已关闭  (活跃: ${connectionQueue.active}/${batchSettings.maxActive})`,
           type: "info",
         });
       }
     }
+  }; // end executeTokenRolling
 
-    }; // end executeToken
-
-    // Promise.race 超时保护
-    try {
-      await Promise.race([
-        executeToken(),
-        new Promise((_, reject) => setTimeout(() =>
-          reject(new Error(`单账号执行超时（${TOKEN_EXECUTION_TIMEOUT / 60000}分钟）`)),
-          TOKEN_EXECUTION_TIMEOUT
-        ))
-      ]);
-    } catch (timeoutErr) {
-      const token = tokens.value.find((t) => t.id === tokenId);
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `⏰ ${token?.name} ${timeoutErr.message}，强制跳过`,
-        type: "warning",
-      });
-      tokenStatus.value[tokenId] = "failed";
-      // 超时后强制关闭连接并释放槽位
-      tokenStore.closeWebSocketConnection(tokenId);
-      releaseConnectionSlot();
-      lastTaskExecution = Date.now(); // 心跳更新
-    }
+  // ========== 连接池滚动执行循环 ==========
+  addLog({
+    time: new Date().toLocaleTimeString(),
+    message: `🚀 连接池滚动执行开始，并发数: ${maxConcurrent}，Token数: ${tokenQueue.length}`,
+    type: "info",
   });
 
-  // 等待所有任务完成
-  await Promise.all(taskPromises);
+  while (tokenQueue.length > 0 || activeTokens.size > 0) {
+    if (shouldStop.value) break;
+
+    // 填充执行槽位（最多 maxConcurrent 个）
+    while (tokenQueue.length > 0 && activeTokens.size < maxConcurrent) {
+      const nextTokenId = tokenQueue.shift();
+      activeTokens.add(nextTokenId);
+
+      // 启动执行（不等待完成）
+      const promise = (async () => {
+        try {
+          await Promise.race([
+            executeTokenRolling(nextTokenId),
+            new Promise((_, reject) => setTimeout(() =>
+              reject(new Error(`单账号执行超时（${TOKEN_EXECUTION_TIMEOUT / 60000}分钟）`)),
+              TOKEN_EXECUTION_TIMEOUT
+            ))
+          ]);
+        } catch (timeoutErr) {
+          const token = tokens.value.find((t) => t.id === nextTokenId);
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `⏰ ${token?.name} ${timeoutErr.message}，强制跳过`,
+            type: "warning",
+          });
+          tokenStatus.value[nextTokenId] = "failed";
+          tokenStore.closeWebSocketConnection(nextTokenId);
+          lastTaskExecution = Date.now();
+        }
+      })();
+
+      completionMap.set(nextTokenId, promise);
+    }
+
+    // 等待至少一个完成
+    if (activeTokens.size > 0) {
+      const activePromises = [...activeTokens].map(id => completionMap.get(id));
+      await Promise.race(activePromises);
+
+      // 清理已完成的
+      for (const [tid, promise] of completionMap.entries()) {
+        const status = tokenStatus.value[tid];
+        if (status === 'completed' || status === 'failed' || status === 'waiting_retry') {
+          activeTokens.delete(tid);
+          completionMap.delete(tid);
+        }
+      }
+    }
+
+    await new Promise(r => setTimeout(r, 50));
+  }
+
+  addLog({
+    time: new Date().toLocaleTimeString(),
+    message: `✅ 连接池滚动执行完成`,
+    type: "success",
+  });
 
   // 等待所有任务完成后再继续
   await new Promise((r) => setTimeout(r, 1000));
@@ -12882,10 +12999,10 @@ const startBatch = async () => {
           });
         } finally {
           tokenStore.closeWebSocketConnection(tokenId);
-          releaseConnectionSlot();
+          releaseConnectionSlot(); // 与 ensureConnection 中的 waitForConnectionSlot 对应
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+            message: `${token.name} 连接已关闭  (活跃: ${connectionQueue.active}/${batchSettings.maxActive})`,
             type: "info",
           });
         }
@@ -14480,18 +14597,24 @@ const sortByActivityAfterDailyTask = async () => {
 
 .import-method-tabs {
   width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .import-method-tabs .n-radio-button {
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
   text-align: center;
+  white-space: nowrap;
+  font-size: 13px;
+  padding: 0 10px;
 }
 
 .import-method-tabs .n-radio-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 0;
+  gap: 4px;
   width: 100%;
 }
 
@@ -14546,8 +14669,28 @@ const sortByActivityAfterDailyTask = async () => {
     margin: 8px;
   }
   
+  .add-token-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .import-method-tabs {
+    justify-content: flex-start;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+
+  .import-method-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  
   .import-method-tabs .n-radio-button {
+    flex: 0 0 auto;
     font-size: 12px;
+    padding: 0 8px;
   }
   
   .import-method-tabs .n-radio-button__state-border {

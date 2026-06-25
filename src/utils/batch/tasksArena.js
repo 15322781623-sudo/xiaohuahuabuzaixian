@@ -39,6 +39,7 @@ export function createTasksArena(deps) {
     shouldStop,
     ensureConnection,
     releaseConnectionSlot,
+    runStreaming,
     connectionQueue,
     batchSettings,
     tokenStore,
@@ -1074,8 +1075,6 @@ export function createTasksArena(deps) {
             }
           }
         });
-
-        await Promise.all(taskPromises);
       }
 
       // 合并所有需要重试的账号
@@ -1422,7 +1421,7 @@ export function createTasksArena(deps) {
         tokenStatus.value[id] = "waiting";
       });
 
-      const taskPromises = selectedTokens.value.map(async (tokenId) => {
+      await runStreaming(selectedTokens.value, async (tokenId) => {
         if (shouldStop.value)
           return;
         tokenStatus.value[tokenId] = "running";
@@ -1753,8 +1752,6 @@ export function createTasksArena(deps) {
           });
         }
       });
-
-      await Promise.all(taskPromises);
 
       message.success("批量钓鱼补齐结束");
     } finally {

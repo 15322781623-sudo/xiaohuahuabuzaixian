@@ -9,6 +9,7 @@ android {
 
 apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
 dependencies {
+    implementation project(':bixbyte-capacitor-apk-installer')
     implementation project(':capacitor-community-keep-awake')
     implementation project(':capacitor-filesystem')
     implementation project(':capacitor-share')
