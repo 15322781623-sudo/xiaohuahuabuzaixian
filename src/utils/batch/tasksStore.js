@@ -1276,6 +1276,154 @@ export function createTasksStore(deps) {
   };
 
   /**
+   * 多选购买商品（轮询模式）
+   * 每轮每种商品买1个，然后刷新，再循环下一轮
+   * @param {Array<{goodsId: number, name: string, count: number}>} items - 商品列表
+   */
+  const store_buy_selectable = async (items) => {
+    console.log('[多选购买] 收到参数:', JSON.stringify(items));
+    if (!items || items.length === 0) {
+      console.log('[多选购买] 商品列表为空');
+      return;
+    }
+    if (selectedTokens.value.length === 0) {
+      console.log('[多选购买] 未选择账号');
+      return;
+    }
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    await runStreaming(selectedTokens.value, async (tokenId) => {
+      if (shouldStop.value) return;
+
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始多选购买: ${token.name} ===`,
+          type: "info",
+        });
+
+        console.log('[多选购买] 账号:', token.name, 'ID:', tokenId);
+        console.log('[多选购买] 连接状态:', tokenStore.getWebSocketStatus(tokenId));
+
+        await ensureConnection(tokenId);
+
+        console.log('[多选购买] 连接后状态:', tokenStore.getWebSocketStatus(tokenId));
+
+        // 获取角色信息
+        await tokenStore.sendGetRoleInfo(tokenId);
+        await new Promise((r) => setTimeout(r, delayConfig.action));
+
+        // 初始化每种商品的购买进度
+        const buyProgress = items.map(item => ({
+          ...item,
+          purchased: 0,
+          count: item.count || 1,
+          stopped: false,
+        }));
+
+        console.log('[多选购买] 购买计划:', buyProgress.map(i => `${i.name}x${i.count}`));
+
+        // 轮询购买：每轮每种商品买1个，然后刷新
+        let round = 0;
+        while (!shouldStop.value) {
+          round++;
+          let hasActive = false;
+
+          for (const item of buyProgress) {
+            if (shouldStop.value) break;
+            if (item.stopped || item.purchased >= item.count) continue;
+
+            hasActive = true;
+
+            console.log(`[多选购买] 第${round}轮 - 购买: ${item.name} (ID:${item.goodsId})`);
+
+            // 刷新商品
+            try {
+              const refreshResult = await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "store_refresh",
+                { storeId: 1 },
+                batchSettings.defaultCommandTimeout || 5000,
+              );
+              console.log('[多选购买] 商品刷新结果:', refreshResult);
+              await new Promise((r) => setTimeout(r, delayConfig.action));
+            } catch (e) {
+              console.log('[多选购买] 商品刷新异常:', e.message);
+            }
+
+            const result = await tokenStore.sendMessageWithPromise(
+              tokenId,
+              "store_buy",
+              { goodsId: item.goodsId },
+              batchSettings.defaultCommandTimeout || 5000,
+            );
+
+            console.log('[多选购买] 购买结果:', result);
+
+            await new Promise((r) => setTimeout(r, delayConfig.action));
+
+            if (result.error) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 购买${item.name}失败: ${result.error}`,
+                type: "error",
+              });
+              // 购买失败就停止该商品，继续购买其他商品
+              item.stopped = true;
+            } else {
+              item.purchased++;
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 购买${item.name}成功 (${item.purchased}/${item.count})`,
+                type: "success",
+              });
+            }
+          }
+
+          // 所有商品都完成或停止，退出循环
+          if (!hasActive) break;
+        }
+
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 多选购买完成，共${round}轮`,
+          type: "info",
+        });
+
+        tokenStatus.value[tokenId] = "completed";
+      } catch (error) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 多选购买出错: ${error.message}`,
+          type: "error",
+        });
+        tokenStatus.value[tokenId] = "failed";
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭 (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+      }
+    });
+
+    currentRunningTokenId.value = null;
+    isRunning.value = false;
+    shouldStop.value = false;
+  };
+
+  /**
    * 免费扭蛋
    */
   const gacha_drawreward = async () => {
@@ -5556,6 +5704,7 @@ export function createTasksStore(deps) {
     store_buy_platinum,
     store_buy_gold_rod,
     store_buy_jade,
+    store_buy_selectable,
     gacha_drawreward,
     legion_buy_red_jade,
     legion_buy_spotted_egg,

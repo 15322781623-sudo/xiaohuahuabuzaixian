@@ -1225,7 +1225,7 @@ export function createTasksTower(deps) {
 
       let originalFormation = null;
       let isSwitched = false;
-      let activityNotOpen = false; // 标记活动未开启（7900021错误）
+      let actId = null;
 
       try {
         addLog({
@@ -1257,8 +1257,76 @@ export function createTasksTower(deps) {
           });
         }
 
-        // 获取活动信息
-        let res = await callWithRetry(tokenId, "towers_getinfo", {});
+        // 先获取活动信息，从中提取 actId
+        try {
+          const activityRes = await callWithRetry(tokenId, "activity_get", {}, { retries: 1 });
+          console.log(`[${token.name}] activity_get 响应:`, JSON.stringify(activityRes).substring(0, 500));
+          
+          // 根据今天日期推导 actId：yymmdd3 -> yymmdd1
+          const commonActivityInfo = activityRes?.commonActivityInfo || activityRes?.activity?.commonActivityInfo || {};
+          const now = new Date();
+          const yy = String(now.getFullYear() % 100).padStart(2, '0');
+          const mm = String(now.getMonth() + 1).padStart(2, '0');
+          const dd = String(now.getDate()).padStart(2, '0');
+          const todayKey = `${yy}${mm}${dd}3`;
+          
+          if (commonActivityInfo[todayKey] !== undefined) {
+            actId = `${yy}${mm}${dd}1`;
+            console.log(`[${token.name}] 从 activity_get 匹配到今日活动 key: ${todayKey}, 推导 actId: ${actId}`);
+          } else {
+            console.log(`[${token.name}] activity_get 中未找到今日活动 key: ${todayKey}，活动可能未开启`);
+          }
+        } catch (e) {
+          console.log(`[${token.name}] activity_get 失败:`, e.message);
+        }
+
+        // 获取换皮闯关信息（传入 actId）
+        let res;
+        let activityNotOpenFlag = false;
+        if (actId) {
+          try {
+            res = await callWithRetry(tokenId, "towers_getinfo", { actId: Number(actId) });
+            console.log(`[${token.name}] towers_getinfo 响应:`, JSON.stringify(res).substring(0, 500));
+          } catch (e) {
+            const errMsg = e.message || '';
+            // 7900021 或其他错误表示活动未开启
+            if (errMsg.includes('7900021') || errMsg.includes('7900022')) {
+              activityNotOpenFlag = true;
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 换皮闯关活动未开启 (actId=${actId})`,
+                type: "warning",
+              });
+            } else {
+              throw e;
+            }
+          }
+        } else {
+          // 没找到 actId，尝试无参数调用（兼容旧版）
+          console.log(`[${token.name}] 未从 activity_get 找到 yymmdd3 格式的 key，尝试无参数调用`);
+          try {
+            res = await callWithRetry(tokenId, "towers_getinfo", {});
+          } catch (e) {
+            const errMsg = e.message || '';
+            if (errMsg.includes('7900021') || errMsg.includes('7900022')) {
+              activityNotOpenFlag = true;
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 换皮闯关活动未开启`,
+                type: "warning",
+              });
+            } else {
+              throw e;
+            }
+          }
+        }
+
+        // 如果活动未开启，标记并跳过
+        if (activityNotOpenFlag || !res) {
+          tokenStatus.value[tokenId] = "completed";
+          return;
+        }
+
         let towerData = res.actId ? res : (res.towerData?.actId ? res.towerData : res);
 
         if (!towerData?.actId) {
@@ -1266,11 +1334,11 @@ export function createTasksTower(deps) {
         }
 
         // 检查活动时间
-        const actId = String(towerData.actId);
-        if (actId.length >= 6) {
-          const year = 2000 + parseInt(actId.substring(0, 2));
-          const month = parseInt(actId.substring(2, 4)) - 1;
-          const day = parseInt(actId.substring(4, 6));
+        const resActId = String(towerData.actId);
+        if (resActId.length >= 6) {
+          const year = 2000 + parseInt(resActId.substring(0, 2));
+          const month = parseInt(resActId.substring(2, 4)) - 1;
+          const day = parseInt(resActId.substring(4, 6));
           const startDate = new Date(year, month, day);
           const endDate = new Date(startDate);
           endDate.setDate(startDate.getDate() + 7);
@@ -1354,7 +1422,7 @@ export function createTasksTower(deps) {
                 });
                 
                 try {
-                  await callWithRetry(tokenId, "towers_start", { towerType: type });
+                  await callWithRetry(tokenId, "towers_start", { towerType: type, actId: Number(actId) });
                   addLog({
                     time: new Date().toLocaleTimeString(),
                     message: `${token.name} BOSS ${type} 开启成功`,
@@ -1408,24 +1476,26 @@ export function createTasksTower(deps) {
                 await safeDelay(1500);  // ✅ 增加延迟到1.5秒，避免过快请求
               }
 
-              const fightRes = await callWithRetry(tokenId, "towers_fight", { towerType: type });
-              const battleData = fightRes?.battleData;
-              const curHP = battleData?.result?.accept?.ext?.curHP;
+              const fightRes = await callWithRetry(tokenId, "towers_fight", { towerType: type, actId: Number(actId) });
+              const fightTowerData = fightRes?.towerData;
+              const passed = fightTowerData?.pass === true;
               
               const currentLevel = getCurrentLevel(type, levelRewardMap);
 
-              if (curHP === 0) {
+              if (passed) {
                 addLog({
                   time: new Date().toLocaleTimeString(),
                   message: `${token.name} BOSS ${type} 第 ${currentLevel} 层胜利`,
                   type: "success",
                 });
 
-                needStart = false;
+                needStart = true;
                 failCount = 0;
 
                 // 刷新数据
-                res = await callWithRetry(tokenId, "towers_getinfo", {});
+                res = actId
+                  ? await callWithRetry(tokenId, "towers_getinfo", { actId: Number(actId) })
+                  : await callWithRetry(tokenId, "towers_getinfo", {});
                 towerData = res.actId ? res : (res.towerData?.actId ? res.towerData : res);
                 levelRewardMap = towerData.levelRewardMap || {};
 
@@ -1497,7 +1567,6 @@ export function createTasksTower(deps) {
         
         // 7900021错误：不在活动时间内，标记为完成（不失败、不刷新Token）
         if (errorMsg.includes('7900021')) {
-          activityNotOpen = true;
           tokenStatus.value[tokenId] = "completed";
           addLog({
             time: new Date().toLocaleTimeString(),
@@ -1518,273 +1587,6 @@ export function createTasksTower(deps) {
           });
         }
       } finally {
-        // ✅ 如果活动未开启（7900021），跳过寻宝发射和礼包领取
-        if (activityNotOpen) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 活动未开启，跳过寻宝发射`,
-            type: "info",
-          });
-        } else {
-        // ✅ 无论闯关是否成功，都执行寻宝发射和领取礼包
-        // 寻宝发射 - 先领取次数，再循环发射，每5次领取一次
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token.name} 开始寻宝发射...`,
-          type: "info",
-        });
-        
-        // 先尝试领取发射次数
-        try {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 尝试领取发射次数...`,
-            type: "info",
-          });
-          
-          await tokenStore.sendMessageWithPromise(
-            tokenId,
-            "activity_actegamestageclaim",
-            { actId: 2605292 },
-            10000
-          );
-          
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 发射次数领取成功`,
-            type: "success",
-          });
-          
-          await safeDelay(500);
-        } catch (claimErr) {
-          const claimErrorMsg = claimErr.message || '';
-          
-          // 1100010错误：已领取
-          if (claimErrorMsg.includes('1100010')) {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 发射次数已领取过`,
-              type: "info",
-            });
-          } else if (claimErrorMsg.includes('5000031')) {
-            // 5000031错误：发射次数不足
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 发射次数不足无法领取`,
-              type: "info",
-            });
-          } else {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 发射次数领取失败: ${claimErrorMsg.substring(0, 80)}`,
-              type: "warning",
-            });
-          }
-        }
-
-        let launchCount = 0;
-        let hasMoreLaunches = true;
-        const MAX_LAUNCHES = 50; // 安全上限，防止无限循环
-        
-        while (hasMoreLaunches && !shouldStop.value && launchCount < MAX_LAUNCHES) {
-          try {
-            await callWithRetry(tokenId, "activity_startactegame", { actId: 2605292 });
-            launchCount++;
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 寻宝发射成功 (第${launchCount}次)`,
-              type: "success",
-            });
-            await safeDelay(500);
-            
-            // 每发射5次，尝试领取发射次数
-            if (launchCount % 5 === 0) {
-              try {
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `${token.name} 尝试领取发射次数...`,
-                  type: "info",
-                });
-                
-                await tokenStore.sendMessageWithPromise(
-                  tokenId,
-                  "activity_actegamestageclaim",
-                  { actId: 2605292 },
-                  10000
-                );
-                
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `${token.name} 发射次数领取成功，继续寻宝...`,
-                  type: "success",
-                });
-                
-                await safeDelay(500);
-              } catch (claimErr) {
-                const claimErrorMsg = claimErr.message || '';
-                
-                // 1100010错误：已领取
-                if (claimErrorMsg.includes('1100010')) {
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 发射次数已领取过`,
-                    type: "info",
-                  });
-                } else if (claimErrorMsg.includes('5000031')) {
-                  // 5000031错误：发射次数不足
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 发射次数不足无法领取`,
-                    type: "info",
-                  });
-                } else {
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 发射次数领取失败: ${claimErrorMsg.substring(0, 80)}`,
-                    type: "warning",
-                  });
-                }
-              }
-            }
-          } catch (actErr) {
-            const actErrorMsg = actErr.message || '';
-            
-            // 200020、200330或400000错误：无次数或已达上限
-            if (actErrorMsg.includes('200020') || actErrorMsg.includes('200330') || actErrorMsg.includes('400000')) {
-              // 无次数时，先尝试领取发射次数
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 发射次数不足，尝试领取...`,
-                type: "info",
-              });
-              
-              try {
-                await tokenStore.sendMessageWithPromise(
-                  tokenId,
-                  "activity_actegamestageclaim",
-                  { actId: 2605292 },
-                  10000
-                );
-                
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `${token.name} 发射次数领取成功，继续寻宝...`,
-                  type: "success",
-                });
-                
-                await safeDelay(500);
-                // 领取成功，继续循环发射
-                continue;
-              } catch (claimErr) {
-                const claimErrorMsg = claimErr.message || '';
-                
-                // 1100010错误：已领取
-                if (claimErrorMsg.includes('1100010')) {
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 发射次数已领取过`,
-                    type: "info",
-                  });
-                } else if (claimErrorMsg.includes('5000031')) {
-                  // 5000031错误：发射次数不足
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 发射次数不足无法领取`,
-                    type: "info",
-                  });
-                } else {
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 发射次数领取失败: ${claimErrorMsg.substring(0, 80)}`,
-                    type: "warning",
-                  });
-                }
-                
-                // 领取失败，真正停止循环
-                hasMoreLaunches = false;
-                if (launchCount === 0) {
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 寻宝发射次数已用完`,
-                    type: "info",
-                  });
-                } else if (actErrorMsg.includes('400000')) {
-                  // 400000错误：次数上限
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 寻宝发射完成，共发射${launchCount}次（已达次数上限）`,
-                    type: "success",
-                  });
-                } else {
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 寻宝发射完成，共发射${launchCount}次`,
-                    type: "success",
-                  });
-                }
-              }
-            } else {
-              // 其他错误，也停止循环
-              hasMoreLaunches = false;
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 寻宝发射失败: ${actErrorMsg.substring(0, 80)}`,
-                type: "warning",
-              });
-            }
-          }
-        }
-
-        await safeDelay(1000);
-
-        // 领取闯关免费礼包
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token.name} 开始领取闯关免费礼包...`,
-          type: "info",
-        });
-
-        try {
-          // 不使用重试，直接调用
-          const result = await tokenStore.sendMessageWithPromise(
-            tokenId,
-            "activity_commonbuygoods",
-            { goodsId: 26052931, num: 1 },
-            10000
-          );
-          
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 闯关免费礼包领取成功`,
-            type: "success",
-          });
-        } catch (giftErr) {
-          const giftErrorMsg = giftErr.message || '';
-          
-          // 1100010错误：已领取，不进行重试
-          if (giftErrorMsg.includes('1100010')) {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 闯关免费礼包已领取`,
-              type: "info",
-            });
-          } else if (giftErrorMsg.includes('已领取') || giftErrorMsg.includes('超出上限')) {
-            // 其他已领取或达到上限的情况
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 闯关免费礼包已领取过或已达上限`,
-              type: "info",
-            });
-          } else {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 闯关免费礼包领取失败: ${giftErrorMsg.substring(0, 80)}`,
-              type: "warning",
-            });
-          }
-        }
-        } // ✅ 关闭 else 块（activityNotOpen 为 false 时才执行寻宝发射和礼包领取）
-
         // ✅ 换皮闯关结束前刷新闯关状态并同步到账号卡片
         try {
           addLog({
@@ -1793,8 +1595,10 @@ export function createTasksTower(deps) {
             type: "info",
           });
           
-          // 获取最新的闯关数据
-          const towerRes = await callWithRetry(tokenId, "towers_getinfo", {});
+          // 获取最新的闯关数据（传入 actId）
+          const towerRes = actId 
+            ? await callWithRetry(tokenId, "towers_getinfo", { actId: Number(actId) })
+            : await callWithRetry(tokenId, "towers_getinfo", {});
           
           // 更新到 tokenStore 的 tokenGameDataMap，触发账号卡片自动刷新
           const towerData = towerRes.actId ? towerRes : (towerRes.towerData?.actId ? towerRes.towerData : towerRes);
@@ -1859,6 +1663,229 @@ export function createTasksTower(deps) {
     isRunning.value = false;
     currentRunningTokenId.value = null;
     message.success("批量换皮闯关结束");
+  };
+
+  /**
+   * 换皮寻宝（寻宝发射 + 闯关免费礼包）
+   */
+  const skinTreasure = async () => {
+    if (selectedTokens.value.length === 0) return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    await runStreaming(selectedTokens.value, async (tokenId) => {
+      if (shouldStop.value) return;
+
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 换皮寻宝: ${token.name} ===`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        // 从 activity_get 动态获取寻宝活动ID和免费礼包ID
+        // activity.actEGameInfo.actId = 寻宝活动ID（用于 activity_startactegame / activity_actegamestageclaim）
+        // commonActivityInfo yymmdd3 = 免费礼包界面ID，拼接1 = goodsId（用于 activity_commonbuygoods）
+        let treasureActId = null;
+        let giftGoodsId = null;
+        try {
+          const activityRes = await callWithRetry(tokenId, "activity_get", {}, { retries: 1 });
+          console.log(`[${token.name}] 换皮寻宝 activity_get:`, JSON.stringify(activityRes).substring(0, 800));
+          
+          // 从 actEGameInfo 获取寻宝活动ID
+          const actEGameInfo = activityRes?.activity?.actEGameInfo || activityRes?.actEGameInfo;
+          if (actEGameInfo?.actId) {
+            treasureActId = Number(actEGameInfo.actId);
+            console.log(`[${token.name}] 换皮寻宝 寻宝活动ID: ${treasureActId} (来自 actEGameInfo.actId)`);
+          } else {
+            console.log(`[${token.name}] 换皮寻宝 未找到 actEGameInfo.actId`);
+          }
+          
+          // 从 commonActivityInfo 获取免费礼包 goodsId
+          const commonActivityInfo = activityRes?.commonActivityInfo || activityRes?.activity?.commonActivityInfo || {};
+          const now = new Date();
+          const yy = String(now.getFullYear() % 100).padStart(2, '0');
+          const mm = String(now.getMonth() + 1).padStart(2, '0');
+          const dd = String(now.getDate()).padStart(2, '0');
+          const giftKey = `${yy}${mm}${dd}3`;
+          
+          if (commonActivityInfo[giftKey] !== undefined) {
+            giftGoodsId = Number(`${giftKey}1`);
+            console.log(`[${token.name}] 换皮寻宝 免费礼包 goodsId: ${giftGoodsId} (key: ${giftKey})`);
+          } else {
+            console.log(`[${token.name}] 换皮寻宝 未找到今日免费礼包 key: ${giftKey}`);
+          }
+        } catch (e) {
+          console.log(`[${token.name}] 换皮寻宝 activity_get 失败:`, e.message);
+        }
+
+        // 寻宝发射
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 开始寻宝发射...`,
+          type: "info",
+        });
+
+        // 先尝试领取发射次数
+        try {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 尝试领取发射次数...`,
+            type: "info",
+          });
+          
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "activity_actegamestageclaim",
+            { actId: treasureActId },
+            10000
+          );
+          
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 发射次数领取成功`,
+            type: "success",
+          });
+          
+          await safeDelay(500);
+        } catch (claimErr) {
+          const claimErrorMsg = claimErr.message || '';
+          if (claimErrorMsg.includes('1100010')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 发射次数已领取过`, type: "info" });
+          } else if (claimErrorMsg.includes('5000031')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 发射次数不足无法领取`, type: "info" });
+          } else {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 发射次数领取失败: ${claimErrorMsg.substring(0, 80)}`, type: "warning" });
+          }
+        }
+
+        let launchCount = 0;
+        let hasMoreLaunches = true;
+        const MAX_LAUNCHES = 50;
+        
+        while (hasMoreLaunches && !shouldStop.value && launchCount < MAX_LAUNCHES) {
+          try {
+            await callWithRetry(tokenId, "activity_startactegame", { actId: treasureActId });
+            launchCount++;
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 寻宝发射成功 (第${launchCount}次)`,
+              type: "success",
+            });
+            await safeDelay(500);
+            
+            // 每发射5次，尝试领取发射次数
+            if (launchCount % 5 === 0) {
+              try {
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 尝试领取发射次数...`, type: "info" });
+                await tokenStore.sendMessageWithPromise(tokenId, "activity_actegamestageclaim", { actId: treasureActId }, 10000);
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 发射次数领取成功，继续寻宝...`, type: "success" });
+                await safeDelay(500);
+              } catch (claimErr) {
+                const claimErrorMsg = claimErr.message || '';
+                if (claimErrorMsg.includes('1100010')) {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 发射次数已领取过`, type: "info" });
+                } else if (claimErrorMsg.includes('5000031')) {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 发射次数不足无法领取`, type: "info" });
+                } else {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 发射次数领取失败: ${claimErrorMsg.substring(0, 80)}`, type: "warning" });
+                }
+              }
+            }
+          } catch (actErr) {
+            const actErrorMsg = actErr.message || '';
+            if (actErrorMsg.includes('200020') || actErrorMsg.includes('200330') || actErrorMsg.includes('400000')) {
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 发射次数不足，尝试领取...`, type: "info" });
+              try {
+                await tokenStore.sendMessageWithPromise(tokenId, "activity_actegamestageclaim", { actId: treasureActId }, 10000);
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 发射次数领取成功，继续寻宝...`, type: "success" });
+                await safeDelay(500);
+                continue;
+              } catch (claimErr) {
+                const claimErrorMsg = claimErr.message || '';
+                if (claimErrorMsg.includes('1100010')) {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 发射次数已领取过`, type: "info" });
+                } else if (claimErrorMsg.includes('5000031')) {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 发射次数不足无法领取`, type: "info" });
+                } else {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 发射次数领取失败: ${claimErrorMsg.substring(0, 80)}`, type: "warning" });
+                }
+                hasMoreLaunches = false;
+                if (launchCount === 0) {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 寻宝发射次数已用完`, type: "info" });
+                } else if (actErrorMsg.includes('400000')) {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 寻宝发射完成，共发射${launchCount}次（已达次数上限）`, type: "success" });
+                } else {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 寻宝发射完成，共发射${launchCount}次`, type: "success" });
+                }
+              }
+            } else {
+              hasMoreLaunches = false;
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 寻宝发射失败: ${actErrorMsg.substring(0, 80)}`, type: "warning" });
+            }
+          }
+        }
+
+        await safeDelay(1000);
+
+        // 领取闯关免费礼包
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 开始领取闯关免费礼包...`,
+          type: "info",
+        });
+
+        try {
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "activity_commonbuygoods",
+            { goodsId: giftGoodsId, num: 1 },
+            10000
+          );
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 闯关免费礼包领取成功`, type: "success" });
+        } catch (giftErr) {
+          const giftErrorMsg = giftErr.message || '';
+          if (giftErrorMsg.includes('1100010')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 闯关免费礼包已领取`, type: "info" });
+          } else if (giftErrorMsg.includes('已领取') || giftErrorMsg.includes('超出上限')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 闯关免费礼包已领取过或已达上限`, type: "info" });
+          } else {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 闯关免费礼包领取失败: ${giftErrorMsg.substring(0, 80)}`, type: "warning" });
+          }
+        }
+
+        tokenStatus.value[tokenId] = "completed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== ${token.name} 换皮寻宝结束 ===`,
+          type: "success",
+        });
+
+      } catch (error) {
+        tokenStatus.value[tokenId] = "failed";
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 换皮寻宝出错: ${error.message?.substring(0, 100)}`,
+          type: "error",
+        });
+      } finally {
+        await safeCloseConnection(tokenId, token.name);
+      }
+    });
+
+    isRunning.value = false;
+    currentRunningTokenId.value = null;
+    message.success("批量换皮寻宝结束");
   };
 
   /**
@@ -2168,6 +2195,7 @@ export function createTasksTower(deps) {
     climbWeirdTower,
     batchClaimFreeEnergy,
     skinChallenge,
+    skinTreasure,
     batchUseItems,
     batchMergeItems,
   };

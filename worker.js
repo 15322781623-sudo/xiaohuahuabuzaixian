@@ -12,11 +12,11 @@ const GITHUB_PROXY_LIST = [
 
 // 静态兜底配置（R2 和 GitHub 都失败时使用）
 const FALLBACK_CONFIG = {
-  latestVersion: "1.2.1",
-  versionCode: 10201,
+  latestVersion: "1.2.2",
+  versionCode: 10202,
   downloadUrl: `https://ghfast.top/https://github.com/${GITHUB_REPO}/releases/latest/download/xyzw-helper.apk`,
   downloadUrlOriginal: `https://github.com/${GITHUB_REPO}/releases/latest/download/xyzw-helper.apk`,
-  changelog: "v1.2.1: 升星功能重写，智能筛选 + 响应码检查，鱼灵 itemId 修复",
+  changelog: "v1.2.2: 换皮寻宝独立功能、黑市多选购买重构、闯关actId动态适配",
   minVersionCode: 10107,
   forceUpdate: false,
 };

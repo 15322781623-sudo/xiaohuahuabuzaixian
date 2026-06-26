@@ -4760,7 +4760,8 @@ export function createTasksItem(deps) {
 
   /**
    * 批量橱窗咸将激活（collection_activate）
-   * 遍历 skinMap.js 中所有皮肤ID，逐个激活
+   * 先调用 collection_getinfo 获取图鉴数据，
+   * 根据 activateNum/canActivateNum 精准筛选"已拥有但未激活"的道具，再逐个激活
    */
   const batchCollectionActivate = async () => {
     if (selectedTokens.value.length === 0) return;
@@ -4772,8 +4773,6 @@ export function createTasksItem(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    const skinEntries = Object.entries(SKIN_DICT);
-
     const processActivate = async (tokenId) => {
       if (shouldStop.value) return;
 
@@ -4784,47 +4783,113 @@ export function createTasksItem(deps) {
       try {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `=== 开始橱窗咸将激活: ${token.name}（共${skinEntries.length}个皮肤）===`,
+          message: `=== 开始橱窗咸将激活: ${token.name} ===`,
           type: "info",
         });
 
         await ensureConnection(tokenId);
 
+        // ===== 第一步：查询图鉴数据 =====
+        let collectionData;
+        try {
+          collectionData = await tokenStore.sendMessageWithPromise(
+            tokenId, "collection_getinfo", {},
+            batchSettings.defaultCommandTimeout || 8000,
+          );
+        } catch (err) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 获取图鉴数据失败: ${err.message}，跳过`,
+            type: "error",
+          });
+          tokenStatus.value[tokenId] = "failed";
+          return;
+        }
+
+        // ===== 第二步：解析 heroSeries，筛选可激活道具 =====
+        const heroSeries = collectionData?.heroSeries || collectionData?.collection?.heroSeries;
+        if (!heroSeries) {
+          const topKeys = collectionData ? Object.keys(collectionData) : ['null'];
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 图鉴数据无 heroSeries 字段（顶层keys: ${topKeys.join(',')}），跳过`,
+            type: "warning",
+          });
+          tokenStatus.value[tokenId] = "completed";
+          return;
+        }
+
+        const toActivate = []; // { poolType, id, seriesId, name }
+        let alreadyActivated = 0;
+        let totalItems = 0;
+
+        for (const [seriesKey, seriesData] of Object.entries(heroSeries)) {
+          const collectMap = seriesData?.collectMap;
+          if (!collectMap) continue;
+
+          for (const [itemId, itemData] of Object.entries(collectMap)) {
+            totalItems++;
+            const isActivated = itemData?.activateNum || 0;   // 1=已激活
+            const canActivate = itemData?.canActivateNum || 0; // 1=可激活
+
+            if (isActivated === 1) {
+              alreadyActivated++;
+              continue; // 已激活，跳过
+            }
+            if (canActivate === 1) {
+              // 查找 SKIN_DICT 获取名称
+              const skinInfo = SKIN_DICT[itemId];
+              toActivate.push({
+                poolType: 2,                        // poolType 固定为 2（珍宝阁系统）
+                id: Number(itemId),
+                seriesId: Number(seriesKey),         // heroSeries key = seriesId
+                name: skinInfo?.name || `道具#${itemId}`,
+              });
+            }
+            // canActivate === 0: 未拥有或不可激活，跳过
+          }
+        }
+
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 图鉴统计：总${totalItems}个，已激活${alreadyActivated}个，可激活${toActivate.length}个`,
+          type: "info",
+        });
+
+        // ===== 第三步：逐个激活 =====
         let successCount = 0;
         let skipCount = 0;
 
-        for (const [skinId, info] of skinEntries) {
+        for (const item of toActivate) {
           if (shouldStop.value) break;
 
           try {
             await tokenStore.sendMessageWithPromise(
               tokenId,
               "collection_activate",
-              { poolType: 2, id: Number(skinId), isAll: false, seriesId: info.heroId },
+              { poolType: item.poolType, id: item.id, isAll: false, seriesId: item.seriesId },
               batchSettings.defaultCommandTimeout || 5000,
             );
             successCount++;
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 激活成功: ${info.name}`,
+              message: `${token.name} 激活成功: ${item.name} (poolType=${item.poolType})`,
               type: "success",
             });
           } catch (err) {
-            // 已激活或无资格视为跳过，但记录非预期错误
             const errMsg = err.message || '';
-            if (!errMsg.includes('400010') && !errMsg.includes('已激活')) {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 激活 ${info.name} 失败: ${errMsg}`,
-                type: "warning",
-              });
-            }
+            // 记录所有失败日志，包含请求参数方便排查
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 激活 ${item.name} 失败: ${errMsg} (poolType=${item.poolType}, id=${item.id}, seriesId=${item.seriesId})`,
+              type: "warning",
+            });
             skipCount++;
           }
           await new Promise((r) => setTimeout(r, delayConfig.action));
         }
 
-        // 激活完成后循环领取图鉴积分，直到无可领取
+        // ===== 第四步：循环领取图鉴积分 =====
         let claimTotalCount = 0;
         while (!shouldStop.value) {
           try {
@@ -4848,7 +4913,7 @@ export function createTasksItem(deps) {
         tokenStatus.value[tokenId] = "completed";
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} === 橱窗咸将激活完成（成功${successCount}个，跳过${skipCount}个）===`,
+          message: `${token.name} === 橱窗咸将激活完成（可激活${toActivate.length}个，成功${successCount}个，跳过${skipCount}个）===`,
           type: "success",
         });
       } catch (error) {
@@ -4890,6 +4955,206 @@ export function createTasksItem(deps) {
     message.success("批量橱窗咸将激活结束");
   };
 
+  // ========== 批量推图 ==========
+  const _bpSleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const _pushLogCb = (msg, type) => {
+    addLog({ time: new Date().toLocaleTimeString(), message: msg, type: type || "info" });
+    if (typeof window._pushLog === "function") window._pushLog(msg, type || "info");
+  };
+
+  const _bpLoadBossData = async () => {
+    if (window._bossMap && Object.keys(window._bossMap).length > 0) return window._bossMap;
+    try {
+      const resp = await fetch("/boss_level_mapping_fixed.json");
+      if (resp.ok) {
+        window._bossMap = await resp.json();
+        _pushLogCb(`[推图] Boss数据加载: ${Object.keys(window._bossMap).length}条`);
+      }
+    } catch (e) {
+      _pushLogCb(`[推图] Boss数据加载失败`, "warning");
+      if (!window._bossMap) window._bossMap = {};
+    }
+    return window._bossMap;
+  };
+
+  const _getBoss = (lvl) => {
+    if (!window._bossMap) return "";
+    const b = window._bossMap[String(lvl)];
+    return b ? b.chinese : "";
+  };
+
+  const _getTokenName = (tid) => {
+    const tk = tokens.value.find(x => x.id === tid);
+    return tk ? tk.name || tid : tid;
+  };
+
+  // 火把系统
+  const _bpUseTorch = async (tokenId) => {
+    const ti = window._pushTorchType || 0;
+    if (!ti) return;
+    const count = window._pushTorchCount || 10;
+    const nm = _getTokenName(tokenId);
+    const torchNm = ti === 1008 ? "木材" : ti === 1009 ? "青铜" : "战神";
+    _pushLogCb(`[${nm}] 使用${torchNm}火把 x${count}...`);
+    let ok = 0;
+    for (let i = 0; i < count; i++) {
+      try {
+        await tokenStore.sendMessageWithPromise(tokenId, "item_consume", { itemId: ti, quantity: 1 }, 5000);
+        ok++;
+        await _bpSleep(500);
+      } catch (e) {
+        _pushLogCb(`[${nm}] 火把第${i + 1}次失败: ${e.message}`, "error");
+        break;
+      }
+    }
+    if (window._pt[tokenId]) {
+      window._pt[tokenId].torchAt = Date.now();
+      window._pt[tokenId].torchDur = (ti === 1008 ? 600 : ti === 1009 ? 1200 : 1800) * ok;
+    }
+    const mins = Math.round((ti === 1008 ? 10 : ti === 1009 ? 20 : 30) * ok);
+    _pushLogCb(`[${nm}] ${torchNm}火把已激活 ${ok}个(约${mins}分钟)`, "success");
+  };
+
+  // 单个Token推图循环
+  const _bpPushLoop = async (tokenId) => {
+    if (window._pt[tokenId] && window._pt[tokenId].running) return;
+    window._pt[tokenId] = {
+      running: true, stopFlag: false, level: 0, wins: 0, losses: 0,
+      retries: 0, countdown: 0, totalTime: 0, battles: 0, torchAt: 0, torchDur: 0,
+    };
+    const st = window._pt[tokenId];
+    const nm = _getTokenName(tokenId);
+    tokenStatus.value[tokenId] = "running";
+    _pushLogCb(`[${nm}] 开始推图`, "success");
+
+    // 使用火把（如果选择了）
+    if (window._pushTorchType) {
+      await _bpUseTorch(tokenId);
+    }
+
+    try {
+      while (!st.stopFlag && !shouldStop.value) {
+        if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+          _pushLogCb(`[${nm}] 连接断开，停止推图`, "error");
+          break;
+        }
+        try {
+          const ri = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 10000);
+          if (ri && ri.role) st.level = ri.role.levelId || 0;
+        } catch (e) { }
+        const bossNm = _getBoss(st.level);
+        _pushLogCb(`[${nm}] 关卡: ${st.level}${bossNm ? " Boss: " + bossNm : ""}`);
+
+        let battleTime = 300;
+        try {
+          const cr = await tokenStore.sendMessageWithPromise(tokenId, "fight_calcleveltime", {}, 15000);
+          if (cr && !cr.code) {
+            const bt = cr.battleTime || (cr.body && cr.body.battleTime);
+            if (bt != null) { battleTime = Number(bt); if (battleTime <= 0) battleTime = 300; }
+          }
+          _pushLogCb(`[${nm}] 战斗需 ${battleTime} 秒`, "success");
+        } catch (e) {
+          _pushLogCb(`[${nm}] 获取战斗时间失败`, "warning");
+        }
+        if (st.stopFlag || shouldStop.value) break;
+        st.totalTime = battleTime;
+        st.countdown = battleTime;
+
+        const t0 = Date.now();
+        let hb = 0;
+        while (st.countdown > 0 && !st.stopFlag && !shouldStop.value) {
+          await _bpSleep(1000);
+          st.countdown = Math.max(0, Math.ceil(battleTime - (Date.now() - t0) / 1000));
+          hb++;
+          if (hb % 25 === 0) {
+            try { tokenStore.sendMessage(tokenId, "heart_beat"); } catch (e) { }
+          }
+        }
+        if (st.stopFlag || shouldStop.value) break;
+
+        _pushLogCb(`[${nm}] 获取战斗结果...`);
+        try {
+          const fr = await tokenStore.sendMessageWithPromise(tokenId, "fight_level", {}, 15000);
+          const bd = (fr && fr.body) || fr;
+          const win = (bd && (bd.success || bd.isWin)) || false;
+          const nl = (bd && (bd.currLevel || bd.nextLevel)) || st.level;
+          st.battles++;
+          if (win) {
+            st.wins++; st.retries = 0; st.level = nl;
+            _pushLogCb(`[${nm}] ✅ 胜利! 关卡 ${nl}`, "success");
+          } else {
+            st.losses++; st.retries = (st.retries || 0) + 1;
+            _pushLogCb(`[${nm}] ❌ 失败 (连续${st.retries}次)`, "error");
+            await _bpSleep(10000);
+          }
+          try { await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 8000); } catch (e) { }
+        } catch (e) {
+          st.losses++; st.battles++; st.retries = (st.retries || 0) + 1;
+          _pushLogCb(`[${nm}] 获取结果失败: ${e.message}`, "error");
+          await _bpSleep(10000);
+        }
+
+        // 火把续期检查
+        if (window._pushTorchType && st.torchAt && !st.stopFlag) {
+          const elapsed = (Date.now() - st.torchAt) / 1000;
+          if (elapsed >= st.torchDur) {
+            _pushLogCb(`[${nm}] 火把已过期，续用...`, "warning");
+            await _bpUseTorch(tokenId);
+          }
+        }
+
+        if (!st.stopFlag && !shouldStop.value) await _bpSleep(2000);
+      }
+    } catch (e) {
+      _pushLogCb(`[${nm}] 推图异常: ${e.message}`, "error");
+    } finally {
+      st.running = false; st.countdown = 0;
+      tokenStatus.value[tokenId] = "completed";
+      _pushLogCb(`[${nm}] 推图已停止 (${st.wins}胜 ${st.losses}负)`, "warning");
+    }
+  };
+
+  // 启动单个Token推图（带自动连接）
+  const _bpStartOne = async (tokenId) => {
+    if (window._pt[tokenId] && window._pt[tokenId].running) return;
+    // 自动连接未连接的Token
+    if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+      const nm = _getTokenName(tokenId);
+      _pushLogCb(`[${nm}] 正在连接...`, "info");
+      try {
+        const tk = tokens.value.find(x => x.id === tokenId);
+        if (tk) {
+          tokenStore.selectToken(tokenId);
+          await _bpSleep(3000);
+        }
+      } catch (e) { }
+      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+        _pushLogCb(`[${nm}] 连接失败，跳过`, "error");
+        return;
+      }
+    }
+    await _bpPushLoop(tokenId);
+  };
+
+  // 停止单个Token推图
+  const _bpStopOne = (tokenId) => {
+    if (window._pt[tokenId]) window._pt[tokenId].stopFlag = true;
+  };
+
+  // 简化：只打开模态框，实际推图逻辑由模态框控制
+  const batchPushMap = async () => {
+    if (typeof window._openPushModal === "function") window._openPushModal();
+  };
+
+  // 暴露给模态框和TokenCard使用
+  window._bpPushLoop = _bpPushLoop;
+  window._bpStartOne = _bpStartOne;
+  window._bpStopOne = _bpStopOne;
+  window._bpLoadBossData = _bpLoadBossData;
+  window._getBoss = _getBoss;
+  window._bpSleep = _bpSleep;
+  window._bpUseTorch = _bpUseTorch;
+
   return {
     batchOpenBox,
     batchOpenBoxByPoints,
@@ -4914,5 +5179,6 @@ export function createTasksItem(deps) {
     batchActivityExchange,
     batchClaimApexRewards,
     batchCollectionActivate,
+    batchPushMap,
   };
 }

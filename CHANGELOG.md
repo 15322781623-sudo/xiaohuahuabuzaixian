@@ -1,5 +1,21 @@
 # 更新日志
 
+## [2.9.5] - 2025-06-23
+
+### ✨ 新功能
+- **一键换皮寻宝**: 将换皮闯关中的寻宝发射和闯关免费礼包独立为单独功能按钮，支持动态获取寻宝活动ID（actEGameInfo.actId）和免费礼包ID（commonActivityInfo yymmdd3）
+- **黑市多选购买重构**: 修正商品ID映射与 storeGoodsList 对齐，新增随机红/橙/紫将碎片、咸神门票等黑市商品
+
+### 🐛 修复
+- **换皮闯关 actId 动态获取**: towers_getinfo/towers_start/towers_fight 现从 activity_get 动态获取 actId，支持每日活动自动适配
+- **闯关胜负判断**: 从 battleData.result.accept.ext.curHP 改为 towerData.pass，修复战斗结果判断错误
+- **账号卡片闯关状态**: TokenCard.vue 和 SkinChallengeCard.vue 同步支持 actId 参数
+- **多选购买失败中断**: 购买失败时仅停止该商品，继续购买其他商品
+
+### ⚡ 优化
+- **寻宝活动ID获取**: 从 activity.actEGameInfo.actId 获取寻宝活动ID，从 commonActivityInfo yymmdd3 推导免费礼包 goodsId
+- **actId精确匹配**: 根据当天日期精确匹配活动 key，避免匹配到历史活动
+
 ## [2.9.4] - 2025-06-23
 
 ### 🐛 修复

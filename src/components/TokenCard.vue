@@ -65,6 +65,17 @@
             <img src="/icons/钓鱼.png" alt="钓鱼补齐" style="width: 14px; height: 14px; object-fit: contain;">
           </template>
         </n-button>
+        <!-- 推图按钮 -->
+        <n-button circle quaternary size="small" :type="isPushing ? 'error' : 'warning'" @click.stop="togglePushMap" :title="isPushing ? '停止推图' : '开始推图'">
+          <template #icon>
+            <n-icon>
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path v-if="!isPushing" d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                <path v-else d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </n-icon>
+          </template>
+        </n-button>
         <!-- 打开游戏按钮 -->
         <n-button circle quaternary size="small" type="success" @click.stop="openGame" title="打开游戏">
           <template #icon>
@@ -242,6 +253,19 @@
           <span v-if="isArenaFighting">战斗中...</span>
           <span v-else-if="arenaRank > 0">排名{{ arenaRank }}</span>
           <span v-else>未上榜</span>
+        </span>
+      </div>
+      <!-- 推图状态 -->
+      <div
+        v-if="isPushing"
+        class="status-tag push-tag"
+        style="min-width: 80px; justify-content: center; cursor: pointer;"
+        :class="{ 'is-pushing': isPushing }"
+        :title="pushStatusText"
+        @click.stop="togglePushMap"
+      >
+        <span class="tag-text" style="color: #f59e0b; font-weight: 600;">
+          ⚔️ {{ pushStatusText }}
         </span>
       </div>
       <!-- 换皮闯关状态 -->
@@ -2800,6 +2824,180 @@ const openGame = () => {
   message.success(`已为 ${token.name} 打开游戏功能页面`);
 };
 
+// ========== 推图功能 ==========
+const isPushing = ref(false);
+let _pushTimer = null;
+
+const pushStatusText = computed(() => {
+  if (!isPushing.value) return '';
+  const st = window._pt && window._pt[props.token.id];
+  if (!st || !st.running) return '';
+  const cd = st.countdown || 0;
+  const mm = Math.floor(cd / 60);
+  const ss = String(Math.floor(cd % 60)).padStart(2, '0');
+  return `${st.wins}胜${st.losses}负 ${mm}:${ss}`;
+});
+
+const togglePushMap = async () => {
+  const tokenId = props.token.id;
+  const tokenName = props.token.name;
+
+  if (isPushing.value) {
+    // 停止推图
+    if (window._bpStopOne) window._bpStopOne(tokenId);
+    else if (window._pt && window._pt[tokenId]) window._pt[tokenId].stopFlag = true;
+    isPushing.value = false;
+    if (_pushTimer) { clearInterval(_pushTimer); _pushTimer = null; }
+    addLog({ message: `[${tokenName}] 停止推图`, type: "warning" });
+    return;
+  }
+
+  isPushing.value = true;
+  addLog({ message: `[${tokenName}] 开始推图`, type: "info" });
+
+  // 加载Boss数据
+  if (window._bpLoadBossData) await window._bpLoadBossData();
+
+  // 使用_bpStartOne（带自动连接）
+  if (window._bpStartOne) {
+    window._bpStartOne(tokenId);
+  } else if (window._bpPushLoop) {
+    window._bpPushLoop(tokenId);
+  } else {
+    // 内置推图循环（备用）
+    _pushLoopFallback(tokenId);
+  }
+
+  // 定时监听推图状态
+  _pushTimer = setInterval(() => {
+    const st = window._pt && window._pt[tokenId];
+    if (!st || !st.running) {
+      isPushing.value = false;
+      clearInterval(_pushTimer);
+      _pushTimer = null;
+    }
+  }, 2000);
+};
+
+// 备用推图循环（当tasksItem未加载时使用）
+const _pushLoopFallback = async (tokenId) => {
+  const tokenName = props.token.name;
+  if (!window._pt) window._pt = {};
+  if (window._pt[tokenId] && window._pt[tokenId].running) return;
+
+  window._pt[tokenId] = {
+    running: true, stopFlag: false, level: 0, wins: 0, losses: 0,
+    retries: 0, countdown: 0, totalTime: 0, battles: 0, torchAt: 0, torchDur: 0,
+  };
+  const st = window._pt[tokenId];
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const getBoss = (lvl) => {
+    if (!window._bossMap) return "";
+    const b = window._bossMap[String(lvl)];
+    return b ? b.chinese : "";
+  };
+
+  // 火把使用
+  const useTorch = async () => {
+    const ti = window._pushTorchType || 0;
+    if (!ti) return;
+    const torchNm = ti === 1008 ? "木材" : ti === 1009 ? "青铜" : "战神";
+    addLog({ message: `[${tokenName}] 使用${torchNm}火把 x10...`, type: "info" });
+    let ok = 0;
+    for (let i = 0; i < 10; i++) {
+      try {
+        await tokenStore.sendMessageWithPromise(tokenId, "item_consume", { itemId: ti, quantity: 1 }, 5000);
+        ok++; await sleep(500);
+      } catch (e) { addLog({ message: `[${tokenName}] 火把第${i+1}次失败`, type: "error" }); break; }
+    }
+    st.torchAt = Date.now();
+    st.torchDur = (ti === 1008 ? 600 : ti === 1009 ? 1200 : 1800) * ok;
+    const mins = Math.round((ti === 1008 ? 10 : ti === 1009 ? 20 : 30) * ok);
+    addLog({ message: `[${tokenName}] ${torchNm}火把已激活 ${ok}个(约${mins}分钟)`, type: "success" });
+  };
+
+  // 开始时使用火把
+  if (window._pushTorchType) await useTorch();
+
+  try {
+    while (!st.stopFlag) {
+      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+        addLog({ message: `[${tokenName}] 连接断开，停止推图`, type: "error" });
+        break;
+      }
+      // 获取关卡
+      try {
+        const ri = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 10000);
+        if (ri && ri.role) st.level = ri.role.levelId || 0;
+      } catch (e) { }
+      const bossNm = getBoss(st.level);
+      addLog({ message: `[${tokenName}] 关卡: ${st.level}${bossNm ? " Boss: " + bossNm : ""}`, type: "info" });
+
+      // 计算战斗时间
+      let bt = 300;
+      try {
+        const cr = await tokenStore.sendMessageWithPromise(tokenId, "fight_calcleveltime", {}, 15000);
+        if (cr && !cr.code) {
+          const t = cr.battleTime || (cr.body && cr.body.battleTime);
+          if (t != null) { bt = Number(t); if (bt <= 0) bt = 300; }
+        }
+      } catch (e) { }
+      if (st.stopFlag) break;
+      st.totalTime = bt;
+      st.countdown = bt;
+
+      // 倒计时等待
+      const t0 = Date.now();
+      let hb = 0;
+      while (st.countdown > 0 && !st.stopFlag) {
+        await sleep(1000);
+        st.countdown = Math.max(0, Math.ceil(bt - (Date.now() - t0) / 1000));
+        hb++;
+        if (hb % 25 === 0) {
+          try { tokenStore.sendMessage(tokenId, "heart_beat"); } catch (e) { }
+        }
+      }
+      if (st.stopFlag) break;
+
+      // 获取战斗结果
+      try {
+        const fr = await tokenStore.sendMessageWithPromise(tokenId, "fight_level", {}, 15000);
+        const bd = (fr && fr.body) || fr;
+        const win = (bd && (bd.success || bd.isWin)) || false;
+        const nl = (bd && (bd.currLevel || bd.nextLevel)) || st.level;
+        st.battles++;
+        if (win) {
+          st.wins++; st.retries = 0; st.level = nl;
+          addLog({ message: `[${tokenName}] ✅ 胜利! 关卡 ${nl}`, type: "success" });
+        } else {
+          st.losses++; st.retries = (st.retries || 0) + 1;
+          addLog({ message: `[${tokenName}] ❌ 失败 (连续${st.retries}次)`, type: "error" });
+          await sleep(10000);
+        }
+        try { await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 8000); } catch (e) { }
+      } catch (e) {
+        st.losses++; st.battles++; st.retries = (st.retries || 0) + 1;
+        await sleep(10000);
+      }
+      // 火把续期检查
+      if (window._pushTorchType && st.torchAt && !st.stopFlag) {
+        const elapsed = (Date.now() - st.torchAt) / 1000;
+        if (elapsed >= st.torchDur) {
+          addLog({ message: `[${tokenName}] 火把已过期，续用...`, type: "warning" });
+          await useTorch();
+        }
+      }
+      if (!st.stopFlag) await sleep(2000);
+    }
+  } catch (e) {
+    addLog({ message: `[${tokenName}] 推图异常: ${e.message}`, type: "error" });
+  } finally {
+    st.running = false; st.countdown = 0;
+    isPushing.value = false;
+    addLog({ message: `[${tokenName}] 推图已停止 (${st.wins}胜 ${st.losses}负)`, type: "warning" });
+  }
+};
+
 // 一键补齐每日任务
 const completeDailyTasks = async () => {
   if (!isConnected.value && !isConnecting.value) {
@@ -4288,10 +4486,17 @@ const refreshTowerInfo = async () => {
   try {
     towerInfo.value.isRefreshing = true;
 
+    // 根据今天日期推导 actId：yymmdd1
+    const now = new Date();
+    const yy = String(now.getFullYear() % 100).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const actId = Number(`${yy}${mm}${dd}1`);
+
     const res = await tokenStore.sendMessageWithPromise(
       props.token.id,
       "towers_getinfo",
-      {},
+      { actId },
       5000,
     );
 

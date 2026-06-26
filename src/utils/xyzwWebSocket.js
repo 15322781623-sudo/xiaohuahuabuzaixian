@@ -283,6 +283,8 @@ export function registerDefaultCommands(reg) {
     .register("fight_startlegionboss")
     .register("fight_startdungeon")
     .register("fight_startpvp")
+    .register("fight_calcleveltime") // 推图-计算关卡战斗时间
+    .register("fight_level") // 推图-执行关卡战斗
 
     // 怪异咸将塔
     .register("evotower_getinfo")
@@ -432,6 +434,7 @@ export function registerDefaultCommands(reg) {
     // 珍宝阁相关
     .register("collection_claimfreereward")
     .register("collection_goodslist")
+    .register("collection_getinfo")
     .register("collection_activate", { poolType: 2, id: 0, isAll: false, seriesId: 0 })
     .register("collection_claimtotal")
 
@@ -1338,10 +1341,15 @@ export class XyzwWebSocketClient {
     const responseToCommandMap = {
       // 1:1 响应映射（优先级高）
       fight_startpvpresp: "fight_startpvp",
+      fight_startlevelresp: "fight_startlevel", // 推图-开始关卡响应
+      fight_calcleveltimeresp: "fight_calcleveltime", // 推图-计算战斗时间响应
+      fight_levelresp: "fight_level", // 推图-执行关卡战斗响应
       activity_getresp: "activity_get",
       charge_claimaddupresp: "charge_claimaddup",
       collection_goodslistresp: "collection_goodslist",
       collection_claimfreerewardresp: "collection_claimfreereward",
+      collectioninforesp: "collection_getinfo",
+      collection_getinforesp: "collection_getinfo",
       collection_activateresp: "collection_activate",
       collection_claimtotalresp: "collection_claimtotal",
       legion_getarearankresp: "legion_getarearank",
@@ -1398,7 +1406,9 @@ export class XyzwWebSocketClient {
       mail_getlistresp: "mail_getlist",
       mail_changestateresp: "mail_changestate",
       mail_deleteallunreceivedwithcategoryresp: "mail_deleteallunreceivedwithcategory",
-      store_buyresp: "store_purchase",
+      store_buyresp: "store_buy",
+      store_goodslistresp: "store_goodslist",
+      store_refreshresp: "store_refresh",
       store_getpurchaseresp: "store_getpurchase",
       store_setpurchaseresp: "store_setpurchase",
       discount_getdiscountinforesp: "discount_getdiscountinfo",

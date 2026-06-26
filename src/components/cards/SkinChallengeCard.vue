@@ -170,7 +170,14 @@ const getInfo = async () => {
     return;
 
   try {
-    const res = await tokenStore.sendMessageWithPromise(tokenId, "towers_getinfo", {}, 5000);
+    // 根据今天日期推导 actId：yymmdd1
+    const now = new Date();
+    const yy = String(now.getFullYear() % 100).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const actId = Number(`${yy}${mm}${dd}1`);
+
+    const res = await tokenStore.sendMessageWithPromise(tokenId, "towers_getinfo", { actId }, 5000);
     if (res) {
       // Handle nested data structure if necessary
       const data = res.actId ? res : (res.towerData && res.towerData.actId ? res.towerData : res);
@@ -219,14 +226,14 @@ const challengeSingle = async (type) => {
 
     while (loop) {
       if (needStart) {
-        await tokenStore.sendMessageWithPromise(tokenId, "towers_start", { towerType: type }, 5000);
+        await tokenStore.sendMessageWithPromise(tokenId, "towers_start", { towerType: type, actId: Number(actId.value) }, 5000);
       }
 
-      const fightRes = await tokenStore.sendMessageWithPromise(tokenId, "towers_fight", { towerType: type }, 5000);
-      const battleData = fightRes?.battleData;
-      const curHP = battleData?.result?.accept?.ext?.curHP;
+      const fightRes = await tokenStore.sendMessageWithPromise(tokenId, "towers_fight", { towerType: type, actId: Number(actId.value) }, 5000);
+      const towerData = fightRes?.towerData;
+      const passed = towerData?.pass === true;
 
-      if (curHP === 0) {
+      if (passed) {
         // Get current level before updating info (it will be the level just cleared)
         const currentLevel = getTowerLevel(type);
         message.success(`BOSS ${type} 第 ${currentLevel} 层挑战成功`);

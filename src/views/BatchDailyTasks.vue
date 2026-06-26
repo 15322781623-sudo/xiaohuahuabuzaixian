@@ -409,6 +409,13 @@
                 >
                   邮箱领取与清理
                 </n-button>
+                <n-button
+                  size="small"
+                  :type="isAnyPushRunning ? 'error' : 'warning'"
+                  @click="showPushMapModal = true"
+                >
+                  {{ isAnyPushRunning ? '停止推图' : '批量推图' }}
+                </n-button>
 
               </n-space>
             </n-tab-pane>
@@ -477,6 +484,13 @@
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键换皮闯关
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="skinTreasure"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  一键换皮寻宝
                 </n-button>
                 <n-button
                   size="small"
@@ -692,6 +706,13 @@
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键购买彩玉
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="openManualBuyModal"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  黑市多选购买
                 </n-button>
                 <n-button
                   size="small"
@@ -1492,20 +1513,20 @@
               <div class="purchase-list-grid">
                 <label
                   v-for="item in purchaseItemOptions"
-                  :key="item.itemId"
+                  :key="item.goodsId"
                   class="purchase-item-label"
                 >
                   <input
                     type="checkbox"
-                    :checked="currentSettings.purchaseList.includes(item.itemId)"
-                    @change="togglePurchaseItem(currentSettings.purchaseList, currentSettings.purchaseDiscounts, item.itemId)"
+                    :checked="currentSettings.purchaseList.includes(item.goodsId)"
+                    @change="togglePurchaseItem(currentSettings.purchaseList, currentSettings.purchaseDiscounts, item.goodsId)"
                   />
                   <span>{{ item.name }}</span>
                   <input type="number" class="discount-input"
-                    :value="getDiscount(currentSettings.purchaseDiscounts, item.itemId)"
-                    @input="(e) => setDiscount(currentSettings.purchaseDiscounts, item.itemId, e.target.value)"
+                    :value="getDiscount(currentSettings.purchaseDiscounts, item.goodsId)"
+                    @input="(e) => setDiscount(currentSettings.purchaseDiscounts, item.goodsId, e.target.value)"
                     min="1" max="10"
-                    :disabled="!currentSettings.purchaseList.includes(item.itemId)"
+                    :disabled="!currentSettings.purchaseList.includes(item.goodsId)"
                   />
                   <span class="discount-unit">折</span>
                 </label>
@@ -1636,20 +1657,20 @@
               <div class="purchase-list-grid">
                 <label
                   v-for="item in purchaseItemOptions"
-                  :key="item.itemId"
+                  :key="item.goodsId"
                   class="purchase-item-label"
                 >
                   <input
                     type="checkbox"
-                    :checked="currentTemplate.purchaseList.includes(item.itemId)"
-                    @change="togglePurchaseItem(currentTemplate.purchaseList, currentTemplate.purchaseDiscounts, item.itemId)"
+                    :checked="currentTemplate.purchaseList.includes(item.goodsId)"
+                    @change="togglePurchaseItem(currentTemplate.purchaseList, currentTemplate.purchaseDiscounts, item.goodsId)"
                   />
                   <span>{{ item.name }}</span>
                   <input type="number" class="discount-input"
-                    :value="getDiscount(currentTemplate.purchaseDiscounts, item.itemId)"
-                    @input="(e) => setDiscount(currentTemplate.purchaseDiscounts, item.itemId, e.target.value)"
+                    :value="getDiscount(currentTemplate.purchaseDiscounts, item.goodsId)"
+                    @input="(e) => setDiscount(currentTemplate.purchaseDiscounts, item.goodsId, e.target.value)"
                     min="1" max="10"
-                    :disabled="!currentTemplate.purchaseList.includes(item.itemId)"
+                    :disabled="!currentTemplate.purchaseList.includes(item.goodsId)"
                   />
                   <span class="discount-unit">折</span>
                 </label>
@@ -2484,6 +2505,41 @@
         <div class="modal-actions" style="margin-top: 20px; text-align: right">
           <n-button @click="showSaltIngotShopModal = false" style="margin-right: 12px">取消</n-button>
           <n-button type="primary" @click="executeSaltIngotShopBuy" :disabled="isRunning">开始购买</n-button>
+        </div>
+      </div>
+    </n-modal>
+
+    <!-- 多选购买 Modal -->
+    <n-modal
+      v-model:show="showManualBuyModal"
+      preset="card"
+      title="黑市商品购买配置"
+      style="width: 90%; max-width: 450px"
+    >
+      <div class="settings-content">
+        <n-alert type="info" show-icon style="margin-bottom: 12px">
+          勾选需要购买的商品并设置次数，每购买一次将刷新商品列表。
+        </n-alert>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div v-for="item in manualBuyConfig" :key="item.goodsId"
+               style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px;">
+            <n-checkbox v-model:checked="item._checked"
+                        @update:checked="(checked) => { if (checked) item.count = item.count || 1; else item.count = 0; }" />
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">{{ item.name }}</div>
+              <div style="font-size: 12px; color: #888;">商品ID: {{ item.goodsId }}</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 12px; color: #666;">次数</span>
+              <n-input-number v-model:value="item.count" :min="0" :max="99" size="small"
+                              style="width: 80px;"
+                              @update:value="(val) => { item._checked = val > 0; }" />
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions" style="margin-top: 20px; text-align: right">
+          <n-button @click="showManualBuyModal = false" style="margin-right: 12px">取消</n-button>
+          <n-button type="primary" @click="executeManualBuy" :disabled="isRunning">开始购买</n-button>
         </div>
       </div>
     </n-modal>
@@ -4302,7 +4358,7 @@
           <n-button
             size="small"
             style="margin-left: auto;"
-            @click="batchPurchaseList = purchaseItemOptions.map(i => i.itemId)"
+            @click="batchPurchaseList = purchaseItemOptions.map(i => i.goodsId)"
           >全选</n-button>
           <n-button
             size="small"
@@ -4313,20 +4369,20 @@
         <div class="purchase-list-grid">
           <label
             v-for="item in purchaseItemOptions"
-            :key="item.itemId"
+            :key="item.goodsId"
             class="purchase-item-label"
           >
             <input
               type="checkbox"
-              :checked="batchPurchaseList.includes(item.itemId)"
-              @change="togglePurchaseItem(batchPurchaseList, batchPurchaseDiscounts, item.itemId)"
+              :checked="batchPurchaseList.includes(item.goodsId)"
+              @change="togglePurchaseItem(batchPurchaseList, batchPurchaseDiscounts, item.goodsId)"
             />
             <span>{{ item.name }}</span>
             <input type="number" class="discount-input"
-              :value="getDiscount(batchPurchaseDiscounts, item.itemId)"
-              @input="(e) => setDiscount(batchPurchaseDiscounts, item.itemId, e.target.value)"
+              :value="getDiscount(batchPurchaseDiscounts, item.goodsId)"
+              @input="(e) => setDiscount(batchPurchaseDiscounts, item.goodsId, e.target.value)"
               min="1" max="10"
-              :disabled="!batchPurchaseList.includes(item.itemId)"
+              :disabled="!batchPurchaseList.includes(item.goodsId)"
             />
             <span class="discount-unit">折</span>
           </label>
@@ -4349,6 +4405,124 @@
       :segmented="{ content: true }"
     >
       <ConsumeActivityCard />
+    </n-modal>
+
+    <!-- 批量推图弹窗 -->
+    <n-modal
+      v-model:show="showPushMapModal"
+      preset="card"
+      title="批量推图"
+      class="push-modal"
+      style="width: 95%; max-width: 780px"
+      :segmented="{ content: true }"
+    >
+      <div class="push-layout">
+        <!-- 工具栏 -->
+        <div class="push-toolbar">
+          <div class="push-toolbar-left">
+            <n-select
+              v-model:value="pushSelectedTokens"
+              :options="pushTokenOptions"
+              multiple
+              size="small"
+              placeholder="选择账号"
+              style="flex: 1; min-width: 200px;"
+            />
+            <n-select
+              v-model:value="pushTorchType"
+              :options="[
+                { label: '不使用火把', value: 0 },
+                { label: '🔥 木材(10min)', value: 1008 },
+                { label: '🔥 青铜(20min)', value: 1009 },
+                { label: '🔥 咸神(30min)', value: 1010 },
+              ]"
+              size="small"
+              style="width: 140px;"
+            />
+            <n-input-number
+              v-model:value="pushTorchCount"
+              :min="1"
+              :max="99"
+              size="small"
+              placeholder="数量"
+              style="width: 90px;"
+            />
+            <n-button size="small" type="warning" @click="pushUseTorchManual" :disabled="!pushSelectedTokens.length || !pushTorchType">
+              使用火把
+            </n-button>
+          </div>
+          <div class="push-toolbar-right">
+            <n-button size="small" type="success" @click="pushStartAll" :disabled="!pushSelectedTokens.length">
+              全部开始
+            </n-button>
+            <n-button size="small" type="error" @click="pushStopAll">
+              全部停止
+            </n-button>
+          </div>
+        </div>
+
+        <!-- 战斗卡片区域 - 两列网格 -->
+        <div v-if="pushCards.length" class="push-cards-grid">
+          <div v-for="card in pushCards" :key="card.id" class="push-card" :class="{ 'push-card--running': card.running }">
+            <!-- 卡片头部 -->
+            <div class="push-card-header">
+              <div class="push-card-name">
+                <span class="push-status-dot" :class="card.running ? 'dot-active' : 'dot-idle'"></span>
+                <span class="push-card-title">{{ card.name }}</span>
+              </div>
+              <div class="push-card-stats">
+                <span class="push-stat push-stat-win">{{ card.wins }}胜</span>
+                <span class="push-stat push-stat-loss">{{ card.losses }}负</span>
+              </div>
+            </div>
+            <!-- 卡片内容 -->
+            <div class="push-card-body">
+              <div class="push-card-info">
+                <span class="push-info-level">Lv.{{ card.level }}</span>
+                <span v-if="card.bossNm" class="push-info-boss">{{ card.bossNm }}</span>
+              </div>
+              <div v-if="card.running && card.countdown > 0" class="push-card-timer">
+                <span class="push-timer-label">战斗剩余</span>
+                <span class="push-timer-value">{{ Math.floor(card.countdown / 60) }}:{{ String(Math.floor(card.countdown % 60)).padStart(2, '0') }}</span>
+              </div>
+              <n-progress
+                v-if="card.running && card.totalTime > 0"
+                type="line"
+                :percentage="Math.round((1 - card.countdown / card.totalTime) * 100)"
+                :show-indicator="false"
+                :height="4"
+                :color="card.countdown < 10 ? '#f0a020' : '#2080f0'"
+                rail-color="#eef1f5"
+                style="margin: 6px 0;"
+              />
+            </div>
+            <!-- 卡片操作 -->
+            <div class="push-card-footer">
+              <n-button size="tiny" :type="card.running ? 'error' : 'success'" quaternary @click="pushToggleOne(card.id)">
+                {{ card.running ? '停止' : '开始' }}
+              </n-button>
+            </div>
+          </div>
+        </div>
+        <div v-else class="push-empty">
+          <span>选择账号后点击「全部开始」</span>
+        </div>
+
+        <!-- 日志区域 -->
+        <div class="push-logs-section">
+          <div class="push-logs-header">
+            <span class="push-logs-title">推图日志</span>
+            <n-button text size="tiny" @click="pushLogs = []">清空</n-button>
+          </div>
+          <div class="push-logs-list">
+            <div v-for="(log, i) in pushLogs.slice(0, 100)" :key="i" class="push-log-item" :class="'log-' + log.type">
+              <span class="log-time">{{ log.time }}</span>
+              <span class="log-text">{{ log.text }}</span>
+            </div>
+            <div v-if="!pushLogs.length" class="push-logs-empty">暂无日志</div>
+          </div>
+        </div>
+      </div>
     </n-modal>
   </div>
 </template>
@@ -5897,7 +6071,7 @@ const taskForm = reactive({
 const taskGroupDefinitions = [
   { name: 'daily', label: '日常', tasks: ['startBatch', 'claimHangUpRewards', 'batchAddHangUpTime', 'resetBottles', 'batchlingguanzi', 'batchclubsign', 'batchStudy', 'batcharenafight', 'batchSmartSendCar', 'batchClaimCars', 'batchCarResearchUpgrade', 'store_purchase', 'batch_mail_claim_and_cleanup'] },
   { name: 'welfare', label: '福利', tasks: ['charge_claimaddup_rewards', 'collection_claimfreereward', 'gacha_drawreward', 'claim_recruit_welfare', 'pkroom_appoint'] },
-  { name: 'dungeon', label: '副本', tasks: ['climbTower', 'batchmengjing', 'skinChallenge', 'batchClaimPeachTasks', 'batchBuyDreamItems'] },
+  { name: 'dungeon', label: '副本', tasks: ['climbTower', 'batchmengjing', 'skinChallenge', 'skinTreasure', 'batchClaimPeachTasks', 'batchBuyDreamItems'] },
   { name: 'baoku', label: '宝库', tasks: ['batchbaoku13', 'batchbaoku45'] },
   { name: 'weirdTower', label: '怪异塔', tasks: ['climbWeirdTower', 'batchUseItems', 'batchMergeItems', 'batchClaimFreeEnergy', 'claim_weird_tower_all', 'claim_weird_tower_pass'] },
   { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
@@ -11734,7 +11908,7 @@ const tasksBottle = createTasksBottle(createTaskDeps());
 const { resetBottles, batchlingguanzi } = tasksBottle;
 
 const tasksTower = createTasksTower(createTaskDeps());
-const { climbTower, climbWeirdTower, batchClaimFreeEnergy, skinChallenge, batchUseItems, batchMergeItems } = tasksTower;
+const { climbTower, climbWeirdTower, batchClaimFreeEnergy, skinChallenge, skinTreasure, batchUseItems, batchMergeItems } = tasksTower;
 
 const tasksCar = createTasksCar(createTaskDeps());
 const { batchSmartSendCar, batchClaimCars, batchCarResearchUpgrade } = tasksCar;
@@ -11764,7 +11938,134 @@ const {
   batchActivityExchange,
   batchClaimApexRewards,
   batchCollectionActivate,
+  batchPushMap,
 } = tasksItem;
+
+// 推图状态检测与模态框
+const showPushMapModal = ref(false);
+const isAnyPushRunning = ref(false);
+const pushSelectedTokens = ref([]);
+const pushTorchType = ref(0);
+// 同步火把类型到全局
+watch(pushTorchType, (v) => { window._pushTorchType = v; }, { immediate: true });
+const pushTorchCount = ref(10);
+// 同步火把数量到全局
+watch(pushTorchCount, (v) => { window._pushTorchCount = v; }, { immediate: true });
+
+// 手动使用火把
+const pushUseTorchManual = async () => {
+  if (!pushTorchType.value || !pushSelectedTokens.value.length) return;
+  if (typeof window._bpUseTorch === "function") {
+    for (const id of pushSelectedTokens.value) {
+      await window._bpUseTorch(id);
+    }
+  }
+};
+
+const pushLogs = ref([]);
+const pushCards = ref([]);
+let _pushCheckTimer = null;
+
+// 账号选项（只显示已连接的）
+const pushTokenOptions = computed(() => {
+  const tkList = tokens.value;
+  if (!tkList || !Array.isArray(tkList)) return [];
+  return tkList.map(t => {
+    const st = tokenStore.getWebSocketStatus(t.id);
+    const tag = st === "connected" ? " ✅" : st === "connecting" ? " ⏳" : " ⚪";
+    return { label: (t.name || t.id) + tag, value: t.id };
+  });
+});
+
+// 打开推图模态框时自动选中当前已选Token
+watch(showPushMapModal, (v) => {
+  if (v && !pushSelectedTokens.value.length) {
+    pushSelectedTokens.value = [...selectedTokens.value];
+  }
+});
+
+// 推图日志回调（由tasksItem.js的pushLoop调用）
+window._pushLog = (msg, type) => {
+  pushLogs.value.unshift({
+    time: new Date().toLocaleTimeString(),
+    text: msg,
+    type: type || "info",
+  });
+  if (pushLogs.value.length > 300) pushLogs.value.length = 300;
+};
+
+// 打开模态框回调
+window._openPushModal = () => {
+  showPushMapModal.value = true;
+};
+
+// 刷新卡片状态
+const _refreshPushCards = () => {
+  if (!window._pt) return;
+  const ids = pushSelectedTokens.value || [];
+  const getBoss = window._getBoss || (() => "");
+  pushCards.value = ids.map(id => {
+    const st = window._pt[id] || {};
+    const tk = tokens.value.find(t => t.id === id);
+    return {
+      id, name: tk ? tk.name : id,
+      running: !!st.running, level: st.level || 0,
+      wins: st.wins || 0, losses: st.losses || 0,
+      countdown: st.countdown || 0, totalTime: st.totalTime || 0,
+      bossNm: getBoss(st.level || 0),
+    };
+  });
+};
+
+// 定时刷新状态
+const _startPushCheck = () => {
+  if (_pushCheckTimer) return;
+  _pushCheckTimer = setInterval(() => {
+    if (!window._pt) { isAnyPushRunning.value = false; return; }
+    isAnyPushRunning.value = pushSelectedTokens.value.some(id => window._pt[id] && window._pt[id].running);
+    if (showPushMapModal.value) _refreshPushCards();
+  }, 1500);
+};
+_startPushCheck();
+
+// 全部开始
+const pushStartAll = async () => {
+  const ids = pushSelectedTokens.value;
+  if (!ids || !ids.length) return;
+  if (!window._pt) window._pt = {};
+  if (window._bpLoadBossData) await window._bpLoadBossData();
+
+  // 使用_bpStartOne（内含自动连接逻辑）
+  if (window._bpStartOne) {
+    ids.forEach(id => {
+      if (!window._pt[id] || !window._pt[id].running) {
+        window._bpStartOne(id);
+      }
+    });
+  }
+};
+
+// 全部停止
+const pushStopAll = () => {
+  const ids = pushSelectedTokens.value;
+  if (!ids || !window._pt) return;
+  ids.forEach(id => {
+    if (window._bpStopOne) window._bpStopOne(id);
+    else if (window._pt[id]) window._pt[id].stopFlag = true;
+  });
+};
+
+// 单个切换
+const pushToggleOne = (id) => {
+  if (!window._pt) window._pt = {};
+  if (window._pt[id] && window._pt[id].running) {
+    if (window._bpStopOne) window._bpStopOne(id);
+    else window._pt[id].stopFlag = true;
+  } else {
+    if (window._bpStartOne) window._bpStartOne(id);
+    else if (window._bpPushLoop) window._bpPushLoop(id);
+  }
+};
 
 const tasksDungeon = createTasksDungeon(createTaskDeps());
 const { batchbaoku13, batchbaoku45, batchmengjing, batchBuyDreamItems } = tasksDungeon;
@@ -11773,35 +12074,69 @@ const tasksArena = createTasksArena(createTaskDeps());
 const { batcharenafight, batchTopUpFish, batchTopUpArena } = tasksArena;
 
 const tasksStore = createTasksStore(createTaskDeps());
-const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_bronze, store_buy_platinum, store_buy_gold_rod, store_buy_jade, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, buy_top_rod_package, buy_super_spirit_shell, batch_mail_claim_and_cleanup } = tasksStore;
+const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_bronze, store_buy_platinum, store_buy_gold_rod, store_buy_jade, store_buy_selectable, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, buy_top_rod_package, buy_super_spirit_shell, batch_mail_claim_and_cleanup } = tasksStore;
 
 // ====== 采购清单配置 ======
 // 采购清单可选项（用于任务模板中多选）
+// goodsId: store_buy 使用的商品ID（从 store_goodslist 获取）
+// itemId: 采购清单使用的物品ID（用于 store_setpurchase）
 const purchaseItemOptions = [
   // 宝箱类
-  { itemId: 2002, name: '青铜宝箱' },
-  { itemId: 2003, name: '黄金宝箱' },
-  { itemId: 2004, name: '铂金宝箱' },
-  // 武将包类
-  { itemId: 3007, name: '武将包(红)' },
-  { itemId: 3006, name: '武将包(橙)' },
-  { itemId: 3005, name: '武将包(紫)' },
-  // 鱼竿类
-  { itemId: 1011, name: '普通鱼竿' },
-  { itemId: 1012, name: '黄金鱼竿' },
-  // 玉石类
-  { itemId: 1022, name: '白玉' },
-  { itemId: 1023, name: '彩玉' },
+  { goodsId: 1, name: '青铜宝箱' },
+  { goodsId: 2, name: '黄金宝箱' },
+  { goodsId: 3, name: '铂金宝箱' },
   // 材料类
-  { itemId: 1003, name: '进阶石' },
-  { itemId: 1006, name: '精铁' },
-  { itemId: 1026, name: '扳手' },
-  // 券类
-  { itemId: 1001, name: '招募令' },
-  { itemId: 1007, name: '竞技券' },
+  { goodsId: 4, name: '进阶石' },
+  { goodsId: 5, name: '精铁' },
+  { goodsId: 6, name: '招募令' },
+  // 武将碎片类
+  { goodsId: 7, name: '随机红将碎片' },
+  { goodsId: 8, name: '随机橙将碎片' },
+  { goodsId: 9, name: '随机紫将碎片' },
   // 特殊类
-  { itemId: 1016, name: '梦魇晶石' },
+  { goodsId: 10, name: '梦魇晶石' },
+  // 鱼竿类
+  { goodsId: 11, name: '普通鱼竿' },
+  { goodsId: 12, name: '黄金鱼竿' },
+  // 活动类
+  { goodsId: 13, name: '咸神门票' },
+  // 玉石类
+  { goodsId: 14, name: '白玉' },
+  { goodsId: 15, name: '彩玉' },
+  // 材料类
+  { goodsId: 16, name: '扳手' },
 ];
+
+// 多选购买 Modal State
+const showManualBuyModal = ref(false);
+const manualBuyConfig = ref([]);
+
+const openManualBuyModal = () => {
+  manualBuyConfig.value = purchaseItemOptions.map(item => ({
+    ...item,
+    _checked: false,
+    count: 0,
+  }));
+  showManualBuyModal.value = true;
+};
+
+const executeManualBuy = () => {
+  const selectedItems = manualBuyConfig.value
+    .filter(item => item._checked && item.count > 0)
+    .map(item => ({
+      goodsId: item.goodsId,
+      name: item.name,
+      count: item.count,
+    }));
+  
+  if (selectedItems.length === 0) {
+    message.warning("请至少选择一个商品");
+    return;
+  }
+  
+  showManualBuyModal.value = false;
+  store_buy_selectable(selectedItems);
+};
 
 // 采购清单 checkbox 切换辅助函数
 const togglePurchaseItem = (arr, discounts, itemId) => {
@@ -11820,7 +12155,7 @@ const togglePurchaseItem = (arr, discounts, itemId) => {
 const initPurchaseDiscounts = (discounts) => {
   const result = { ...(discounts || {}) };
   purchaseItemOptions.forEach(item => {
-    if (result[item.itemId] == null) result[item.itemId] = 10;
+    if (result[item.goodsId] == null) result[item.goodsId] = 10;
   });
   return result;
 };
@@ -14723,5 +15058,234 @@ const sortByActivityAfterDailyTask = async () => {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+/* === 批量推图弹窗样式 === */
+.push-modal .n-card-header {
+  padding: 14px 20px 10px !important;
+}
+.push-modal .n-card__content {
+  padding: 12px 20px 16px !important;
+}
+.push-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.push-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.push-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.push-toolbar-right {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* 卡片网格 */
+.push-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.push-cards-grid::-webkit-scrollbar {
+  width: 4px;
+}
+.push-cards-grid::-webkit-scrollbar-thumb {
+  background: #d0d5dd;
+  border-radius: 2px;
+}
+
+/* 单个卡片 */
+.push-card {
+  background: #f8f9fb;
+  border: 1px solid #e8eaed;
+  border-radius: 8px;
+  padding: 10px 12px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.push-card--running {
+  border-color: #b6d7ff;
+  background: #f0f7ff;
+  box-shadow: 0 0 0 1px rgba(32, 128, 240, 0.08);
+}
+.push-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.push-card-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.push-card-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.push-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-active {
+  background: #18a058;
+  box-shadow: 0 0 4px #18a058aa;
+  animation: dot-pulse 2s infinite;
+}
+.dot-idle {
+  background: #c0c4cc;
+}
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.push-card-stats {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.push-stat {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.push-stat-win {
+  color: #18a058;
+  background: #e8f5ee;
+}
+.push-stat-loss {
+  color: #d03050;
+  background: #fde8ec;
+}
+
+.push-card-body {
+  margin-bottom: 6px;
+}
+.push-card-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.push-info-level {
+  font-size: 11.5px;
+  color: #666;
+  background: #eef0f3;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+.push-info-boss {
+  font-size: 11.5px;
+  color: #c0392b;
+  font-weight: 600;
+}
+.push-card-timer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+}
+.push-timer-label {
+  color: #888;
+}
+.push-timer-value {
+  color: #2080f0;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+}
+
+.push-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid #eef0f3;
+  padding-top: 4px;
+}
+
+.push-empty {
+  text-align: center;
+  padding: 28px 0;
+  color: #bbb;
+  font-size: 13px;
+}
+
+/* 日志区域 */
+.push-logs-section {
+  border-top: 1px solid #eef0f3;
+  padding-top: 10px;
+}
+.push-logs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.push-logs-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+.push-logs-list {
+  max-height: 180px;
+  overflow-y: auto;
+  background: #fafbfc;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.push-logs-list::-webkit-scrollbar {
+  width: 4px;
+}
+.push-logs-list::-webkit-scrollbar-thumb {
+  background: #d0d5dd;
+  border-radius: 2px;
+}
+.push-log-item {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.log-time {
+  color: #aab;
+  flex-shrink: 0;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+}
+.log-text {
+  word-break: break-all;
+}
+.log-info .log-text { color: #666; }
+.log-success .log-text { color: #18a058; font-weight: 500; }
+.log-error .log-text { color: #d03050; font-weight: 500; }
+.log-warning .log-text { color: #e6a23c; font-weight: 500; }
+.push-logs-empty {
+  text-align: center;
+  color: #ccc;
+  padding: 20px 0;
+  font-size: 12px;
 }
 </style>
