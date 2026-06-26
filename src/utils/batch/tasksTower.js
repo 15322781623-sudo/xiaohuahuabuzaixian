@@ -26,7 +26,15 @@ export function createTasksTower(deps) {
     currentRunningTokenId,
     currentSettings,
     loadSettings,
+    getModuleDelay,
   } = deps;
+
+  // 模块延迟辅助函数
+  const _getModuleDelay = getModuleDelay || ((moduleName) => {
+    const md = batchSettings.moduleDelays;
+    if (md) return md[moduleName] || md.default || batchSettings.taskDelay || 1000;
+    return batchSettings.taskDelay || 1000;
+  });
 
   // 默认配置
   const DEFAULT_CONFIG = {
@@ -378,7 +386,7 @@ export function createTasksTower(deps) {
               });
             }
 
-            await safeDelay(batchSettings.commandDelay || DEFAULT_CONFIG.commandDelay);
+            await safeDelay(_getModuleDelay('tower'));
 
             // 每5次刷新体力
             if (count % 5 === 0) {
@@ -810,7 +818,7 @@ export function createTasksTower(deps) {
                     const refreshInfo = await callWithRetry(tokenId, "evotower_getinfo", {});
                     currentEnergy = refreshInfo?.evoTower?.energy || 0;
                   } catch (e) {}
-                  await safeDelay(batchSettings.commandDelay || DEFAULT_CONFIG.commandDelay);
+                  await safeDelay(_getModuleDelay('tower'));
                   continue;
                 }
                 
@@ -833,7 +841,7 @@ export function createTasksTower(deps) {
                   try {
                     const refreshInfo = await callWithRetry(tokenId, "evotower_getinfo", {});
                     currentEnergy = refreshInfo?.evoTower?.energy || 0;
-                    await safeDelay(batchSettings.commandDelay || DEFAULT_CONFIG.commandDelay);
+                    await safeDelay(_getModuleDelay('tower'));
                   } catch (e) {}
                   continue;
                 }
@@ -857,7 +865,7 @@ export function createTasksTower(deps) {
                 type: fightResult?.winList?.[0] ? "success" : "warning",
               });
 
-              await safeDelay(batchSettings.commandDelay || DEFAULT_CONFIG.commandDelay);
+              await safeDelay(_getModuleDelay('tower'));
 
               // 获取最新信息
               const newInfo = await callWithRetry(tokenId, "evotower_getinfo", {});
@@ -957,7 +965,7 @@ export function createTasksTower(deps) {
                   currentEnergy = refreshInfo?.evoTower?.energy || 0;
                   consecutiveFailures = 0;  // 重置失败计数
                   // 等待后继续
-                  await safeDelay(batchSettings.commandDelay || DEFAULT_CONFIG.commandDelay);
+                  await safeDelay(_getModuleDelay('tower'));
                   continue;
                 } catch (refreshErr) {
                   addLog({
@@ -1000,7 +1008,7 @@ export function createTasksTower(deps) {
                   await callWithRetry(tokenId, "evotower_claimreward", {}, { retries: 1 });
                   consecutiveFailures = 0;
                   rewardClaimFailCount = 0; // 领取成功，重置计数
-                  await safeDelay(batchSettings.commandDelay || DEFAULT_CONFIG.commandDelay);
+                  await safeDelay(_getModuleDelay('tower'));
                   continue;
                 } catch (claimErr) {
                   addLog({
@@ -1039,7 +1047,7 @@ export function createTasksTower(deps) {
                 break;
               }
               
-              await safeDelay(batchSettings.commandDelay || DEFAULT_CONFIG.commandDelay);
+              await safeDelay(_getModuleDelay('tower'));
               
               try {
                 const info = await callWithRetry(tokenId, "evotower_getinfo", {});
@@ -1136,13 +1144,13 @@ export function createTasksTower(deps) {
 
         const freeEnergyResult = await callWithRetry(tokenId, "mergebox_getinfo", { actType: 1 });
         
-        await safeDelay(batchSettings.commandDelay || DEFAULT_CONFIG.commandDelay);
+        await safeDelay(_getModuleDelay('tower'));
         
         const freeEnergy = freeEnergyResult?.mergeBox?.freeEnergy || 0;
         
         if (freeEnergy > 0) {
           await callWithRetry(tokenId, "mergebox_claimfreeenergy", { actType: 1 });
-          await safeDelay(batchSettings.commandDelay || DEFAULT_CONFIG.commandDelay);
+          await safeDelay(_getModuleDelay('tower'));
           addLog({
             time: new Date().toLocaleTimeString(),
             message: `✅ ${token.name} 成功领取免费道具 ${freeEnergy} 个`,
@@ -1204,7 +1212,7 @@ export function createTasksTower(deps) {
   };
 
   /**
-   * 换皮闯关
+  * 换皮闯关
    */
   const skinChallenge = async () => {
     if (selectedTokens.value.length === 0) return;
@@ -1477,19 +1485,19 @@ export function createTasksTower(deps) {
               }
 
               const fightRes = await callWithRetry(tokenId, "towers_fight", { towerType: type, actId: Number(actId) });
-              const fightTowerData = fightRes?.towerData;
-              const passed = fightTowerData?.pass === true;
+              const battleData = fightRes?.battleData;
+              const curHP = battleData?.result?.accept?.ext?.curHP;
               
               const currentLevel = getCurrentLevel(type, levelRewardMap);
 
-              if (passed) {
+              if (curHP === 0) {
                 addLog({
                   time: new Date().toLocaleTimeString(),
                   message: `${token.name} BOSS ${type} 第 ${currentLevel} 层胜利`,
                   type: "success",
                 });
 
-                needStart = true;
+                needStart = false;
                 failCount = 0;
 
                 // 刷新数据
@@ -1956,7 +1964,7 @@ export function createTasksTower(deps) {
           lotteryLeftCnt--;
           processedCount++;
 
-          await safeDelay(batchSettings.commandDelay || DEFAULT_CONFIG.commandDelay);
+          await safeDelay(_getModuleDelay('tower'));
         }
 
         // 领取累计奖励
@@ -2079,7 +2087,7 @@ export function createTasksTower(deps) {
                 message: `${token.name} 领取合成奖励: ${taskName}`,
                 type: "success",
               });
-              await safeDelay(batchSettings.commandDelay || DEFAULT_CONFIG.commandDelay);
+              await safeDelay(_getModuleDelay('tower'));
             }
           }
 
@@ -2125,7 +2133,7 @@ export function createTasksTower(deps) {
 
           if (isLevel8OrAbove) {
             await callWithRetry(tokenId, "mergebox_automergeitem", { actType: 1 });
-            await safeDelay(batchSettings.actionDelay || DEFAULT_CONFIG.actionDelay);
+            await safeDelay(_getModuleDelay('tower'));
           } else {
             for (const id in groupedItems) {
               if (shouldStop.value) break;
@@ -2146,7 +2154,7 @@ export function createTasksTower(deps) {
             }
           }
           
-          await safeDelay(batchSettings.commandDelay || DEFAULT_CONFIG.commandDelay);
+          await safeDelay(_getModuleDelay('tower'));
         }
 
         tokenStatus.value[tokenId] = "completed";

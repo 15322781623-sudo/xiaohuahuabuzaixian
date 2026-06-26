@@ -681,24 +681,25 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="store_buy_bronze"
-                  :disabled="isRunning || selectedTokens.length === 0"
+                  @click="weekly_market_free_gift"
+                  :disabled="isRunning || selectedTokens.length === 0 || !isWeirdTowerActivityOpen"
+                  :title="!isWeirdTowerActivityOpen ? '仅在黑市周开放期间可用' : ''"
                 >
-                  一键购买青铜宝箱
+                  黑市周免费礼包
                 </n-button>
                 <n-button
                   size="small"
-                  @click="store_buy_platinum"
+                  @click="buy_top_rod_package"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
-                  一键购买铂金宝箱
+                  购买顶级鱼竿包
                 </n-button>
                 <n-button
                   size="small"
-                  @click="store_buy_gold_rod"
+                  @click="buy_super_spirit_shell"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
-                  一键购买金鱼竿
+                  购买特级灵贝包
                 </n-button>
                 <n-button
                   size="small"
@@ -2514,30 +2515,30 @@
       v-model:show="showManualBuyModal"
       preset="card"
       title="黑市商品购买配置"
-      style="width: 90%; max-width: 450px"
+      style="width: 90%; max-width: 600px"
     >
       <div class="settings-content">
-        <n-alert type="info" show-icon style="margin-bottom: 12px">
+        <n-alert type="info" show-icon style="margin-bottom: 14px">
           勾选需要购买的商品并设置次数，每购买一次将刷新商品列表。
         </n-alert>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <div v-for="item in manualBuyConfig" :key="item.goodsId"
-               style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px;">
-            <n-checkbox v-model:checked="item._checked"
-                        @update:checked="(checked) => { if (checked) item.count = item.count || 1; else item.count = 0; }" />
-            <div style="flex: 1;">
-              <div style="font-weight: 500;">{{ item.name }}</div>
-              <div style="font-size: 12px; color: #888;">商品ID: {{ item.goodsId }}</div>
+        <n-grid :cols="2" :x-gap="10" :y-gap="8">
+          <n-grid-item v-for="item in manualBuyConfig" :key="item.goodsId">
+            <div class="manual-buy-item" :class="{ 'is-checked': item._checked }">
+              <n-checkbox v-model:checked="item._checked"
+                          @update:checked="(checked) => { if (checked) item.count = item.count || 1; else item.count = 0; }">
+                <span class="manual-buy-label">{{ item.name }}</span>
+              </n-checkbox>
+              <n-input-number v-if="item._checked"
+                              v-model:value="item.count" :min="1" :max="99" size="tiny"
+                              style="width: 72px;"
+                              @update:value="(val) => { if (val <= 0) item._checked = false; }" />
             </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="font-size: 12px; color: #666;">次数</span>
-              <n-input-number v-model:value="item.count" :min="0" :max="99" size="small"
-                              style="width: 80px;"
-                              @update:value="(val) => { item._checked = val > 0; }" />
-            </div>
-          </div>
+          </n-grid-item>
+        </n-grid>
+        <div style="margin-top: 12px; padding: 8px 12px; background: #f5f5f5; border-radius: 6px; font-size: 13px; color: #666;">
+          已选 {{ manualBuyConfig.filter(i => i._checked && i.count > 0).length }} 个商品
         </div>
-        <div class="modal-actions" style="margin-top: 20px; text-align: right">
+        <div class="modal-actions" style="margin-top: 16px; text-align: right">
           <n-button @click="showManualBuyModal = false" style="margin-right: 12px">取消</n-button>
           <n-button type="primary" @click="executeManualBuy" :disabled="isRunning">开始购买</n-button>
         </div>
@@ -2792,6 +2793,16 @@
                   <span class="info-value">
                     <n-tag size="small" type="blue" :bordered="false">
                       {{ Object.values(task.saltIngotShopItems).filter(i => i && i.selected).length }} 件商品
+                    </n-tag>
+                  </span>
+                </div>
+                
+                <!-- 黑市多选购买配置 -->
+                <div class="task-info-item" v-if="task.selectedTasks && task.selectedTasks.includes('manual_buy') && task.manualBuyItems">
+                  <span class="info-label">黑市多选</span>
+                  <span class="info-value">
+                    <n-tag size="small" type="blue" :bordered="false">
+                      {{ Object.values(task.manualBuyItems).filter(i => i && i.selected).length }} 件商品
                     </n-tag>
                   </span>
                 </div>
@@ -3185,6 +3196,46 @@
               </n-alert>
             </div>
           </div>
+
+          <!-- 黑市多选购买配置 -->
+          <div v-if="taskForm.selectedTasks.includes('manual_buy')" class="task-config-card">
+            <div class="config-card-header">
+              <span class="config-card-title">🛒 黑市多选购买 - 选择商品</span>
+            </div>
+            <div class="config-card-content">
+              <n-grid :cols="2" :x-gap="12" :y-gap="8">
+                <n-grid-item v-for="option in manualBuyItemOptions" :key="option.value">
+                  <div class="store-item">
+                    <n-checkbox 
+                      :checked="taskForm.manualBuyItems && taskForm.manualBuyItems[option.value] && taskForm.manualBuyItems[option.value].selected"
+                      @update:checked="(checked) => {
+                        if (!taskForm.manualBuyItems) taskForm.manualBuyItems = {};
+                        if (!taskForm.manualBuyItems[option.value]) {
+                          taskForm.manualBuyItems[option.value] = { selected: false, count: 0, label: option.label };
+                        }
+                        taskForm.manualBuyItems[option.value].selected = checked;
+                        if (checked && !taskForm.manualBuyItems[option.value].count) taskForm.manualBuyItems[option.value].count = 1;
+                      }"
+                    >
+                      {{ option.label }}
+                    </n-checkbox>
+                    <n-input-number 
+                      v-if="taskForm.manualBuyItems && taskForm.manualBuyItems[option.value] && taskForm.manualBuyItems[option.value].selected"
+                      v-model:value="taskForm.manualBuyItems[option.value].count"
+                      :min="1"
+                      :max="99"
+                      :disabled="!taskForm.manualBuyItems[option.value].selected"
+                      size="small"
+                      style="width: 80px"
+                    />
+                  </div>
+                </n-grid-item>
+              </n-grid>
+              <n-alert v-if="!taskForm.manualBuyItems || Object.values(taskForm.manualBuyItems).filter(i => i && i.selected).length === 0" type="warning" size="small" style="margin-top: 12px;">
+                请至少选择一个商品
+              </n-alert>
+            </div>
+          </div>
           
           <!-- 宝箱达标奖励自选大奖配置 -->
           <div v-if="taskForm.selectedTasks.includes('batchClaimBoxWeeklyRewards')" class="task-config-card">
@@ -3512,6 +3563,9 @@
           <n-grid-item>
             <n-divider title-placement="left" style="margin: 8px 0 12px 0">
               <span style="font-size: 14px; font-weight: 600;">️ 延迟设置(ms)</span>
+              <n-button size="tiny" quaternary type="primary" @click="resetDelaySettings" style="margin-left: 8px;">
+                恢复默认
+              </n-button>
             </n-divider>
             <div class="settings-grid-responsive">
               <div class="setting-item-responsive">
@@ -3537,6 +3591,59 @@
               <div class="setting-item-responsive">
                 <label class="setting-label-responsive">长延迟</label>
                 <n-input-number v-model:value="batchSettings.longDelay" :min="1000" :max="13000" :step="500" size="small" class="input-responsive" />
+              </div>
+            </div>
+
+            <n-divider title-placement="left" style="margin: 16px 0 12px 0">
+              <span style="font-size: 14px; font-weight: 600;">🎯 功能模块延迟(ms)</span>
+              <n-button size="tiny" quaternary type="primary" @click="resetModuleDelays" style="margin-left: 8px;">
+                恢复默认
+              </n-button>
+            </n-divider>
+            <div class="settings-grid-responsive">
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive">日常任务</label>
+                <n-input-number v-model:value="batchSettings.moduleDelays.daily" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+              </div>
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive">竞技场</label>
+                <n-input-number v-model:value="batchSettings.moduleDelays.arena" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+              </div>
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive">爬塔/怪塔</label>
+                <n-input-number v-model:value="batchSettings.moduleDelays.tower" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+              </div>
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive">黑市商店</label>
+                <n-input-number v-model:value="batchSettings.moduleDelays.store" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+              </div>
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive">宝库/梦境</label>
+                <n-input-number v-model:value="batchSettings.moduleDelays.treasure" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+              </div>
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive">消耗活动</label>
+                <n-input-number v-model:value="batchSettings.moduleDelays.activity" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+              </div>
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive">俱乐部</label>
+                <n-input-number v-model:value="batchSettings.moduleDelays.club" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+              </div>
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive">英雄升级</label>
+                <n-input-number v-model:value="batchSettings.moduleDelays.hero" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+              </div>
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive">罐子</label>
+                <n-input-number v-model:value="batchSettings.moduleDelays.bottle" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+              </div>
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive">挂机/签到</label>
+                <n-input-number v-model:value="batchSettings.moduleDelays.hangup" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+              </div>
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive">默认</label>
+                <n-input-number v-model:value="batchSettings.moduleDelays.default" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
               </div>
             </div>
             
@@ -3574,6 +3681,9 @@
             
             <n-divider title-placement="left" style="margin: 16px 0 12px 0">
               <span style="font-size: 14px; font-weight: 600;">⚙️ 高级配置</span>
+              <n-button size="tiny" quaternary type="primary" @click="resetAdvancedSettings" style="margin-left: 8px;">
+                恢复默认
+              </n-button>
             </n-divider>
             <div class="settings-grid-responsive">
               <div class="setting-item-responsive">
@@ -5604,6 +5714,26 @@ const saltCrystalShopItemOptions = [
   { label: "斑点蛋", value: "205", min: 1, max: 5 },
 ];
 
+// 黑市多选购买商品选项
+const manualBuyItemOptions = [
+  { label: "青铜宝箱", value: "1" },
+  { label: "黄金宝箱", value: "2" },
+  { label: "铂金宝箱", value: "3" },
+  { label: "进阶石", value: "4" },
+  { label: "精铁", value: "5" },
+  { label: "招募令", value: "6" },
+  { label: "随机红将碎片", value: "7" },
+  { label: "随机橙将碎片", value: "8" },
+  { label: "随机紫将碎片", value: "9" },
+  { label: "梦魇晶石", value: "10" },
+  { label: "普通鱼竿", value: "11" },
+  { label: "黄金鱼竿", value: "12" },
+  { label: "咸神门票", value: "13" },
+  { label: "白玉", value: "14" },
+  { label: "彩玉", value: "15" },
+  { label: "扳手", value: "16" },
+];
+
 // 盐锭商店商品选项
 const saltIngotShopItemOptions = [
   { label: "皮肤币", value: "1", min: 1, max: 5 },
@@ -5763,14 +5893,30 @@ const batchSettings = reactive({
   autoColumns: true,    // 默认启用自动列数
   useGoldRefreshFallback: false,
   // 延迟配置（毫秒）
-  commandDelay: 1500,       // 命令间延迟
-  taskDelay: 1500,          // 任务间延迟
-  actionDelay: 1500,        // 一般操作延迟（开箱、钓鱼、招募等）
+  commandDelay: 1000,       // 命令间延迟
+  taskDelay: 1000,          // 任务间延迟
+  actionDelay: 1000,        // 一般操作延迟（开箱、钓鱼、招募等）
   battleDelay: 1500,        // 战斗延迟（宝库、竞技场等）
-  refreshDelay: 2000,       // 刷新延迟（发车刷新等）
-  longDelay: 7000,          // 长延迟（功法赠送等）
+  refreshDelay: 1500,       // 刷新延迟（发车刷新等）
+  longDelay: 5000,          // 长延迟（功法赠送等）
   taskIntervalWait: 0,      // 定时任务中每完成一个任务后的等待时间(秒)，0为不等待
   batchIntervalWait: 5,     // 定时任务中每完成一批账号后的等待时间(秒)，默认5秒，0为不等待
+  // 功能模块延迟配置(ms)
+  moduleDelays: {
+    daily: 800,         // 日常任务
+    arena: 1000,        // 竞技场
+    tower: 1500,        // 爬塔/怪异塔
+    store: 500,         // 黑市/商店购买
+    treasure: 1500,     // 宝库/梦境
+    activity: 2000,     // 消耗活动
+    club: 1500,         // 俱乐部
+    hero: 1000,         // 英雄/鱼灵/宠物升级
+    bottle: 500,        // 罐子（重置/领取）
+    hangup: 500,        // 挂机/签到/答题
+    default: 800,       // 默认
+  },
+  // 黑市多选购买配置
+  manualBuyItems: [],
   // 其他配置
   maxActive: 5,
   carMinColor: 4,
@@ -5791,10 +5937,10 @@ const batchSettings = reactive({
   logPageSize: 100,       // 日志虚拟滚动每页数量
   // 高级配置
   defaultCommandTimeout: 5000,      // 默认命令超时时间(ms)
-  battleCommandTimeout: 15000,      // 战斗命令超时时间(ms)
+  battleCommandTimeout: 12000,      // 战斗命令超时时间(ms)
   defaultRetryCount: 2,             // 默认重试次数
-  retryDelay: 60000,                 // 重试延迟(ms) - 默认1分钟
-  accountRetryInterval: 3000,       // 账号间重试间隔(ms)
+  retryDelay: 10000,                 // 重试延迟(ms)
+  accountRetryInterval: 5000,       // 账号间重试间隔(ms)
   // 挂机时间控制配置
   hangUpMinTime: 9,                 // 最小挂机时间（小时），默认9小时
   hangUpTimeControlEnabled: false,  // 是否启用挂机时间控制，默认关闭
@@ -5829,6 +5975,11 @@ const loadBatchSettings = () => {
     const saved = localStorage.getItem("batchSettings");
     if (saved) {
       const parsed = JSON.parse(saved);
+      // 深度合并 moduleDelays，保留新增模块的默认值
+      if (parsed.moduleDelays && batchSettings.moduleDelays) {
+        Object.assign(batchSettings.moduleDelays, parsed.moduleDelays);
+        delete parsed.moduleDelays;
+      }
       Object.assign(batchSettings, parsed);
       
       // 如果开启了自动模式，立即重新计算列数
@@ -5886,6 +6037,33 @@ const saveBatchSettings = () => {
     console.error("Failed to save batch settings:", error);
     message.error("保存设置失败");
   }
+};
+
+// 恢复模块延迟默认值
+const resetModuleDelays = () => {
+  const defaults = defaultBatchSettings.moduleDelays;
+  Object.keys(defaults).forEach(key => {
+    batchSettings.moduleDelays[key] = defaults[key];
+  });
+  message.success("模块延迟已恢复默认值");
+};
+
+// 恢复延迟设置默认值
+const resetDelaySettings = () => {
+  const keys = ['commandDelay', 'taskDelay', 'actionDelay', 'battleDelay', 'refreshDelay', 'longDelay'];
+  keys.forEach(key => {
+    batchSettings[key] = defaultBatchSettings[key];
+  });
+  message.success("延迟设置已恢复默认值");
+};
+
+// 恢复高级配置默认值
+const resetAdvancedSettings = () => {
+  const keys = ['defaultCommandTimeout', 'battleCommandTimeout', 'defaultRetryCount', 'retryDelay', 'accountRetryInterval'];
+  keys.forEach(key => {
+    batchSettings[key] = defaultBatchSettings[key];
+  });
+  message.success("高级配置已恢复默认值");
 };
 
 // Open batch settings modal
@@ -6040,6 +6218,24 @@ const taskForm = reactive({
     5: { selected: false, count: 0, label: "白玉", min: 1, max: 1 },
     6: { selected: false, count: 1, label: "四圣宝珠碎片", min: 1, max: 1 },
   },
+  manualBuyItems: { // 黑市多选购买商品配置
+    1: { selected: false, count: 0, label: "青铜宝箱" },
+    2: { selected: false, count: 0, label: "黄金宝箱" },
+    3: { selected: false, count: 0, label: "铂金宝箱" },
+    4: { selected: false, count: 0, label: "进阶石" },
+    5: { selected: false, count: 0, label: "精铁" },
+    6: { selected: false, count: 0, label: "招募令" },
+    7: { selected: false, count: 0, label: "随机红将碎片" },
+    8: { selected: false, count: 0, label: "随机橙将碎片" },
+    9: { selected: false, count: 0, label: "随机紫将碎片" },
+    10: { selected: false, count: 0, label: "梦魇晶石" },
+    11: { selected: false, count: 0, label: "普通鱼竿" },
+    12: { selected: false, count: 0, label: "黄金鱼竿" },
+    13: { selected: false, count: 0, label: "咸神门票" },
+    14: { selected: false, count: 0, label: "白玉" },
+    15: { selected: false, count: 0, label: "彩玉" },
+    16: { selected: false, count: 0, label: "扳手" },
+  },
   weeklyMarketItems: { // 黑市周商品配置
     0: { selected: false, label: "免费金砖" },
     1: { selected: false, label: "黑市见面礼" },
@@ -6077,7 +6273,7 @@ const taskGroupDefinitions = [
   { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
   { name: 'pet', label: '宠物', tasks: ['legion_buy_spotted_egg', 'use_spotted_egg', 'claim_pet_book', 'batch_pet_merge', 'batch_pet_upgrade'] },
   { name: 'nightmare', label: '十殿', tasks: ['batchNightmareChallengePresets', 'nightmare_draw_lottery', 'nightmare_claim_book_reward', 'star_drawturntable', 'batch_star_challenge'] },
-  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'store_buy_bronze', 'store_buy_platinum', 'store_buy_gold_rod', 'store_buy_jade', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchConsumeActivity', 'batchClaimConsumeRewards', 'batchAutumnUseItem', 'batchUseActivityItem', 'batchActivityExchange', 'batchClaimCdkReward', 'batchClaimApexRewards'] },
+  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'buy_top_rod_package', 'buy_super_spirit_shell', 'store_buy_jade', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchConsumeActivity', 'batchClaimConsumeRewards', 'batchAutumnUseItem', 'batchUseActivityItem', 'batchActivityExchange', 'batchClaimCdkReward', 'batchClaimApexRewards'] },
   { name: 'legacy', label: '功法', tasks: ['batchLegacyHangup', 'batchLegacyClaim', 'batchLegacyGiftSendEnhanced', 'batchLegacyClaimGiftTask'] },
   { name: 'monthly', label: '月度', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items'] }
 ];
@@ -6380,6 +6576,26 @@ const openTaskModal = () => {
     6: { selected: false, count: 1, label: "四圣宝珠碎片", min: 1, max: 1 },
   };
 
+  // 黑市多选购买商品配置
+  taskForm.manualBuyItems = {
+    1: { selected: false, count: 0, label: "青铜宝箱" },
+    2: { selected: false, count: 0, label: "黄金宝箱" },
+    3: { selected: false, count: 0, label: "铂金宝箱" },
+    4: { selected: false, count: 0, label: "进阶石" },
+    5: { selected: false, count: 0, label: "精铁" },
+    6: { selected: false, count: 0, label: "招募令" },
+    7: { selected: false, count: 0, label: "随机红将碎片" },
+    8: { selected: false, count: 0, label: "随机橙将碎片" },
+    9: { selected: false, count: 0, label: "随机紫将碎片" },
+    10: { selected: false, count: 0, label: "梦魇晶石" },
+    11: { selected: false, count: 0, label: "普通鱼竿" },
+    12: { selected: false, count: 0, label: "黄金鱼竿" },
+    13: { selected: false, count: 0, label: "咸神门票" },
+    14: { selected: false, count: 0, label: "白玉" },
+    15: { selected: false, count: 0, label: "彩玉" },
+    16: { selected: false, count: 0, label: "扳手" },
+  };
+
   // 十殿预设配置
   taskForm.nightmarePresetIds = [];
   taskForm.nightmarePresetDelay = 10;
@@ -6438,6 +6654,26 @@ const editTask = (task) => {
     6: { selected: false, count: 1, label: "四圣宝珠碎片", min: 1, max: 1 },
   };
   
+  // 默认黑市多选购买配置
+  const defaultManualBuyItems = {
+    1: { selected: false, count: 0, label: "青铜宝箱" },
+    2: { selected: false, count: 0, label: "黄金宝箱" },
+    3: { selected: false, count: 0, label: "铂金宝箱" },
+    4: { selected: false, count: 0, label: "进阶石" },
+    5: { selected: false, count: 0, label: "精铁" },
+    6: { selected: false, count: 0, label: "招募令" },
+    7: { selected: false, count: 0, label: "随机红将碎片" },
+    8: { selected: false, count: 0, label: "随机橙将碎片" },
+    9: { selected: false, count: 0, label: "随机紫将碎片" },
+    10: { selected: false, count: 0, label: "梦魇晶石" },
+    11: { selected: false, count: 0, label: "普通鱼竿" },
+    12: { selected: false, count: 0, label: "黄金鱼竿" },
+    13: { selected: false, count: 0, label: "咸神门票" },
+    14: { selected: false, count: 0, label: "白玉" },
+    15: { selected: false, count: 0, label: "彩玉" },
+    16: { selected: false, count: 0, label: "扳手" },
+  };
+  
   // 合并助威商店配置，补充缺失的label
   const mergedLegionStoreItems = { ...defaultLegionStoreItems };
   if (task.legionStoreItems) {
@@ -6491,12 +6727,26 @@ const editTask = (task) => {
     });
   }
   
+  // 合并黑市多选购买配置，补充缺失的label
+  const mergedManualBuyItems = { ...defaultManualBuyItems };
+  if (task.manualBuyItems) {
+    Object.keys(task.manualBuyItems).forEach(key => {
+      if (mergedManualBuyItems[key]) {
+        mergedManualBuyItems[key] = {
+          ...mergedManualBuyItems[key],
+          ...task.manualBuyItems[key],
+        };
+      }
+    });
+  }
+  
   const taskData = { 
     ...task,
     legionStoreItems: mergedLegionStoreItems,
     weeklyMarketItems: mergedWeeklyMarketItems,
     saltCrystalShopItems: mergedSaltCrystalShopItems,
     saltIngotShopItems: mergedSaltIngotShopItems,
+    manualBuyItems: mergedManualBuyItems,
     boxWeeklyRewards: task.boxWeeklyRewards || {5: 1},
     smartDeparture: task.smartDeparture || {
       enabled: false,
@@ -6646,6 +6896,15 @@ const saveTask = () => {
     }
   }
   
+  // 验证黑市多选购买是否选择了商品
+  if (taskForm.selectedTasks.includes('manual_buy')) {
+    const hasSelectedItem = taskForm.manualBuyItems && Object.values(taskForm.manualBuyItems).some(item => item.selected);
+    if (!hasSelectedItem) {
+      message.warning("黑市多选购买需要至少选择一个商品");
+      return;
+    }
+  }
+  
   // 验证黑市周购买是否选择了商品
   if (taskForm.selectedTasks.includes('weekly_market_buy')) {
     const hasSelectedItem = Object.values(taskForm.weeklyMarketItems).some(item => item.selected);
@@ -6697,6 +6956,7 @@ const saveTask = () => {
     weeklyMarketItems: JSON.parse(JSON.stringify(taskForm.weeklyMarketItems)),
     saltCrystalShopItems: JSON.parse(JSON.stringify(taskForm.saltCrystalShopItems)),
     saltIngotShopItems: JSON.parse(JSON.stringify(taskForm.saltIngotShopItems)),
+    manualBuyItems: JSON.parse(JSON.stringify(taskForm.manualBuyItems)),
     boxWeeklyRewards: {...taskForm.boxWeeklyRewards},
     smartDeparture: JSON.parse(JSON.stringify(taskForm.smartDeparture)),
     nightmarePresetIds: [...(taskForm.nightmarePresetIds || [])],
@@ -6955,6 +7215,9 @@ const importScheduledTasksConfig = async ({ file }) => {
     }
 
     if (importData.batchSettings && typeof importData.batchSettings === 'object') {
+      if (importData.batchSettings.moduleDelays && batchSettings.moduleDelays) {
+        Object.assign(batchSettings.moduleDelays, importData.batchSettings.moduleDelays);
+      }
       Object.assign(batchSettings, importData.batchSettings);
       try { localStorage.setItem("batchSettings", JSON.stringify(batchSettings)); } catch (e) { /* ignore */ }
     }
@@ -7748,6 +8011,9 @@ const importConfig = async ({ file }) => {
 
     // 导入批量设置
     if (importData.batchSettings && typeof importData.batchSettings === 'object') {
+      if (importData.batchSettings.moduleDelays && batchSettings.moduleDelays) {
+        Object.assign(batchSettings.moduleDelays, importData.batchSettings.moduleDelays);
+      }
       Object.assign(batchSettings, importData.batchSettings);
       try { localStorage.setItem("batchSettings", JSON.stringify(batchSettings)); } catch (e) { /* ignore */ }
     }
@@ -9372,6 +9638,30 @@ const executeScheduledTask = async (task) => {
                 addLog({
                   time: new Date().toLocaleTimeString(),
                   message: `⚠️ 盐锭商店未配置商品，跳过`,
+                  type: "warning",
+                });
+              }
+            } else if (taskName === 'manual_buy') {
+              // 黑市多选购买，根据任务配置更新配置后执行
+              const buyConfig = task.manualBuyItems || {};
+              const selectedItems = [];
+              Object.keys(buyConfig).forEach(key => {
+                if (buyConfig[key] && buyConfig[key].selected && buyConfig[key].count > 0) {
+                  selectedItems.push({
+                    goodsId: parseInt(key),
+                    name: buyConfig[key].label || '',
+                    count: buyConfig[key].count,
+                  });
+                }
+              });
+              if (selectedItems.length > 0) {
+                // 更新 batchSettings.manualBuyItems 供 manual_buy 函数读取
+                batchSettings.manualBuyItems = selectedItems;
+                await taskFunction();
+              } else {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `⚠️ 黑市多选购买未配置商品，跳过`,
                   type: "warning",
                 });
               }
@@ -11874,6 +12164,14 @@ const createTaskDeps = () => ({
     refresh: batchSettings.refreshDelay,
     long: batchSettings.longDelay,
   },
+  // 功能模块延迟配置
+  moduleDelays: batchSettings.moduleDelays,
+  // 获取模块延迟的辅助函数
+  getModuleDelay: (moduleName) => {
+    const md = batchSettings.moduleDelays;
+    if (md) return md[moduleName] || md.default || batchSettings.taskDelay || 1000;
+    return batchSettings.taskDelay || 1000;
+  },
   // 其他特定依赖
   logs,
   logContainer,
@@ -11944,7 +12242,13 @@ const {
 // 推图状态检测与模态框
 const showPushMapModal = ref(false);
 const isAnyPushRunning = ref(false);
-const pushSelectedTokens = ref([]);
+// 持久化推图选中账号（切换页面后恢复）
+const _savedPushTokens = localStorage.getItem('pushSelectedTokens');
+const pushSelectedTokens = ref(_savedPushTokens ? JSON.parse(_savedPushTokens) : []);
+// 监听变化自动持久化
+watch(pushSelectedTokens, (v) => {
+  localStorage.setItem('pushSelectedTokens', JSON.stringify(v));
+}, { deep: true });
 const pushTorchType = ref(0);
 // 同步火把类型到全局
 watch(pushTorchType, (v) => { window._pushTorchType = v; }, { immediate: true });
@@ -11977,10 +12281,22 @@ const pushTokenOptions = computed(() => {
   });
 });
 
-// 打开推图模态框时自动选中当前已选Token
+// 打开推图模态框时自动恢复状态
 watch(showPushMapModal, (v) => {
-  if (v && !pushSelectedTokens.value.length) {
-    pushSelectedTokens.value = [...selectedTokens.value];
+  if (v) {
+    // 恢复正在运行的推图状态
+    if (window._pt) {
+      const runningIds = Object.keys(window._pt).filter(id => window._pt[id] && window._pt[id].running);
+      if (runningIds.length > 0) {
+        // 合并已运行的Token到选中列表
+        const merged = new Set([...pushSelectedTokens.value, ...runningIds]);
+        pushSelectedTokens.value = [...merged];
+      }
+    }
+    // 如果没有选中且全局有选中Token，使用全局的
+    if (!pushSelectedTokens.value.length && selectedTokens.value?.length) {
+      pushSelectedTokens.value = [...selectedTokens.value];
+    }
   }
 });
 
@@ -12028,20 +12344,24 @@ const _startPushCheck = () => {
 };
 _startPushCheck();
 
-// 全部开始
+// 全部开始（错开启动避免限流：每个账号间隔3秒 + 随机延迟）
 const pushStartAll = async () => {
   const ids = pushSelectedTokens.value;
   if (!ids || !ids.length) return;
   if (!window._pt) window._pt = {};
   if (window._bpLoadBossData) await window._bpLoadBossData();
 
-  // 使用_bpStartOne（内含自动连接逻辑）
+  // 使用_bpStartOne（内含自动连接逻辑），错开启动避免瞬时并发
   if (window._bpStartOne) {
-    ids.forEach(id => {
-      if (!window._pt[id] || !window._pt[id].running) {
+    for (let idx = 0; idx < ids.length; idx++) {
+      const id = ids[idx];
+      if (!window._pt || !window._pt[id] || !window._pt[id].running) {
         window._bpStartOne(id);
+        // 基础间隔3秒 + 随机延迟0~2秒，错开每个账号的执行
+        const staggerDelay = 3000 + Math.floor(Math.random() * 2000);
+        await new Promise(r => setTimeout(r, staggerDelay));
       }
-    });
+    }
   }
 };
 
@@ -12074,7 +12394,7 @@ const tasksArena = createTasksArena(createTaskDeps());
 const { batcharenafight, batchTopUpFish, batchTopUpArena } = tasksArena;
 
 const tasksStore = createTasksStore(createTaskDeps());
-const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_bronze, store_buy_platinum, store_buy_gold_rod, store_buy_jade, store_buy_selectable, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, buy_top_rod_package, buy_super_spirit_shell, batch_mail_claim_and_cleanup } = tasksStore;
+const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_bronze, store_buy_platinum, store_buy_gold_rod, store_buy_jade, store_buy_selectable, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, buy_top_rod_package, buy_super_spirit_shell, batch_mail_claim_and_cleanup } = tasksStore;
 
 // ====== 采购清单配置 ======
 // 采购清单可选项（用于任务模板中多选）
@@ -12112,11 +12432,16 @@ const showManualBuyModal = ref(false);
 const manualBuyConfig = ref([]);
 
 const openManualBuyModal = () => {
-  manualBuyConfig.value = purchaseItemOptions.map(item => ({
-    ...item,
-    _checked: false,
-    count: 0,
-  }));
+  // 从已保存的配置恢复勾选状态
+  const savedItems = batchSettings.manualBuyItems || [];
+  manualBuyConfig.value = purchaseItemOptions.map(item => {
+    const saved = savedItems.find(s => s.goodsId === item.goodsId);
+    return {
+      ...item,
+      _checked: !!saved && saved.count > 0,
+      count: saved ? saved.count : 0,
+    };
+  });
   showManualBuyModal.value = true;
 };
 
@@ -12133,6 +12458,10 @@ const executeManualBuy = () => {
     message.warning("请至少选择一个商品");
     return;
   }
+  
+  // 保存配置到 batchSettings，供定时任务使用
+  batchSettings.manualBuyItems = selectedItems;
+  saveBatchSettings();
   
   showManualBuyModal.value = false;
   store_buy_selectable(selectedItems);
@@ -14131,6 +14460,34 @@ const sortByActivityAfterDailyTask = async () => {
 .store-item:hover {
   background: #f0f2f5;
   border-color: #d0d3d8;
+}
+
+/* 黑市多选购买项 */
+.manual-buy-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f7f8fa;
+  border-radius: 6px;
+  border: 1px solid #e8eaed;
+  transition: all 0.2s ease;
+  min-height: 38px;
+}
+
+.manual-buy-item:hover {
+  background: #f0f2f5;
+  border-color: #d0d3d8;
+}
+
+.manual-buy-item.is-checked {
+  background: #e8f4fd;
+  border-color: #91caff;
+}
+
+.manual-buy-label {
+  font-size: 13px;
+  font-weight: 500;
 }
 
 /* 奖励项 */

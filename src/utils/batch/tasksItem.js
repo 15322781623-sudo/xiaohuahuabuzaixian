@@ -2,6 +2,7 @@ import { HERO_DICT, FishMap } from "@/utils/HeroList";
 import { PEACH_TASKS } from "@/utils/PeachTaskIds";
 import ConsumeActivityManager from "@/utils/consumeActivityManager";
 import { SKIN_DICT } from "@/utils/skinMap";
+import { createPushMapRunner } from "@/utils/batch/pushMapRunner";
 
 /**
  * 开箱、钓鱼、招募类任务
@@ -31,7 +32,16 @@ export function createTasksItem(deps) {
     currentRunningTokenId,
     helperSettings,
     delayConfig,
+    moduleDelays,
   } = deps;
+
+  // 获取模块延迟的辅助函数
+  const _getModuleDelay = (moduleName) => {
+    if (moduleDelays) {
+      return moduleDelays[moduleName] || moduleDelays.default || 1000;
+    }
+    return delayConfig?.task || 1000;
+  };
 
   const boxNames = {
     2001: "木质宝箱",
@@ -203,7 +213,7 @@ export function createTasksItem(deps) {
             } catch (err) {
               break;
             }
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
           }
           if (heroStars > 0) {
             heroUpgradeCount++;
@@ -247,7 +257,7 @@ export function createTasksItem(deps) {
               } catch (err) {
                 break;
               }
-              await new Promise((r) => setTimeout(r, delayConfig.action));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('hero')));
             }
             if (heroStars > 0) {
               heroUpgradeCount++;
@@ -390,7 +400,7 @@ export function createTasksItem(deps) {
             } catch (err) {
               break;
             }
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
           }
           if (heroStars > 0) {
             heroSuccessCount++;
@@ -406,7 +416,7 @@ export function createTasksItem(deps) {
 
         // 第二轮：重试第一轮失败的英雄
         if (firstPassFailed.length > 0 && !shouldStop.value) {
-          await new Promise((r) => setTimeout(r, delayConfig.command));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('hero')));
           addLog({
             time: new Date().toLocaleTimeString(),
             message: `${token.name} 第二轮重试 ${firstPassFailed.length} 个未成功英雄`,
@@ -432,7 +442,7 @@ export function createTasksItem(deps) {
               } catch (err) {
                 break;
               }
-              await new Promise((r) => setTimeout(r, delayConfig.action));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('hero')));
             }
             if (heroStars > 0) {
               retrySuccessCount++;
@@ -519,7 +529,7 @@ export function createTasksItem(deps) {
             } catch (err) {
               if (isUnowned && star === 1) break;
             }
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
           }
           if (fishStars > 0) {
             fishSuccessCount++;
@@ -559,7 +569,7 @@ export function createTasksItem(deps) {
           } catch (err) {
             skinSkipCount++;
           }
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
         }
 
         // 皮肤激活完成后循环领取图鉴积分
@@ -571,7 +581,7 @@ export function createTasksItem(deps) {
           } catch (err) {
             break;
           }
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
         }
         if (claimTotalCount > 0) {
           addLog({
@@ -728,7 +738,7 @@ export function createTasksItem(deps) {
               if (star === 1) break;
               // 已拥有但中间失败，继续尝试下一星
             }
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
           }
           if (fishStars > 0) {
             fishSuccessCount++;
@@ -859,7 +869,7 @@ export function createTasksItem(deps) {
             // 失败则停止尝试
             break;
           }
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
         }
 
         tokenStatus.value[tokenId] = "completed";
@@ -1084,7 +1094,7 @@ export function createTasksItem(deps) {
 
             // 每次领取后延迟
             if (i < claimCount - 1 && !shouldStop.value) {
-              await new Promise(resolve => setTimeout(resolve, delayConfig.commandDelay || 500));
+              await new Promise(resolve => setTimeout(resolve, _getModuleDelay('daily')));
             }
           }
         }
@@ -1217,7 +1227,7 @@ export function createTasksItem(deps) {
             } catch (err) {
               // ignore
             }
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
           }
 
           // Check and claim point rewards (Moved out of loop to ensure execution)
@@ -1251,7 +1261,7 @@ export function createTasksItem(deps) {
                     message: `${token.name} 领取俱乐部任务奖励 (当前积分: ${legionPoint})`,
                     type: "success",
                   });
-                  await new Promise((r) => setTimeout(r, delayConfig.action || batchSettings.actionDelay || 1500));
+                  await new Promise((r) => setTimeout(r, _getModuleDelay('daily')));
                 } catch (e) {
                   addLog({
                     time: new Date().toLocaleTimeString(),
@@ -1275,7 +1285,7 @@ export function createTasksItem(deps) {
                     message: `${token.name} 领取个人任务奖励 (当前积分: ${selfPoint})`,
                     type: "success",
                   });
-                  await new Promise((r) => setTimeout(r, delayConfig.action || batchSettings.actionDelay || 1500));
+                  await new Promise((r) => setTimeout(r, _getModuleDelay('daily')));
                 } catch (e) {
                   addLog({
                     time: new Date().toLocaleTimeString(),
@@ -1493,7 +1503,7 @@ export function createTasksItem(deps) {
           }
 
           if (remainingTickets > 0) {
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('tower')));
           }
         }
 
@@ -1646,7 +1656,7 @@ export function createTasksItem(deps) {
                   }
 
                   // 添加延迟避免操作太快
-                  await new Promise((r) => setTimeout(r, delayConfig.action || batchSettings.actionDelay || 1500));
+                  await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
                 } catch (error) {
                   addLog({
                     time: new Date().toLocaleTimeString(),
@@ -1770,7 +1780,7 @@ export function createTasksItem(deps) {
             message: `${token.name} 开箱进度: ${(i + 1) * 10}/${totalCount}`,
             type: "info",
           });
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
         }
 
         if (remainder > 0 && !shouldStop.value) {
@@ -1790,7 +1800,7 @@ export function createTasksItem(deps) {
           tokenId,
           "item_batchclaimboxpointreward",
         );
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
         await tokenStore.sendMessage(tokenId, "role_getroleinfo");
         tokenStatus.value[tokenId] = "completed";
         addLog({
@@ -1928,7 +1938,7 @@ export function createTasksItem(deps) {
             break;
           }
 
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
         }
 
         // 领取宝箱积分奖励
@@ -2123,7 +2133,7 @@ export function createTasksItem(deps) {
             }
           }
 
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
         }
 
         if (remainder > 0 && !shouldStop.value) {
@@ -2168,7 +2178,7 @@ export function createTasksItem(deps) {
                     3000,
                   );
                   // 稍微延迟，避免请求过快
-                  await new Promise((r) => setTimeout(r, delayConfig.commandDelay || batchSettings.commandDelay || 1500));
+                  await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
                 } catch (err) {
                   addLog({
                     time: new Date().toLocaleTimeString(),
@@ -2273,7 +2283,7 @@ export function createTasksItem(deps) {
                 { type: fishType, lotteryNumber: 10, newFree: true },
                 5000,
               );
-              await new Promise((r) => setTimeout(r, delayConfig.action));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
             }
 
             if (remainder > 0 && !shouldStop.value) {
@@ -2403,7 +2413,7 @@ export function createTasksItem(deps) {
             message: `${token.name} 招募进度: ${(i + 1) * 10}/${totalCount}`,
             type: "info",
           });
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
         }
 
         if (remainder > 0 && !shouldStop.value) {
@@ -2697,7 +2707,7 @@ export function createTasksItem(deps) {
                 message: `${token.name} ${box.name} 开箱进度: ${(i + 1) * 10}/${count}`,
                 type: "info",
               });
-              await new Promise((r) => setTimeout(r, delayConfig.action));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
             }
           }
 
@@ -2808,7 +2818,7 @@ export function createTasksItem(deps) {
                     message: `${token.name} 补足 ${box.name}: ${(i + 1) * 10 > count ? count : (i + 1) * 10}/${count}`,
                     type: "info",
                   });
-                  await new Promise((r) => setTimeout(r, delayConfig.action));
+                  await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
                 }
               }
 
@@ -3039,7 +3049,7 @@ export function createTasksItem(deps) {
               // 2. 不管红玉是否成功，都要执行蓝玉升级循环
               if (!shouldStop.value) {
                 // 延迟
-                await new Promise((r) => setTimeout(r, delayConfig.command));
+                await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
 
                 let quenchCount = 0;
                 let quenchStopped = false;
@@ -3070,7 +3080,7 @@ export function createTasksItem(deps) {
                         type: "success",
                       });
                       // 延迟后继续
-                      await new Promise((r) => setTimeout(r, delayConfig.command));
+                      await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
                     }
                   } catch (error) {
                     // 错误码200020表示已达上限，400000表示物品不存在（缺少蓝玉）
@@ -3104,7 +3114,7 @@ export function createTasksItem(deps) {
               // 3. 如果第一次红玉成功，进入循环：红玉1次 → 成功则蓝玉循环 → 失败则停止
               if (firstUpgradeSuccess && !shouldStop.value) {
                 // 延迟后进入循环
-                await new Promise((r) => setTimeout(r, delayConfig.command));
+                await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
 
                 let shouldContinue = true;
                 let redJadeCount = 0;
@@ -3164,7 +3174,7 @@ export function createTasksItem(deps) {
                   // 如果红玉成功，执行蓝玉升级循环
                   if (currentUpgradeSuccess && !shouldStop.value) {
                     // 延迟
-                    await new Promise((r) => setTimeout(r, delayConfig.command));
+                    await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
 
                     let quenchCount = 0;
                     let quenchStopped = false;
@@ -3195,7 +3205,7 @@ export function createTasksItem(deps) {
                             type: "success",
                           });
                           // 延迟后继续
-                          await new Promise((r) => setTimeout(r, delayConfig.command));
+                          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
                         }
                       } catch (error) {
                         // 错误码200020表示已达上限，400000表示物品不存在（缺少蓝玉）
@@ -3226,7 +3236,7 @@ export function createTasksItem(deps) {
                     }
 
                     // 延迟后继续下一轮红玉升级
-                    await new Promise((r) => setTimeout(r, delayConfig.command));
+                    await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
                   }
                 }
               }
@@ -3238,7 +3248,7 @@ export function createTasksItem(deps) {
               });
 
               // 英雄间延迟
-              await new Promise((r) => setTimeout(r, delayConfig.command));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
             } catch (error) {
               addLog({
                 time: new Date().toLocaleTimeString(),
@@ -3297,7 +3307,7 @@ export function createTasksItem(deps) {
 
   // ====== 消耗活动共享辅助函数 ======
   const _consumeActivityBatchCmd = async (tokenId, cmd, getParams, totalQty, label) => {
-    const DELAY = delayConfig.command;
+    const DELAY = _getModuleDelay('default');
     const batchSize = 10;
     const batches = Math.floor(totalQty / batchSize);
     const remainder = totalQty % batchSize;
@@ -3396,7 +3406,7 @@ export function createTasksItem(deps) {
     shouldStop.value = false;
 
     const manager = new ConsumeActivityManager();
-    const DELAY = delayConfig.command;
+    const DELAY = _getModuleDelay('default');
 
     // 宝箱优先级
     const chestPriority = [
@@ -3520,7 +3530,7 @@ export function createTasksItem(deps) {
             roundPoints += chest.qty * chest.points;
             totalOpened += chest.qty;
             totalPoints += chest.qty * chest.points;
-            await new Promise(r => setTimeout(r, delayConfig.action));
+            await new Promise(r => setTimeout(r, _getModuleDelay('default')));
           } catch (e) {
             if (e.message === '用户停止') throw e;
             addLog({ time: new Date().toLocaleTimeString(), message: `开${chest.name}失败: ${e.message}`, type: "warning" });
@@ -3534,7 +3544,7 @@ export function createTasksItem(deps) {
         } catch (e) {
           // 静默处理
         }
-        await new Promise(r => setTimeout(r, delayConfig.action));
+        await new Promise(r => setTimeout(r, _getModuleDelay('default')));
 
         addLog({ time: new Date().toLocaleTimeString(), message: `第${round}轮执行完毕: 开${roundOpened}个, ${formatNum(roundPoints)}分`, type: "info" });
 
@@ -3544,7 +3554,7 @@ export function createTasksItem(deps) {
           await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000);
           await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, batchSettings.defaultCommandTimeout || 5000);
         } catch (e) {}
-        await new Promise(r => setTimeout(r, delayConfig.action));
+        await new Promise(r => setTimeout(r, _getModuleDelay('default')));
 
         // 重新读取进度
         const newData = tokenStore.gameData?.commonActivityInfo;
@@ -3577,7 +3587,7 @@ export function createTasksItem(deps) {
       } catch (e) {
         // 静默处理：可能没有新的积分可领
       }
-      await new Promise(r => setTimeout(r, delayConfig.action));
+      await new Promise(r => setTimeout(r, _getModuleDelay('default')));
 
       return { rounds: round, totalOpened, totalPoints };
     };
@@ -3601,7 +3611,7 @@ export function createTasksItem(deps) {
         } catch (e) {
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 获取活动数据失败: ${e.message}`, type: "warning" });
         }
-        await new Promise(r => setTimeout(r, delayConfig.action));
+        await new Promise(r => setTimeout(r, _getModuleDelay('default')));
 
         const gameData = tokenStore.gameData;
         const roleInfo = gameData?.roleInfo;
@@ -3722,7 +3732,7 @@ export function createTasksItem(deps) {
                 addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} [钓鱼] 金鱼竿领取失败: ${e.message}，继续钓鱼`, type: "warning" });
               }
             }
-            await new Promise(r => setTimeout(r, delayConfig.action));
+            await new Promise(r => setTimeout(r, _getModuleDelay('default')));
 
             // 检查黄金鱼竿库存
             const freshRole = tokenStore.gameData?.roleInfo?.role || role;
@@ -3852,7 +3862,7 @@ export function createTasksItem(deps) {
     isRunning.value = true;
     shouldStop.value = false;
 
-    const DELAY = delayConfig.command;
+    const DELAY = _getModuleDelay('default');
 
     selectedTokens.value.forEach((id) => {
       tokenStatus.value[id] = "waiting";
@@ -3880,7 +3890,7 @@ export function createTasksItem(deps) {
           try {
             await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, batchSettings.defaultCommandTimeout || 5000);
             await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000);
-            await new Promise(r => setTimeout(r, delayConfig.action));
+            await new Promise(r => setTimeout(r, _getModuleDelay('default')));
 
             const gameData = tokenStore.gameData;
             const commonActivityInfo = gameData?.commonActivityInfo;
@@ -4255,7 +4265,7 @@ export function createTasksItem(deps) {
         try {
           await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000);
         } catch (e) {}
-        await new Promise(r => setTimeout(r, delayConfig.action));
+        await new Promise(r => setTimeout(r, _getModuleDelay('default')));
 
         const role = tokenStore.gameData?.roleInfo?.role;
         const quantity = Number(role?.items?.[ACTIVITY_ITEM_ID]?.quantity || 0);
@@ -4288,7 +4298,7 @@ export function createTasksItem(deps) {
         // 刷新数据
         try { await tokenStore.sendMessageWithPromise(tokenId, 'role_getroleinfo', {}, batchSettings.defaultCommandTimeout || 5000); } catch (e) {}
         try { await tokenStore.sendMessageWithPromise(tokenId, 'activity_get', {}, batchSettings.defaultCommandTimeout || 5000); } catch (e) {}
-        await new Promise(r => setTimeout(r, delayConfig.action));
+        await new Promise(r => setTimeout(r, _getModuleDelay('default')));
 
         // 检查是否达标
         const manager = new ConsumeActivityManager();
@@ -4466,7 +4476,7 @@ export function createTasksItem(deps) {
     isRunning.value = true;
     shouldStop.value = false;
 
-    const DELAY = delayConfig.command;
+    const DELAY = _getModuleDelay('default');
 
     selectedTokens.value.forEach((id) => {
       tokenStatus.value[id] = "waiting";
@@ -4705,7 +4715,7 @@ export function createTasksItem(deps) {
               addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${reward.name}: ${errMsg}`, type: "warning" });
             }
           }
-          await new Promise(r => setTimeout(r, delayConfig.command));
+          await new Promise(r => setTimeout(r, _getModuleDelay('default')));
         }
 
         tokenStatus.value[tokenId] = "completed";
@@ -4886,7 +4896,7 @@ export function createTasksItem(deps) {
             });
             skipCount++;
           }
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
         }
 
         // ===== 第四步：循环领取图鉴积分 =====
@@ -4900,7 +4910,7 @@ export function createTasksItem(deps) {
           } catch (err) {
             break; // 无可领取，停止
           }
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
         }
         if (claimTotalCount > 0) {
           addLog({
@@ -4955,197 +4965,34 @@ export function createTasksItem(deps) {
     message.success("批量橱窗咸将激活结束");
   };
 
-  // ========== 批量推图 ==========
-  const _bpSleep = (ms) => new Promise(r => setTimeout(r, ms));
+  // ========== 批量推图（使用共享推图模块） ==========
+  const _pushRunner = createPushMapRunner({
+    tokenStore,
+    getTokens: () => tokens.value,
+    addLog,
+    shouldStop,
+    tokenStatus,
+  });
+  
+  const _bpSleep = _pushRunner.sleep;
+  const _bpPushLoop = _pushRunner.pushLoop;
+  const _bpStartOne = _pushRunner.startOne;
+  const _bpStopOne = _pushRunner.stopOne;
+  const _bpLoadBossData = _pushRunner.loadBossData;
+  const _bpUseTorch = _pushRunner.useTorch;
+  const _bpReconnect = _pushRunner.reconnect;
+  const _getBoss = _pushRunner.getBoss;
+  
   const _pushLogCb = (msg, type) => {
     addLog({ time: new Date().toLocaleTimeString(), message: msg, type: type || "info" });
     if (typeof window._pushLog === "function") window._pushLog(msg, type || "info");
   };
-
-  const _bpLoadBossData = async () => {
-    if (window._bossMap && Object.keys(window._bossMap).length > 0) return window._bossMap;
-    try {
-      const resp = await fetch("/boss_level_mapping_fixed.json");
-      if (resp.ok) {
-        window._bossMap = await resp.json();
-        _pushLogCb(`[推图] Boss数据加载: ${Object.keys(window._bossMap).length}条`);
-      }
-    } catch (e) {
-      _pushLogCb(`[推图] Boss数据加载失败`, "warning");
-      if (!window._bossMap) window._bossMap = {};
-    }
-    return window._bossMap;
-  };
-
-  const _getBoss = (lvl) => {
-    if (!window._bossMap) return "";
-    const b = window._bossMap[String(lvl)];
-    return b ? b.chinese : "";
-  };
-
+  
   const _getTokenName = (tid) => {
     const tk = tokens.value.find(x => x.id === tid);
     return tk ? tk.name || tid : tid;
   };
-
-  // 火把系统
-  const _bpUseTorch = async (tokenId) => {
-    const ti = window._pushTorchType || 0;
-    if (!ti) return;
-    const count = window._pushTorchCount || 10;
-    const nm = _getTokenName(tokenId);
-    const torchNm = ti === 1008 ? "木材" : ti === 1009 ? "青铜" : "战神";
-    _pushLogCb(`[${nm}] 使用${torchNm}火把 x${count}...`);
-    let ok = 0;
-    for (let i = 0; i < count; i++) {
-      try {
-        await tokenStore.sendMessageWithPromise(tokenId, "item_consume", { itemId: ti, quantity: 1 }, 5000);
-        ok++;
-        await _bpSleep(500);
-      } catch (e) {
-        _pushLogCb(`[${nm}] 火把第${i + 1}次失败: ${e.message}`, "error");
-        break;
-      }
-    }
-    if (window._pt[tokenId]) {
-      window._pt[tokenId].torchAt = Date.now();
-      window._pt[tokenId].torchDur = (ti === 1008 ? 600 : ti === 1009 ? 1200 : 1800) * ok;
-    }
-    const mins = Math.round((ti === 1008 ? 10 : ti === 1009 ? 20 : 30) * ok);
-    _pushLogCb(`[${nm}] ${torchNm}火把已激活 ${ok}个(约${mins}分钟)`, "success");
-  };
-
-  // 单个Token推图循环
-  const _bpPushLoop = async (tokenId) => {
-    if (window._pt[tokenId] && window._pt[tokenId].running) return;
-    window._pt[tokenId] = {
-      running: true, stopFlag: false, level: 0, wins: 0, losses: 0,
-      retries: 0, countdown: 0, totalTime: 0, battles: 0, torchAt: 0, torchDur: 0,
-    };
-    const st = window._pt[tokenId];
-    const nm = _getTokenName(tokenId);
-    tokenStatus.value[tokenId] = "running";
-    _pushLogCb(`[${nm}] 开始推图`, "success");
-
-    // 使用火把（如果选择了）
-    if (window._pushTorchType) {
-      await _bpUseTorch(tokenId);
-    }
-
-    try {
-      while (!st.stopFlag && !shouldStop.value) {
-        if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
-          _pushLogCb(`[${nm}] 连接断开，停止推图`, "error");
-          break;
-        }
-        try {
-          const ri = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 10000);
-          if (ri && ri.role) st.level = ri.role.levelId || 0;
-        } catch (e) { }
-        const bossNm = _getBoss(st.level);
-        _pushLogCb(`[${nm}] 关卡: ${st.level}${bossNm ? " Boss: " + bossNm : ""}`);
-
-        let battleTime = 300;
-        try {
-          const cr = await tokenStore.sendMessageWithPromise(tokenId, "fight_calcleveltime", {}, 15000);
-          if (cr && !cr.code) {
-            const bt = cr.battleTime || (cr.body && cr.body.battleTime);
-            if (bt != null) { battleTime = Number(bt); if (battleTime <= 0) battleTime = 300; }
-          }
-          _pushLogCb(`[${nm}] 战斗需 ${battleTime} 秒`, "success");
-        } catch (e) {
-          _pushLogCb(`[${nm}] 获取战斗时间失败`, "warning");
-        }
-        if (st.stopFlag || shouldStop.value) break;
-        st.totalTime = battleTime;
-        st.countdown = battleTime;
-
-        const t0 = Date.now();
-        let hb = 0;
-        while (st.countdown > 0 && !st.stopFlag && !shouldStop.value) {
-          await _bpSleep(1000);
-          st.countdown = Math.max(0, Math.ceil(battleTime - (Date.now() - t0) / 1000));
-          hb++;
-          if (hb % 25 === 0) {
-            try { tokenStore.sendMessage(tokenId, "heart_beat"); } catch (e) { }
-          }
-        }
-        if (st.stopFlag || shouldStop.value) break;
-
-        _pushLogCb(`[${nm}] 获取战斗结果...`);
-        try {
-          const fr = await tokenStore.sendMessageWithPromise(tokenId, "fight_level", {}, 15000);
-          const bd = (fr && fr.body) || fr;
-          const win = (bd && (bd.success || bd.isWin)) || false;
-          const nl = (bd && (bd.currLevel || bd.nextLevel)) || st.level;
-          st.battles++;
-          if (win) {
-            st.wins++; st.retries = 0; st.level = nl;
-            _pushLogCb(`[${nm}] ✅ 胜利! 关卡 ${nl}`, "success");
-          } else {
-            st.losses++; st.retries = (st.retries || 0) + 1;
-            _pushLogCb(`[${nm}] ❌ 失败 (连续${st.retries}次)`, "error");
-            await _bpSleep(10000);
-          }
-          try { await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 8000); } catch (e) { }
-        } catch (e) {
-          st.losses++; st.battles++; st.retries = (st.retries || 0) + 1;
-          _pushLogCb(`[${nm}] 获取结果失败: ${e.message}`, "error");
-          await _bpSleep(10000);
-        }
-
-        // 火把续期检查
-        if (window._pushTorchType && st.torchAt && !st.stopFlag) {
-          const elapsed = (Date.now() - st.torchAt) / 1000;
-          if (elapsed >= st.torchDur) {
-            _pushLogCb(`[${nm}] 火把已过期，续用...`, "warning");
-            await _bpUseTorch(tokenId);
-          }
-        }
-
-        if (!st.stopFlag && !shouldStop.value) await _bpSleep(2000);
-      }
-    } catch (e) {
-      _pushLogCb(`[${nm}] 推图异常: ${e.message}`, "error");
-    } finally {
-      st.running = false; st.countdown = 0;
-      tokenStatus.value[tokenId] = "completed";
-      _pushLogCb(`[${nm}] 推图已停止 (${st.wins}胜 ${st.losses}负)`, "warning");
-    }
-  };
-
-  // 启动单个Token推图（带自动连接）
-  const _bpStartOne = async (tokenId) => {
-    if (window._pt[tokenId] && window._pt[tokenId].running) return;
-    // 自动连接未连接的Token
-    if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
-      const nm = _getTokenName(tokenId);
-      _pushLogCb(`[${nm}] 正在连接...`, "info");
-      try {
-        const tk = tokens.value.find(x => x.id === tokenId);
-        if (tk) {
-          tokenStore.selectToken(tokenId);
-          await _bpSleep(3000);
-        }
-      } catch (e) { }
-      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
-        _pushLogCb(`[${nm}] 连接失败，跳过`, "error");
-        return;
-      }
-    }
-    await _bpPushLoop(tokenId);
-  };
-
-  // 停止单个Token推图
-  const _bpStopOne = (tokenId) => {
-    if (window._pt[tokenId]) window._pt[tokenId].stopFlag = true;
-  };
-
-  // 简化：只打开模态框，实际推图逻辑由模态框控制
-  const batchPushMap = async () => {
-    if (typeof window._openPushModal === "function") window._openPushModal();
-  };
-
+  
   // 暴露给模态框和TokenCard使用
   window._bpPushLoop = _bpPushLoop;
   window._bpStartOne = _bpStartOne;
@@ -5154,6 +5001,11 @@ export function createTasksItem(deps) {
   window._getBoss = _getBoss;
   window._bpSleep = _bpSleep;
   window._bpUseTorch = _bpUseTorch;
+
+  // 简化：只打开模态框，实际推图逻辑由模态框控制
+  const batchPushMap = async () => {
+    if (typeof window._openPushModal === "function") window._openPushModal();
+  };
 
   return {
     batchOpenBox,

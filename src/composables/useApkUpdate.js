@@ -133,7 +133,7 @@ export function useApkUpdate() {
   };
   
   /**
-   * 下载并安装APK（自动测速选择最快代理）
+   * 下载并安装APK（优先R2直连，失败回退Worker代理）
    */
   const downloadAndInstall = async () => {
     if (!updateInfo.value) return;
@@ -145,51 +145,24 @@ export function useApkUpdate() {
     downloadError.value = '';
   
     try {
-      // 获取所有下载链接
+      // 获取下载信息
       const versionResp = await fetch(`${WORKER_BASE}/api/apk/latest`);
       const downloadInfo = await versionResp.json();
         
-      const candidateUrls = [
-        ...(downloadInfo.proxyUrls || []).map(p => p.url),
-        downloadInfo.originalUrl,
-      ].filter(Boolean);
-  
-      console.log(`[APK更新] 开始测速，共 ${candidateUrls.length} 个下载源...`);
       downloadProgress.value = 10;
   
-      // 并行测试所有下载源速度
-      const speedResults = await Promise.allSettled(
-        candidateUrls.map(url => testDownloadSpeed(url))
-      );
-        
-      const speedData = speedResults
-        .filter(r => r.status === 'fulfilled')
-        .map(r => r.value)
-        .filter(r => r.ok)
-        .sort((a, b) => a.elapsed - b.elapsed);
+      // 优先使用 R2 直连下载（Worker代理即R2源）
+      const r2Url = downloadInfo.downloadUrl || `${WORKER_BASE}/api/apk/download`;
+      console.log(`[APK更新] 使用R2下载: ${r2Url}`);
   
       downloadProgress.value = 50;
   
-      let bestUrl;
-      if (speedData.length > 0) {
-        bestUrl = speedData[0].url;
-        console.log(`[APK更新] 最快下载源: ${bestUrl} (${speedData[0].elapsed}ms)`);
-      } else {
-        // 所有测速失败，回退到 Worker 代理
-        bestUrl = downloadInfo.workerProxyUrl || downloadInfo.downloadUrl;
-        console.log(`[APK更新] 测速全部失败，使用 Worker 代理: ${bestUrl}`);
-      }
-  
-      downloadProgress.value = 80;
-  
       // 使用系统浏览器下载
-      const downloadSuccess = window.open(bestUrl, '_system');
+      const downloadSuccess = window.open(r2Url, '_system');
   
       downloadProgress.value = 100;
       isDownloading.value = false;
   
-      // 注意：不在此处更新版本号，因为用户可能未完成下载安装
-      // 版本号应在下次启动新版本APK时由 setLocalVersion 设置
       if (downloadSuccess) {
         console.log('[APK更新] 已打开浏览器下载');
       } else {
@@ -199,10 +172,10 @@ export function useApkUpdate() {
     } catch (error) {
       console.error('[APK更新] 下载失败:', error.message);
       isDownloading.value = false;
-      // 最终回退：直接用原始链接
+      // 最终回退：使用原始链接
       try {
-        const fallbackUrl = updateInfo.value.downloadUrl
-          || updateInfo.value.downloadUrlOriginal
+        const fallbackUrl = updateInfo.value.downloadUrlOriginal
+          || updateInfo.value.downloadUrl
           || `${WORKER_BASE}/api/apk/download`;
         window.open(fallbackUrl, '_system');
         console.log('[APK更新] 使用回退链接:', fallbackUrl);

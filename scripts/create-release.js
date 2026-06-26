@@ -16,8 +16,8 @@ if (!TOKEN) { console.error('请设置 GITHUB_TOKEN 环境变量'); process.exit
 
 const REPO = '15322781623-sudo/xiaohuahuabuzaixian';
 const TAG = process.argv[2] || 'v1.1.3';
-const APK_PATH = join(ROOT, 'xyzw-helper.apk');
-const ASSET_NAME = 'xyzw-helper.apk';
+const APK_PATH = join(ROOT, '肝王之王.apk');
+const ASSET_NAME = '肝王之王.apk';
 
 function httpsRequest(options, body) {
   return new Promise((resolve, reject) => {

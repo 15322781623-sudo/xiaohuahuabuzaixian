@@ -26,7 +26,15 @@ export function createTasksDungeon(deps) {
     addLog,
     message,
     currentRunningTokenId,
+    getModuleDelay,
   } = deps;
+
+  // 模块延迟辅助函数
+  const _getModuleDelay = getModuleDelay || ((moduleName) => {
+    const md = batchSettings.moduleDelays;
+    if (md) return md[moduleName] || md.default || batchSettings.taskDelay || 1000;
+    return batchSettings.taskDelay || 1000;
+  });
 
   /**
    * 一键宝库前3层
@@ -68,7 +76,7 @@ export function createTasksDungeon(deps) {
               "bosstower_startboss",
               {},
             );
-            await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 1500));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('treasure')));
           }
           for (let i = 0; i < 9; i++) {
             if (shouldStop.value)
@@ -78,7 +86,7 @@ export function createTasksDungeon(deps) {
               "bosstower_startbox",
               {},
             );
-            await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 1500));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('treasure')));
           }
         }
         tokenStatus.value[tokenId] = "completed";
@@ -166,7 +174,7 @@ export function createTasksDungeon(deps) {
               "bosstower_startboss",
               {},
             );
-            await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 1500));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('treasure')));
           }
         }
         tokenStatus.value[tokenId] = "completed";
@@ -344,7 +352,7 @@ export function createTasksDungeon(deps) {
         }
 
         // 添加延迟，等待服务器处理阵容选择
-        await new Promise((r) => setTimeout(r, batchSettings.actionDelay || 1500));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('treasure')));
 
         // 6. 循环发起梦境战斗，直到次数耗尽或出错
         addLog({
@@ -387,7 +395,7 @@ export function createTasksDungeon(deps) {
               type: isWin ? "success" : "warning",
             });
 
-            await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 1500));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('treasure')));
 
             // 6b. 领取本关梦境奖励
             if (dungeonId) {
@@ -414,7 +422,7 @@ export function createTasksDungeon(deps) {
             }
 
             // 战斗间隔，避免过快触发限流
-            await new Promise((r) => setTimeout(r, batchSettings.actionDelay || 1500));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('treasure')));
           } catch (fightError) {
             const fightErrorMsg = fightError.message || "";
             if (fightErrorMsg.includes("2600080") || fightErrorMsg.includes("2600050") || fightErrorMsg.includes("2600040")) {
@@ -622,7 +630,7 @@ export function createTasksDungeon(deps) {
           } catch (err) {
             failCount++;
           }
-          await new Promise((r) => setTimeout(r, batchSettings.commandDelay || 1500));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('treasure')));
         }
 
         tokenStatus.value[tokenId] = "completed";

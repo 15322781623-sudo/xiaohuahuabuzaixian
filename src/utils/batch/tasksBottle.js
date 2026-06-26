@@ -24,7 +24,15 @@ export function createTasksBottle(deps) {
     addLog,
     message,
     currentRunningTokenId,
+    getModuleDelay,
   } = deps;
+
+  // 模块延迟辅助函数
+  const _getModuleDelay = getModuleDelay || ((moduleName) => {
+    const md = batchSettings.moduleDelays;
+    if (md) return md[moduleName] || md.default || batchSettings.taskDelay || 1000;
+    return batchSettings.taskDelay || 1000;
+  });
 
   /**
    * 重置罐子
@@ -70,7 +78,7 @@ export function createTasksBottle(deps) {
           5000,
         );
 
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('bottle')));
 
         addLog({
           time: new Date().toLocaleTimeString(),
@@ -147,7 +155,7 @@ export function createTasksBottle(deps) {
           {},
           3000,
         );
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('bottle')));
         tokenStatus.value[tokenId] = "completed";
         addLog({
           time: new Date().toLocaleTimeString(),

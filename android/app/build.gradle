@@ -6,15 +6,15 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
+// ✅ 从 versionName 自动计算 versionCode，与 Worker GitHub 同步逻辑一致
+// 公式: major*10000 + minor*100 + patch (例: 1.2.1 → 10201)
+def verName = "1.2.4"
+def verParts = verName.tokenize('.')
+def autoVersionCode = (verParts[0].toInteger() * 10000) + (verParts[1].toInteger() * 100) + (verParts[2].toInteger())
+
 android {
     namespace = "com.xyzw.webhelper"
     compileSdk = rootProject.ext.compileSdkVersion
-
-    // ✅ 从 versionName 自动计算 versionCode，与 Worker GitHub 同步逻辑一致
-    // 公式: major*10000 + minor*100 + patch (例: 1.2.1 → 10201)
-    def verName = "1.2.2"
-    def verParts = verName.tokenize('.')
-    def autoVersionCode = (verParts[0].toInteger() * 10000) + (verParts[1].toInteger() * 100) + (verParts[2].toInteger())
 
     defaultConfig {
         applicationId "com.xyzw.webhelper"
@@ -48,6 +48,14 @@ android {
                 signingConfig signingConfigs.release
             }
         }
+    }
+}
+
+// APK输出文件名：肝王之王_版本号.apk
+android.applicationVariants.all { variant ->
+    variant.outputs.all { output ->
+        def fileName = "肝王之王_${verName}.apk"
+        outputFileName = fileName
     }
 }
 

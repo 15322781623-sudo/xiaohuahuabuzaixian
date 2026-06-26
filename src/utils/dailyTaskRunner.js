@@ -1323,38 +1323,51 @@ export class DailyTaskRunner {
     const statisticsTime = roleData.statisticsTime ?? {};
 
     // ✅ 根据活跃度决定执行哪些任务
-    let allTasks = [];
+    let allTasks = []; // 每项格式: { fn, module }
     
+    // 获取模块延迟的辅助函数
+    const getModuleDelay = (moduleName) => {
+      const md = this.batchSettings?.moduleDelays;
+      if (md) {
+        return md[moduleName] || md.default || this.delaySettings.taskDelay;
+      }
+      return this.delaySettings.taskDelay;
+    };
+
     if (activityResult.isFullActivity) {
       // 活跃度为100时，只执行4个特定任务
       this.info('🎯 活跃度为100，执行精简任务模式');
       
       const limitedTaskBuilders = [
-        () => this.buildArenaTask(),                    // 1. 竞技场战斗
-        () => this.buildDeepSeaLampTask(statisticsTime), // 2. 灯神扫荡（深海灯神）
-        () => this.buildFreeSweepTickets(),             // 3. 免费扫荡卷
-        () => this.buildRewardTasks(),                  // 4. 任务奖励领取
+        { build: () => this.buildArenaTask(), module: 'arena' },
+        { build: () => this.buildDeepSeaLampTask(statisticsTime), module: 'treasure' },
+        { build: () => this.buildFreeSweepTickets(), module: 'activity' },
+        { build: () => this.buildRewardTasks(), module: 'daily' },
       ];
       
-      allTasks = limitedTaskBuilders.flatMap(build => build());
+      allTasks = limitedTaskBuilders.flatMap(({ build, module }) => 
+        build().map(fn => ({ fn, module }))
+      );
       this.info(`精简模式：共 ${allTasks.length} 个任务待执行`);
     } else {
       // 活跃度小于100时，执行完整任务列表
       const taskBuilders = [
-        () => this.buildBasicTasks(completedTasks, statistics, statisticsTime, roleData),
-        () => this.buildSaltBottleTasks(completedTasks),
-        () => this.buildArenaTask(),
-        () => this.buildBossTasks(statistics, statisticsTime),
-        () => this.buildFixedRewardTasks(),
-        () => this.buildActivityTasks(statistics, statisticsTime),
-        () => this.buildBlackMarketTask(),
-        () => this.buildDreamWorldTask(),
-        () => this.buildDeepSeaLampTask(statisticsTime),
-        () => this.originalFormation ? [() => this.restoreFormation()] : [],
-        () => this.buildRewardTasks(),
+        { build: () => this.buildBasicTasks(completedTasks, statistics, statisticsTime, roleData), module: 'daily' },
+        { build: () => this.buildSaltBottleTasks(completedTasks), module: 'daily' },
+        { build: () => this.buildArenaTask(), module: 'arena' },
+        { build: () => this.buildBossTasks(statistics, statisticsTime), module: 'treasure' },
+        { build: () => this.buildFixedRewardTasks(), module: 'club' },
+        { build: () => this.buildActivityTasks(statistics, statisticsTime), module: 'activity' },
+        { build: () => this.buildBlackMarketTask(), module: 'store' },
+        { build: () => this.buildDreamWorldTask(), module: 'treasure' },
+        { build: () => this.buildDeepSeaLampTask(statisticsTime), module: 'treasure' },
+        { build: () => this.originalFormation ? [() => this.restoreFormation()] : [], module: 'daily' },
+        { build: () => this.buildRewardTasks(), module: 'daily' },
       ];
       
-      allTasks = taskBuilders.flatMap(build => build());
+      allTasks = taskBuilders.flatMap(({ build, module }) => 
+        build().map(fn => ({ fn, module }))
+      );
       this.info(`完整模式：共 ${allTasks.length} 个任务待执行`);
     }
 
@@ -1365,10 +1378,12 @@ export class DailyTaskRunner {
 
     for (let i = 0; i < allTasks.length; i++) {
       try {
-        await allTasks[i]();
+        const { fn, module } = allTasks[i];
+        await fn();
         completedCount++;
         this.callbacks?.onProgress?.(Math.floor(((i + 1) / total) * 100));
-        await delay(this.delaySettings.taskDelay);
+        // 使用模块延迟代替全局任务延迟
+        await delay(getModuleDelay(module));
       } catch (error) {
         // ✅ 检测可重试错误码，标记需要外层重试
         const errMsg = error?.message || '';

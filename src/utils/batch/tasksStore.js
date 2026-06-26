@@ -27,7 +27,13 @@ export function createTasksStore(deps) {
     message,
     currentRunningTokenId,
     delayConfig,
+    getModuleDelay,
   } = deps;
+
+  // 模块延迟辅助函数（如果 deps 中没有 getModuleDelay）
+  const _getModuleDelay = getModuleDelay || ((moduleName) => {
+    return delayConfig?.action || 1500;
+  });
 
   // 记录每个Token本月是否已领取助威币 { tokenId: { month: '2026-01', claimed: true } }
   // 从localStorage加载持久化数据
@@ -97,7 +103,7 @@ export function createTasksStore(deps) {
           batchSettings.defaultCommandTimeout || 5000,
         );
 
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         if (result.error) {
           if (result.error.includes("购买数量上限无法进行购买")) {
@@ -200,7 +206,7 @@ export function createTasksStore(deps) {
             batchSettings.defaultCommandTimeout || 5000,
           );
 
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
         }
 
         if (result && result.error) {
@@ -305,7 +311,7 @@ export function createTasksStore(deps) {
             batchSettings.defaultCommandTimeout || 5000,
           );
 
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
           if (result && result.error) {
             if (result.error.includes("购买数量上限无法进行购买")) {
@@ -415,7 +421,7 @@ export function createTasksStore(deps) {
             batchSettings.defaultCommandTimeout || 5000,
           );
 
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
           if (result && result.error) {
             if (result.error.includes("购买数量上限无法进行购买")) {
@@ -588,7 +594,7 @@ export function createTasksStore(deps) {
               8000,
             );
 
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
             if (result?.error) {
               if (result.error.includes("购买数量上限") || result.error.includes("2300370")) {
@@ -757,7 +763,7 @@ export function createTasksStore(deps) {
               8000,
             );
 
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
             if (result?.error) {
               if (result.error.includes("购买数量上限") || result.error.includes("2300370")) {
@@ -858,7 +864,7 @@ export function createTasksStore(deps) {
           batchSettings.defaultCommandTimeout || 5000,
         );
 
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         if (result.error) {
           // 12000116错误：今日已领取免费奖励
@@ -975,7 +981,7 @@ export function createTasksStore(deps) {
                 message: `${token.name} 已设置采购清单 (${purchaseItemList.length}项, 次数${purchaseCnt})`,
                 type: "info",
               });
-              await new Promise((r) => setTimeout(r, delayConfig.action));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
             }
           }
         } catch (e) {
@@ -998,7 +1004,7 @@ export function createTasksStore(deps) {
           batchSettings.defaultCommandTimeout || 5000,
         );
 
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         if (result.error) {
           // 错误码1300050表示需要修改采购次数，尝试购买青铜宝箱作为兜底
@@ -1018,7 +1024,7 @@ export function createTasksStore(deps) {
                 batchSettings.defaultCommandTimeout || 5000,
               );
 
-              await new Promise((r) => setTimeout(r, delayConfig.action));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
               if (bronzeResult.error) {
                 addLog({
@@ -1127,7 +1133,7 @@ export function createTasksStore(deps) {
           type: "info",
         });
         await tokenStore.sendGetRoleInfo(tokenId);
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         // 2. 购买商品
         addLog({
@@ -1142,7 +1148,7 @@ export function createTasksStore(deps) {
           batchSettings.defaultCommandTimeout || 5000,
         );
 
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         if (result.error) {
           addLog({
@@ -1173,7 +1179,7 @@ export function createTasksStore(deps) {
               {},
               batchSettings.defaultCommandTimeout || 5000,
             );
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
           } catch (error) {
             addLog({
               time: new Date().toLocaleTimeString(),
@@ -1190,7 +1196,7 @@ export function createTasksStore(deps) {
               {},
               batchSettings.defaultCommandTimeout || 5000,
             );
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
           } catch (error) {
             addLog({
               time: new Date().toLocaleTimeString(),
@@ -1207,7 +1213,7 @@ export function createTasksStore(deps) {
               {},
               batchSettings.defaultCommandTimeout || 5000,
             );
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
           } catch (error) {
             addLog({
               time: new Date().toLocaleTimeString(),
@@ -1276,8 +1282,8 @@ export function createTasksStore(deps) {
   };
 
   /**
-   * 多选购买商品（轮询模式）
-   * 每轮每种商品买1个，然后刷新，再循环下一轮
+   * 多选购买商品（先买后刷新模式）
+   * 每种商品按设定次数购买，每次购买后刷新商店再买下一次
    * @param {Array<{goodsId: number, name: string, count: number}>} items - 商品列表
    */
   const store_buy_selectable = async (items) => {
@@ -1320,7 +1326,7 @@ export function createTasksStore(deps) {
 
         // 获取角色信息
         await tokenStore.sendGetRoleInfo(tokenId);
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         // 初始化每种商品的购买进度
         const buyProgress = items.map(item => ({
@@ -1332,34 +1338,14 @@ export function createTasksStore(deps) {
 
         console.log('[多选购买] 购买计划:', buyProgress.map(i => `${i.name}x${i.count}`));
 
-        // 轮询购买：每轮每种商品买1个，然后刷新
-        let round = 0;
-        while (!shouldStop.value) {
-          round++;
-          let hasActive = false;
+        // 先买后刷新：每种商品按次数购买，每次购买后刷新商店
+        for (const item of buyProgress) {
+          if (shouldStop.value) break;
 
-          for (const item of buyProgress) {
+          for (let i = 0; i < item.count; i++) {
             if (shouldStop.value) break;
-            if (item.stopped || item.purchased >= item.count) continue;
 
-            hasActive = true;
-
-            console.log(`[多选购买] 第${round}轮 - 购买: ${item.name} (ID:${item.goodsId})`);
-
-            // 刷新商品
-            try {
-              const refreshResult = await tokenStore.sendMessageWithPromise(
-                tokenId,
-                "store_refresh",
-                { storeId: 1 },
-                batchSettings.defaultCommandTimeout || 5000,
-              );
-              console.log('[多选购买] 商品刷新结果:', refreshResult);
-              await new Promise((r) => setTimeout(r, delayConfig.action));
-            } catch (e) {
-              console.log('[多选购买] 商品刷新异常:', e.message);
-            }
-
+            // 先购买
             const result = await tokenStore.sendMessageWithPromise(
               tokenId,
               "store_buy",
@@ -1368,8 +1354,7 @@ export function createTasksStore(deps) {
             );
 
             console.log('[多选购买] 购买结果:', result);
-
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
             if (result.error) {
               addLog({
@@ -1377,8 +1362,9 @@ export function createTasksStore(deps) {
                 message: `${token.name} 购买${item.name}失败: ${result.error}`,
                 type: "error",
               });
-              // 购买失败就停止该商品，继续购买其他商品
+              // 购买失败就停止该商品
               item.stopped = true;
+              break;
             } else {
               item.purchased++;
               addLog({
@@ -1387,15 +1373,31 @@ export function createTasksStore(deps) {
                 type: "success",
               });
             }
-          }
 
-          // 所有商品都完成或停止，退出循环
-          if (!hasActive) break;
+            // 购买成功后刷新商店（最后一次不需要刷新）
+            if (i < item.count - 1) {
+              try {
+                const refreshResult = await tokenStore.sendMessageWithPromise(
+                  tokenId,
+                  "store_refresh",
+                  { storeId: 1 },
+                  batchSettings.defaultCommandTimeout || 5000,
+                );
+                console.log('[多选购买] 商品刷新结果:', refreshResult);
+                await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
+              } catch (e) {
+                console.log('[多选购买] 商品刷新异常:', e.message);
+              }
+            }
+          }
         }
+
+        const totalPurchased = buyProgress.reduce((sum, i) => sum + i.purchased, 0);
+        const totalPlanned = buyProgress.reduce((sum, i) => sum + i.count, 0);
 
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} 多选购买完成，共${round}轮`,
+          message: `${token.name} 多选购买完成 (${totalPurchased}/${totalPlanned})`,
           type: "info",
         });
 
@@ -1470,7 +1472,7 @@ export function createTasksStore(deps) {
           batchSettings.defaultCommandTimeout || 5000,
         );
 
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         addLog({
           time: new Date().toLocaleTimeString(),
@@ -1514,7 +1516,7 @@ export function createTasksStore(deps) {
               batchSettings.defaultCommandTimeout || 5000,
             );
 
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
             addLog({
               time: new Date().toLocaleTimeString(),
@@ -1600,7 +1602,7 @@ export function createTasksStore(deps) {
               batchSettings.defaultCommandTimeout || 5000,
             );
 
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
             if (result.error) {
               addLog({
@@ -1638,7 +1640,7 @@ export function createTasksStore(deps) {
 
           // 重试间隔1秒
           if (!shouldStop.value) {
-            await new Promise((r) => setTimeout(r, delayConfig.command));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
           }
         }
 
@@ -1756,7 +1758,7 @@ export function createTasksStore(deps) {
             });
           }
 
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
         } catch (starError) {
           if (starError.message.includes("200020")) {
             addLog({
@@ -1799,7 +1801,7 @@ export function createTasksStore(deps) {
                 batchSettings.defaultCommandTimeout || 5000,
               );
 
-              await new Promise((r) => setTimeout(r, delayConfig.action));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
               if (result && result.error) {
                 // 检查是否是400010错误码（物品数量不足）
@@ -1945,7 +1947,7 @@ export function createTasksStore(deps) {
             {},
             batchSettings.defaultCommandTimeout || 5000,
           );
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
           // 执行抽奖
           const result = await tokenStore.sendMessageWithPromise(
@@ -1954,7 +1956,7 @@ export function createTasksStore(deps) {
             {},
             batchSettings.defaultCommandTimeout || 5000,
           );
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
           // 报错 = 次数用完
           if (result?.error) {
@@ -1998,7 +2000,7 @@ export function createTasksStore(deps) {
         } catch (e) {
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 周奖励已领取/无需领取`, type: "info" });
         }
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         // 2. 领取寻宝次数
         try {
@@ -2008,7 +2010,7 @@ export function createTasksStore(deps) {
         } catch (e) {
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 寻宝次数已领取`, type: "info" });
         }
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         // 3. 核心：循环抽奖抽到不动为止
         const { totalDraws } = await doDrawLoop(tokenId, token.name);
@@ -2151,7 +2153,7 @@ export function createTasksStore(deps) {
           batchSettings.defaultCommandTimeout || 5000,
         );
 
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         if (result && result.error) {
           addLog({
@@ -2229,7 +2231,7 @@ export function createTasksStore(deps) {
             batchSettings.defaultCommandTimeout || 5000,
           );
 
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
           if (result && result.error) {
             const errorMsg = result.error;
@@ -2390,7 +2392,7 @@ export function createTasksStore(deps) {
           batchSettings.defaultCommandTimeout || 5000,
         );
 
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         // 调试：打印完整返回数据
         console.log("=== warguess_getguessinfo 返回数据 ===");
@@ -2456,7 +2458,7 @@ export function createTasksStore(deps) {
           batchSettings.defaultCommandTimeout || 5000,
         );
 
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         if (claimResult && claimResult.error) {
           const errorMsg = claimResult.error;
@@ -2583,7 +2585,7 @@ export function createTasksStore(deps) {
               15000, // 增加超时时间到8秒
             );
 
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
             if (result && result.error) {
               const errorMsg = result.error;
@@ -2837,7 +2839,7 @@ export function createTasksStore(deps) {
 
             // 每个商品之间等待2秒
             if (goodsIndex !== selectedItems[selectedItems.length - 1]) {
-              await new Promise((r) => setTimeout(r, delayConfig.action));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
             }
           } catch (error) {
             const errorMsg = error.message || "";
@@ -2946,7 +2948,7 @@ export function createTasksStore(deps) {
               batchSettings.defaultCommandTimeout || 5000,
             );
 
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
             if (result.error) {
               // 已领取过的奖励，静默跳过（不显示日志）
@@ -3104,7 +3106,7 @@ export function createTasksStore(deps) {
         });
 
         await ensureConnection(tokenId);
-        await new Promise((r) => setTimeout(r, delayConfig.action || batchSettings.actionDelay || 1500));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         // 1. 领取宝箱奖励 (taskId: 1, 2, 3)
         for (let taskId = 1; taskId <= 3; taskId++) {
@@ -3173,7 +3175,7 @@ export function createTasksStore(deps) {
             }
           }
 
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
         }
 
         // 2. 领取俱乐部目标 (taskId: 4-9)
@@ -3257,7 +3259,7 @@ export function createTasksStore(deps) {
             }
           }
 
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
         }
 
         // 3. 领取俱乐部特权 (4次)
@@ -3327,7 +3329,7 @@ export function createTasksStore(deps) {
             }
           }
 
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
         }
 
         // 4. 领取怪异塔通行证
@@ -3464,7 +3466,7 @@ export function createTasksStore(deps) {
         });
 
         await ensureConnection(tokenId);
-        await new Promise((r) => setTimeout(r, delayConfig.action || batchSettings.actionDelay || 1500));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         // 领取怪异塔通行证 (battlePassId: 1003)
         addLog({
@@ -3678,7 +3680,7 @@ export function createTasksStore(deps) {
             }
           }
 
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
         }
 
         tokenStatus.value[tokenId] = "completed";
@@ -3766,7 +3768,7 @@ export function createTasksStore(deps) {
                 { petId },
                 batchSettings.defaultCommandTimeout || 5000,
               );
-              await new Promise((r) => setTimeout(r, delayConfig.action));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
             } catch (error) {
               // 忽略激活错误，继续领取奖励
             }
@@ -3834,7 +3836,7 @@ export function createTasksStore(deps) {
               }
             }
 
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
           }
         }
 
@@ -4051,7 +4053,7 @@ export function createTasksStore(deps) {
                 type: "success",
               });
 
-              await new Promise((r) => setTimeout(r, delayConfig.action));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
               // 合成成功后立即跳出等级循环，重新拉取列表
               break;
             } catch (error) {
@@ -4317,7 +4319,7 @@ export function createTasksStore(deps) {
           batchSettings.defaultCommandTimeout || 5000,
         );
 
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         if (result.error) {
           const isAlreadyClaimed
@@ -4436,7 +4438,7 @@ export function createTasksStore(deps) {
           batchSettings.defaultCommandTimeout || 5000,
         );
 
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         if (result.error) {
           const isAlreadyClaimed
@@ -4640,7 +4642,7 @@ export function createTasksStore(deps) {
               batchSettings.defaultCommandTimeout || 5000,
             );
 
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
             if (result.error) {
               // 错误码1100010表示已领取或达到上限
@@ -4789,7 +4791,7 @@ export function createTasksStore(deps) {
           }
 
           // 每个礼包之间稍作延迟
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
         }
 
         // 领取战排金砖奖励（每日可领，不受活动周限制）
@@ -4856,7 +4858,7 @@ export function createTasksStore(deps) {
                   batchSettings.defaultCommandTimeout || 5000,
                 );
 
-                await new Promise((r) => setTimeout(r, delayConfig.action));
+                await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
                 addLog({
                   time: new Date().toLocaleTimeString(),
@@ -5006,7 +5008,7 @@ export function createTasksStore(deps) {
               batchSettings.defaultCommandTimeout || 5000,
             );
 
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
             if (result.error) {
               if (result.error.includes("已领取") || result.error.includes("超出上限")) {
@@ -5544,7 +5546,7 @@ export function createTasksStore(deps) {
           });
         }
 
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         // 2. 拉取邮件列表（分页拉取所有0/4/5分类邮件，最多5页防死循环）
         const categoryList = [0, 4, 5];
@@ -5622,7 +5624,7 @@ export function createTasksStore(deps) {
 
           // 每处理10封邮件添加一次延迟，避免触发限流
           if ((i + 1) % 10 === 0) {
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
           }
         }
 
@@ -5632,7 +5634,7 @@ export function createTasksStore(deps) {
           type: "success",
         });
 
-        await new Promise((r) => setTimeout(r, delayConfig.action));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
         // 4. 删除已读邮件（分类0/4/5）
         let delCount = 0;
@@ -5684,10 +5686,27 @@ export function createTasksStore(deps) {
     message.success("批量邮箱领取与清理结束");
   };
 
+  /**
+   * 黑市多选购买（定时任务用，从 batchSettings.manualBuyItems 读取配置）
+   */
+  const manual_buy = async () => {
+    const items = batchSettings.manualBuyItems;
+    if (!items || items.length === 0) {
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: '黑市多选购买：未配置商品，请在设置中配置 manualBuyItems',
+        type: 'warning',
+      });
+      return;
+    }
+    await store_buy_selectable(items);
+  };
+
   return {
     legion_storebuygoods,
     legionStoreBuySkinCoins,
     store_purchase,
+    manual_buy,
     charge_claimaddup_rewards,
     collection_claimfreereward,
     weekly_market_free_gift,

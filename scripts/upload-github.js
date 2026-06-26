@@ -25,8 +25,8 @@ if (!TOKEN) { console.error('无法获取 GitHub Token'); process.exit(1); }
 
 const REPO = '15322781623-sudo/xiaohuahuabuzaixian';
 const RELEASE_ID = 344101471;
-const APK_PATH = join(ROOT, 'xyzw-helper.apk');
-const ASSET_NAME = 'xyzw-helper.apk';
+const APK_PATH = join(ROOT, '肝王之王.apk');
+const ASSET_NAME = '肝王之王.apk';
 
 function httpsRequest(options, body) {
   return new Promise((resolve, reject) => {

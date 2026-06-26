@@ -27,19 +27,19 @@ const showUpdateDialog = (info) => {
     closable: !isForce,
     maskClosable: !isForce,
     onPositiveClick: () => {
-      // 显示测速中提示
+      // 显示下载中提示
       const speedDialog = dialog.info({
-        title: ' 正在选择最快下载源',
+        title: ' 正在准备下载',
         content: () => h('div', [
-          h('p', '正在测试各下载源速度，请稍候...'),
-          h('p', { style: 'color: #888; font-size: 12px; margin-top: 8px;' }, '自动选择响应最快的代理服务器'),
+          h('p', '正在从 R2 存储桶获取最新版本...'),
+          h('p', { style: 'color: #888; font-size: 12px; margin-top: 8px;' }, '使用 Cloudflare R2 直连下载，速度更快更稳定'),
         ]),
         positiveText: undefined,
         closable: false,
         maskClosable: false,
       });
 
-      // 开始下载（自动测速选择最快代理）
+      // 开始下载（R2直连）
       downloadAndInstall()
         .then(() => {
           speedDialog.destroy();

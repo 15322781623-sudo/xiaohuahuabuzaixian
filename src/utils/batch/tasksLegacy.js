@@ -131,7 +131,13 @@ export function createTasksLegacy(deps) {
     recipientInfo,
     securityPassword,
     delayConfig,
+    getModuleDelay,
   } = deps;
+
+  // 模块延迟辅助函数
+  const _getModuleDelay = getModuleDelay || ((moduleName) => {
+    return delayConfig?.action || 1500;
+  });
 
   /**
    * 批量领取功法残卷
@@ -881,7 +887,7 @@ export function createTasksLegacy(deps) {
               successCount++;
             }
 
-            await new Promise((r) => setTimeout(r, delayConfig.action));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('hero')));
           } catch (error) {
             const errorMsg = error.message || "";
             // 错误码700010表示任务未达成完成条件，跳过后续所有任务

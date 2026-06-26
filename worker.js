@@ -12,11 +12,13 @@ const GITHUB_PROXY_LIST = [
 
 // 静态兜底配置（R2 和 GitHub 都失败时使用）
 const FALLBACK_CONFIG = {
-  latestVersion: "1.2.2",
-  versionCode: 10202,
-  downloadUrl: `https://ghfast.top/https://github.com/${GITHUB_REPO}/releases/latest/download/xyzw-helper.apk`,
-  downloadUrlOriginal: `https://github.com/${GITHUB_REPO}/releases/latest/download/xyzw-helper.apk`,
-  changelog: "v1.2.2: 换皮寻宝独立功能、黑市多选购买重构、闯关actId动态适配",
+  latestVersion: "1.2.4",
+  versionCode: 10204,
+  // R2 直连下载（最快最稳）
+  downloadUrl: `https://xyzw-apk-updater.15322781623.workers.dev/api/apk/download`,
+  // GitHub 原始链接作为备选
+  downloadUrlOriginal: `https://github.com/${GITHUB_REPO}/releases/latest/download/肝王之王.apk`,
+  changelog: "v1.2.4: 推图逻辑重构+战斗倒计时日志刷新+打包命名统一为肝王之王",
   minVersionCode: 10107,
   forceUpdate: false,
 };
@@ -74,7 +76,7 @@ async function getVersionFromGitHub(env) {
 
     const apkAsset = release.assets?.find(a => a.name.endsWith('.apk'));
     const downloadUrl = apkAsset?.browser_download_url
-      || `https://github.com/${GITHUB_REPO}/releases/download/${tagName}/xyzw-helper.apk`;
+      || `https://github.com/${GITHUB_REPO}/releases/download/${tagName}/肝王之王.apk`;
 
     let changelog = release.body || '';
     changelog = changelog.replace(/^##\s+.*\n?/, '').trim() || versionName;
@@ -206,17 +208,23 @@ export default {
     }
 
     // APK 下载（R2 优先，GitHub 备选）
-    if (url.pathname === '/api/apk/download') {
+    if (url.pathname === '/api/apk/download' || url.pathname.startsWith('/download/')) {
       const versionInfo = await getVersionInfo(env);
       
       try {
         // 优先从 R2 存储桶获取
         if (env.APK_BUCKET) {
-          const apkFile = await env.APK_BUCKET.get(`xyzw-helper-${versionInfo.latestVersion}.apk`);
+          const apkFile = await env.APK_BUCKET.get(`肝王之王-${versionInfo.latestVersion}.apk`);
           if (apkFile) {
             const headers = new Headers(corsHeaders);
             headers.set('Content-Type', 'application/vnd.android.package-archive');
-            headers.set('Content-Disposition', `attachment; filename="xyzw-helper-${versionInfo.latestVersion}.apk"`);
+            headers.set('Content-Disposition', `attachment; filename="肝王之王-${versionInfo.latestVersion}.apk"`);
+            // 支持 Range 请求（断点续传）
+            headers.set('Accept-Ranges', 'bytes');
+            // 缓存 1 小时（同一版本不会变化）
+            headers.set('Cache-Control', 'public, max-age=3600');
+            // CDN 边缘缓存
+            headers.set('CDN-Cache-Control', 'public, max-age=86400');
             return new Response(apkFile.body, { headers });
           }
         }
@@ -246,7 +254,7 @@ export default {
         // 流式转发 APK 文件
         const headers = new Headers(corsHeaders);
         headers.set('Content-Type', 'application/vnd.android.package-archive');
-        headers.set('Content-Disposition', `attachment; filename="xyzw-helper-${versionInfo.latestVersion}.apk"`);
+        headers.set('Content-Disposition', `attachment; filename="肝王之王-${versionInfo.latestVersion}.apk"`);
         headers.set('Content-Length', githubResp.headers.get('Content-Length') || '');
 
         return new Response(githubResp.body, {

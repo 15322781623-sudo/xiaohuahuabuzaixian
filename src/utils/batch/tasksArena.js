@@ -52,8 +52,14 @@ export function createTasksArena(deps) {
     isTodayAvailable,
     calculateMonthProgress,
     delayConfig,
+    getModuleDelay,
     loadSettings,
   } = deps;
+
+  // 模块延迟辅助函数
+  const _getModuleDelay = getModuleDelay || ((moduleName) => {
+    return delayConfig?.action || 1500;
+  });
 
   /**
    * 执行单次竞技场战斗
@@ -92,7 +98,7 @@ export function createTasksArena(deps) {
       battleTimeout,
     );
 
-    await new Promise((r) => setTimeout(r, delayConfig.battle));
+    await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
 
     return { success: true, error: null, errorCode: null };
   };
@@ -760,7 +766,7 @@ export function createTasksArena(deps) {
                   message: `${token.name} 竞技场战斗 ${i + 1}/3`,
                   type: "info",
                 });
-                await new Promise((r) => setTimeout(r, delayConfig.battle));
+                await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
               } catch (e) {
                 const errorMsg = e.message || "未知错误";
 
@@ -836,7 +842,7 @@ export function createTasksArena(deps) {
                 }
               }
             }
-            await new Promise((r) => setTimeout(r, delayConfig.battle));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
 
             // 只有非重试状态的账号才标记为完成
             if (tokenStatus.value[tokenId] !== "waiting_retry") {
@@ -974,7 +980,7 @@ export function createTasksArena(deps) {
                         type: "info",
                       });
 
-                      await new Promise((r) => setTimeout(r, delayConfig.battle));
+                      await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
                     } catch (e) {
                       const errorMsg = e.message || "";
                       // ✅ 200020错误表示关卡未达标
@@ -1263,7 +1269,7 @@ export function createTasksArena(deps) {
                     type: "success",
                   });
                   successCount++;
-                  await new Promise((r) => setTimeout(r, delayConfig.battle));
+                  await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
                 } catch (e) {
                   const errorMsg = e.message || "未知错误";
                   addLog({
@@ -1519,7 +1525,7 @@ export function createTasksArena(deps) {
                   8000,
                 );
                 freeUsed++;
-                await new Promise((r) => setTimeout(r, delayConfig.action));
+                await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
               } catch (e) {
                 addLog({
                   time: new Date().toLocaleTimeString(),
@@ -1624,7 +1630,7 @@ export function createTasksArena(deps) {
                 }
               }
 
-              await new Promise((r) => setTimeout(r, delayConfig.battle));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
             } catch (e) {
               addLog({
                 time: new Date().toLocaleTimeString(),
@@ -2148,7 +2154,7 @@ export function createTasksArena(deps) {
                 }
 
                 safetyCounter++;
-                await new Promise((r) => setTimeout(r, delayConfig.refresh));
+                await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
               }
 
               // 检测本轮是否有实际进展

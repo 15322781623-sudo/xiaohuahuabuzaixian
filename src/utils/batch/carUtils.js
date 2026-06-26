@@ -238,8 +238,15 @@ export const canClaim = (car) => {
  * @param {function} options.addLog - 日志添加函数
  * @returns {object} - 车辆操作管理器对象
  */
-export function createCarManager({ tokenStore, connectionManager, batchSettings, addLog }) {
+export function createCarManager({ tokenStore, connectionManager, batchSettings, addLog, getModuleDelay }) {
   const { ensureConnection, closeConnection } = connectionManager;
+
+  // 模块延迟辅助函数
+  const _getModuleDelay = getModuleDelay || ((moduleName) => {
+    const md = batchSettings.moduleDelays;
+    if (md) return md[moduleName] || md.default || batchSettings.taskDelay || 1000;
+    return batchSettings.taskDelay || 1000;
+  });
 
   /**
    * 智能发车
@@ -252,9 +259,9 @@ export function createCarManager({ tokenStore, connectionManager, batchSettings,
   const smartSendCar = async (tokenId, token, tokens, tokenStatus, shouldStop) => {
     // 从设置中读取延迟和超时配置
     const cmdTimeout = batchSettings.defaultCommandTimeout || 5000;
-    const actionDelay = batchSettings.actionDelay || 1500;
+    const actionDelay = _getModuleDelay('default');
     const refreshDelay = batchSettings.refreshDelay || 2000;
-    const commandDelay = batchSettings.commandDelay || 1500;
+    const commandDelay = _getModuleDelay('default');
     const maxRetryCount = batchSettings.defaultRetryCount ?? 2;
     const retryDelayMs = batchSettings.retryDelay || 60000;
 

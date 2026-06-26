@@ -24,7 +24,15 @@ export function createTasksHangUp(deps) {
     addLog,
     message,
     currentRunningTokenId,
+    getModuleDelay,
   } = deps;
+
+  // 模块延迟辅助函数
+  const _getModuleDelay = getModuleDelay || ((moduleName) => {
+    const md = batchSettings.moduleDelays;
+    if (md) return md[moduleName] || md.default || batchSettings.taskDelay || 1000;
+    return batchSettings.taskDelay || 1000;
+  });
 
   /**
    * 安全延迟函数，支持停止信号
@@ -640,7 +648,7 @@ export function createTasksHangUp(deps) {
             addLog({ time: new Date().toLocaleTimeString(), message: `${name} 重试答题失败: ${err.message}`, type: "error" });
           }
           // 账号间间隔
-          await safeDelay(batchSettings.taskDelay || 1500);
+          await safeDelay(_getModuleDelay('hangup'));
         }
         retryTokens.length = 0;
         retryTokens.push(...failedThisRound);
@@ -676,7 +684,7 @@ export function createTasksHangUp(deps) {
       const clubSignForToken = async (tokenId, token) => {
         addLog({ time: new Date().toLocaleTimeString(), message: `=== 俱乐部签到: ${token.name} ===`, type: "info" });
         await callWithRetry(tokenId, "legion_signin", {});
-        await safeDelay(batchSettings.commandDelay || 1500);
+        await safeDelay(_getModuleDelay('hangup'));
         addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${token.name} 签到成功`, type: "success" });
       };
 

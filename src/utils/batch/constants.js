@@ -50,6 +50,7 @@ export const availableTasks = [
   { label: "升级改装", value: "batchCarResearchUpgrade" },
   { label: "批量开箱", value: "batchOpenBox" },
   { label: "一键宝箱周开箱", value: "batchOpenBoxByPoints" },
+  { label: "一键开钻石宝箱", value: "batchOpenDiamondBox" },
   { label: "一键开碎片礼包", value: "batchOpenFragmentPacks" },
   { label: "宝箱达标奖励自选大奖", value: "batchClaimBoxWeeklyRewards" },
   { label: "领取宝箱积分", value: "batchClaimBoxPointReward" },
@@ -73,6 +74,7 @@ export const availableTasks = [
   { label: "黑市周免费礼包", value: "weekly_market_free_gift" },
   { label: "免费礼包领取", value: "claim_recruit_welfare" },
   { label: "一键黑市采购", value: "store_purchase" },
+  { label: "黑市多选购买", value: "manual_buy" },
   { label: "积分好礼领取", value: "charge_claimaddup_rewards" },
   { label: "一键购买青铜宝箱", value: "store_buy_bronze" },
   { label: "一键购买铂金宝箱", value: "store_buy_platinum" },
@@ -275,14 +277,18 @@ export const defaultBatchSettings = {
   receiverId: "",
   password: "",
   useGoldRefreshFallback: false,
-  tokenListColumns: 2,
+  tokenListColumns: 4,
   commandDelay: 1000,
   taskDelay: 1000,
-  maxActive: 2,
+  actionDelay: 1000,
+  battleDelay: 1500,
+  refreshDelay: 1500,
+  longDelay: 5000,
+  maxActive: 5,
   carMinColor: 4,
-  connectionTimeout: 180000, // 连接超时3分钟
-  reconnectDelay: 2000,
-  maxLogEntries: 2000,
+  connectionTimeout: 30000,
+  reconnectDelay: 5000,
+  maxLogEntries: 1000,
   // 智能发车阈值设置
   smartDepartureEnabled: true,
   smartDepartureGoldThreshold: 0,
@@ -290,6 +296,27 @@ export const defaultBatchSettings = {
   smartDepartureJadeThreshold: 0,
   smartDepartureTicketThreshold: 0,
   smartDepartureMatchAll: false,
+  // 功能模块延迟配置(ms)
+  moduleDelays: {
+    daily: 800,         // 日常任务（签到、邮件、挂机等）
+    arena: 1000,        // 竞技场
+    tower: 1500,        // 爬塔/怪异塔
+    store: 500,         // 黑市/商店购买
+    treasure: 1500,     // 宝库/梦境
+    activity: 2000,     // 消耗活动
+    club: 1500,         // 俱乐部
+    hero: 1000,         // 英雄/鱼灵/宠物升级
+    bottle: 500,        // 罐子（重置/领取）
+    hangup: 500,        // 挂机/签到/答题
+    default: 800,       // 默认（未分类的功能）
+  },
+  manualBuyItems: [],   // 黑市多选购买配置
+  // 高级配置
+  defaultCommandTimeout: 5000,      // 默认命令超时时间(ms)
+  battleCommandTimeout: 12000,      // 战斗命令超时时间(ms)
+  defaultRetryCount: 2,             // 默认重试次数
+  retryDelay: 10000,                // 重试延迟(ms)
+  accountRetryInterval: 5000,       // 账号间重试间隔(ms)
 };
 
 // 默认模板
@@ -337,7 +364,7 @@ export const TIMEOUT_CONFIG = {
   DEFAULT_COMMAND: 5000,
 
   /** 爬塔战斗超时时间 (ms) */
-  TOWER_FIGHT: 15000,
+  TOWER_FIGHT: 12000,
 
   /** 获取角色信息超时时间 (ms) */
   ROLE_INFO: 10000,
@@ -358,13 +385,13 @@ export const RETRY_CONFIG = {
   MAX_COUNT: 5,
 
   /** 默认重试延迟 (ms) */
-  DEFAULT_DELAY: 1000,
+  DEFAULT_DELAY: 10000,
 
   /** 最大重试延迟 (ms) - 3分钟 */
   MAX_DELAY: 180000,
 
   /** 账号间重试间隔 (ms) */
-  ACCOUNT_INTERVAL: 1000,
+  ACCOUNT_INTERVAL: 5000,
 
   /** 指数退避基数 (ms) */
   EXPONENTIAL_BASE: 3000,
@@ -373,20 +400,20 @@ export const RETRY_CONFIG = {
 // ==================== 延迟配置 (默认值) ====================
 export const DELAY_CONFIG = {
   /** 命令间延迟 (ms) */
-  COMMAND: 1500,
+  COMMAND: 1000,
 
   /** 任务间延迟 (ms) */
-  TASK: 1500,
+  TASK: 1000,
 
   /** 一般操作延迟 (ms) */
-  ACTION: 1500,
+  ACTION: 1000,
 
   /** 战斗延迟 (ms) */
   BATTLE: 1500,
 
   /** 刷新延迟 (ms) */
-  REFRESH: 2000,
+  REFRESH: 1500,
 
   /** 长延迟 (ms) */
-  LONG: 7000,
+  LONG: 5000,
 };

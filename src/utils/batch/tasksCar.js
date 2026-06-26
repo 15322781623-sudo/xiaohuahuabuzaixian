@@ -31,7 +31,13 @@ export function createTasksCar(deps) {
     isBigPrize,
     countRacingRefreshTickets,
     delayConfig,
+    getModuleDelay,
   } = deps;
+
+  // 模块延迟辅助函数
+  const _getModuleDelay = getModuleDelay || ((moduleName) => {
+    return delayConfig?.action || 1500;
+  });
 
   /** 获取命令超时时间 */
   const getTimeout = () => batchSettings.defaultCommandTimeout || 5000;
@@ -51,7 +57,7 @@ export function createTasksCar(deps) {
       },
       getTimeout(),
     );
-    await new Promise((r) => setTimeout(r, delayConfig.action));
+    await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
   };
 
   /** 获取刷新券数量（内部捕获异常，不会抛出） */
@@ -126,7 +132,7 @@ export function createTasksCar(deps) {
       // 任务级刷新延迟覆盖全局设置
       const effectiveRefreshDelay = (taskSmartDeparture && taskSmartDeparture.enabled && taskSmartDeparture.refreshDelay != null)
         ? taskSmartDeparture.refreshDelay * 1000
-        : delayConfig.refresh;
+        : _getModuleDelay('default');
 
       // 任务级"最低品质必须同时满足"覆盖全局设置
       const effectiveRequireMinColor = (taskSmartDeparture && taskSmartDeparture.enabled && taskSmartDeparture.requireMinColorWithConditions != null)
@@ -150,14 +156,14 @@ export function createTasksCar(deps) {
         const res = await tokenStore.sendMessageWithPromise(tokenId, "car_getrolecar", {}, getTimeout());
         const carList = normalizeCars(res?.body ?? res);
 
-        await new Promise((r) => setTimeout(r, delayConfig.command));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
 
         // 2. 获取刷新券 & 角色ID
         const { tickets: initialTickets, roleId: currentRoleId } = await getRefreshTickets(tokenId);
         let refreshTickets = initialTickets;
         addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 剩余刷新次数: ${refreshTickets}`, type: "info" });
 
-        await new Promise((r) => setTimeout(r, delayConfig.command));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
 
         // 3. 获取护卫数据
         const { sortedHelpers, helperUsageMap, updateHelperUsage } = await fetchHelperData(tokenId, token.name, currentRoleId);
@@ -195,7 +201,7 @@ export function createTasksCar(deps) {
           }
 
           // 车辆间延迟
-          await new Promise((r) => setTimeout(r, delayConfig.command));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
         }
 
         tokenStatus.value[tokenId] = "completed";
@@ -361,7 +367,7 @@ export function createTasksCar(deps) {
 
     try {
       await updateHelperUsage();
-      await new Promise((r) => setTimeout(r, delayConfig.command));
+      await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
       const legionRes = await tokenStore.sendMessageWithPromise(tokenId, "legion_getinfo", {}, getTimeout());
       const membersMap = legionRes?.body?.info?.members || legionRes?.info?.members || {};
 
@@ -390,7 +396,7 @@ export function createTasksCar(deps) {
   const assignHelper = async (tokenId, tokenName, car, sortedHelpers, helperUsageMap, updateHelperUsage) => {
     if (Number(car.color || 0) < 5 || car.helperId) return;
     await updateHelperUsage();
-    await new Promise((r) => setTimeout(r, delayConfig.command));
+    await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
 
     if (!sortedHelpers.length) {
       addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 车辆[${gradeLabel(car.color)}]需要护卫，但未获取到可用护卫列表`, type: "warning" });
@@ -448,7 +454,7 @@ export function createTasksCar(deps) {
         if (data.rewards != null) car.rewards = data.rewards;
       }
 
-      await new Promise((r) => setTimeout(r, delayConfig.command));
+      await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
 
       // 更新刷新券
       currentTickets = await getTicketCount(tokenId);
@@ -531,7 +537,7 @@ export function createTasksCar(deps) {
               await tokenStore.sendMessageWithPromise(tokenId, "car_claim", { carId: String(car.id) }, getTimeout());
               successCount++;
               addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 收车成功: ${gradeLabel(car.color)}`, type: "success" });
-              await new Promise((r) => setTimeout(r, delayConfig.action));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
             } catch (error) {
               const errorMsg = error.message || "";
               if (isRetryableClaimError(errorMsg)) {
@@ -595,7 +601,7 @@ export function createTasksCar(deps) {
           await tokenStore.sendMessageWithPromise(task.tokenId, "car_claim", { carId: String(task.car.id) }, getTimeout());
           retrySuccess++;
           addLog({ time: new Date().toLocaleTimeString(), message: `${task.tokenName} 重试收车成功: ${gradeLabel(task.car.color)}`, type: "success" });
-          await new Promise((r) => setTimeout(r, delayConfig.action));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
         } catch (error) {
           const errorMsg = error.message || "";
           if (isRetryableClaimError(errorMsg)) {

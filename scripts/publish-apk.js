@@ -136,7 +136,7 @@ async function main() {
   
   // 如果指定了 --repo，更新下载链接为 GitHub Releases 地址
   if (githubRepo) {
-    const downloadUrl = `https://github.com/${githubRepo}/releases/download/v${version}/xyzw-helper.apk`;
+    const downloadUrl = `https://github.com/${githubRepo}/releases/download/v${version}/肝王之王.apk`;
     workerCode = workerCode.replace(
       /downloadUrl:\s*"[^"]*"/,
       `downloadUrl: "${downloadUrl}"`
@@ -169,8 +169,8 @@ async function main() {
   // 6. 上传到 R2（如果配置了）
   if (!skipR2) {
     console.log('\n📤 上传 APK 到 Cloudflare R2...');
-    const apkFileName = `xyzw-helper-${version}.apk`;
-    const apkPath = join(ROOT_DIR, `android/app/build/outputs/apk/release/app-release.apk`);
+    const apkFileName = `肝王之王-${version}.apk`;
+    const apkPath = join(ROOT_DIR, `android/app/build/outputs/apk/release/肝王之王_${version}.apk`);
     
     if (existsSync(apkPath)) {
       try {
