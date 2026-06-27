@@ -205,7 +205,18 @@ export class NightmareAutoBattleService {
       if (!result) {
         // 第1-7关全员出战但未通关：仅遣散战斗房间，保留队伍，重建重试
         if (this._currentLevel > 0 && this._currentLevel < 8) {
+          const prevLevel = this._currentLevel;
           this._onLog(`第${this._currentLevel}关全员出战均未通过，遣散战斗房间重建重试...`, 'warning');
+          // 防御性刷新：确认关卡确实未推进（防止服务器延迟导致误判）
+          try {
+            await this._fetchRoomInfo();
+            if (this._currentLevel > prevLevel) {
+              this._onLog(`关卡已推进到第${this._currentLevel}关，跳过重建`, 'info');
+              continue;
+            }
+          } catch (e) {
+            // 刷新失败，继续原有重建逻辑
+          }
           // 仅遣散战斗房间（不解散队伍）
           try {
             await this._tokenStore.sendMessageWithPromise(
@@ -683,6 +694,15 @@ export class NightmareAutoBattleService {
         }
         return 'already_fought';
       }
+      // 7100020: 成员已在此房间/房间状态异常，视为已出战
+      if (errMsg.includes('7100020')) {
+        this._onLog(`${member.name} 已在此房间（7100020），标记并跳过`, 'warning');
+        if (!this._attackRecords[this._currentLevel]) this._attackRecords[this._currentLevel] = [];
+        if (!this._attackRecords[this._currentLevel].includes(String(member.roleId))) {
+          this._attackRecords[this._currentLevel].push(String(member.roleId));
+        }
+        return 'already_fought';
+      }
       // 7100140: 限流中，等待恢复
       if (errMsg.includes('7100140')) {
         this._onLog(`${member.name} 出战失败，限流中，等待恢复即可`, 'warning');
@@ -777,9 +797,20 @@ export class NightmareAutoBattleService {
       return null;
     } catch (err) {
       const errMsg = err.message || String(err);
-      // 7100020: 服务器残留队伍导致开启失败，先解散队伍再重建
+      // 7100020: 服务器残留队伍或房间状态异常，先尝试刷新确认关卡状态
       if (errMsg.includes('7100020')) {
-        this._onLog('开启房间失败(7100020)，先解散队伍再重建...', 'warning');
+        this._onLog('开启房间失败(7100020)，先刷新关卡状态...', 'warning');
+        try {
+          await this._fetchRoomInfo();
+          if (this._roomId) {
+            this._onLog(`刷新后房间仍有效 RoomId: ${this._roomId}，跳过重建`, 'success');
+            return String(this._roomId);
+          }
+        } catch (e) {
+          // 刷新失败，继续后续重建逻辑
+        }
+        // 刷新后无有效房间，执行解散队伍再重建
+        this._onLog('刷新后无有效房间，先解散队伍再重建...', 'warning');
         try {
           await this._tokenStore.sendMessageWithPromise(
             this._captainTokenId, 'matchteam_dismiss',

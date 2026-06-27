@@ -495,67 +495,67 @@ const switchCaptain = async (newTokenId) => {
             || nightResp?.roomid);
         } catch { /* 没有战斗房间 */ }
 
-        if (!hasActiveRoom) {
-          // 无战斗房间 → 过期残留
-          addLog(`发现残留队伍 TeamId: ${existingTeamId}（无活跃战斗）`, 'warning');
-          let dismissSuccess = false;
-          // 先获取队伍详情确认是否队长
-          let isLeader = true;
-          try {
-            const teamInfoRes = await tokenStore.sendMessageWithPromise(
-              captainTokenId.value, 'matchteam_getteaminfo',
-              { teamId: existingTeamId }, 10000
-            );
-            const leaderId = String(teamInfoRes?.teamInfo?.leaderId || '');
-            isLeader = (leaderId === String(roleId));
-          } catch { /* 无法获取队伍信息，默认尝试解散 */ }
-
-          if (isLeader) {
-            try {
-              await tokenStore.sendMessageWithPromise(
-                captainTokenId.value, 'matchteam_dismiss',
-                { teamId: Number(existingTeamId) }, 10000
-              );
-              addLog('残留队伍已解散', 'success');
-              dismissSuccess = true;
-            } catch (dismissErr) {
-              const errMsg = dismissErr.message || String(dismissErr);
-              if (errMsg.includes('200020') || errMsg.includes('6100020')) {
-                addLog('残留队伍已不存在', 'info');
-                dismissSuccess = true;
-              } else {
-                addLog(`解散残留队伍失败: ${errMsg}`, 'warning');
-              }
-            }
-          } else {
-            // 非队长：退出队伍
-            addLog('当前不是队长，正在退出残留队伍...', 'warning');
-            try {
-              await tokenStore.sendMessageWithPromise(
-                captainTokenId.value, 'matchteam_leave',
-                { teamId: Number(existingTeamId) }, 10000
-              );
-              addLog('已退出残留队伍', 'success');
-              dismissSuccess = true;
-            } catch (leaveErr) {
-              const errMsg = leaveErr.message || String(leaveErr);
-              if (errMsg.includes('200020') || errMsg.includes('6100020')) {
-                addLog('残留队伍已不存在', 'info');
-                dismissSuccess = true;
-              } else {
-                addLog(`退出残留队伍失败: ${errMsg}`, 'warning');
-              }
-            }
-          }
-          // 标记为已处理
-          _dismissedStaleTeams.add(String(existingTeamId));
-          addLog('当前无十殿阎罗队伍，可以开始组队');
-        } else {
-          // 有活跃战斗 → 恢复队伍
+        if (hasActiveRoom) {
+          // 有活跃战斗房间 → 直接恢复
           teamId.value = String(existingTeamId);
           addLog(`发现已有队伍 TeamId: ${existingTeamId}（有活跃战斗），恢复中...`, 'success');
           const refreshed = await refreshTeamMembers();
-          if (refreshed) matchTeammates(teamMembers.value, roleId);
+          if (refreshed) {
+            const roleIdNum = roleId;
+            matchTeammates(teamMembers.value, roleIdNum);
+          }
+        } else {
+          // 无活跃战斗房间 → 检查队伍是否在2小时内创建/活跃
+          let isRecentTeam = false;
+          try {
+            const teamDetailsResp = await tokenStore.sendMessageWithPromise(
+              captainTokenId.value, 'matchteam_getteaminfo',
+              { teamId: existingTeamId }, 5000
+            );
+            const teamInfo = teamDetailsResp?.teamInfo || {};
+            const fightRoleBase = teamInfo.fightRoleBase || [];
+
+            if (fightRoleBase.length > 0) {
+              // 获取所有成员中最大的 lockedTime（最近一次活跃时间）
+              const now = Math.floor(Date.now() / 1000);
+              const twoHoursAgo = now - 2 * 60 * 60; // 2小时前的时间戳（秒）
+
+              let maxLockedTime = 0;
+              for (const m of fightRoleBase) {
+                let lt = m.lockedTime || m.lockTime || 0;
+                // 兼容毫秒和秒级时间戳
+                if (lt > 9999999999) lt = Math.floor(lt / 1000);
+                if (lt > maxLockedTime) maxLockedTime = lt;
+              }
+
+              if (maxLockedTime === 0) {
+                // 成员无 lockedTime，说明队伍刚创建未开始战斗，视为有效
+                isRecentTeam = true;
+                addLog(`队伍 ${existingTeamId} 为新创建队伍（成员未锁定），恢复中...`, 'success');
+              } else if (maxLockedTime >= twoHoursAgo) {
+                isRecentTeam = true;
+                addLog(`队伍 ${existingTeamId} 最近活跃时间在2小时内（${new Date(maxLockedTime * 1000).toLocaleTimeString()}），恢复中...`, 'success');
+              } else {
+                addLog(`队伍 ${existingTeamId} 最近活跃时间超过2小时（${new Date(maxLockedTime * 1000).toLocaleTimeString()}），忽略`, 'info');
+              }
+            } else {
+              addLog(`队伍 ${existingTeamId} 成员为空，忽略`, 'info');
+            }
+          } catch (err) {
+            addLog(`获取队伍 ${existingTeamId} 详情失败: ${err.message || err}，忽略`, 'info');
+          }
+
+          if (isRecentTeam) {
+            // 2小时内的队伍，恢复
+            teamId.value = String(existingTeamId);
+            const refreshed = await refreshTeamMembers();
+            if (refreshed) {
+              const roleIdNum = roleId;
+              matchTeammates(teamMembers.value, roleIdNum);
+            }
+          } else {
+            addLog('当前无进行中的十殿阎罗队伍，可以开始组队');
+          }
         }
       } else {
         addLog("当前无十殿阎罗队伍，可以开始组队");
@@ -1033,75 +1033,82 @@ onMounted(async () => {
         || null;
     } catch { /* 没有战斗房间 */ }
 
-    if (!existingRoomId) {
-      // 无战斗房间 → 过期残留队伍
-      if (leaderId === String(roleId)) {
-        // 当前是队长，可以直接解散
-        addLog(`发现残留队伍 TeamId: ${existingTeamId}（无活跃战斗），正在解散...`, 'warning');
-        try {
-          await tokenStore.sendMessageWithPromise(
-            captainTokenId.value,
-            'matchteam_dismiss',
-            { teamId: Number(existingTeamId) },
-            10000
-          );
-          addLog('残留队伍已解散，可以开始全新组队', 'success');
-        } catch (dismissErr) {
-          const errMsg = dismissErr.message || String(dismissErr);
-          if (errMsg.includes('200020') || errMsg.includes('6100020')) {
-            addLog('残留队伍已不存在，可以开始全新组队', 'info');
-          } else {
-            addLog(`解散残留队伍失败: ${errMsg}`, 'warning');
-          }
-        }
-        // 标记为已处理的残留队伍
-        _dismissedStaleTeams.add(String(existingTeamId));
-      } else {
-        // 非队长：使用 matchteam_leave 退出残留队伍
-        addLog(`发现残留队伍（无活跃战斗），当前不是队长，正在退出队伍...`, 'warning');
-        try {
-          await tokenStore.sendMessageWithPromise(
-            captainTokenId.value,
-            'matchteam_leave',
-            { teamId: Number(existingTeamId) },
-            10000
-          );
-          addLog('已退出残留队伍，可以开始全新组队', 'success');
-        } catch (leaveErr) {
-          const errMsg = leaveErr.message || String(leaveErr);
-          if (errMsg.includes('200020') || errMsg.includes('6100020')) {
-            addLog('残留队伍已不存在，可以开始全新组队', 'info');
-          } else {
-            addLog(`退出残留队伍失败: ${errMsg}`, 'warning');
-          }
-        }
-        // 标记为已处理的残留队伍
-        _dismissedStaleTeams.add(String(existingTeamId));
+    if (existingRoomId) {
+      // 有活跃战斗房间 → 检查是否队长
+      if (leaderId !== String(roleId)) {
+        addLog(`当前账号不是队长（队长 roleId: ${leaderId}），可通过上方下拉切换队长账号`, "warning");
+        isInitializing.value = false;
+        checkAndExecuteNextPreset();
+        return;
       }
+
+      // 有活跃战斗 + 是队长 → 恢复队伍到UI
+      teamId.value = String(existingTeamId);
+      const fightRoleBase = teamInfo.fightRoleBase || [];
+      teamMembers.value = fightRoleBase;
+      matchTeammates(fightRoleBase, roleId);
+
+      const otherCount = fightRoleBase.length - 1;
+      addLog(`队伍已恢复！TeamId: ${teamId.value}，${otherCount > 0 ? `已有 ${otherCount} 名队员` : "暂无队员"}`, "success");
+      message.success(`已恢复队伍 TeamId: ${teamId.value}（有活跃战斗房间）`);
+      isInitializing.value = false;
+      // 检查是否有待执行的预设队列（从战斗页面返回）
+      checkAndExecuteNextPreset();
+      return;
+    }
+
+    // 无活跃战斗房间 → 检查队伍是否在2小时内创建/活跃
+    let isRecentTeam = false;
+    try {
+      const fightRoleBase = teamInfo.fightRoleBase || [];
+      if (fightRoleBase.length > 0) {
+        // 获取所有成员中最大的 lockedTime（最近一次活跃时间）
+        const now = Math.floor(Date.now() / 1000);
+        const twoHoursAgo = now - 2 * 60 * 60; // 2小时前的时间戳（秒）
+
+        let maxLockedTime = 0;
+        for (const m of fightRoleBase) {
+          let lt = m.lockedTime || m.lockTime || 0;
+          // 兼容毫秒和秒级时间戳
+          if (lt > 9999999999) lt = Math.floor(lt / 1000);
+          if (lt > maxLockedTime) maxLockedTime = lt;
+        }
+
+        if (maxLockedTime === 0) {
+          // 成员无 lockedTime，说明队伍刚创建未开始战斗，视为有效
+          isRecentTeam = true;
+          addLog(`队伍 ${existingTeamId} 为新创建队伍（成员未锁定），恢复中...`, 'success');
+        } else if (maxLockedTime >= twoHoursAgo) {
+          isRecentTeam = true;
+          addLog(`队伍 ${existingTeamId} 最近活跃时间在2小时内（${new Date(maxLockedTime * 1000).toLocaleTimeString()}），恢复中...`, 'success');
+        } else {
+          addLog(`队伍 ${existingTeamId} 最近活跃时间超过2小时（${new Date(maxLockedTime * 1000).toLocaleTimeString()}），忽略`, 'info');
+        }
+      } else {
+        addLog(`队伍 ${existingTeamId} 成员为空，忽略`, 'info');
+      }
+    } catch (err) {
+      addLog(`检查队伍 ${existingTeamId} 活跃时间失败: ${err.message || err}，忽略`, 'info');
+    }
+
+    if (isRecentTeam) {
+      // 2小时内的队伍，恢复
+      teamId.value = String(existingTeamId);
+      const fightRoleBase = teamInfo.fightRoleBase || [];
+      teamMembers.value = fightRoleBase;
+      matchTeammates(fightRoleBase, roleId);
+
+      const otherCount = fightRoleBase.length - 1;
+      addLog(`队伍已恢复！TeamId: ${teamId.value}，${otherCount > 0 ? `已有 ${otherCount} 名队员` : "暂无队员"}`, "success");
+      message.success(`已恢复队伍 TeamId: ${teamId.value}（最近2小时内活跃）`);
       isInitializing.value = false;
       checkAndExecuteNextPreset();
       return;
     }
 
-    // 有活跃战斗房间 → 检查是否队长
-    if (leaderId !== String(roleId)) {
-      addLog(`当前账号不是队长（队长 roleId: ${leaderId}），可通过上方下拉切换队长账号`, "warning");
-      isInitializing.value = false;
-      checkAndExecuteNextPreset();
-      return;
-    }
-
-    // 有活跃战斗 + 是队长 → 恢复队伍到UI
-    teamId.value = String(existingTeamId);
-    const fightRoleBase = teamInfo.fightRoleBase || [];
-    teamMembers.value = fightRoleBase;
-    matchTeammates(fightRoleBase, roleId);
-
-    const otherCount = fightRoleBase.length - 1;
-    addLog(`队伍已恢复！TeamId: ${teamId.value}，${otherCount > 0 ? `已有 ${otherCount} 名队员` : "暂无队员"}`, "success");
-    message.success(`已恢复队伍 TeamId: ${teamId.value}（有活跃战斗房间）`);
+    addLog(`队伍 ${existingTeamId} 无活跃战斗房间且超过2小时未活跃，忽略`, 'info');
+    addLog('当前无进行中的十殿阎罗队伍，跳过恢复');
     isInitializing.value = false;
-    // 检查是否有待执行的预设队列（从战斗页面返回）
     checkAndExecuteNextPreset();
   } catch (err) {
     addLog(`初始化检查失败: ${err.message || err}`, "error");

@@ -492,7 +492,7 @@ const createNewPreset = () => {
   editingPreset.value = null;
   form.value = {
     id: 'nm_preset_' + Date.now(),
-    name: '新预设',
+    name: props.captainTokenId ? `${getTokenName(props.captainTokenId)}` : '新预设',
     captainTokenId: props.captainTokenId,
     memberTokenIds: [...(props.memberTokenIds || [])],
     teamSlots: {},

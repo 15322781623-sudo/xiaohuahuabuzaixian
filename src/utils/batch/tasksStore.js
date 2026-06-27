@@ -1282,8 +1282,9 @@ export function createTasksStore(deps) {
   };
 
   /**
-   * 多选购买商品（先买后刷新模式）
-   * 每种商品按设定次数购买，每次购买后刷新商店再买下一次
+   * 多选购买商品（轮次优先模式）
+   * 每轮遍历所有商品各买一次，每轮开始前获取最新商品列表，已购买的跳过
+   * 每轮结束后刷新商店（最后一轮除外），使下轮可重新购买
    * @param {Array<{goodsId: number, name: string, count: number}>} items - 商品列表
    */
   const store_buy_selectable = async (items) => {
@@ -1338,56 +1339,112 @@ export function createTasksStore(deps) {
 
         console.log('[多选购买] 购买计划:', buyProgress.map(i => `${i.name}x${i.count}`));
 
-        // 先买后刷新：每种商品按次数购买，每次购买后刷新商店
-        for (const item of buyProgress) {
+        // 轮次优先模式：每轮遍历所有商品各买一次，买前刷新商店
+        const maxRound = Math.max(...buyProgress.map(i => i.count));
+        let totalSkip = 0;
+        let totalFail = 0;
+
+        for (let round = 0; round < maxRound; round++) {
           if (shouldStop.value) break;
 
-          for (let i = 0; i < item.count; i++) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} --- 第 ${round + 1}/${maxRound} 轮购买 ---`,
+            type: "info",
+          });
+
+          // 第一轮不需要检查已购状态，后续轮次调用 store_goodslist 仅用于诊断日志
+          if (round > 0) {
+            try {
+              const listResult = await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "store_goodslist",
+                { storeId: 1 },
+                batchSettings.defaultCommandTimeout || 5000,
+              );
+              await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
+              if (!listResult.error) {
+                console.log('[多选购买] 商品列表响应:', JSON.stringify(listResult).substring(0, 1000));
+              }
+            } catch (e) {
+              console.log('[多选购买] 获取商品列表异常:', e.message);
+            }
+          }
+
+          let roundHasAction = false;
+
+          for (const item of buyProgress) {
             if (shouldStop.value) break;
 
-            // 先购买
-            const result = await tokenStore.sendMessageWithPromise(
-              tokenId,
-              "store_buy",
-              { goodsId: item.goodsId },
-              batchSettings.defaultCommandTimeout || 5000,
-            );
-
-            console.log('[多选购买] 购买结果:', result);
-            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
-
-            if (result.error) {
+            // 本地计数判定：如果本地已购买次数 >= 设定次数，跳过
+            if (item.purchased >= item.count) {
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `${token.name} 购买${item.name}失败: ${result.error}`,
+                message: `${token.name} 商品 ${item.name || item.goodsId} 已完成购买(${item.purchased}/${item.count})，跳过`,
+                type: "info",
+              });
+              totalSkip++;
+              continue;
+            }
+            if (item.stopped) continue;
+
+            roundHasAction = true;
+
+            try {
+              const result = await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "store_buy",
+                { goodsId: item.goodsId },
+                batchSettings.defaultCommandTimeout || 5000,
+              );
+
+              console.log('[多选购买] 购买响应:', item.goodsId, JSON.stringify(result));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
+
+              if (result.error) {
+                totalFail++;
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 购买${item.name}失败: ${result.error}`,
+                  type: "error",
+                });
+                // 购买失败不中断，继续尝试其他商品
+              } else {
+                item.purchased++;
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 购买${item.name}成功 (${item.purchased}/${item.count})`,
+                  type: "success",
+                });
+              }
+            } catch (e) {
+              totalFail++;
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 购买${item.name}异常: ${e.message}`,
                 type: "error",
               });
-              // 购买失败就停止该商品
-              item.stopped = true;
-              break;
-            } else {
-              item.purchased++;
+            }
+          }
+
+          // 每轮结束后刷新商店（最后一轮不需要）
+          if (round < maxRound - 1 && roundHasAction) {
+            try {
+              const refreshResult = await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "store_refresh",
+                { storeId: 1 },
+                batchSettings.defaultCommandTimeout || 5000,
+              );
+              console.log('[多选购买] 商品刷新结果:', refreshResult);
+              await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
+            } catch (e) {
+              console.log('[多选购买] 商品刷新异常:', e.message);
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `${token.name} 购买${item.name}成功 (${item.purchased}/${item.count})`,
-                type: "success",
+                message: `${token.name} 商店刷新失败(第${round + 1}轮): ${e.message}，继续下一轮`,
+                type: "warning",
               });
-            }
-
-            // 购买成功后刷新商店（最后一次不需要刷新）
-            if (i < item.count - 1) {
-              try {
-                const refreshResult = await tokenStore.sendMessageWithPromise(
-                  tokenId,
-                  "store_refresh",
-                  { storeId: 1 },
-                  batchSettings.defaultCommandTimeout || 5000,
-                );
-                console.log('[多选购买] 商品刷新结果:', refreshResult);
-                await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
-              } catch (e) {
-                console.log('[多选购买] 商品刷新异常:', e.message);
-              }
             }
           }
         }
@@ -1397,7 +1454,7 @@ export function createTasksStore(deps) {
 
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} 多选购买完成 (${totalPurchased}/${totalPlanned})`,
+          message: `${token.name} 多选购买完成: 成功${totalPurchased}/${totalPlanned}，跳过${totalSkip}，失败${totalFail}`,
           type: "info",
         });
 

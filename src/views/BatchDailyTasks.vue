@@ -11717,9 +11717,13 @@ const importFileInput = ref(null);
 /**
  * 导出分组
  */
-const exportGroups = () => {
-  tokenStore.exportTokenGroups();
-  message.success("分组导出成功");
+const exportGroups = async () => {
+  const result = await tokenStore.exportTokenGroups();
+  if (result) {
+    message.success("分组导出成功");
+  } else {
+    message.error("分组导出失败");
+  }
 };
 
 /**

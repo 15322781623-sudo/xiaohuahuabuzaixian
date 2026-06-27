@@ -50,12 +50,13 @@ const errorCodeMap = {
   7300232: "暂无可预约的直播",
   3000280: "已领取过100金砖奖励",
   200370: "已领取完累抽奖励",
+  7100020: "房间状态异常或成员已在此房间",
   7100022: "当前账号已加入其他房间",
   7100140: "限流中，等待恢复即可",
   3200010: "档位未达标无法领取",
   3200020: "已领取消耗道具",
   [-10006]: "当前未满足无法领取",
-  1100010: "当前免费道具已领取",
+  1100010: "道具已领取",
 };
 
 // 事件节流定义表，根据实际需要调整命令和节流时间
@@ -497,6 +498,7 @@ export function registerDefaultCommands(reg) {
     .register("matchteam_memberprepare")
     .register("matchteam_openteam")
     .register("matchteam_dismiss")
+    .register("matchteam_leave")
     .register("matchteam_setleader")
     .register("matchteam_kick")
     .register("matchteam_lock")
@@ -1465,6 +1467,7 @@ export class XyzwWebSocketClient {
       matchteam_memberprepareresp: "matchteam_memberprepare",
       matchteam_openteamresp: "matchteam_openteam",
       matchteam_dismissresp: "matchteam_dismiss",
+      matchteam_leaveresp: "matchteam_leave",
       matchteam_setleaderresp: "matchteam_setleader",
       matchteam_kickresp: "matchteam_kick",
       matchteam_lockresp: "matchteam_lock",

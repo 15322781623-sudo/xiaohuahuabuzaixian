@@ -5,6 +5,7 @@ import { computed, onUnmounted, ref } from "vue";
 import type { ProtoMsg } from "@/utils/bonProtocol";
 import { g_utils } from "@/utils/bonProtocol";
 import { gameLogger, tokenLogger, wsLogger } from "@/utils/logger";
+import { downloadFile } from "@/utils/imageExport";
 import { XyzwWebSocketClient } from "@/utils/xyzwWebSocket";
 
 import useIndexedDB from "@/hooks/useIndexedDB";
@@ -2293,7 +2294,7 @@ export const useTokenStore = defineStore("tokens", () => {
   };
 
   // 导出分组
-  const exportTokenGroups = () => {
+  const exportTokenGroups = async () => {
     const exportData = {
       version: "1.0",
       exportDate: new Date().toISOString(),
@@ -2302,17 +2303,12 @@ export const useTokenStore = defineStore("tokens", () => {
 
     const dataStr = JSON.stringify(exportData, null, 2);
     const dataBlob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(dataBlob);
+    const filename = `token-groups-${new Date().toISOString().split("T")[0]}.json`;
 
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `token-groups-${new Date().toISOString().split("T")[0]}.json`;
-    link.click();
-
-    URL.revokeObjectURL(url);
+    const result = await downloadFile(dataBlob, filename);
 
     tokenLogger.info("分组导出成功");
-    return true;
+    return result;
   };
 
   // 导入分组
