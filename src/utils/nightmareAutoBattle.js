@@ -32,6 +32,7 @@ export class NightmareAutoBattleService {
    * @param {Object} opts.presetData - 预设数据 { name, levelConfig, waitLevel8, ... }
    * @param {string} opts.captainRoleId - 队长 roleId
    * @param {Object} opts.tokenStore - Pinia tokenStore
+   * @param {Array} [opts.activeBattles] - 活跃战斗列表引用（用于解散队伍时检查共享）
    * @param {Function} opts.onLog - 日志回调 (msg, type)
    * @param {Function} opts.onStatusChange - 状态变更回调 ({ status, currentLevel, ... })
    * @param {Function} opts.onComplete - 完成回调 ({ level, presetName })
@@ -44,6 +45,7 @@ export class NightmareAutoBattleService {
     this._presetData = opts.presetData || {};
     this._captainRoleId = opts.captainRoleId;
     this._tokenStore = opts.tokenStore;
+    this._activeBattles = opts.activeBattles || null;
     this._onLog = opts.onLog || (() => {});
     this._onStatusChange = opts.onStatusChange || (() => {});
     this._onComplete = opts.onComplete || (() => {});
@@ -98,7 +100,11 @@ export class NightmareAutoBattleService {
     }
     this._stopped = false;
     this._status = 'running';
-    this._level8FirstEntry = false; // 重置卡点标记，允许重新触发
+    // 仅在周日且第8关时才重置卡点标记，避免周一resume后误触发等待
+    const now = new Date();
+    if (now.getDay() === 0 && this._currentLevel === 8) {
+      this._level8FirstEntry = false;
+    }
     this._startTime = Date.now();    // 重置超时计时
     this._cleanupDone = false;       // 重置清理标记
     this._onLog(`继续战斗：${this._presetData?.name || '未知预设'} Room: ${this._roomId}`, 'info');
@@ -128,7 +134,7 @@ export class NightmareAutoBattleService {
     } finally {
       if (!this._stopped && !this._cleanupDone) {
         this._cleanupDone = true;
-        await this._dismissRoom();
+        await this._dismissRoom(this._activeBattles);
       }
     }
   }
@@ -160,7 +166,7 @@ export class NightmareAutoBattleService {
       // 统一清理：确保战斗结束后一定解散队伍（_dismissRoom 内部已处理重复调用和错误码）
       if (!this._stopped && !this._cleanupDone) {
         this._cleanupDone = true;
-        await this._dismissRoom();
+        await this._dismissRoom(this._activeBattles);
       }
     }
   }
@@ -172,7 +178,7 @@ export class NightmareAutoBattleService {
       if (Date.now() - this._startTime > this._MAX_BATTLE_TIME && this._status !== 'waiting_midnight') {
         this._onLog('后台战斗超时（2小时），自动停止并解散房间', 'warning');
         this._status = 'failed';
-        await this._dismissRoom();
+        await this._dismissRoom(this._activeBattles);
         this._onStatusChange({ status: 'failed', presetName: this._presetData?.name, reason: 'timeout' });
         break;
       }
@@ -238,7 +244,7 @@ export class NightmareAutoBattleService {
           if (this._isAllMembersDead()) {
             // 全员阵亡 → 失败
             this._onLog('❌ 第8关全员阵亡，直接结束并解散房间', 'error');
-            await this._dismissRoom();
+            await this._dismissRoom(this._activeBattles);
             this._status = 'failed';
             this._onStatusChange({ status: 'failed', presetName: this._presetData?.name, reason: 'level8_all_dead' });
             this._onError({ message: '第8关全员阵亡', reason: 'level8_all_dead' });
@@ -277,7 +283,7 @@ export class NightmareAutoBattleService {
 
         // currentLevel 为 0 或 > 8（异常情况）
         this._onLog('无可用出战成员，结束战斗并解散队伍', 'warning');
-        await this._dismissRoom();
+        await this._dismissRoom(this._activeBattles);
         this._status = 'completed';
         this._onStatusChange({ status: 'completed', presetName: this._presetData?.name });
         this._onComplete({ level: this._currentLevel, reason: 'no_available_members' });
@@ -393,7 +399,7 @@ export class NightmareAutoBattleService {
       if (completed) {
         this._isCompleted = true;
         this._onLog(`🎉 十殿阎罗挑战通关！`, 'success');
-        await this._dismissRoom();
+        await this._dismissRoom(this._activeBattles);
         this._status = 'completed';
         this._onComplete({ level: 8, presetName: this._presetData?.name });
         this._onStatusChange({ status: 'completed', presetName: this._presetData?.name });
@@ -403,7 +409,7 @@ export class NightmareAutoBattleService {
       // 检查第8关全员阵亡 → 直接结束并解散
       if (this._currentLevel === 8 && this._isAllMembersDead()) {
         this._onLog('❌ 第8关全员阵亡，直接结束并解散房间', 'error');
-        await this._dismissRoom();
+        await this._dismissRoom(this._activeBattles);
         this._status = 'failed';
         this._onStatusChange({ status: 'failed', presetName: this._presetData?.name, reason: 'level8_all_dead' });
         this._onError({ message: '第8关全员阵亡', reason: 'level8_all_dead' });
@@ -750,6 +756,7 @@ export class NightmareAutoBattleService {
       );
       let roomId = openResp?.roomId || openResp?.roomid || openResp?.roomInfo?.roomId || null;
       if (roomId) return String(roomId);
+      this._onLog(`[debug] _reopenRoom: 无法从响应中提取 roomId，原始响应: ${JSON.stringify(openResp || null)}`, 'warning');
 
       // 轮询 nightmare_getroleinfo 获取新 roomId
       for (let attempt = 1; attempt <= 5; attempt++) {
@@ -763,6 +770,7 @@ export class NightmareAutoBattleService {
             || resp?.nightmareData?.roomId
             || resp?.roomId || null;
           if (roomId) return String(roomId);
+          this._onLog(`[debug] _reopenRoom: nightmare_getroleinfo 响应中无 roomId，原始: ${JSON.stringify(resp || null).substring(0, 200)}`, 'warning');
           this._onLog(`新 RoomId 尚未生成，重试 (${attempt}/5)...`, 'warning');
         } catch { /* ignore */ }
       }
@@ -791,6 +799,8 @@ export class NightmareAutoBattleService {
           const newTeamId = createResp?.teamInfo?.teamId;
           if (newTeamId) {
             this._teamId = String(newTeamId);
+            // 通知外部 teamId 已变更
+            this._onStatusChange({ status: this._status, teamId: newTeamId, presetName: this._presetData?.name });
             this._onLog(`新队伍已创建 TeamId: ${newTeamId}，开启房间...`, 'success');
             await sleep(2000);
             const openResp2 = await this._tokenStore.sendMessageWithPromise(
@@ -809,6 +819,7 @@ export class NightmareAutoBattleService {
                 );
                 const rid = resp2?.nightMareData?.roomId || resp2?.nightmareData?.roomId || resp2?.roomId || null;
                 if (rid) return String(rid);
+                this._onLog(`[debug] _reopenRoom: 7100020重试轮询中 nightmare_getroleinfo 无 roomId，原始: ${JSON.stringify(resp2 || null).substring(0, 200)}`, 'warning');
               } catch { /* ignore */ }
             }
           }
@@ -823,7 +834,7 @@ export class NightmareAutoBattleService {
   }
 
   // ====== 遣散房间 + 解散队伍 ======
-  async _dismissRoom() {
+  async _dismissRoom(activeBattles = null) {
     // 防止重复遣散（_battleLoop 内部和 finally 都可能调用）
     if (this._cleanupDone) return;
     this._cleanupDone = true;
@@ -845,14 +856,26 @@ export class NightmareAutoBattleService {
     }
     // 遣散房间后解散组队（matchteam）
     if (this._teamId) {
-      try {
-        await this._tokenStore.sendMessageWithPromise(
-          this._captainTokenId, 'matchteam_dismiss',
-          { teamId: Number(this._teamId) }, 10000
+      // 检查是否有其他活跃战斗共享同一队伍
+      let teamShared = false;
+      if (activeBattles && Array.isArray(activeBattles)) {
+        teamShared = activeBattles.some(b =>
+          b && b !== this && b.teamId === this._teamId &&
+          (b.status === 'running' || b.status === 'waiting_midnight')
         );
-        this._onLog('组队已解散', 'success');
-      } catch (err) {
-        this._onLog(`解散组队失败: ${err.message || err}`, 'warning');
+      }
+      if (teamShared) {
+        this._onLog(`队伍 ${this._teamId} 被其他战斗共享，跳过解散`, 'info');
+      } else {
+        try {
+          await this._tokenStore.sendMessageWithPromise(
+            this._captainTokenId, 'matchteam_dismiss',
+            { teamId: Number(this._teamId) }, 10000
+          );
+          this._onLog('组队已解散', 'success');
+        } catch (err) {
+          this._onLog(`解散组队失败: ${err.message || err}`, 'warning');
+        }
       }
     }
   }
@@ -880,25 +903,25 @@ export class NightmareAutoBattleService {
     this._onStatusChange({ status: 'waiting_midnight', currentLevel: this._currentLevel });
     this._onLog(`第7关完成，等待周一00:00后继续挑战第8关...`, 'info');
 
+    let exitReason = 'normal'; // 'normal' | 'timeout' | 'missed'
     while (!this._stopped) {
       const now = new Date();
       const day = now.getDay(); // 0=周日, 1=周一
       const hours = now.getHours();
 
       // 周一 00:00 之后即可继续
-      if (day === 1 && hours === 0) break; // 周一 00:00-00:59，精确匹配午夜窗口
+      if (day === 1 && hours < 6) break; // 周一6点前都视为有效午夜窗口
       if (day !== 0) {
-        // ✅ BUG修复：非周日直接跳出，但增加安全检查
-        // 如果已经是周一凌晨1点之后，说明已错过午夜窗口但仍可继续挑战
-        if (day === 1 && hours >= 1) {
-          this._onLog(`已过周一00:00（当前${hours}时），直接继续挑战`, 'info');
+        // 非周日直接跳出，区分是否已过午夜窗口
+        if (day === 1 && hours >= 6) {
+          exitReason = 'missed';
         }
         break;
       }
 
       // 等待超时保护
       if (Date.now() - this._waitStartTime > this._MAX_WAIT_TIME) {
-        this._onLog('卡点等待超时（35分钟），自动继续', 'warning');
+        exitReason = 'timeout';
         break;
       }
 
@@ -921,7 +944,13 @@ export class NightmareAutoBattleService {
     }
 
     if (!this._stopped) {
-      this._onLog(`已到周一00:00，开始第8关挑战！`, 'success');
+      if (exitReason === 'timeout') {
+        this._onLog('卡点等待超时（35分钟），自动继续第8关挑战', 'warning');
+      } else if (exitReason === 'missed') {
+        this._onLog(`已过周一00:00（当前${new Date().getHours()}时），继续第8关挑战`, 'info');
+      } else {
+        this._onLog(`已到周一00:00，开始第8关挑战！`, 'success');
+      }
       this._status = 'running';
       this._waitStartTime = null;
     }

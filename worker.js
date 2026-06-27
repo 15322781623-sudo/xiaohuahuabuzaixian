@@ -12,13 +12,13 @@ const GITHUB_PROXY_LIST = [
 
 // 静态兜底配置（R2 和 GitHub 都失败时使用）
 const FALLBACK_CONFIG = {
-  latestVersion: "1.2.4",
-  versionCode: 10204,
+  latestVersion: "1.2.5",
+  versionCode: 10205,
   // R2 直连下载（最快最稳）
   downloadUrl: `https://xyzw-apk-updater.15322781623.workers.dev/api/apk/download`,
   // GitHub 原始链接作为备选
   downloadUrlOriginal: `https://github.com/${GITHUB_REPO}/releases/latest/download/肝王之王.apk`,
-  changelog: "v1.2.4: 推图逻辑重构+战斗倒计时日志刷新+打包命名统一为肝王之王",
+  changelog: "v1.2.5: 换皮闯关actId动态获取+批量重试8次+日志优化",
   minVersionCode: 10107,
   forceUpdate: false,
 };
@@ -214,11 +214,11 @@ export default {
       try {
         // 优先从 R2 存储桶获取
         if (env.APK_BUCKET) {
-          const apkFile = await env.APK_BUCKET.get(`肝王之王-${versionInfo.latestVersion}.apk`);
+          const apkFile = await env.APK_BUCKET.get(`肝王之王_${versionInfo.latestVersion}.apk`);
           if (apkFile) {
             const headers = new Headers(corsHeaders);
             headers.set('Content-Type', 'application/vnd.android.package-archive');
-            headers.set('Content-Disposition', `attachment; filename="肝王之王-${versionInfo.latestVersion}.apk"`);
+            headers.set('Content-Disposition', `attachment; filename="肝王之王_${versionInfo.latestVersion}.apk"`);
             // 支持 Range 请求（断点续传）
             headers.set('Accept-Ranges', 'bytes');
             // 缓存 1 小时（同一版本不会变化）

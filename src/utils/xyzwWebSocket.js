@@ -396,7 +396,7 @@ export function registerDefaultCommands(reg) {
     .register("nightmare_fight")
     .register("nightmare_leadercomplete")
     .register("nightmare_dismiss", { roomId: 0 })
-    .register("nightmare_restore")
+    .register("nightmare_restore", { roomId: 0, roleId: 0 })
     .register("nightmare_fullrage", { roomId: 0, targetRoleId: 0 })
     .register("nightmare_clickturntable")
     .register("nightmare_claimweekreward")
@@ -500,6 +500,8 @@ export function registerDefaultCommands(reg) {
     .register("matchteam_setleader")
     .register("matchteam_kick")
     .register("matchteam_lock")
+    .register("matchteam_broadcast")
+    .register("matchteam_channelinfo")
     .register("bosstower_getinfo")
     .register("bosstower_startboss")
     .register("bosstower_startbox")
@@ -1466,6 +1468,8 @@ export class XyzwWebSocketClient {
       matchteam_setleaderresp: "matchteam_setleader",
       matchteam_kickresp: "matchteam_kick",
       matchteam_lockresp: "matchteam_lock",
+      matchteam_broadcastresp: "matchteam_broadcast",
+      matchteam_channelinforesp: "matchteam_channelinfo",
       bosstower_getinforesp: "bosstower_getinfo",
       bosstower_startbossresp: "bosstower_startboss",
       bosstower_startboxresp: "bosstower_startbox",

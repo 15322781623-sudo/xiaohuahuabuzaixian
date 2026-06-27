@@ -1514,20 +1514,20 @@
               <div class="purchase-list-grid">
                 <label
                   v-for="item in purchaseItemOptions"
-                  :key="item.goodsId"
+                  :key="item.itemId"
                   class="purchase-item-label"
                 >
                   <input
                     type="checkbox"
-                    :checked="currentSettings.purchaseList.includes(item.goodsId)"
-                    @change="togglePurchaseItem(currentSettings.purchaseList, currentSettings.purchaseDiscounts, item.goodsId)"
+                    :checked="currentSettings.purchaseList.includes(item.itemId)"
+                    @change="togglePurchaseItem(currentSettings.purchaseList, currentSettings.purchaseDiscounts, item.itemId)"
                   />
                   <span>{{ item.name }}</span>
                   <input type="number" class="discount-input"
-                    :value="getDiscount(currentSettings.purchaseDiscounts, item.goodsId)"
-                    @input="(e) => setDiscount(currentSettings.purchaseDiscounts, item.goodsId, e.target.value)"
+                    :value="getDiscount(currentSettings.purchaseDiscounts, item.itemId)"
+                    @input="(e) => setDiscount(currentSettings.purchaseDiscounts, item.itemId, e.target.value)"
                     min="1" max="10"
-                    :disabled="!currentSettings.purchaseList.includes(item.goodsId)"
+                    :disabled="!currentSettings.purchaseList.includes(item.itemId)"
                   />
                   <span class="discount-unit">折</span>
                 </label>
@@ -1658,20 +1658,20 @@
               <div class="purchase-list-grid">
                 <label
                   v-for="item in purchaseItemOptions"
-                  :key="item.goodsId"
+                  :key="item.itemId"
                   class="purchase-item-label"
                 >
                   <input
                     type="checkbox"
-                    :checked="currentTemplate.purchaseList.includes(item.goodsId)"
-                    @change="togglePurchaseItem(currentTemplate.purchaseList, currentTemplate.purchaseDiscounts, item.goodsId)"
+                    :checked="currentTemplate.purchaseList.includes(item.itemId)"
+                    @change="togglePurchaseItem(currentTemplate.purchaseList, currentTemplate.purchaseDiscounts, item.itemId)"
                   />
                   <span>{{ item.name }}</span>
                   <input type="number" class="discount-input"
-                    :value="getDiscount(currentTemplate.purchaseDiscounts, item.goodsId)"
-                    @input="(e) => setDiscount(currentTemplate.purchaseDiscounts, item.goodsId, e.target.value)"
+                    :value="getDiscount(currentTemplate.purchaseDiscounts, item.itemId)"
+                    @input="(e) => setDiscount(currentTemplate.purchaseDiscounts, item.itemId, e.target.value)"
                     min="1" max="10"
-                    :disabled="!currentTemplate.purchaseList.includes(item.goodsId)"
+                    :disabled="!currentTemplate.purchaseList.includes(item.itemId)"
                   />
                   <span class="discount-unit">折</span>
                 </label>
@@ -4468,7 +4468,7 @@
           <n-button
             size="small"
             style="margin-left: auto;"
-            @click="batchPurchaseList = purchaseItemOptions.map(i => i.goodsId)"
+            @click="batchPurchaseList = purchaseItemOptions.map(i => i.itemId)"
           >全选</n-button>
           <n-button
             size="small"
@@ -4479,20 +4479,20 @@
         <div class="purchase-list-grid">
           <label
             v-for="item in purchaseItemOptions"
-            :key="item.goodsId"
+            :key="item.itemId"
             class="purchase-item-label"
           >
             <input
               type="checkbox"
-              :checked="batchPurchaseList.includes(item.goodsId)"
-              @change="togglePurchaseItem(batchPurchaseList, batchPurchaseDiscounts, item.goodsId)"
+              :checked="batchPurchaseList.includes(item.itemId)"
+              @change="togglePurchaseItem(batchPurchaseList, batchPurchaseDiscounts, item.itemId)"
             />
             <span>{{ item.name }}</span>
             <input type="number" class="discount-input"
-              :value="getDiscount(batchPurchaseDiscounts, item.goodsId)"
-              @input="(e) => setDiscount(batchPurchaseDiscounts, item.goodsId, e.target.value)"
+              :value="getDiscount(batchPurchaseDiscounts, item.itemId)"
+              @input="(e) => setDiscount(batchPurchaseDiscounts, item.itemId, e.target.value)"
               min="1" max="10"
-              :disabled="!batchPurchaseList.includes(item.goodsId)"
+              :disabled="!batchPurchaseList.includes(item.itemId)"
             />
             <span class="discount-unit">折</span>
           </label>
@@ -8240,6 +8240,7 @@ const pageLoadTime = Date.now();
 const isScheduledTaskRunning = ref(false);
 let currentScheduledTask = null; // 当前正在执行的定时任务
 const pendingTaskQueue = []; // ✅ 待执行队列：当定时任务冲突时，排队等待执行
+let _activeNightmareBattles = []; // ✅ 模块级引用：跟踪当前十殿战斗，用于超时传导停止
 
 // Health check for the scheduler
 const healthCheck = () => {
@@ -8287,13 +8288,19 @@ const healthCheck = () => {
   // 检查定时任务执行状态是否卡住
   if (isScheduledTaskRunning.value && currentScheduledTask) {
     const now = Date.now();
-    const oneHourAgo = now - 60 * 60 * 1000; // 1 hour ago
-    if (scheduledTaskStartTime && scheduledTaskStartTime < oneHourAgo) {
+    // 十殿挑战任务超时阈值为160分钟（>内部150分钟超时），其他任务保持1小时
+    const isNightmareHealthTask = currentScheduledTask?.taskName === 'batchNightmareChallengePresets' 
+      || currentScheduledTask?.name?.includes('十殿');
+    const taskTimeoutMs = isNightmareHealthTask ? (160 * 60 * 1000) : (60 * 60 * 1000);
+    const taskTimeoutAgo = now - taskTimeoutMs;
+    if (scheduledTaskStartTime && scheduledTaskStartTime < taskTimeoutAgo) {
+      const timeoutMinutes = Math.round(taskTimeoutMs / 60000);
       console.error(
-        `[${new Date().toISOString()}] 定时任务执行状态已持续1小时，重置状态`,
+        `[${new Date().toISOString()}] 定时任务执行状态已持续${timeoutMinutes}分钟，重置状态`,
       );
       isScheduledTaskRunning.value = false;
       currentScheduledTask = null;
+      scheduledTaskStartTime = null; // ✅ 问题2：健康检查重置时清除超时计时
       // ✅ 关键修复：定时任务超时后也必须重置 isRunning
       // 否则 isRunning 卡在 true → 调度器行6491永远 return → 后续所有定时任务无法执行
       if (isRunning.value) {
@@ -8302,7 +8309,7 @@ const healthCheck = () => {
       }
       addLog({
         time: new Date().toLocaleTimeString(),
-        message: "=== 检测到定时任务执行超过1小时，已重置定时任务状态和isRunning ===",
+        message: `=== 检测到定时任务执行超过${timeoutMinutes}分钟，已重置定时任务状态和isRunning ===`,
         type: "warning",
       });
       // ✅ 同时清理runningTokens状态
@@ -9757,6 +9764,18 @@ const executeScheduledTask = async (task) => {
               message: `❌ 第 ${batchIndex + 1} 批执行失败: ${error.message}`,
               type: "error",
             });
+
+            // ✅ 超时或失败时，停止所有后台十殿战斗（防止资源泄漏）
+            if (isNightmareTask && _activeNightmareBattles.length > 0) {
+              for (const entry of _activeNightmareBattles) {
+                if (entry.battle && (entry.status === 'running' || entry.status === 'waiting_midnight' || entry.status === 'cooling')) {
+                  try {
+                    entry.battle.stop();
+                    addLog({ time: new Date().toLocaleTimeString(), message: `[${entry.preset.name}] 超时停止战斗`, type: 'warning' });
+                  } catch {}
+                }
+              }
+            }
             
             // 即使失败也等待
             if (!isLastBatch && batchSettings.batchIntervalWait > 0) {
@@ -9837,60 +9856,57 @@ const executeScheduledTask = async (task) => {
     currentScheduledTask = null;
     scheduledTaskStartTime = null; // ✅ 清除超时计时
 
-    // ✅ 任务完成后，处理待执行队列中的下一个任务（跳过已过期的任务）
+    // ✅ 任务完成后，同步处理待执行队列（不再用 nextTick，避免与调度器兖底竞态）
     if (pendingTaskQueue.length > 0) {
-      nextTick(() => {
-        // 循环清理已过期任务，找到第一个仍然有效的任务执行
-        while (pendingTaskQueue.length > 0) {
-          const nextTask = pendingTaskQueue[0]; // 只peek，不先shift
-          const timeCheck = isTaskTimeStillValid(nextTask, 60);
+      // 循环清理已过期任务，找到第一个仍然有效的任务执行
+      while (pendingTaskQueue.length > 0) {
+        const nextTask = pendingTaskQueue[0]; // 只peek，不先shift
+        const timeCheck = isTaskTimeStillValid(nextTask, 60);
 
-          if (!timeCheck.valid) {
-            pendingTaskQueue.shift(); // 移除过期任务
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `⏰ 跳过已过期的队列任务: ${nextTask.name}（${timeCheck.reason}，剩余队列: ${pendingTaskQueue.length}）`,
-              type: "warning",
-            });
-            continue; // 继续检查下一个
-          }
-
-          // 找到了时间有效的任务
-          pendingTaskQueue.shift(); // 正式出队
-          if (!isRunning.value && !isScheduledTaskRunning.value) {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `▶️ 从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
-              type: "info",
-            });
-            isScheduledTaskRunning.value = true;
-            currentScheduledTask = nextTask;
-            scheduledTaskStartTime = Date.now();
-            executeScheduledTask(nextTask).catch(error => {
-              console.error(`队列任务执行错误:`, error);
-            }).finally(() => {
-              lastTaskExecution = Date.now();
-            });
-          } else {
-            // 状态被占用（用户手动执行了任务），放回队列等待
-            pendingTaskQueue.unshift(nextTask);
-          }
-          return; // 已处理，退出
-        }
-
-        // 队列已全部清空（全部过期）
-        if (pendingTaskQueue.length === 0) {
+        if (!timeCheck.valid) {
+          pendingTaskQueue.shift(); // 移除过期任务
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `✅ 队列中所有任务均已过期，已清空`,
+            message: `⏰ 跳过已过期的队列任务: ${nextTask.name}（${timeCheck.reason}，剩余队列: ${pendingTaskQueue.length}）`,
+            type: "warning",
+          });
+          continue; // 继续检查下一个
+        }
+
+        // 找到了时间有效的任务
+        pendingTaskQueue.shift(); // 正式出队
+        if (!isRunning.value && !isScheduledTaskRunning.value) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `▶️ 从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
             type: "info",
           });
+          isScheduledTaskRunning.value = true; // 立即锁定，防止兖底逻辑竞态
+          currentScheduledTask = nextTask;
+          scheduledTaskStartTime = Date.now();
+          executeScheduledTask(nextTask).catch(error => {
+            console.error(`队列任务执行错误:`, error);
+          }).finally(() => {
+            lastTaskExecution = Date.now();
+          });
+        } else {
+          // 状态被占用（用户手动执行了任务），放回队列等待
+          pendingTaskQueue.unshift(nextTask);
         }
-      });
+        return; // 已处理，退出
+      }
+
+      // 队列已全部清空（全部过期）
+      if (pendingTaskQueue.length === 0) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `✅ 队列中所有任务均已过期，已清空`,
+          type: "info",
+        });
+      }
     }
 
-    // ✅ 不再在 finally 块中立即触发刷新
-    // 原因：nextTick 中的队列处理还未执行，此时检查 pendingTaskQueue 不准确
+    // ✅ 不在 finally 块中立即触发刷新
     // 改为由调度器 10 秒 tick 统一检查 shouldRefreshAfterTask 并在无任务运行时刷新
     // 这样可以确保所有队列任务都被处理完毕后，才真正刷新页面
   }
@@ -10295,19 +10311,31 @@ const openSettings = (token) => {
   // 自动获取黑市采购清单（需WebSocket已连接）
   const wsStatus = tokenStore.getWebSocketStatus(token.id);
   if (wsStatus === 'connected') {
-    tokenStore.sendMessageWithPromise(token.id, 'store_getpurchase', {}, 5000)
+    tokenStore.sendMessageWithPromise(token.id, 'store_getpurchase', {}, 8000)
       .then((result) => {
-        if (result?.purchaseItemList?.length > 0) {
-          currentSettings.purchaseList = result.purchaseItemList.map(i => i.itemId);
+        console.log('[采购清单] 响应:', JSON.stringify(result).substring(0, 500));
+        // 兼容多种响应结构
+        const purchaseItems = result?.purchaseItemList
+          || result?.store?.purchaseItemList
+          || result?.data?.purchaseItemList;
+        if (purchaseItems?.length > 0) {
+          currentSettings.purchaseList = purchaseItems.map(i => i.itemId);
           // 回填折扣
           const discounts = {};
-          result.purchaseItemList.forEach(i => { if (i.discount != null) discounts[i.itemId] = i.discount; });
+          purchaseItems.forEach(i => { if (i.discount != null) discounts[i.itemId] = i.discount; });
           currentSettings.purchaseDiscounts = initPurchaseDiscounts(discounts);
           // 回填采购次数
-          if (result.purchaseCnt != null) currentSettings.purchaseCnt = result.purchaseCnt;
+          const purchaseCnt = result?.purchaseCnt ?? result?.store?.purchaseCnt;
+          if (purchaseCnt != null) currentSettings.purchaseCnt = purchaseCnt;
+        } else {
+          console.warn('[采购清单] 响应为空或无purchaseItemList, keys:', result ? Object.keys(result).join(',') : 'null');
         }
       })
-      .catch(() => {});
+      .catch((e) => {
+        console.warn('[采购清单] 获取失败:', e?.message || e);
+      });
+  } else {
+    console.warn('[采购清单] WebSocket未连接, 状态:', wsStatus);
   }
 };
 
@@ -12402,29 +12430,29 @@ const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_bu
 // itemId: 采购清单使用的物品ID（用于 store_setpurchase）
 const purchaseItemOptions = [
   // 宝箱类
-  { goodsId: 1, name: '青铜宝箱' },
-  { goodsId: 2, name: '黄金宝箱' },
-  { goodsId: 3, name: '铂金宝箱' },
+  { goodsId: 1, itemId: 2002, name: '青铜宝箱' },
+  { goodsId: 2, itemId: 2003, name: '黄金宝箱' },
+  { goodsId: 3, itemId: 2004, name: '铂金宝箱' },
   // 材料类
-  { goodsId: 4, name: '进阶石' },
-  { goodsId: 5, name: '精铁' },
-  { goodsId: 6, name: '招募令' },
+  { goodsId: 4, itemId: 1003, name: '进阶石' },
+  { goodsId: 5, itemId: 1006, name: '精铁' },
+  { goodsId: 6, itemId: 1001, name: '招募令' },
   // 武将碎片类
-  { goodsId: 7, name: '随机红将碎片' },
-  { goodsId: 8, name: '随机橙将碎片' },
-  { goodsId: 9, name: '随机紫将碎片' },
+  { goodsId: 7, itemId: 3007, name: '随机红将碎片' },
+  { goodsId: 8, itemId: 3006, name: '随机橙将碎片' },
+  { goodsId: 9, itemId: 3005, name: '随机紫将碎片' },
   // 特殊类
-  { goodsId: 10, name: '梦魇晶石' },
+  { goodsId: 10, itemId: 1016, name: '梦魇晶石' },
   // 鱼竿类
-  { goodsId: 11, name: '普通鱼竿' },
-  { goodsId: 12, name: '黄金鱼竿' },
+  { goodsId: 11, itemId: 1011, name: '普通鱼竿' },
+  { goodsId: 12, itemId: 1012, name: '黄金鱼竿' },
   // 活动类
-  { goodsId: 13, name: '咸神门票' },
+  { goodsId: 13, itemId: 1030, name: '咸神门票' },
   // 玉石类
-  { goodsId: 14, name: '白玉' },
-  { goodsId: 15, name: '彩玉' },
+  { goodsId: 14, itemId: 1022, name: '白玉' },
+  { goodsId: 15, itemId: 1023, name: '彩玉' },
   // 材料类
-  { goodsId: 16, name: '扳手' },
+  { goodsId: 16, itemId: 1026, name: '扳手' },
 ];
 
 // 多选购买 Modal State
@@ -12773,6 +12801,22 @@ const batchNightmareChallengePresets = async (silent) => {
     addLog({ time: new Date().toLocaleTimeString(), message: `⚠️ 多个预设使用相同队长: ${names.join('、')}，后续预设将自动跳过`, type: 'warning' });
   }
 
+  // 收集需要跳过的重复队长预设索引（仅保留第一个，跳过后续）
+  const skipDuplicateCaptainPresets = new Set();
+  if (duplicateCaptains.length > 0) {
+    const seenCaptains = new Set();
+    for (let idx = 0; idx < captainIds.length; idx++) {
+      const cid = captainIds[idx];
+      if (duplicateCaptains.includes(cid)) {
+        if (seenCaptains.has(cid)) {
+          skipDuplicateCaptainPresets.add(idx);
+        } else {
+          seenCaptains.add(cid);
+        }
+      }
+    }
+  }
+
   // 检测共享队员（可能导致前预设战斗异常）
   const sharedMembers = [...memberUsageCount.entries()]
     .filter(([tid, count]) => count > 1 && !duplicateCaptains.includes(tid))
@@ -12792,6 +12836,7 @@ const batchNightmareChallengePresets = async (silent) => {
 
   const delay = (ms) => new Promise(r => setTimeout(r, ms));
   const activeBattles = [];
+  _activeNightmareBattles = activeBattles; // ✅ 暴露给模块级，便于外层超时传导停止
   const MAX_RETRY = 2; // 每个预设最多重试2次
   const retryCountMap = new Map(); // presetId → 重试次数
 
@@ -13045,7 +13090,7 @@ const batchNightmareChallengePresets = async (silent) => {
     // 7. 启动后台战斗服务
     addLog({ time: new Date().toLocaleTimeString(), message: `RoomId: ${roomId}，启动后台战斗服务`, type: 'info' });
 
-    const battleEntry = { preset, battle: null, roomId, teamId, status: 'running', currentLevel: 0, failReason: null };
+    const battleEntry = { preset, battle: null, roomId, teamId, status: 'running', currentLevel: 0, failReason: null, originalIndex: i };
 
     const battle = new NightmareAutoBattleService({
       captainTokenId,
@@ -13054,12 +13099,15 @@ const batchNightmareChallengePresets = async (silent) => {
       presetData: preset,
       captainRoleId,
       tokenStore,
+      activeBattles,
       onLog: (msg, type) => addLog({ time: new Date().toLocaleTimeString(), message: `[${preset.name}] ${msg}`, type: type || 'info' }),
       onStatusChange: (info) => {
         if (battleEntry) {
           battleEntry.status = info.status;
           if (info.currentLevel !== undefined) battleEntry.currentLevel = info.currentLevel;
           if (info.reason) battleEntry.failReason = info.reason;
+          // ✅ 处理 teamId 变更（_reopenRoom 7100020 重试重建队伍后）
+          if (info.teamId) battleEntry.teamId = String(info.teamId);
         }
         if (info.status === 'running' && info.currentLevel > 0) {
           addLog({ time: new Date().toLocaleTimeString(), message: `[${preset.name}] 当前挑战第${info.currentLevel}关`, type: 'info' });
@@ -13076,7 +13124,10 @@ const batchNightmareChallengePresets = async (silent) => {
 
     battleEntry.battle = battle;
     activeBattles.push(battleEntry);
-    battle.start();
+    battle.start().catch(err => {
+      addLog({ time: new Date().toLocaleTimeString(), message: `[${preset.name}] 战斗启动异常: ${err.message || err}`, type: 'error' });
+      console.error('[十殿阎罗] battle.start() 未捕获异常:', err);
+    });
 
     addLog({ time: new Date().toLocaleTimeString(), message: `✅ 预设「${preset.name}」已在后台启动战斗`, type: 'success' });
 
@@ -13106,6 +13157,11 @@ const batchNightmareChallengePresets = async (silent) => {
     if (shouldStop.value) {
       addLog({ time: new Date().toLocaleTimeString(), message: `⏹ 收到停止信号，取消剩余 ${presets.length - i} 个预设`, type: 'warning' });
       break;
+    }
+    // ✅ 跳过重复队长的后续预设
+    if (skipDuplicateCaptainPresets.has(i)) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `⏭ 预设「${presets[i].name}」队长与其他预设重复，自动跳过`, type: 'warning' });
+      continue;
     }
     const preset = presets[i];
     const entry = await executeOnePreset(preset, `执行预设「${preset.name}」(${i + 1}/${presets.length})`, i);
@@ -13162,12 +13218,12 @@ const batchNightmareChallengePresets = async (silent) => {
           }
 
           // 重新执行完整流程：连接队长→创建房间→队员加入→启动战斗
-          // ✅ BUG修复：传递 presetIndex 确保共享队员延迟断连逻辑正确
+          // ✅ BUG修复：传递 presetIndex 确保共享队员延迟断连逻辑正确，优先使用保存的原始索引
           const retryPresetIndex = presets.findIndex(p => p.id === fb.preset.id);
           const newEntry = await executeOnePreset(
             fb.preset,
             `重试预设「${fb.preset.name}」(第${retryNum}次)`,
-            retryPresetIndex >= 0 ? retryPresetIndex : i
+            fb.originalIndex >= 0 ? fb.originalIndex : retryPresetIndex
           );
           if (newEntry) {
             addLog({ time: new Date().toLocaleTimeString(), message: `✅ 预设「${fb.preset.name}」重试已启动`, type: 'success' });
@@ -13228,6 +13284,7 @@ const batchNightmareChallengePresets = async (silent) => {
 
     // 清理 sessionStorage 批量战斗数据
     try { sessionStorage.removeItem('nightmare-batch-battles'); } catch { /* ignore */ }
+    _activeNightmareBattles = []; // ✅ 清理模块级引用
   }
 };
 

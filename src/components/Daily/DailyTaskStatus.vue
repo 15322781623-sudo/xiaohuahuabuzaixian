@@ -741,15 +741,25 @@ watch(
       // 如果WebSocket已连接，自动获取采购清单
       if (isConnected.value) {
         try {
-          const result = await tokenStore.sendMessageWithPromise(newToken.id, 'store_getpurchase', {}, 5000);
-          if (result?.purchaseItemList?.length > 0) {
-            settings.purchaseList = result.purchaseItemList.map(i => i.itemId);
+          const result = await tokenStore.sendMessageWithPromise(newToken.id, 'store_getpurchase', {}, 8000);
+          console.log('[采购清单] 切换Token响应:', JSON.stringify(result).substring(0, 500));
+          // 兼容多种响应结构
+          const purchaseItems = result?.purchaseItemList
+            || result?.store?.purchaseItemList
+            || result?.data?.purchaseItemList;
+          if (purchaseItems?.length > 0) {
+            settings.purchaseList = purchaseItems.map(i => i.itemId);
             const discounts = {};
-            result.purchaseItemList.forEach(i => { if (i.discount != null) discounts[i.itemId] = i.discount; });
+            purchaseItems.forEach(i => { if (i.discount != null) discounts[i.itemId] = i.discount; });
             settings.purchaseDiscounts = initPurchaseDiscounts(discounts);
-            if (result.purchaseCnt != null) settings.purchaseCnt = result.purchaseCnt;
+            const purchaseCnt = result?.purchaseCnt ?? result?.store?.purchaseCnt;
+            if (purchaseCnt != null) settings.purchaseCnt = purchaseCnt;
+          } else {
+            console.warn('[采购清单] 响应为空或无purchaseItemList, keys:', result ? Object.keys(result).join(',') : 'null');
           }
-        } catch (e) { /* 获取失败不阻塞 */ }
+        } catch (e) {
+          console.warn('[采购清单] 获取失败:', e?.message || e);
+        }
 
         try {
           await refreshRoleInfo();
@@ -781,15 +791,25 @@ onMounted(async () => {
   // 首次拉取角色信息（如果有选中的token且已连接）
   if (tokenStore.selectedToken && isConnected.value) {
     try {
-      const result = await tokenStore.sendMessageWithPromise(tokenStore.selectedToken.id, 'store_getpurchase', {}, 5000);
-      if (result?.purchaseItemList?.length > 0) {
-        settings.purchaseList = result.purchaseItemList.map(i => i.itemId);
+      const result = await tokenStore.sendMessageWithPromise(tokenStore.selectedToken.id, 'store_getpurchase', {}, 8000);
+      console.log('[采购清单] 初始化响应:', JSON.stringify(result).substring(0, 500));
+      // 兼容多种响应结构
+      const purchaseItems = result?.purchaseItemList
+        || result?.store?.purchaseItemList
+        || result?.data?.purchaseItemList;
+      if (purchaseItems?.length > 0) {
+        settings.purchaseList = purchaseItems.map(i => i.itemId);
         const discounts = {};
-        result.purchaseItemList.forEach(i => { if (i.discount != null) discounts[i.itemId] = i.discount; });
+        purchaseItems.forEach(i => { if (i.discount != null) discounts[i.itemId] = i.discount; });
         settings.purchaseDiscounts = initPurchaseDiscounts(discounts);
-        if (result.purchaseCnt != null) settings.purchaseCnt = result.purchaseCnt;
+        const purchaseCnt = result?.purchaseCnt ?? result?.store?.purchaseCnt;
+        if (purchaseCnt != null) settings.purchaseCnt = purchaseCnt;
+      } else {
+        console.warn('[采购清单] 初始化响应为空, keys:', result ? Object.keys(result).join(',') : 'null');
       }
-    } catch (e) { /* 获取失败不阻塞 */ }
+    } catch (e) {
+      console.warn('[采购清单] 初始化获取失败:', e?.message || e);
+    }
 
     try {
       await refreshRoleInfo();

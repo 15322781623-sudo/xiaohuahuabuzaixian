@@ -1265,24 +1265,24 @@ export function createTasksTower(deps) {
           });
         }
 
-        // 先获取活动信息，从中提取 actId
+        // 先获取活动信息，从 actEGameInfo.actId 获取换皮闯关活动ID
         try {
           const activityRes = await callWithRetry(tokenId, "activity_get", {}, { retries: 1 });
-          console.log(`[${token.name}] activity_get 响应:`, JSON.stringify(activityRes).substring(0, 500));
+          console.log(`[${token.name}] activity_get 响应:`, JSON.stringify(activityRes).substring(0, 800));
           
-          // 根据今天日期推导 actId：yymmdd3 -> yymmdd1
-          const commonActivityInfo = activityRes?.commonActivityInfo || activityRes?.activity?.commonActivityInfo || {};
-          const now = new Date();
-          const yy = String(now.getFullYear() % 100).padStart(2, '0');
-          const mm = String(now.getMonth() + 1).padStart(2, '0');
-          const dd = String(now.getDate()).padStart(2, '0');
-          const todayKey = `${yy}${mm}${dd}3`;
-          
-          if (commonActivityInfo[todayKey] !== undefined) {
-            actId = `${yy}${mm}${dd}1`;
-            console.log(`[${token.name}] 从 activity_get 匹配到今日活动 key: ${todayKey}, 推导 actId: ${actId}`);
+          // 从 actEGameInfo 获取换皮闯关活动ID
+          // actEGameInfo.actId 为本周活动ID，减1即为 towers_getinfo 的 actId
+          const actEGameInfo = activityRes?.activity?.actEGameInfo || activityRes?.actEGameInfo;
+          if (actEGameInfo?.actId) {
+            actId = Number(actEGameInfo.actId) - 1;
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 换皮闯关活动已开启`,
+              type: "info",
+            });
+            console.log(`[${token.name}] 从 actEGameInfo.actId=${actEGameInfo.actId} 推导 towers actId: ${actId}`);
           } else {
-            console.log(`[${token.name}] activity_get 中未找到今日活动 key: ${todayKey}，活动可能未开启`);
+            console.log(`[${token.name}] activity_get 中未找到 actEGameInfo.actId，换皮闯关活动未开启`);
           }
         } catch (e) {
           console.log(`[${token.name}] activity_get 失败:`, e.message);
@@ -1310,23 +1310,14 @@ export function createTasksTower(deps) {
             }
           }
         } else {
-          // 没找到 actId，尝试无参数调用（兼容旧版）
-          console.log(`[${token.name}] 未从 activity_get 找到 yymmdd3 格式的 key，尝试无参数调用`);
-          try {
-            res = await callWithRetry(tokenId, "towers_getinfo", {});
-          } catch (e) {
-            const errMsg = e.message || '';
-            if (errMsg.includes('7900021') || errMsg.includes('7900022')) {
-              activityNotOpenFlag = true;
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 换皮闯关活动未开启`,
-                type: "warning",
-              });
-            } else {
-              throw e;
-            }
-          }
+          // actEGameInfo 不存在，活动未开启
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 换皮闯关活动未开启 (actEGameInfo 不存在)`,
+            type: "warning",
+          });
+          tokenStatus.value[tokenId] = "completed";
+          return;
         }
 
         // 如果活动未开启，标记并跳过
@@ -1418,7 +1409,7 @@ export function createTasksTower(deps) {
           let needStart = true;
           let loop = true;
           let failCount = 0;
-          const MAX_FAIL = 3;
+          const MAX_FAIL = 5;
 
           while (loop && !shouldStop.value && failCount < MAX_FAIL) {
             try {

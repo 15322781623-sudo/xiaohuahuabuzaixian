@@ -4395,12 +4395,34 @@ const refreshTowerInfo = async () => {
   try {
     towerInfo.value.isRefreshing = true;
 
-    // 根据今天日期推导 actId：yymmdd1
-    const now = new Date();
-    const yy = String(now.getFullYear() % 100).padStart(2, '0');
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    const actId = Number(`${yy}${mm}${dd}1`);
+    // 从 activity_get 动态获取换皮闯关活动ID
+    // actEGameInfo.actId 为本周活动ID，减1即为 towers_getinfo 的 actId
+    let actId = null;
+    try {
+      const activityRes = await tokenStore.sendMessageWithPromise(
+        props.token.id,
+        "activity_get",
+        {},
+        5000,
+      );
+      const actEGameInfo = activityRes?.activity?.actEGameInfo || activityRes?.actEGameInfo;
+      if (actEGameInfo?.actId) {
+        actId = Number(actEGameInfo.actId) - 1;
+        console.log(`[换皮闯关] actEGameInfo.actId=${actEGameInfo.actId}, 推导 towers actId: ${actId}`);
+      }
+    } catch (e) {
+      console.warn("[换皮闯关] activity_get 失败:", e.message);
+    }
+
+    if (!actId) {
+      // actEGameInfo 不存在，活动未开启
+      towerInfo.value.actId = null;
+      towerInfo.value.levelRewardMap = {};
+      towerInfo.value.dailyFightNum = 0;
+      towerInfo.value.finishedCount = 0;
+      towerInfo.value.isActivityValid = false;
+      return;
+    }
 
     const res = await tokenStore.sendMessageWithPromise(
       props.token.id,
@@ -4619,13 +4641,19 @@ const challengeTower = async (type) => {
     let needStart = true;
     let loop = true;
     let failCount = 0;
+    const actId = towerInfo.value.actId;
+
+    if (!actId) {
+      message.warning("换皮闯关活动未开启或信息未刷新");
+      return;
+    }
 
     while (loop) {
       if (needStart) {
-        await tokenStore.sendMessageWithPromise(props.token.id, "towers_start", { towerType: type }, 5000);
+        await tokenStore.sendMessageWithPromise(props.token.id, "towers_start", { towerType: type, actId: Number(actId) }, 5000);
       }
 
-      const fightRes = await tokenStore.sendMessageWithPromise(props.token.id, "towers_fight", { towerType: type }, 5000);
+      const fightRes = await tokenStore.sendMessageWithPromise(props.token.id, "towers_fight", { towerType: type, actId: Number(actId) }, 5000);
       const battleData = fightRes?.battleData;
       const curHP = battleData?.result?.accept?.ext?.curHP;
 

@@ -1347,7 +1347,12 @@ export const useTokenStore = defineStore("tokens", () => {
             const conn = wsConnections.value[tokenId];
             if (conn?.status === "connected") {
               const result = await sendMessageWithPromise(tokenId, 'store_getpurchase', {}, 8000);
-              if (result?.purchaseItemList?.length > 0) {
+              wsLogger.info(`采购清单响应 [${tokenId}]:`, JSON.stringify(result).substring(0, 500));
+              // 兼容多种响应结构：直接 purchaseItemList 或嵌套在 store 子对象中
+              const purchaseItems = result?.purchaseItemList
+                || result?.store?.purchaseItemList
+                || result?.data?.purchaseItemList;
+              if (purchaseItems?.length > 0) {
                 // 读取现有本地设置
                 let settings: any = {};
                 try {
@@ -1355,17 +1360,20 @@ export const useTokenStore = defineStore("tokens", () => {
                   if (raw) settings = JSON.parse(raw);
                 } catch (e) {}
                 // 用游戏数据覆盖本地采购清单
-                settings.purchaseList = result.purchaseItemList.map((i: any) => i.itemId);
+                settings.purchaseList = purchaseItems.map((i: any) => i.itemId);
                 const discounts: Record<number, number> = {};
-                result.purchaseItemList.forEach((i: any) => { if (i.discount != null) discounts[i.itemId] = i.discount; });
+                purchaseItems.forEach((i: any) => { if (i.discount != null) discounts[i.itemId] = i.discount; });
                 settings.purchaseDiscounts = discounts;
-                if (result.purchaseCnt != null) settings.purchaseCnt = result.purchaseCnt;
+                const purchaseCnt = result?.purchaseCnt ?? result?.store?.purchaseCnt;
+                if (purchaseCnt != null) settings.purchaseCnt = purchaseCnt;
                 localStorage.setItem(`daily-settings:${tokenId}`, JSON.stringify(settings));
-                wsLogger.info(`已同步采购清单到本地 [${tokenId}]: ${result.purchaseItemList.length}项, 次数${result.purchaseCnt ?? '未设置'}`);
+                wsLogger.info(`已同步采购清单到本地 [${tokenId}]: ${purchaseItems.length}项, 次数${purchaseCnt ?? '未设置'}`);
+              } else {
+                wsLogger.warn(`采购清单为空或无purchaseItemList字段 [${tokenId}], 响应keys: ${result ? Object.keys(result).join(',') : 'null'}`);
               }
             }
           } catch (e: any) {
-            wsLogger.debug(`获取采购清单失败 [${tokenId}]: ${e.message}`);
+            wsLogger.warn(`获取采购清单失败 [${tokenId}]: ${e.message}`);
           }
         }, 3000);
         // 调用传入的onConnect回调
