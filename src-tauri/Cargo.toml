@@ -1,6 +1,6 @@
 [package]
 name = "肝王之王"
-version = "2.10.0"
+version = "2.10.2"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
