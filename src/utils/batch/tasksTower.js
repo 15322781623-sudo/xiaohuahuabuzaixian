@@ -1531,6 +1531,18 @@ export function createTasksTower(deps) {
               }
             } catch (err) {
               const errorMsg = err.message || '';
+
+              // ✅ 次数已上限，不再重试，直接结束本BOSS
+              if (errorMsg.includes('400000') || errorMsg.includes('已达次数上限')) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} BOSS ${type} 今日挑战次数已上限，跳过`,
+                  type: "warning",
+                });
+                loop = false;
+                break;
+              }
+
               addLog({
                 time: new Date().toLocaleTimeString(),
                 message: `${token.name} BOSS ${type} 战斗出错: ${errorMsg.substring(0, 80)}`,
@@ -1711,18 +1723,15 @@ export function createTasksTower(deps) {
           }
           
           // 从 commonActivityInfo 获取免费礼包 goodsId
+          // 直接取 commonActivityInfo 中以3结尾的7位key（如"2606263"），拼接"1"得到goodsId
           const commonActivityInfo = activityRes?.commonActivityInfo || activityRes?.activity?.commonActivityInfo || {};
-          const now = new Date();
-          const yy = String(now.getFullYear() % 100).padStart(2, '0');
-          const mm = String(now.getMonth() + 1).padStart(2, '0');
-          const dd = String(now.getDate()).padStart(2, '0');
-          const giftKey = `${yy}${mm}${dd}3`;
+          const giftKey = Object.keys(commonActivityInfo).find(k => k.length === 7 && k.endsWith('3'));
           
-          if (commonActivityInfo[giftKey] !== undefined) {
+          if (giftKey) {
             giftGoodsId = Number(`${giftKey}1`);
             console.log(`[${token.name}] 换皮寻宝 免费礼包 goodsId: ${giftGoodsId} (key: ${giftKey})`);
           } else {
-            console.log(`[${token.name}] 换皮寻宝 未找到今日免费礼包 key: ${giftKey}`);
+            console.log(`[${token.name}] 换皮寻宝 未找到免费礼包 key (commonActivityInfo keys: ${Object.keys(commonActivityInfo).join(',')})`);
           }
         } catch (e) {
           console.log(`[${token.name}] 换皮寻宝 activity_get 失败:`, e.message);

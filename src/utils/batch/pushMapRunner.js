@@ -200,22 +200,21 @@ export function createPushMapRunner(deps) {
           } catch (e) { }
         }
 
-        // 获取关卡信息
+        // 获取关卡信息（同时作为连接健康检查）
         try {
           const ri = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 10000);
           if (ri && ri.role) st.level = ri.role.levelId || 0;
         } catch (e) {
-          // 获取关卡信息失败，检查连接是否还活着
-          if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
-            log(`[${nm}] 获取关卡信息失败且连接已断开，尝试重连...`, "warning");
-            const reconnected = await reconnect(tokenId, st);
-            if (!reconnected) { log(`[${nm}] 重连被中止，停止推图`, "error"); break; }
-            try {
-              const initRes = await tokenStore.sendMessageWithPromise(tokenId, "fight_startlevel", {}, 8000);
-              if (initRes?.battleData?.version) tokenStore.setBattleVersion(initRes.battleData.version);
-            } catch (e2) { }
-            continue; // 重新进入循环，从头开始本轮
-          }
+          // 获取关卡信息失败，无论连接状态如何，都尝试重连
+          // 因为即使状态显示“已连接”，底层 WebSocket 可能已经断开
+          log(`[${nm}] 获取关卡信息失败(连接健康检查失败)，尝试重连...`, "warning");
+          const reconnected = await reconnect(tokenId, st);
+          if (!reconnected) { log(`[${nm}] 重连被中止，停止推图`, "error"); break; }
+          try {
+            const initRes = await tokenStore.sendMessageWithPromise(tokenId, "fight_startlevel", {}, 8000);
+            if (initRes?.battleData?.version) tokenStore.setBattleVersion(initRes.battleData.version);
+          } catch (e2) { }
+          continue; // 重新进入循环，从头开始本轮
         }
         const bossNm = getBoss(st.level);
         log(`[${nm}] 关卡: ${st.level}${bossNm ? " Boss: " + bossNm : ""}`);
@@ -230,18 +229,14 @@ export function createPushMapRunner(deps) {
           }
           log(`[${nm}] 战斗需 ${battleTime} 秒`, "success");
         } catch (e) {
-          log(`[${nm}] 获取战斗时间失败`, "warning");
-          // 计算战斗时间失败，也检查连接
-          if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
-            log(`[${nm}] 获取战斗时间失败且连接已断开，尝试重连...`, "warning");
-            const reconnected = await reconnect(tokenId, st);
-            if (!reconnected) { log(`[${nm}] 重连被中止，停止推图`, "error"); break; }
-            try {
-              const initRes = await tokenStore.sendMessageWithPromise(tokenId, "fight_startlevel", {}, 8000);
-              if (initRes?.battleData?.version) tokenStore.setBattleVersion(initRes.battleData.version);
-            } catch (e2) { }
-            continue;
-          }
+          log(`[${nm}] 获取战斗时间失败(连接可能不稳定)，尝试重连...`, "warning");
+          const reconnected = await reconnect(tokenId, st);
+          if (!reconnected) { log(`[${nm}] 重连被中止，停止推图`, "error"); break; }
+          try {
+            const initRes = await tokenStore.sendMessageWithPromise(tokenId, "fight_startlevel", {}, 8000);
+            if (initRes?.battleData?.version) tokenStore.setBattleVersion(initRes.battleData.version);
+          } catch (e2) { }
+          continue;
         }
         if (st.stopFlag || isShouldStop()) break;
         st.totalTime = battleTime;
@@ -264,11 +259,15 @@ export function createPushMapRunner(deps) {
             log(`[${nm}] ⏳ 战斗剩余 ${mm}:${ss}`, "info");
           }
           if (hb % 25 === 0) {
-            try {
-              tokenStore.sendMessage(tokenId, "heart_beat");
-            } catch (e) {
-              if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
-                log(`[${nm}] 倒计时中心跳失败，尝试重连...`, "warning");
+            // 检查连接状态，如果已断开则立即重连
+            if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+              log(`[${nm}] 倒计时中心跳检测到连接断开，尝试重连...`, "warning");
+              await reconnect(tokenId, st);
+            } else {
+              // 发送心跳并检查返回值
+              const hbResult = tokenStore.sendMessage(tokenId, "heart_beat");
+              if (!hbResult) {
+                log(`[${nm}] 倒计时中心跳发送失败，尝试重连...`, "warning");
                 await reconnect(tokenId, st);
               }
             }
@@ -326,7 +325,7 @@ export function createPushMapRunner(deps) {
             const errMsg = e.message || '';
             const connStatus = tokenStore.getWebSocketStatus(tokenId);
             // 连接断开或连接相关错误，尝试重连
-            if (connStatus !== "connected" || errMsg.includes('超时') || errMsg.includes('断开') || errMsg.includes('connection') || errMsg.includes('not connected')) {
+            if (connStatus !== "connected" || errMsg.includes('超时') || errMsg.includes('断开') || errMsg.includes('connection') || errMsg.includes('not connected') || errMsg.includes('socket') || errMsg.includes('network')) {
               log(`[${nm}] 获取结果失败(连接状态:${connStatus}): ${errMsg}，尝试重连...`, "warning");
               await reconnect(tokenId, st);
               fightResultRetrieved = true;
@@ -334,9 +333,12 @@ export function createPushMapRunner(deps) {
               log(`[${nm}] 获取结果失败，重试中...`, "warning");
               await sleep(3000);
             } else {
+              // 所有重试都失败，即使错误消息不匹配连接关键词，也触发重连
+              // 因为连续失败通常意味着连接不稳定
               st.losses++; st.battles++; st.retries = (st.retries || 0) + 1;
-              log(`[${nm}] 获取结果失败: ${errMsg}`, "error");
-              await sleep(10000);
+              log(`[${nm}] 获取结果失败(已重试${fightRetry + 1}次): ${errMsg}，尝试重连以恢复连接...`, "error");
+              await reconnect(tokenId, st);
+              fightResultRetrieved = true;
             }
           }
         }

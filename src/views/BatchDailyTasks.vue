@@ -2711,40 +2711,52 @@
                 <div class="task-info-item">
                   <span class="info-label">运行类型</span>
                   <span class="info-value">
-                    <n-tag size="small" :type="task.runType === 'daily' ? 'blue' : 'purple'" :bordered="false">
-                      {{ task.runType === "daily" ? "每天固定时间" : "Cron表达式" }}
+                    <n-tag size="small" :type="task.taskType === 'push_map' ? 'success' : (task.runType === 'daily' ? 'blue' : 'purple')" :bordered="false">
+                      {{ task.taskType === 'push_map' ? '🗺️批量推图' : (task.runType === "daily" ? "每天固定时间" : "Cron表达式") }}
                     </n-tag>
                   </span>
                 </div>
 
-                <div class="task-info-item">
-                  <span class="info-label">运行时间</span>
-                  <span class="info-value code">
-                    {{ task.runType === "daily" ? task.runTime : task.cronExpression }}
-                  </span>
-                </div>
+                <!-- 推图任务：展示开始/停止时间 -->
+                <template v-if="task.taskType === 'push_map'">
+                  <div class="task-info-item">
+                    <span class="info-label">开始时间</span>
+                    <span class="info-value code">{{ task.pushStartTime || task.runTime }}</span>
+                  </div>
+                  <div class="task-info-item" v-if="task.pushStopTime">
+                    <span class="info-label">停止时间</span>
+                    <span class="info-value code" style="color:#ff4d4f;">{{ task.pushStopTime }}</span>
+                  </div>
+                  <div class="task-info-item">
+                    <span class="info-label">下次开始</span>
+                    <span class="info-value countdown" :class="{'near-execution': taskCountdowns[task.id]?.isNearExecution, 'disabled': !task.enabled}">
+                      {{ task.enabled ? (taskCountdowns[task.id]?.formatted || "计算中...") : "已禁用" }}
+                    </span>
+                  </div>
+                </template>
 
-                <div class="task-info-item">
-                  <span class="info-label">下次执行</span>
-                  <span 
-                    class="info-value countdown"
-                    :class="{
-                      'near-execution': taskCountdowns[task.id]?.isNearExecution,
-                      'disabled': !task.enabled
-                    }"
-                  >
-                    {{ task.enabled ? (taskCountdowns[task.id]?.formatted || "计算中...") : "已禁用" }}
-                  </span>
-                </div>
-
-                <div class="task-info-item">
-                  <span class="info-label">选中账号</span>
-                  <span class="info-value">
-                    <n-tag size="small" type="info" :bordered="false">
-                      {{ task.selectedTokens.length }} 个
-                    </n-tag>
-                  </span>
-                </div>
+                <!-- 普通任务：展示运行时间/下次执行/账号数/任务数 -->
+                <template v-else>
+                  <div class="task-info-item">
+                    <span class="info-label">运行时间</span>
+                    <span class="info-value code">
+                      {{ task.runType === "daily" ? task.runTime : task.cronExpression }}
+                    </span>
+                  </div>
+                  <div class="task-info-item">
+                    <span class="info-label">下次执行</span>
+                    <span class="info-value countdown" :class="{'near-execution': taskCountdowns[task.id]?.isNearExecution, 'disabled': !task.enabled}">
+                      {{ task.enabled ? (taskCountdowns[task.id]?.formatted || "计算中...") : "已禁用" }}
+                    </span>
+                  </div>
+                  <div class="task-info-item">
+                    <span class="info-label">选中账号</span>
+                    <span class="info-value">
+                      <n-tag size="small" type="info" :bordered="false">
+                        {{ task.selectedTokens.length }} 个
+                      </n-tag>
+                    </span>
+                  </div>
 
                 <div class="task-info-item">
                   <span class="info-label">选中任务</span>
@@ -2833,8 +2845,9 @@
                     </n-tag>
                   </span>
                 </div>
+                </template><!-- end v-else normal task -->
               </div>
-            </div>
+            </div><!-- end task-card-body -->
 
             <!-- 任务操作 -->
             <div class="task-card-footer">
@@ -2892,7 +2905,32 @@
                 size="large"
               />
             </div>
+
+            <div class="setting-item">
+              <label class="setting-label">任务类型</label>
+              <n-radio-group v-model:value="taskForm.taskType">
+                <n-radio-button value="normal">📌普通任务</n-radio-button>
+                <n-radio-button value="push_map">🗺️批量推图</n-radio-button>
+              </n-radio-group>
+            </div>
             
+            <!-- 推图任务：开始 / 停止时间配置 -->
+            <template v-if="taskForm.taskType === 'push_map'">
+              <div class="setting-item">
+                <label class="setting-label">开始推图时间</label>
+                <n-time-picker v-model:value="taskForm.pushStartTime" format="HH:mm" size="large" placeholder="选择开始推图时刻" />
+              </div>
+              <div class="setting-item">
+                <label class="setting-label">停止推图时间 <span style="color:#999;font-size:12px;">(可不填)</span></label>
+                <n-time-picker v-model:value="taskForm.pushStopTime" format="HH:mm" size="large" placeholder="选择停止推图时刻（可选）" :clearable="true" />
+              </div>
+              <n-alert type="info" size="small">
+                💬 推图任务使用「批量推图」弹窗中已勾选的账号。请先在批量推图弹窗中配置好火把和账号，再添加本定时任务。
+              </n-alert>
+            </template>
+
+            <!-- 普通任务：运行类型选择 -->
+            <template v-if="taskForm.taskType !== 'push_map'">
             <div class="setting-item">
               <label class="setting-label">运行类型</label>
               <n-radio-group v-model:value="taskForm.runType" @update:value="resetRunType">
@@ -2937,11 +2975,10 @@
                 </n-alert>
               </div>
             </div>
+            </template><!-- end normal runType -->
           </div>
         </div>
-
-        <!-- 账号选择区 -->
-        <div class="form-section">
+        <div class="form-section" v-if="taskForm.taskType !== 'push_map'">
           <div class="section-title">👥 选择账号</div>
           
           <!-- 操作按钮 -->
@@ -3008,7 +3045,7 @@
         </div>
 
         <!-- 任务选择区 -->
-        <div class="form-section">
+        <div class="form-section" v-if="taskForm.taskType !== 'push_map'">
           <div class="section-title">⚙️ 选择任务</div>
           
           <!-- 操作按钮 -->
@@ -3429,12 +3466,12 @@
         </div>
         
         <!-- 不上线时段开关 -->
-        <div class="form-section">
+        <div class="form-section" v-if="taskForm.taskType !== 'push_map'">
           <div class="offline-time-section">
             <div class="offline-time-info">
               <div class="offline-time-title">🚫 不上线时段</div>
               <div class="offline-time-desc">
-                周五05:00-07:00 / 周六19:50-21:10 / 周日19:50-20:40
+                周三05:00-07:00 / 周六19:50-21:10 / 周日19:50-20:40
               </div>
             </div>
             <n-switch
@@ -4528,11 +4565,18 @@
     <n-modal
       v-model:show="showPushMapModal"
       preset="card"
-      title="批量推图"
       class="push-modal"
       style="width: 95%; max-width: 780px"
       :segmented="{ content: true }"
     >
+      <template #header>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span>批量推图</span>
+          <n-tag v-if="pushTimerStatus !== 'idle'" size="tiny" type="success" style="font-size:11px;">
+            ⏰定时中 {{ pushTimerCountdown }}
+          </n-tag>
+        </div>
+      </template>
       <div class="push-layout">
         <!-- 顶部工具栏 -->
         <div class="push-toolbar">
@@ -4602,7 +4646,7 @@
                   { label: '🔥 咸神(30min)', value: 1010 },
                 ]"
                 size="small"
-                style="width: 140px;"
+                class="push-torch-select"
               />
               <n-input-number
                 v-model:value="pushTorchCount"
@@ -4610,19 +4654,93 @@
                 :max="99"
                 size="small"
                 placeholder="数量"
-                style="width: 90px;"
+                class="push-torch-count"
               />
-              <n-button size="small" type="warning" @click="pushUseTorchManual" :disabled="!pushSelectedTokens.length || !pushTorchType">
+              <n-button size="small" type="warning" @click="pushUseTorchManual" :disabled="!pushSelectedTokens.length || !pushTorchType" class="push-torch-btn">
                 使用火把
               </n-button>
             </div>
             <div class="push-toolbar-right">
-              <n-button size="small" type="success" @click="pushStartAll" :disabled="!pushSelectedTokens.length">
+              <n-button size="small" type="success" @click="pushStartAll" :disabled="!pushSelectedTokens.length" class="push-action-btn">
                 全部开始
               </n-button>
-              <n-button size="small" type="error" @click="pushStopAll">
+              <n-button size="small" type="error" @click="pushStopAll" class="push-action-btn">
                 全部停止
               </n-button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 定时控制模块 -->
+        <div class="push-timer-section">
+          <div class="push-timer-header" @click="pushTimerExpanded = !pushTimerExpanded">
+            <span class="push-timer-title">⏰ 定时控制</span>
+            <n-tag v-if="pushTimerStatus !== 'idle'" size="tiny" :type="pushTimerStatus === 'running' ? 'success' : 'warning'">
+              {{ pushTimerStatus === 'running' ? '定时中' : '待机中' }}
+            </n-tag>
+            <span class="push-timer-countdown" v-if="pushTimerCountdown">
+              {{ pushTimerCountdown }}
+            </span>
+            <span class="push-timer-toggle">{{ pushTimerExpanded ? '▲' : '▼' }}</span>
+          </div>
+
+          <div v-show="pushTimerExpanded" class="push-timer-body">
+            <!-- 启动定时 -->
+            <div class="push-timer-row">
+              <span class="push-timer-label">自动开始</span>
+              <div class="push-timer-controls">
+                <n-time-picker
+                  v-model:value="pushStartTime"
+                  format="HH:mm"
+                  :actions="[]"
+                  :hours="pushTimeHours"
+                  :minutes="pushTimeMinutes"
+                  placeholder="选择开始时间"
+                  size="small"
+                  clearable
+                  class="push-time-picker"
+                />
+                <n-button
+                  size="small"
+                  :type="pushStartTimer ? 'error' : 'primary'"
+                  @click="togglePushStartTimer"
+                  :disabled="!pushStartTime && !pushStartTimer"
+                >
+                  {{ pushStartTimer ? '取消开始定时' : '启动定时' }}
+                </n-button>
+              </div>
+            </div>
+
+            <!-- 停止定时 -->
+            <div class="push-timer-row">
+              <span class="push-timer-label">自动停止</span>
+              <div class="push-timer-controls">
+                <n-time-picker
+                  v-model:value="pushStopTime"
+                  format="HH:mm"
+                  :actions="[]"
+                  :hours="pushTimeHours"
+                  :minutes="pushTimeMinutes"
+                  placeholder="选择停止时间"
+                  size="small"
+                  clearable
+                  class="push-time-picker"
+                />
+                <n-button
+                  size="small"
+                  :type="pushStopTimer ? 'error' : 'warning'"
+                  @click="togglePushStopTimer"
+                  :disabled="!pushStopTime && !pushStopTimer"
+                >
+                  {{ pushStopTimer ? '取消停止定时' : '停止定时' }}
+                </n-button>
+              </div>
+            </div>
+
+            <!-- 定时状态提示 -->
+            <div class="push-timer-tips" v-if="pushStartTimer || pushStopTimer">
+              <span v-if="pushStartTimer">🟢 将于 <strong>{{ pushStartTimeLabel }}</strong> 自动开始推图</span>
+              <span v-if="pushStopTimer">🔴 将于 <strong>{{ pushStopTimeLabel }}</strong> 自动停止推图</span>
             </div>
           </div>
         </div>
@@ -6245,6 +6363,7 @@ const showTasksModal = ref(false); // Control the visibility of the tasks list m
 const editingTask = ref(null); // Currently editing task
 const taskForm = reactive({
   name: "", // Task name
+  taskType: "normal", // 'normal' | 'push_map'
   runType: "daily", // 'daily' or 'cron'
   runTime: null, // Daily run time (HH:mm format)
   cronExpression: "", // Cron expression for complex scheduling
@@ -6252,6 +6371,9 @@ const taskForm = reactive({
   selectedTasks: [], // Selected task function names
   enabled: true, // Whether the task is enabled
   offlineTimeEnabled: false, // 是否启用不上线时段
+  // 推图任务专属字段
+  pushStartTime: null, // 推图开始时间（HH:mm时间戳）
+  pushStopTime: null,  // 推图停止时间（HH:mm时间戳，可选）
   legionStoreItems: { // 助威商店商品配置
     7: { selected: false, count: 1, label: "随机红将碎片", min: 1, max: 1 },
     8: { selected: false, count: 1, label: "白玉", min: 1, max: 1 },
@@ -6536,6 +6658,7 @@ const cancelTaskEdit = () => {
     
     // 直接赋值重置表单
     taskForm.name = "";
+    taskForm.taskType = "normal";
     taskForm.runType = "daily";
     taskForm.runTime = undefined;
     taskForm.cronExpression = "";
@@ -6543,6 +6666,8 @@ const cancelTaskEdit = () => {
     taskForm.selectedTasks = [];
     taskForm.enabled = true;
     taskForm.offlineTimeEnabled = false;
+    taskForm.pushStartTime = null;
+    taskForm.pushStopTime = null;
     
     taskForm.legionStoreItems = {
       7: { selected: false, count: 1, label: "随机红将碎片", min: 1, max: 1 },
@@ -6577,8 +6702,9 @@ const openTaskModal = () => {
   
   console.log('[新增任务] 开始初始化表单');
   
-  // 重置表单，直接赋值确保嵌套对象正确重置
+  // 重置表单，直接赋値确保嵌套对象正确重置
   taskForm.name = "";
+  taskForm.taskType = "normal";
   taskForm.runType = "daily";
   taskForm.runTime = undefined;
   taskForm.cronExpression = "";
@@ -6586,6 +6712,8 @@ const openTaskModal = () => {
   taskForm.selectedTasks = [];
   taskForm.enabled = true;
   taskForm.offlineTimeEnabled = false;
+  taskForm.pushStartTime = null;
+  taskForm.pushStopTime = null;
   
   // 直接赋值助威商店配置
   taskForm.legionStoreItems = {
@@ -6798,6 +6926,7 @@ const editTask = (task) => {
   
   const taskData = { 
     ...task,
+    taskType: task.taskType || 'normal',
     legionStoreItems: mergedLegionStoreItems,
     weeklyMarketItems: mergedWeeklyMarketItems,
     saltCrystalShopItems: mergedSaltCrystalShopItems,
@@ -6816,6 +6945,16 @@ const editTask = (task) => {
     },
     nightmarePresetIds: task.nightmarePresetIds || [],
     nightmarePresetDelay: task.nightmarePresetDelay || 10,
+    pushStartTime: task.pushStartTime ? (() => {
+      const [h, m] = task.pushStartTime.split(':').map(Number);
+      const d = new Date();
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m).getTime();
+    })() : null,
+    pushStopTime: task.pushStopTime ? (() => {
+      const [h, m] = task.pushStopTime.split(':').map(Number);
+      const d = new Date();
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m).getTime();
+    })() : null,
   };
   
   if (
@@ -6876,6 +7015,46 @@ const saveTask = () => {
     message.warning("请输入任务名称");
     return;
   }
+
+  // 推图任务特殊验证
+  if (taskForm.taskType === 'push_map') {
+    if (!taskForm.pushStartTime) {
+      message.warning("请选择开始推图时间");
+      return;
+    }
+    // 推图任务直接跳过其他验证，进入保存逻辑
+    const msToTimeStr = (ms) => {
+      const d = new Date(ms);
+      return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    };
+    const taskData = {
+      id: editingTask.value?.id || "task_" + Date.now(),
+      name: taskForm.name,
+      taskType: 'push_map',
+      runType: 'daily',
+      runTime: msToTimeStr(taskForm.pushStartTime), // 以开始时间为主时间（调度器将根据此时间触发）
+      cronExpression: '',
+      selectedTokens: [],
+      selectedTasks: [],
+      enabled: taskForm.enabled,
+      offlineTimeEnabled: false,
+      pushStartTime: msToTimeStr(taskForm.pushStartTime),
+      pushStopTime: taskForm.pushStopTime ? msToTimeStr(taskForm.pushStopTime) : null,
+    };
+    const isNew = !editingTask.value;
+    if (editingTask.value) {
+      const index = scheduledTasks.value.findIndex(t => t.id === editingTask.value.id);
+      if (index !== -1) scheduledTasks.value[index] = taskData;
+    } else {
+      scheduledTasks.value.push(taskData);
+    }
+    saveScheduledTasks();
+    addTaskSaveLog(taskData, isNew, addLog);
+    showTaskModal.value = false;
+    message.success("推图定时任务已保存");
+    return;
+  }
+  // ===================== 以下为普通任务验证 =====================
 
   if (taskForm.runType === "daily" && !taskForm.runTime) {
     message.warning("请选择运行时间");
@@ -8184,9 +8363,11 @@ const importConfig = async ({ file }) => {
 // Task countdowns ref
 const taskCountdowns = ref({});
 const nextExecutionTimes = ref({});
+let _componentUnmounted = false; // 组件卸载标志，防止 interval 回调在销毁后继续访问响应式数据
 
 // Update countdowns for all tasks
 const updateCountdowns = () => {
+  if (_componentUnmounted) return; // 组件已卸载，直接退出
   const now = Date.now();
 
   scheduledTasks.value.forEach((task) => {
@@ -8289,7 +8470,7 @@ watch(
 const intervalId = ref(null);
 let lastTaskExecution = null;
 let healthCheckInterval = null;
-let scheduledTaskStartTime = null; // ✅ 单独跟踪定时任务开始时间，用于超时检测
+let scheduledTaskStartTime = null; // ✅ 单独跟踪定时任务开始时间，用于超时检测 
 const pageLoadTime = Date.now();
 
 // 跟踪定时任务是否正在执行
@@ -8494,6 +8675,19 @@ const startScheduler = () => {
               now.toString(),
             );
 
+            // ===== 推图任务：直接调用 pushStartAll，不走 executeScheduledTask 流程 =====
+            if (task.taskType === 'push_map') {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `⏰ 推图定时触发：开始推图（${task.name}）`,
+                type: "info",
+              });
+              window.$message?.success(`定时触发：自动开始推图`);
+              pushStartAll().catch(e => console.error('[PushMap定时开始] 错误:', e));
+              return; // 快速返回，不销耗调度器的“正在运行”状态
+            }
+            // ======================================================
+
             // 设置任务执行状态并立即更新lastTaskExecution
             isScheduledTaskRunning.value = true;
             currentScheduledTask = task;
@@ -8516,8 +8710,28 @@ const startScheduler = () => {
             });
         }
       });
-
-      // ✅ 调度器兜底：如果队列中有等待任务且当前无定时任务运行，主动消费队列（跳过已过期任务）
+      
+      // ===== 推图任务停止时间检测 =====
+      const nowTimeHHMM = now.toLocaleTimeString("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit" });
+      tasksToRun.forEach((task) => {
+        if (task.taskType !== 'push_map' || !task.pushStopTime || !task.enabled) return;
+        if (nowTimeHHMM !== task.pushStopTime) return;
+        // 防重复：1分钟内已执行过
+        const stopKey = `lastPushStopExecution_${task.id}`;
+        const lastStop = localStorage.getItem(stopKey);
+        if (lastStop && (now.getTime() - new Date(lastStop).getTime()) < 60000) return;
+        localStorage.setItem(stopKey, now.toString());
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `⏰ 推图定时触发：停止推图（${task.name}）`,
+          type: "warning",
+        });
+        window.$message?.warning(`定时触发：自动停止推图`);
+        pushStopAll(true);
+      });
+      // =============================================
+      
+      // ✅ 调度器尼底：如果队列中有等待任务且当前无定时任务运行，主动消费队列（跳过已过期任务）
       // 定时任务优先：即使日常任务正在执行，定时任务也可以启动
       if (pendingTaskQueue.length > 0 && !isScheduledTaskRunning.value) {
         // 循环清理已过期任务，找到第一个有效的执行
@@ -8698,6 +8912,7 @@ const setupResponsiveColumns = () => {
 
 // Debug: Log initial state when component mounts
 onMounted(() => {
+  _componentUnmounted = false; // HMR 重新挂载时重置标志
   // 初始化防休眠支持检测
   wakeLockSupported.value = wakeLockManager.isSupported();
   const envInfo = wakeLockManager.getEnvironmentInfo();
@@ -8782,6 +8997,7 @@ watch(() => route.query.openNightmare, (val) => {
 
 // Cleanup countdown interval on unmount
 onBeforeUnmount(() => {
+  _componentUnmounted = true; // 标记组件已卸载，阻止 interval 回调继续执行
   if (countdownInterval) {
     clearInterval(countdownInterval);
     countdownInterval = null;
@@ -8859,6 +9075,9 @@ const scheduleTaskExecution = () => {
 
 // Verify task dependencies - 只验证基础依赖，WebSocket连接由具体任务函数处理
 const verifyTaskDependencies = async (task) => {
+  // 推图任务跳过普通验证
+  if (task.taskType === 'push_map') return true;
+
   addLog({
     time: new Date().toLocaleTimeString(),
     message: `=== 开始验证定时任务 ${task.name} 的依赖 ===`,
@@ -8895,13 +9114,13 @@ const verifyTaskDependencies = async (task) => {
 
   // Verify task functions exist
   for (const taskName of task.selectedTasks) {
-    // 处理函数名映射（下划线格式 -> 驼峰格式）
+    // 处理函数名映射（下划线格式 -> 驼峰格式） 
     let functionName = taskName;
     if (taskName === 'weekly_market_buy') {
       functionName = 'weeklyMarketBuy';
     }
     
-    const taskFunction = getTaskFunction(functionName);
+  const taskFunction = eval(functionName);
     if (typeof taskFunction !== "function") {
       addLog({
         time: new Date().toLocaleTimeString(),
@@ -8912,7 +9131,7 @@ const verifyTaskDependencies = async (task) => {
     }
   }
 
-  // 验证宝箱周任务是否在宝箱周执行
+  // 验证宝笱周任务是否在宝笱周执行
   const boxWeeklyTasks = ['batchOpenBoxByPoints', 'batchClaimBoxWeeklyRewards'];
   const hasBoxWeeklyTask = task.selectedTasks.some(t => boxWeeklyTasks.includes(t));
   if (hasBoxWeeklyTask && !isBoxWeeklyActivityOpen.value) {
@@ -9557,7 +9776,7 @@ const executeScheduledTask = async (task) => {
       if (taskName === 'weekly_market_buy') {
         functionName = 'weeklyMarketBuy';
       }
-      const taskFunction = getTaskFunction(functionName);
+      const taskFunction = eval(functionName);
       if (typeof taskFunction === "function") {
         // 根据批次间等待设置，分批执行账号
         const maxConcurrent = batchSettings.maxActive || 5;
@@ -12479,14 +12698,157 @@ const pushStartAll = async () => {
 };
 
 // 全部停止
-const pushStopAll = () => {
-  const ids = pushSelectedTokens.value;
-  if (!ids || !window._pt) return;
+const pushStopAll = (stopAll = false) => {
+  if (!window._pt) return;
+  // stopAll=true 时（定时触发）：停止所有正在运行的账号，而不仅限于已勾选项
+  // stopAll=false 时（按钮手动）：只停止 pushSelectedTokens 中的账号
+  const ids = stopAll
+    ? Object.keys(window._pt).filter(id => window._pt[id]?.running)
+    : (pushSelectedTokens.value || []);
+  if (!ids.length) return;
   ids.forEach(id => {
     if (window._bpStopOne) window._bpStopOne(id);
     else if (window._pt[id]) window._pt[id].stopFlag = true;
   });
+  if (stopAll && ids.length) {
+    console.log(`[定时停止] 已向 ${ids.length} 个账号发送停止指令`);
+  }
 };
+
+// ===================== 定时控制模块 =====================
+const pushTimerExpanded = ref(false);
+
+// 时间值（毫秒时间戳，只取时分，n-time-picker 返回当天的 ms 时间戳）
+const pushStartTime = ref(null);
+const pushStopTime  = ref(null);
+
+// 定时器句柄
+const pushStartTimer = ref(null);   // setInterval 句柄
+const pushStopTimer  = ref(null);
+
+// 倒计时显示
+const pushTimerCountdown = ref('');
+let _pushCountdownInterval = null;
+
+// 状态：idle / running（有任意定时器激活就是 running）
+const pushTimerStatus = computed(() =>
+  (pushStartTimer.value || pushStopTimer.value) ? 'running' : 'idle'
+);
+
+// 时间选项（整点分钟，每10分钟一档）
+const pushTimeHours   = Array.from({ length: 24 }, (_, i) => i);
+const pushTimeMinutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+
+/** 把 n-time-picker 返回的 ms 时间戳转成本地 HH:mm（用 Date 本地方法，避免时区偏移） */
+const msToHHMM = (ms) => {
+  if (ms == null) return '';
+  const d = new Date(ms);
+  const h = d.getHours();
+  const m = d.getMinutes();
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+};
+
+const pushStartTimeLabel = computed(() => msToHHMM(pushStartTime.value));
+const pushStopTimeLabel  = computed(() => msToHHMM(pushStopTime.value));
+
+/** 计算距离目标时间还有多少 ms（均用本地时间对比） */
+const msUntilTarget = (targetMs) => {
+  const now = new Date();
+  // targetMs 是 n-time-picker 返回的本地时间戳，取其本地时分秒
+  const t = new Date(targetMs);
+  const targetSec = t.getHours() * 3600 + t.getMinutes() * 60;
+  const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  let diff = (targetSec - nowSec) * 1000;
+  if (diff <= 0) diff += 24 * 3600 * 1000;  // 跨日
+  return diff;
+};
+
+/** 格式化倒计时 */
+const formatCountdown = (ms) => {
+  const totalSec = Math.round(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h${String(m).padStart(2,'0')}m`;
+  if (m > 0) return `${m}m${String(s).padStart(2,'0')}s`;
+  return `${s}s`;
+};
+
+/** 更新倒计时文字（每秒刷新，显示最近触发的那个） */
+const _updateCountdown = () => {
+  const targets = [];
+  if (pushStartTimer.value && pushStartTime.value != null)
+    targets.push({ label: '开始', ms: msUntilTarget(pushStartTime.value) });
+  if (pushStopTimer.value && pushStopTime.value != null)
+    targets.push({ label: '停止', ms: msUntilTarget(pushStopTime.value) });
+  if (!targets.length) { pushTimerCountdown.value = ''; return; }
+  targets.sort((a, b) => a.ms - b.ms);
+  const nearest = targets[0];
+  pushTimerCountdown.value = `${nearest.label} ${formatCountdown(nearest.ms)}`;
+};
+
+/** 启动/取消 开始定时 */
+/** 内部：注册下一次开始定时（每天循环） */
+const _scheduleNextStart = () => {
+  if (pushStartTime.value == null) return;
+  const delay = msUntilTarget(pushStartTime.value);
+  pushStartTimer.value = setTimeout(async () => {
+    window.$message?.success(`定时触发：自动开始推图`);
+    await pushStartAll();
+    _scheduleNextStart();   // 循环：注册明天同一时刻
+    _updateCountdown();
+  }, delay);
+};
+
+/** 内部：注册下一次停止定时（每天循环） */
+const _scheduleNextStop = () => {
+  if (pushStopTime.value == null) return;
+  const delay = msUntilTarget(pushStopTime.value);
+  pushStopTimer.value = setTimeout(() => {
+    window.$message?.warning(`定时触发：自动停止推图`);
+    pushStopAll(true);      // 停止所有正在运行的账号
+    _scheduleNextStop();    // 循环：注册明天同一时刻
+    _updateCountdown();
+  }, delay);
+};
+
+/** 启动/取消 开始定时 */
+const togglePushStartTimer = () => {
+  if (pushStartTimer.value) {
+    clearTimeout(pushStartTimer.value);
+    pushStartTimer.value = null;
+    window.$message?.info('已取消自动开始定时');
+    _updateCountdown();
+    return;
+  }
+  if (pushStartTime.value == null) return;
+  _scheduleNextStart();
+  const delay = msUntilTarget(pushStartTime.value);
+  window.$message?.success(`已设置 ${pushStartTimeLabel.value} 每天自动开始推图（${formatCountdown(delay)}后首次触发）`);
+  _updateCountdown();
+};
+
+/** 启动/取消 停止定时 */
+const togglePushStopTimer = () => {
+  if (pushStopTimer.value) {
+    clearTimeout(pushStopTimer.value);
+    pushStopTimer.value = null;
+    window.$message?.info('已取消自动停止定时');
+    _updateCountdown();
+    return;
+  }
+  if (pushStopTime.value == null) return;
+  _scheduleNextStop();
+  const delay = msUntilTarget(pushStopTime.value);
+  window.$message?.success(`已设置 ${pushStopTimeLabel.value} 每天自动停止推图（${formatCountdown(delay)}后首次触发）`);
+  _updateCountdown();
+};
+
+// 每秒刷新倒计时
+_pushCountdownInterval = setInterval(_updateCountdown, 1000);
+
+// 定时器与弹窗生命周期无关，关闭弹窗后仍继续倒计，到时自动触发推图开始/停止
+// ===================== 定时控制模块 END =====================
 
 // 全选/取消全选
 const pushSelectAll = () => {
@@ -12824,50 +13186,7 @@ const applyBatchPurchaseConfig = async () => {
 const tasksLegacy = createTasksLegacy(createTaskDeps());
 const { batchLegacyClaim, batchLegacyHangup, batchLegacyGiftSendEnhanced, batchLegacyClaimGiftTask } = tasksLegacy;
 
-// ====== 任务函数注册表（替代 eval，解决 Vue3 script setup 中 eval 无法访问 const 变量的问题） ======
-const _taskFnMap = {
-  // tasksHangUp
-  claimHangUpRewards, batchAddHangUpTime, batchStudy, batchclubsign, batchWarGuessCheer,
-  // tasksBottle
-  resetBottles, batchlingguanzi,
-  // tasksTower
-  climbTower, climbWeirdTower, batchClaimFreeEnergy, skinChallenge, skinTreasure, batchUseItems, batchMergeItems,
-  // tasksCar
-  batchSmartSendCar, batchClaimCars, batchCarResearchUpgrade,
-  // tasksItem
-  batchOpenBox, batchOpenBoxByPoints, batchOpenFragmentPacks, batchOpenDiamondBox,
-  batchClaimBoxWeeklyRewards, batchClaimBoxPointReward, batchFish, batchRecruit,
-  batchHeroUpgrade, batchBookUpgrade, batchFishUpgrade, batchClaimStarRewards,
-  batchClaimPeachTasks, batchGenieSweep, heroFourSaintsUpgrade,
-  batchConsumeActivity, batchClaimConsumeRewards, batchAutumnUseItem,
-  batchUseActivityItem, batchClaimCdkReward, batchActivityExchange,
-  batchClaimApexRewards, batchCollectionActivate, batchPushMap,
-  // tasksDungeon
-  batchbaoku13, batchbaoku45, batchmengjing, batchBuyDreamItems,
-  // tasksArena
-  batcharenafight, batchTopUpFish, batchTopUpArena,
-  // tasksStore
-  legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy,
-  charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare,
-  claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg,
-  claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward,
-  store_buy_bronze, store_buy_platinum, store_buy_gold_rod, store_buy_jade,
-  store_buy_selectable, legion_buy_red_jade, legion_buy_spotted_egg,
-  salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig,
-  star_drawturntable, batch_star_challenge, nightmare_draw_lottery,
-  nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin,
-  legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift,
-  buy_top_rod_package, buy_super_spirit_shell, batch_mail_claim_and_cleanup,
-  // tasksLegacy
-  batchLegacyClaim, batchLegacyHangup, batchLegacyGiftSendEnhanced, batchLegacyClaimGiftTask,
-};
-
-/**
- * 根据任务名获取任务函数（替代 eval）
- */
-const getTaskFunction = (functionName) => _taskFnMap[functionName];
-
-// ====== 十殿阎罗挑战（弹窗打开组队界面） ======
+// ====== 十殿阀罗挑战（弹窗打开组队界面） ======
 const showNightmareChallengeModal = ref(false);
 const showStarTeamModal = ref(false);
 const batchNightmareChallenge = async () => {
@@ -15725,19 +16044,62 @@ const sortByActivityAfterDailyTask = async () => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: space-between;
 }
 .push-torch-group {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex: 1;
+  gap: 6px;
+  flex: 1 1 auto;
   min-width: 0;
+  flex-wrap: nowrap;
+}
+/* 火把选择器：弹性宽度，最小100px最大140px */
+.push-torch-select {
+  flex: 1 1 100px;
+  min-width: 100px;
+  max-width: 140px;
+}
+/* 数量输入框固定宽度 */
+.push-torch-count {
+  width: 74px !important;
+  flex-shrink: 0;
+}
+/* 使用火把按钮不收缩 */
+.push-torch-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .push-toolbar-right {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
-  margin-left: auto;
+}
+/* 全部开始/全部停止按钮等宽 */
+.push-action-btn {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+/* 小屏：torch-group 和 toolbar-right 各占一行 */
+@media (max-width: 480px) {
+  .push-toolbar-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .push-torch-group {
+    width: 100%;
+  }
+  .push-torch-select {
+    flex: 1 1 0;
+    max-width: none;
+  }
+  .push-toolbar-right {
+    width: 100%;
+  }
+  .push-action-btn {
+    flex: 1;
+  }
 }
 
 /* 已选账号标签 */
@@ -15867,6 +16229,93 @@ const sortByActivityAfterDailyTask = async () => {
   border: 1px solid #e4e8ed;
   font-size: 12px;
   color: #555;
+}
+
+/* 定时控制模块 */
+.push-timer-section {
+  border: 1px solid #e4e8ed;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.push-timer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  cursor: pointer;
+  user-select: none;
+  &:hover { background: #eef1f6; }
+}
+.push-timer-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+.push-timer-countdown {
+  font-size: 12px;
+  color: #2080f0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.push-timer-toggle {
+  margin-left: auto;
+  font-size: 10px;
+  color: #999;
+}
+.push-timer-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.push-timer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.push-timer-label {
+  font-size: 12px;
+  color: #666;
+  white-space: nowrap;
+  width: 52px;
+  flex-shrink: 0;
+}
+.push-timer-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+}
+.push-time-picker {
+  flex: 1 1 120px;
+  min-width: 110px;
+  max-width: 180px;
+}
+.push-timer-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  background: #f0f6ff;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #444;
+  line-height: 1.7;
+  strong { color: #2080f0; }
+}
+/* 小屏自适应 */
+@media (max-width: 480px) {
+  .push-timer-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .push-timer-label { width: auto; }
+  .push-timer-controls { width: 100%; }
+  .push-time-picker { max-width: none; flex: 1; }
 }
 .push-stats-running {
   font-size: 12.5px;

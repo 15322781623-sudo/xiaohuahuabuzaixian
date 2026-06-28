@@ -26,41 +26,47 @@
         />
       </div>
       <div class="captain-actions">
-        <n-button
-          type="primary"
-          @click="createRoom"
-          :loading="isCreating"
-          :disabled="!!teamId || isCreating"
-        >
-          {{ teamId ? '房间已创建' : '创建房间' }}
-        </n-button>
-        <n-button
-          type="warning"
-          @click="presetRef?.open()"
-          style="color: #fff;"
-        >
-          设置和执行一键挑战
-        </n-button>
-        <div style="display: flex; align-items: center; gap: 4px; margin-left: 4px;">
-          <span style="font-size: 11px; color: var(--text-secondary, #888);">{{ isBackgroundMode ? '后台' : '前台' }}</span>
-          <n-switch v-model:value="isBackgroundMode" size="small" />
+        <div class="captain-btn-row">
+          <n-button
+            class="captain-main-btn"
+            type="primary"
+            @click="createRoom"
+            :loading="isCreating"
+            :disabled="!!teamId || isCreating"
+          >
+            {{ teamId ? '房间已创建' : '创建房间' }}
+          </n-button>
+          <n-button
+            class="captain-main-btn"
+            type="warning"
+            @click="presetRef?.open()"
+            style="color: #fff;"
+          >
+            设置和执行
+          </n-button>
         </div>
-        <div style="display: flex; align-items: center; gap: 4px; margin-left: 4px;" title="预设间执行间隔">
-          <span style="font-size: 11px; color: var(--text-secondary, #888);">间隔</span>
-          <n-input-number
-            v-model:value="presetDelaySec"
-            :min="1"
-            :max="300"
-            :step="1"
-            size="tiny"
-            style="width: 70px;"
-            @update:value="onPresetDelayChange"
-          />
-          <span style="font-size: 11px; color: var(--text-secondary, #888);">秒</span>
+        <div class="captain-ctrl-row">
+          <div class="captain-ctrl-item">
+            <span class="ctrl-label">{{ isBackgroundMode ? '后台' : '前台' }}</span>
+            <n-switch v-model:value="isBackgroundMode" size="small" />
+          </div>
+          <div class="captain-ctrl-item" title="预设间执行间隔">
+            <span class="ctrl-label">间隔</span>
+            <n-input-number
+              v-model:value="presetDelaySec"
+              :min="1"
+              :max="300"
+              :step="1"
+              size="tiny"
+              style="width: 70px;"
+              @update:value="onPresetDelayChange"
+            />
+            <span class="ctrl-label">秒</span>
+          </div>
+          <n-tag type="success" v-if="teamId" size="small">
+            TeamId: {{ teamId }}
+          </n-tag>
         </div>
-        <n-tag type="success" v-if="teamId" size="medium">
-          TeamId: {{ teamId }}
-        </n-tag>
       </div>
     </div>
 
@@ -2654,6 +2660,38 @@ const getTokenName = (tokenId) => {
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+    flex-direction: column;
+  }
+
+  .captain-btn-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    .captain-main-btn {
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+    }
+  }
+
+  .captain-ctrl-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .captain-ctrl-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .ctrl-label {
+    font-size: 11px;
+    color: var(--text-secondary, #888);
+    white-space: nowrap;
   }
 }
 
@@ -2985,11 +3023,6 @@ const getTokenName = (tokenId) => {
     }
     .captain-actions {
       width: 100%;
-      flex-wrap: wrap;
-      > :deep(.n-button) {
-        flex: 1;
-        min-width: 0;
-      }
     }
   }
   .action-section {

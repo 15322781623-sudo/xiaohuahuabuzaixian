@@ -4,8 +4,8 @@
 
     <!-- 队长 + 目标星级 + 扫描 -->
     <div class="config-section">
-      <div class="config-row">
-        <div class="config-item">
+      <div class="config-row config-selects-row">
+        <div class="config-item config-item-captain">
           <span class="label">队长：</span>
           <n-select
             :value="captainTokenId"
@@ -14,7 +14,7 @@
             filterable
             clearable
             placeholder="请选择队长"
-            style="width: 200px;"
+            class="captain-select"
             @update:value="switchCaptain"
           />
         </div>
@@ -27,6 +27,8 @@
             style="width: 120px;"
           />
         </div>
+      </div>
+      <div class="config-row config-btns-row">
         <n-button type="primary" size="small" @click="scanStarData" :loading="isScanning">
           扫描星数
         </n-button>
@@ -2554,7 +2556,20 @@ onMounted(async () => {
 .star-team-container { padding: 10px; }
 .page-title { font-size: 16px; font-weight: bold; margin-bottom: 8px; }
 .config-section { margin-bottom: 8px; }
-.config-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.config-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+
+/* 队长+目标星级选择器行 */
+.config-selects-row {
+  .config-item { flex: 1 1 auto; min-width: 0; }
+  .config-item-captain { flex: 2 1 160px; }
+  .captain-select { flex: 1; min-width: 0; }
+}
+
+/* 按钮行：4个按钮等宽自适应 */
+.config-btns-row {
+  > :deep(.n-button) { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+}
+
 .config-item { display: flex; align-items: center; gap: 6px; }
 .label { font-weight: 600; font-size: 13px; white-space: nowrap; }
 .summary-row { display: flex; gap: 6px; flex-wrap: wrap; }
