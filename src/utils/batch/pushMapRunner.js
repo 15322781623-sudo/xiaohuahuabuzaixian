@@ -26,6 +26,23 @@ export function createPushMapRunner(deps) {
     return shouldStop.value === true;
   };
 
+  // 等待定时任务执行完毕（定时任务优先，推图暂停等待）
+  const waitForScheduledTask = async (pushState) => {
+    if (!window._isScheduledTaskRunning) return;
+    log(`[推图] 检测到定时任务执行中，推图暂停等待...`, "warning");
+    let waited = 0;
+    while (window._isScheduledTaskRunning && !pushState.stopFlag && !isShouldStop()) {
+      await sleep(5000);
+      waited += 5;
+      if (waited % 30 === 0) {
+        log(`[推图] 仍在等待定时任务完成（已等待${waited}秒）...`, "info");
+      }
+    }
+    if (!pushState.stopFlag && !isShouldStop()) {
+      log(`[推图] 定时任务已完成，推图恢复执行`, "success");
+    }
+  };
+
   // 日志回调
   const log = (msg, type) => {
     addLog({ time: new Date().toLocaleTimeString(), message: msg, type: type || "info" });
@@ -100,14 +117,21 @@ export function createPushMapRunner(deps) {
       try {
         const tk = tokens.find(x => x.id === tokenId);
         if (tk) {
-          await tokenStore.createWebSocketConnection(tokenId, tk.token, tk.wsUrl);
+          const result = await tokenStore.createWebSocketConnection(tokenId, tk.token, tk.wsUrl);
+          if (!result) {
+            log(`[${nm}] 重连: createWebSocketConnection返回null（可能锁冲突或跨标签页已有连接）`, "warning");
+          }
           // 等待连接建立（最多10秒）
           for (let w = 0; w < 20; w++) {
             await sleep(500);
             if (tokenStore.getWebSocketStatus(tokenId) === "connected") break;
           }
+        } else {
+          log(`[${nm}] 未找到账号信息，无法重连`, "error");
         }
-      } catch (e) { }
+      } catch (e) {
+        log(`[${nm}] 重连异常: ${e.message}`, "error");
+      }
       if (tokenStore.getWebSocketStatus(tokenId) === "connected") {
         log(`[${nm}] 重连成功 (第${attempt}次尝试)`, "success");
         await sleep(2000);
@@ -115,7 +139,8 @@ export function createPushMapRunner(deps) {
       }
       // 重连间隔：前3次5秒，之后每5次增加5秒，最长30秒
       const waitSec = Math.min(30, attempt <= 3 ? 5 : (Math.floor(attempt / 5) + 1) * 5);
-      log(`[${nm}] 重连未成功，${waitSec}秒后重试...`, "warning");
+      const curStatus = tokenStore.getWebSocketStatus(tokenId);
+      log(`[${nm}] 重连未成功(当前状态:${curStatus})，${waitSec}秒后重试...`, "warning");
       await sleep(waitSec * 1000);
     }
     log(`[${nm}] 重连已停止 (${attempt}次尝试)`, "error");
@@ -153,6 +178,10 @@ export function createPushMapRunner(deps) {
 
     try {
       while (!st.stopFlag && !isShouldStop()) {
+        // 定时任务互斥：定时任务执行期间推图暂停等待
+        await waitForScheduledTask(st);
+        if (st.stopFlag || isShouldStop()) break;
+
         // 检查连接状态，断线时自动重连
         if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
           log(`[${nm}] 连接断开，持续重连中...`, "warning");
@@ -175,7 +204,19 @@ export function createPushMapRunner(deps) {
         try {
           const ri = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 10000);
           if (ri && ri.role) st.level = ri.role.levelId || 0;
-        } catch (e) { }
+        } catch (e) {
+          // 获取关卡信息失败，检查连接是否还活着
+          if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+            log(`[${nm}] 获取关卡信息失败且连接已断开，尝试重连...`, "warning");
+            const reconnected = await reconnect(tokenId, st);
+            if (!reconnected) { log(`[${nm}] 重连被中止，停止推图`, "error"); break; }
+            try {
+              const initRes = await tokenStore.sendMessageWithPromise(tokenId, "fight_startlevel", {}, 8000);
+              if (initRes?.battleData?.version) tokenStore.setBattleVersion(initRes.battleData.version);
+            } catch (e2) { }
+            continue; // 重新进入循环，从头开始本轮
+          }
+        }
         const bossNm = getBoss(st.level);
         log(`[${nm}] 关卡: ${st.level}${bossNm ? " Boss: " + bossNm : ""}`);
 
@@ -190,6 +231,17 @@ export function createPushMapRunner(deps) {
           log(`[${nm}] 战斗需 ${battleTime} 秒`, "success");
         } catch (e) {
           log(`[${nm}] 获取战斗时间失败`, "warning");
+          // 计算战斗时间失败，也检查连接
+          if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+            log(`[${nm}] 获取战斗时间失败且连接已断开，尝试重连...`, "warning");
+            const reconnected = await reconnect(tokenId, st);
+            if (!reconnected) { log(`[${nm}] 重连被中止，停止推图`, "error"); break; }
+            try {
+              const initRes = await tokenStore.sendMessageWithPromise(tokenId, "fight_startlevel", {}, 8000);
+              if (initRes?.battleData?.version) tokenStore.setBattleVersion(initRes.battleData.version);
+            } catch (e2) { }
+            continue;
+          }
         }
         if (st.stopFlag || isShouldStop()) break;
         st.totalTime = battleTime;
@@ -224,6 +276,23 @@ export function createPushMapRunner(deps) {
         }
         if (st.stopFlag || isShouldStop()) break;
 
+        // 倒计时结束后，获取战斗结果前先检查连接状态
+        // 倒计时期间（可能几分钟）连接可能已断开
+        if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+          log(`[${nm}] 倒计时结束后检测到连接已断开，尝试重连...`, "warning");
+          const reconnected = await reconnect(tokenId, st);
+          if (!reconnected) {
+            log(`[${nm}] 重连被中止，停止推图`, "error");
+            break;
+          }
+          // 重连成功后重新初始化战斗版本
+          try {
+            const initRes = await tokenStore.sendMessageWithPromise(tokenId, "fight_startlevel", {}, 8000);
+            if (initRes?.battleData?.version) tokenStore.setBattleVersion(initRes.battleData.version);
+          } catch (e) { }
+          continue; // 重新进入循环，确保战斗状态正确
+        }
+
         // 获取战斗结果（带重试）
         log(`[${nm}] 获取战斗结果...`);
         let fightResultRetrieved = false;
@@ -255,9 +324,10 @@ export function createPushMapRunner(deps) {
             try { await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, 8000); } catch (e) { }
           } catch (e) {
             const errMsg = e.message || '';
-            // 连接相关错误，尝试重连
-            if (errMsg.includes('超时') || errMsg.includes('断开') || errMsg.includes('connection') || errMsg.includes('not connected')) {
-              log(`[${nm}] 获取结果失败(连接问题): ${errMsg}，尝试重连...`, "warning");
+            const connStatus = tokenStore.getWebSocketStatus(tokenId);
+            // 连接断开或连接相关错误，尝试重连
+            if (connStatus !== "connected" || errMsg.includes('超时') || errMsg.includes('断开') || errMsg.includes('connection') || errMsg.includes('not connected')) {
+              log(`[${nm}] 获取结果失败(连接状态:${connStatus}): ${errMsg}，尝试重连...`, "warning");
               await reconnect(tokenId, st);
               fightResultRetrieved = true;
             } else if (fightRetry < 1) {
@@ -279,6 +349,9 @@ export function createPushMapRunner(deps) {
             await useTorch(tokenId);
           }
         }
+
+        // 下一轮战斗前再次检查定时任务互斥
+        await waitForScheduledTask(st);
 
         if (!st.stopFlag && !isShouldStop()) await sleep(2000);
       }

@@ -230,6 +230,13 @@
               </template>
               停止
             </n-button>
+            <!-- ✅ 定时任务执行中时显示提示，但不禁用日常任务按钮 -->
+            <span
+              v-if="isScheduledTaskRunning"
+              style="color: #f0a020; font-size: 13px; padding: 4px 8px; background: rgba(240, 160, 32, 0.15); border-radius: 6px; white-space: nowrap;"
+            >
+              ⏰ 定时任务执行中，日常任务将自动暂停
+            </span>
             <n-button
               @click="openTemplateManagerModal"
               size="medium"
@@ -4527,90 +4534,136 @@
       :segmented="{ content: true }"
     >
       <div class="push-layout">
-        <!-- 工具栏 -->
+        <!-- 顶部工具栏 -->
         <div class="push-toolbar">
-          <div class="push-toolbar-left">
-            <n-select
-              v-model:value="pushSelectedTokens"
-              :options="pushTokenOptions"
-              multiple
+          <!-- 账号选择区域（标签式布局） -->
+          <div class="push-account-selector">
+            <!-- 已选账号标签 -->
+            <div v-if="pushSelectedTokens.length > 0" class="push-selected-chips">
+              <n-tag
+                v-for="tid in pushSelectedTokens"
+                :key="tid"
+                closable
+                size="small"
+                type="info"
+                :bordered="false"
+                class="push-chip"
+                @close="pushSelectedTokens = pushSelectedTokens.filter(id => id !== tid)"
+              >
+                {{ getTokenDisplayName(tid) }}
+              </n-tag>
+            </div>
+            <span v-else class="push-no-selection">未选择账号</span>
+
+            <!-- 搜索框 -->
+            <n-input
+              v-model:value="pushSearchQuery"
+              placeholder="搜索账号..."
               size="small"
-              placeholder="选择账号"
-              style="flex: 1; min-width: 200px;"
-            />
-            <n-select
-              v-model:value="pushTorchType"
-              :options="[
-                { label: '不使用火把', value: 0 },
-                { label: '🔥 木材(10min)', value: 1008 },
-                { label: '🔥 青铜(20min)', value: 1009 },
-                { label: '🔥 咸神(30min)', value: 1010 },
-              ]"
-              size="small"
-              style="width: 140px;"
-            />
-            <n-input-number
-              v-model:value="pushTorchCount"
-              :min="1"
-              :max="99"
-              size="small"
-              placeholder="数量"
-              style="width: 90px;"
-            />
-            <n-button size="small" type="warning" @click="pushUseTorchManual" :disabled="!pushSelectedTokens.length || !pushTorchType">
-              使用火把
-            </n-button>
+              clearable
+              class="push-search-input"
+            >
+              <template #prefix>🔍</template>
+            </n-input>
+
+            <!-- 可选账号网格 -->
+            <div class="push-account-grid">
+              <label
+                v-for="opt in filteredPushOptions"
+                :key="opt.value"
+                class="push-account-item"
+                :class="{ 'is-selected': pushSelectedTokens.includes(opt.value) }"
+                @click.prevent="togglePushAccount(opt.value)"
+              >
+                <input
+                  type="checkbox"
+                  :checked="pushSelectedTokens.includes(opt.value)"
+                  @click.stop="togglePushAccount(opt.value)"
+                />
+                <span class="push-account-name">{{ opt.label }}</span>
+              </label>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="push-account-actions">
+              <n-button size="tiny" secondary @click="pushSelectAll">全选</n-button>
+              <n-button size="tiny" secondary @click="pushClearAll">取消全选</n-button>
+              <span class="push-select-count">{{ pushSelectedTokens.length }} / {{ pushTokenOptions.length }}</span>
+            </div>
           </div>
-          <div class="push-toolbar-right">
-            <n-button size="small" type="success" @click="pushStartAll" :disabled="!pushSelectedTokens.length">
-              全部开始
-            </n-button>
-            <n-button size="small" type="error" @click="pushStopAll">
-              全部停止
-            </n-button>
+          <div class="push-toolbar-row">
+            <div class="push-torch-group">
+              <n-select
+                v-model:value="pushTorchType"
+                :options="[
+                  { label: '不使用火把', value: 0 },
+                  { label: '🔥 木材(10min)', value: 1008 },
+                  { label: '🔥 青铜(20min)', value: 1009 },
+                  { label: '🔥 咸神(30min)', value: 1010 },
+                ]"
+                size="small"
+                style="width: 140px;"
+              />
+              <n-input-number
+                v-model:value="pushTorchCount"
+                :min="1"
+                :max="99"
+                size="small"
+                placeholder="数量"
+                style="width: 90px;"
+              />
+              <n-button size="small" type="warning" @click="pushUseTorchManual" :disabled="!pushSelectedTokens.length || !pushTorchType">
+                使用火把
+              </n-button>
+            </div>
+            <div class="push-toolbar-right">
+              <n-button size="small" type="success" @click="pushStartAll" :disabled="!pushSelectedTokens.length">
+                全部开始
+              </n-button>
+              <n-button size="small" type="error" @click="pushStopAll">
+                全部停止
+              </n-button>
+            </div>
           </div>
+        </div>
+
+        <!-- 统计栏 -->
+        <div v-if="pushCards.length" class="push-stats">
+          <span class="push-stats-running">正在推关：<strong>{{ pushCards.filter(c => c.running).length }}</strong> 人</span>
+          <span class="push-stats-detail">
+            总计：{{ pushCards.length }} 人 |
+            <span class="stat-win-inline">{{ pushCards.reduce((s,c) => s + (c.wins||0), 0) }} 胜</span> |
+            <span class="stat-loss-inline">{{ pushCards.reduce((s,c) => s + (c.losses||0), 0) }} 负</span>
+          </span>
         </div>
 
         <!-- 战斗卡片区域 - 两列网格 -->
         <div v-if="pushCards.length" class="push-cards-grid">
           <div v-for="card in pushCards" :key="card.id" class="push-card" :class="{ 'push-card--running': card.running }">
-            <!-- 卡片头部 -->
-            <div class="push-card-header">
-              <div class="push-card-name">
-                <span class="push-status-dot" :class="card.running ? 'dot-active' : 'dot-idle'"></span>
-                <span class="push-card-title">{{ card.name }}</span>
-              </div>
-              <div class="push-card-stats">
+            <!-- 紧凑头部：一行显示所有信息 -->
+            <div class="push-card-head">
+              <span class="push-status-dot" :class="card.running ? 'dot-active' : 'dot-idle'"></span>
+              <span class="push-card-title">{{ card.name }}</span>
+              <span class="push-card-level" v-if="card.level">Lv.{{ card.level }}</span>
+              <span class="push-card-boss" v-if="card.bossNm">{{ card.bossNm }}</span>
+              <span class="push-card-stats">
                 <span class="push-stat push-stat-win">{{ card.wins }}胜</span>
                 <span class="push-stat push-stat-loss">{{ card.losses }}负</span>
-              </div>
+              </span>
+              <n-button v-if="card.running" size="tiny" quaternary type="error" @click="pushToggleOne(card.id)" class="push-card-stop">■</n-button>
+              <n-button v-else size="tiny" quaternary type="success" @click="pushToggleOne(card.id)" class="push-card-stop">▶</n-button>
             </div>
-            <!-- 卡片内容 -->
-            <div class="push-card-body">
-              <div class="push-card-info">
-                <span class="push-info-level">Lv.{{ card.level }}</span>
-                <span v-if="card.bossNm" class="push-info-boss">{{ card.bossNm }}</span>
-              </div>
-              <div v-if="card.running && card.countdown > 0" class="push-card-timer">
-                <span class="push-timer-label">战斗剩余</span>
-                <span class="push-timer-value">{{ Math.floor(card.countdown / 60) }}:{{ String(Math.floor(card.countdown % 60)).padStart(2, '0') }}</span>
-              </div>
+            <!-- 进度条+倒计时（仅运行时显示） -->
+            <div class="push-card-progress" v-if="card.running && card.totalTime > 0">
               <n-progress
-                v-if="card.running && card.totalTime > 0"
                 type="line"
                 :percentage="Math.round((1 - card.countdown / card.totalTime) * 100)"
                 :show-indicator="false"
-                :height="4"
+                :height="6"
                 :color="card.countdown < 10 ? '#f0a020' : '#2080f0'"
                 rail-color="#eef1f5"
-                style="margin: 6px 0;"
               />
-            </div>
-            <!-- 卡片操作 -->
-            <div class="push-card-footer">
-              <n-button size="tiny" :type="card.running ? 'error' : 'success'" quaternary @click="pushToggleOne(card.id)">
-                {{ card.running ? '停止' : '开始' }}
-              </n-button>
+              <span class="push-card-timer">{{ Math.floor(card.countdown / 60) }}:{{ String(Math.floor(card.countdown % 60)).padStart(2, '0') }}<span class="push-timer-sep">/</span>{{ Math.floor(card.totalTime / 60) }}:{{ String(Math.floor(card.totalTime % 60)).padStart(2, '0') }}</span>
             </div>
           </div>
         </div>
@@ -4618,13 +4671,16 @@
           <span>选择账号后点击「全部开始」</span>
         </div>
 
-        <!-- 日志区域 -->
+        <!-- 日志区域（可折叠） -->
         <div class="push-logs-section">
-          <div class="push-logs-header">
+          <div class="push-logs-header" @click="pushLogsCollapsed = !pushLogsCollapsed" style="cursor: pointer;">
             <span class="push-logs-title">推图日志</span>
-            <n-button text size="tiny" @click="pushLogs = []">清空</n-button>
+            <div class="push-logs-header-actions">
+              <n-button text size="tiny" @click.stop="pushLogs = []">清空</n-button>
+              <span class="push-logs-arrow" :class="{ 'push-logs-arrow--collapsed': pushLogsCollapsed }">▾</span>
+            </div>
           </div>
-          <div class="push-logs-list">
+          <div v-show="!pushLogsCollapsed" class="push-logs-list">
             <div v-for="(log, i) in pushLogs.slice(0, 100)" :key="i" class="push-log-item" :class="'log-' + log.type">
               <span class="log-time">{{ log.time }}</span>
               <span class="log-text">{{ log.text }}</span>
@@ -8238,8 +8294,11 @@ const pageLoadTime = Date.now();
 
 // 跟踪定时任务是否正在执行
 const isScheduledTaskRunning = ref(false);
+// 同步到全局，供推图循环(pushMapRunner)检测定时任务互斥
+watch(isScheduledTaskRunning, (v) => { window._isScheduledTaskRunning = v; }, { immediate: true });
 let currentScheduledTask = null; // 当前正在执行的定时任务
 const pendingTaskQueue = []; // ✅ 待执行队列：当定时任务冲突时，排队等待执行
+let _dailyTasksPausedByScheduled = false; // ✅ 定时任务执行时暂停日常任务的标记
 let _activeNightmareBattles = []; // ✅ 模块级引用：跟踪当前十殿战斗，用于超时传导停止
 
 // Health check for the scheduler
@@ -8253,32 +8312,32 @@ const healthCheck = () => {
   }
 
   // ✅ 修改：不再强制重置isRunning，只记录警告日志
-  // 原因：日常任务多账号执行可能需要1个多小时
+  // 原因：日常任务多账号执行可能较长，但15分钟无活动则认为卡死
   if (isRunning.value) {
     const now = Date.now();
-    const oneHourAgo = now - 60 * 60 * 1000; // 1 hour ago
-    if (lastTaskExecution && lastTaskExecution < oneHourAgo) {
+    const fifteenMinAgo = now - 15 * 60 * 1000; // 15 minutes ago
+    if (lastTaskExecution && lastTaskExecution < fifteenMinAgo) {
       console.warn(
-        `[${new Date().toISOString()}] isRunning has been true for more than 1 hour`,
+        `[${new Date().toISOString()}] isRunning has been true for more than 15 minutes without activity`,
       );
       // ✅ 修复：超时后强制重置 isRunning，防止调度器永远被阻塞
       // 之前只记录警告不重置，导致后续所有定时任务都无法执行
       if (!isScheduledTaskRunning.value) {
         // 仅在非定时任务执行时重置（定时任务有自己的状态管理）
         console.error(
-          `[${new Date().toISOString()}] isRunning卡住超过1小时且无定时任务运行，强制重置`,
+          `[${new Date().toISOString()}] isRunning卡住超过15分钟且无定时任务运行，强制重置`,
         );
         isRunning.value = false;
         currentRunningTokenId.value = null;
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: "=== 检测到 isRunning 卡住超过1小时，已强制重置（非定时任务状态） ===",
+          message: "=== 检测到 isRunning 卡住超过15分钟，已强制重置（非定时任务状态） ===",
           type: "warning",
         });
       } else {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: "=== 警告：任务执行已超过1小时，定时任务仍在运行中 ===",
+          message: "=== 警告：任务执行已超过15分钟，定时任务仍在运行中 ===",
           type: "warning",
         });
       }
@@ -8410,20 +8469,19 @@ const startScheduler = () => {
               }
             }
 
-            // ✅ 检查是否有任务正在执行中（包括用户手动任务 isRunning 和定时任务 isScheduledTaskRunning）
-            // 无论是哪种情况，都加入待执行队列等待完成后再执行
-            if (isRunning.value || (isScheduledTaskRunning.value && currentScheduledTask)) {
-              // 同一个任务正在执行，跳过
-              if (currentScheduledTask && currentScheduledTask.id === task.id) {
+            // ✅ 定时任务仅与其他定时任务互斥，不参与日常任务的互斥排队
+            // 定时任务绝对优先：日常任务正在执行时，定时任务直接执行，日常任务自动暂停
+            if (isScheduledTaskRunning.value && currentScheduledTask) {
+              // 同一个定时任务正在执行，跳过
+              if (currentScheduledTask.id === task.id) {
                 return;
               }
-              // ✅ 加入待执行队列
+              // ✅ 加入待执行队列（仅定时任务之间互斥）
               if (!pendingTaskQueue.some(t => t.id === task.id)) {
                 pendingTaskQueue.push(task);
-                const runningName = currentScheduledTask ? currentScheduledTask.name : '手动任务';
                 addLog({
                   time: currentTime,
-                  message: `⏸️ 定时任务 ${task.name} 加入待执行队列（当前: ${runningName} 执行中，队列: ${pendingTaskQueue.length}）`,
+                  message: `⏸️ 定时任务 ${task.name} 加入待执行队列（当前: ${currentScheduledTask.name} 执行中，队列: ${pendingTaskQueue.length}）`,
                   type: "info",
                 });
               }
@@ -8459,8 +8517,9 @@ const startScheduler = () => {
         }
       });
 
-      // ✅ 调度器兜底：如果队列中有等待任务且当前无任务运行，主动消费队列（跳过已过期任务）
-      if (pendingTaskQueue.length > 0 && !isRunning.value && !isScheduledTaskRunning.value) {
+      // ✅ 调度器兜底：如果队列中有等待任务且当前无定时任务运行，主动消费队列（跳过已过期任务）
+      // 定时任务优先：即使日常任务正在执行，定时任务也可以启动
+      if (pendingTaskQueue.length > 0 && !isScheduledTaskRunning.value) {
         // 循环清理已过期任务，找到第一个有效的执行
         while (pendingTaskQueue.length > 0) {
           const peekTask = pendingTaskQueue[0];
@@ -8842,7 +8901,7 @@ const verifyTaskDependencies = async (task) => {
       functionName = 'weeklyMarketBuy';
     }
     
-    const taskFunction = eval(functionName);
+    const taskFunction = getTaskFunction(functionName);
     if (typeof taskFunction !== "function") {
       addLog({
         time: new Date().toLocaleTimeString(),
@@ -8955,6 +9014,16 @@ const executeScheduledTask = async (task) => {
   
   // ✅ 重置停止标志，防止用户手动停止后影响定时任务执行
   shouldStop.value = false;
+  
+  // ✅ 定时任务绝对优先：如果日常任务正在执行，标记暂停
+  if (isRunning.value) {
+    _dailyTasksPausedByScheduled = true;
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `⏰ 定时任务触发，日常任务暂停等待...`,
+      type: "warning",
+    });
+  }
   
   addLog({
     time: new Date().toLocaleTimeString(),
@@ -9488,7 +9557,7 @@ const executeScheduledTask = async (task) => {
       if (taskName === 'weekly_market_buy') {
         functionName = 'weeklyMarketBuy';
       }
-      const taskFunction = eval(functionName);
+      const taskFunction = getTaskFunction(functionName);
       if (typeof taskFunction === "function") {
         // 根据批次间等待设置，分批执行账号
         const maxConcurrent = batchSettings.maxActive || 5;
@@ -9856,6 +9925,16 @@ const executeScheduledTask = async (task) => {
     currentScheduledTask = null;
     scheduledTaskStartTime = null; // ✅ 清除超时计时
 
+    // ✅ 恢复日常任务执行
+    if (_dailyTasksPausedByScheduled) {
+      _dailyTasksPausedByScheduled = false;
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `✅ 定时任务完成，日常任务恢复执行`,
+        type: "success",
+      });
+    }
+
     // ✅ 任务完成后，同步处理待执行队列（不再用 nextTick，避免与调度器兖底竞态）
     if (pendingTaskQueue.length > 0) {
       // 循环清理已过期任务，找到第一个仍然有效的任务执行
@@ -9875,7 +9954,8 @@ const executeScheduledTask = async (task) => {
 
         // 找到了时间有效的任务
         pendingTaskQueue.shift(); // 正式出队
-        if (!isRunning.value && !isScheduledTaskRunning.value) {
+        // ✅ 定时任务仅与其他定时任务互斥，日常任务执行中也可以启动定时任务
+        if (!isScheduledTaskRunning.value) {
           addLog({
             time: new Date().toLocaleTimeString(),
             message: `▶️ 从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
@@ -9890,7 +9970,7 @@ const executeScheduledTask = async (task) => {
             lastTaskExecution = Date.now();
           });
         } else {
-          // 状态被占用（用户手动执行了任务），放回队列等待
+          // 另一个定时任务正在执行，放回队列等待
           pendingTaskQueue.unshift(nextTask);
         }
         return; // 已处理，退出
@@ -12300,6 +12380,7 @@ const pushUseTorchManual = async () => {
 
 const pushLogs = ref([]);
 const pushCards = ref([]);
+const pushLogsCollapsed = ref(false);
 let _pushCheckTimer = null;
 
 // 账号选项（只显示已连接的）
@@ -12405,6 +12486,35 @@ const pushStopAll = () => {
     if (window._bpStopOne) window._bpStopOne(id);
     else if (window._pt[id]) window._pt[id].stopFlag = true;
   });
+};
+
+// 全选/取消全选
+const pushSelectAll = () => {
+  const allIds = pushTokenOptions.value.map(o => o.value);
+  pushSelectedTokens.value = [...allIds];
+};
+const pushClearAll = () => {
+  pushSelectedTokens.value = [];
+};
+
+// 标签式账号选择器：搜索、过滤、切换、显示名
+const pushSearchQuery = ref('');
+const filteredPushOptions = computed(() => {
+  if (!pushSearchQuery.value) return pushTokenOptions.value;
+  const q = pushSearchQuery.value.toLowerCase();
+  return pushTokenOptions.value.filter(opt => opt.label.toLowerCase().includes(q));
+});
+const togglePushAccount = (tokenId) => {
+  const idx = pushSelectedTokens.value.indexOf(tokenId);
+  if (idx >= 0) {
+    pushSelectedTokens.value.splice(idx, 1);
+  } else {
+    pushSelectedTokens.value.push(tokenId);
+  }
+};
+const getTokenDisplayName = (tokenId) => {
+  const opt = pushTokenOptions.value.find(o => o.value === tokenId);
+  return opt ? opt.label.replace(/[✅⏳⚪]/g, '').trim() : tokenId.slice(0, 8);
 };
 
 // 单个切换
@@ -12713,6 +12823,49 @@ const applyBatchPurchaseConfig = async () => {
 
 const tasksLegacy = createTasksLegacy(createTaskDeps());
 const { batchLegacyClaim, batchLegacyHangup, batchLegacyGiftSendEnhanced, batchLegacyClaimGiftTask } = tasksLegacy;
+
+// ====== 任务函数注册表（替代 eval，解决 Vue3 script setup 中 eval 无法访问 const 变量的问题） ======
+const _taskFnMap = {
+  // tasksHangUp
+  claimHangUpRewards, batchAddHangUpTime, batchStudy, batchclubsign, batchWarGuessCheer,
+  // tasksBottle
+  resetBottles, batchlingguanzi,
+  // tasksTower
+  climbTower, climbWeirdTower, batchClaimFreeEnergy, skinChallenge, skinTreasure, batchUseItems, batchMergeItems,
+  // tasksCar
+  batchSmartSendCar, batchClaimCars, batchCarResearchUpgrade,
+  // tasksItem
+  batchOpenBox, batchOpenBoxByPoints, batchOpenFragmentPacks, batchOpenDiamondBox,
+  batchClaimBoxWeeklyRewards, batchClaimBoxPointReward, batchFish, batchRecruit,
+  batchHeroUpgrade, batchBookUpgrade, batchFishUpgrade, batchClaimStarRewards,
+  batchClaimPeachTasks, batchGenieSweep, heroFourSaintsUpgrade,
+  batchConsumeActivity, batchClaimConsumeRewards, batchAutumnUseItem,
+  batchUseActivityItem, batchClaimCdkReward, batchActivityExchange,
+  batchClaimApexRewards, batchCollectionActivate, batchPushMap,
+  // tasksDungeon
+  batchbaoku13, batchbaoku45, batchmengjing, batchBuyDreamItems,
+  // tasksArena
+  batcharenafight, batchTopUpFish, batchTopUpArena,
+  // tasksStore
+  legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy,
+  charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare,
+  claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg,
+  claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward,
+  store_buy_bronze, store_buy_platinum, store_buy_gold_rod, store_buy_jade,
+  store_buy_selectable, legion_buy_red_jade, legion_buy_spotted_egg,
+  salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig,
+  star_drawturntable, batch_star_challenge, nightmare_draw_lottery,
+  nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin,
+  legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift,
+  buy_top_rod_package, buy_super_spirit_shell, batch_mail_claim_and_cleanup,
+  // tasksLegacy
+  batchLegacyClaim, batchLegacyHangup, batchLegacyGiftSendEnhanced, batchLegacyClaimGiftTask,
+};
+
+/**
+ * 根据任务名获取任务函数（替代 eval）
+ */
+const getTaskFunction = (functionName) => _taskFnMap[functionName];
 
 // ====== 十殿阎罗挑战（弹窗打开组队界面） ======
 const showNightmareChallengeModal = ref(false);
@@ -13292,6 +13445,31 @@ const batchNightmareChallengePresets = async (silent) => {
   }
 };
 
+// ✅ 等待定时任务完成，日常任务暂停机制
+// 轮询等待，每5秒检查一次，不中断WebSocket连接
+const waitForScheduledTaskIfPaused = async (context = '') => {
+  if (!_dailyTasksPausedByScheduled) return;
+  
+  addLog({
+    time: new Date().toLocaleTimeString(),
+    message: `⏸️ ${context}日常任务暂停，等待定时任务完成...`,
+    type: "info",
+  });
+  
+  while (_dailyTasksPausedByScheduled) {
+    // 每5秒检查一次
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    // 更新 lastTaskExecution 防止 healthCheck 误判为卡死
+    lastTaskExecution = Date.now();
+  }
+  
+  addLog({
+    time: new Date().toLocaleTimeString(),
+    message: `▶️ ${context}定时任务已完成，日常任务继续执行`,
+    type: "success",
+  });
+};
+
 const startBatch = async () => {
   if (selectedTokens.value.length === 0) return;
 
@@ -13327,6 +13505,11 @@ const startBatch = async () => {
 
   // 定义单个Token执行函数（用于连接池滚动执行）
   const executeTokenRolling = async (tokenId) => {
+    if (shouldStop.value) return;
+
+    // ✅ 定时任务优先：如果定时任务正在执行，日常任务在此等待
+    const tokenForPause = tokens.value.find((t) => t.id === tokenId);
+    await waitForScheduledTaskIfPaused(tokenForPause ? `[${tokenForPause.name}] ` : '');
     if (shouldStop.value) return;
 
     tokenStatus.value[tokenId] = "running";
@@ -13430,6 +13613,10 @@ const startBatch = async () => {
           commandDelay: batchSettings.commandDelay,
           taskDelay: batchSettings.taskDelay,
         }, batchSettings);  // ✅ 传入batchSettings支持高级配置
+
+        // ✅ 定时任务优先：在实际执行日常任务前再次检查是否需要暂停
+        await waitForScheduledTaskIfPaused(`[${token.name}] `);
+        if (shouldStop.value) break;
 
         // Run tasks
         const runnerResult = await runner.run(tokenId, {
@@ -13773,6 +13960,42 @@ const startBatch = async () => {
 
   isRunning.value = false;
   currentRunningTokenId.value = null;
+  
+  // ✅ 日常任务结束后，主动消费定时任务队列
+  if (pendingTaskQueue.length > 0 && !isScheduledTaskRunning.value) {
+    while (pendingTaskQueue.length > 0) {
+      const nextTask = pendingTaskQueue[0];
+      const timeCheck = isTaskTimeStillValid(nextTask, 60);
+      
+      if (!timeCheck.valid) {
+        pendingTaskQueue.shift();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `⏰ 日常任务完成后，跳过已过期的队列任务: ${nextTask.name}（${timeCheck.reason}）`,
+          type: "warning",
+        });
+        continue;
+      }
+      
+      // 找到有效任务，出队并执行
+      pendingTaskQueue.shift();
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `▶️ 日常任务结束后，从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
+        type: "info",
+      });
+      isScheduledTaskRunning.value = true;
+      currentScheduledTask = nextTask;
+      scheduledTaskStartTime = Date.now();
+      lastTaskExecution = Date.now();
+      executeScheduledTask(nextTask).catch(error => {
+        console.error(`日常任务完成后队列任务执行错误:`, error);
+      }).finally(() => {
+        lastTaskExecution = Date.now();
+      });
+      break; // 每次只启动一个定时任务
+    }
+  }
   
   // 检查是否需要在任务完成后刷新页面
   // 注意：需同时确认定时任务和队列中没有待执行任务，避免刷新中断
@@ -15488,16 +15711,22 @@ const sortByActivityAfterDailyTask = async () => {
 .push-layout {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
+
+/* 工具栏 */
 .push-toolbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 10px;
+}
+.push-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
 }
-.push-toolbar-left {
+.push-torch-group {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -15506,16 +15735,160 @@ const sortByActivityAfterDailyTask = async () => {
 }
 .push-toolbar-right {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
+  margin-left: auto;
 }
+
+/* 已选账号标签 */
+.push-selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  border: 1px solid #eef0f3;
+  max-height: 100px;
+  overflow-y: auto;
+}
+.push-selected-tags::-webkit-scrollbar {
+  width: 3px;
+}
+.push-selected-tags::-webkit-scrollbar-thumb {
+  background: #d0d5dd;
+  border-radius: 2px;
+}
+.push-tag {
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+/* 标签式账号选择器 */
+.push-account-selector {
+  background: var(--n-color-modal, #f8f9fb);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid var(--n-border-color, #eef0f3);
+}
+.push-selected-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+  min-height: 28px;
+  max-height: 80px;
+  overflow-y: auto;
+}
+.push-selected-chips::-webkit-scrollbar {
+  width: 3px;
+}
+.push-selected-chips::-webkit-scrollbar-thumb {
+  background: #d0d5dd;
+  border-radius: 2px;
+}
+.push-chip {
+  font-size: 12px;
+  border-radius: 4px;
+}
+.push-search-input {
+  margin: 8px 0;
+}
+.push-account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--n-color, #fff);
+  border: 1px solid var(--n-border-color, #e0e0e0);
+  border-radius: 6px;
+}
+.push-account-grid::-webkit-scrollbar {
+  width: 4px;
+}
+.push-account-grid::-webkit-scrollbar-thumb {
+  background: #d0d5dd;
+  border-radius: 2px;
+}
+.push-account-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s;
+  user-select: none;
+}
+.push-account-item:hover {
+  background: var(--n-color-hover, #f0f0f0);
+}
+.push-account-item.is-selected {
+  background: var(--n-color-info-suppl, #e8f4fd);
+}
+.push-account-item input[type="checkbox"] {
+  margin: 0;
+  pointer-events: none;
+}
+.push-account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.push-account-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.push-select-count {
+  font-size: 12px;
+  color: #999;
+  margin-left: auto;
+}
+.push-no-selection {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 8px;
+  display: block;
+}
+
+/* 统计栏 */
+.push-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: #f0f4f8;
+  border-radius: 6px;
+  border: 1px solid #e4e8ed;
+  font-size: 12px;
+  color: #555;
+}
+.push-stats-running {
+  font-size: 12.5px;
+}
+.push-stats-running strong {
+  color: #2080f0;
+  font-size: 14px;
+  margin: 0 2px;
+}
+.push-stats-detail {
+  color: #777;
+  font-size: 11.5px;
+}
+.stat-win-inline { color: #18a058; font-weight: 600; }
+.stat-loss-inline { color: #d03050; font-weight: 600; }
 
 /* 卡片网格 */
 .push-cards-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  max-height: 320px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+  max-height: 400px;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -15531,8 +15904,8 @@ const sortByActivityAfterDailyTask = async () => {
 .push-card {
   background: #f8f9fb;
   border: 1px solid #e8eaed;
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: 6px;
+  padding: 6px 8px;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .push-card--running {
@@ -15540,29 +15913,17 @@ const sortByActivityAfterDailyTask = async () => {
   background: #f0f7ff;
   box-shadow: 0 0 0 1px rgba(32, 128, 240, 0.08);
 }
-.push-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-.push-card-name {
+
+/* 紧凑头部 - 单行 */
+.push-card-head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex: 1;
-}
-.push-card-title {
-  font-size: 12.5px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  gap: 5px;
+  min-height: 22px;
 }
 .push-status-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -15578,17 +15939,49 @@ const sortByActivityAfterDailyTask = async () => {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
-
+.push-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.push-card-level {
+  font-size: 10.5px;
+  color: #666;
+  background: #eef0f3;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 18px;
+}
+.push-card-boss {
+  font-size: 10.5px;
+  color: #c0392b;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 50px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .push-card-stats {
   display: flex;
-  gap: 6px;
+  gap: 3px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 .push-stat {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  line-height: 17px;
 }
 .push-stat-win {
   color: #18a058;
@@ -15598,57 +15991,49 @@ const sortByActivityAfterDailyTask = async () => {
   color: #d03050;
   background: #fde8ec;
 }
-
-.push-card-body {
-  margin-bottom: 6px;
+.push-card-stop {
+  flex-shrink: 0;
+  width: 20px !important;
+  height: 20px !important;
+  padding: 0 !important;
+  font-size: 10px !important;
+  min-width: 0 !important;
+  border-radius: 4px !important;
+  margin-left: 2px;
 }
-.push-card-info {
+
+/* 进度条+倒计时 */
+.push-card-progress {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 4px;
+  margin-top: 4px;
 }
-.push-info-level {
-  font-size: 11.5px;
-  color: #666;
-  background: #eef0f3;
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-weight: 500;
-}
-.push-info-boss {
-  font-size: 11.5px;
-  color: #c0392b;
-  font-weight: 600;
+.push-card-progress .n-progress {
+  flex: 1;
 }
 .push-card-timer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11.5px;
-}
-.push-timer-label {
-  color: #888;
-}
-.push-timer-value {
+  font-size: 10.5px;
   color: #2080f0;
   font-weight: 600;
   font-family: 'Courier New', monospace;
-  font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-
-.push-card-footer {
-  display: flex;
-  justify-content: flex-end;
-  border-top: 1px solid #eef0f3;
-  padding-top: 4px;
+.push-timer-sep {
+  color: #aab;
+  margin: 0 1px;
+  font-weight: 400;
 }
 
 .push-empty {
   text-align: center;
-  padding: 28px 0;
+  padding: 32px 0;
   color: #bbb;
   font-size: 13px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px dashed #e4e7ed;
 }
 
 /* 日志区域 */
@@ -15661,10 +16046,25 @@ const sortByActivityAfterDailyTask = async () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 6px;
+  user-select: none;
 }
 .push-logs-title {
   font-weight: 600;
   font-size: 13px;
+}
+.push-logs-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.push-logs-arrow {
+  font-size: 12px;
+  color: #999;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+.push-logs-arrow--collapsed {
+  transform: rotate(-90deg);
 }
 .push-logs-list {
   max-height: 180px;
@@ -15672,6 +16072,7 @@ const sortByActivityAfterDailyTask = async () => {
   background: #fafbfc;
   border-radius: 6px;
   padding: 6px 8px;
+  border: 1px solid #eef0f3;
 }
 .push-logs-list::-webkit-scrollbar {
   width: 4px;

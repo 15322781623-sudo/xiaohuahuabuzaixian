@@ -66,6 +66,7 @@ export class NightmareAutoBattleService {
     this._consecutiveFightFails = 0; // 连续出战失败计数
     this._lastFailRoleId = null;     // 上次出战失败的成员 roleId
     this._cleanupDone = false;       // 清理标记，防止重复遣散
+    this._preMidnightReconnectDone = false; // 23:59重连标记，防止分钟内重复执行
   }
 
   getStatus() { return this._status; }
@@ -489,6 +490,55 @@ export class NightmareAutoBattleService {
     // 重连后等待2秒让连接稳定
     await sleep(2000);
     return true;
+  }
+
+  // ====== 强制断开重连队长（等待期间专用） ======
+  async _forceReconnectCaptain() {
+    const MAX_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        // 1. 主动断开旧连接（createWebSocketConnection 内部会先关闭现有连接）
+        const captainToken = this._tokenStore.gameTokens.find(t => t.id === this._captainTokenId);
+        if (!captainToken) {
+          this._onLog('队长 Token 未找到，无法重连', 'error');
+          return false;
+        }
+
+        this._onLog(`🔄 强制重连队长 (第${attempt}/${MAX_RETRIES}次)...`, 'info');
+
+        // 2. 创建新连接（createWebSocketConnection 内部自动关闭旧连接）
+        this._tokenStore.createWebSocketConnection(
+          this._captainTokenId, captainToken.token, captainToken.wsUrl || null
+        );
+
+        // 3. 轮询等待连接就绪（最多30秒）
+        let retries = 0;
+        while (this._tokenStore.getWebSocketStatus(this._captainTokenId) !== 'connected' && retries < 30) {
+          await sleep(1000);
+          retries++;
+          if (this._stopped) return false;
+        }
+
+        if (this._tokenStore.getWebSocketStatus(this._captainTokenId) === 'connected') {
+          this._onLog(`✅ 队长强制重连成功 (第${attempt}次)`, 'success');
+          await sleep(2000); // 稳定连接
+          return true;
+        }
+
+        this._onLog(`❌ 队长重连超时 (第${attempt}/${MAX_RETRIES}次)`, 'warning');
+      } catch (err) {
+        this._onLog(`❌ 队长重连异常 (第${attempt}次): ${err.message || err}`, 'error');
+      }
+
+      // 重试前等待5秒
+      if (attempt < MAX_RETRIES) {
+        await sleep(5000);
+        if (this._stopped) return false;
+      }
+    }
+
+    this._onLog('❌ 队长强制重连全部失败（3次），连接不可用', 'error');
+    return false;
   }
 
   // ====== 获取房间信息 ======
@@ -960,7 +1010,20 @@ export class NightmareAutoBattleService {
       const msToMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5) - now;
       this._onLog(`⏳ 距00:00还剩 ${Math.ceil(msToMidnight / 60000)} 分钟`, 'info');
 
-      // 心跳保活
+      const minutes = now.getMinutes();
+
+      // 23:59 主动断开重连（仅执行一次）
+      if (hours === 23 && minutes >= 59 && !this._preMidnightReconnectDone) {
+        this._onLog('⏰ 23:59 主动断开重连队长...', 'info');
+        const reconnected = await this._forceReconnectCaptain();
+        if (reconnected) {
+          await this._fetchRoomInfo();
+          this._onLog('✅ 23:59 重连完成，等待0点执行', 'success');
+        }
+        this._preMidnightReconnectDone = true;
+      }
+
+      // 心跳保活（静默模式，失败不中断等待）
       try {
         await this._tokenStore.sendMessageWithPromise(
           this._captainTokenId, 'nightmare_getroominfo',
