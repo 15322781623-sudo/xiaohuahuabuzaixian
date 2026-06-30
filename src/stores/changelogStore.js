@@ -14,6 +14,25 @@ export const useChangelogStore = defineStore("changelog", () => {
    */
   const changelogs = ref([
     {
+      version: "v2.12.0",
+      date: "2026-06-30",
+      type: "minor",
+      title: "星级队伍自动解散与卡密验证优化",
+      features: [
+        "新增更新日志导航标签页，方便查看版本更新记录",
+      ],
+      improvements: [
+        "优化星级队伍扫描逻辑，检测到队长持有队伍时自动解散",
+        "优化日常任务执行，确保每日咸王考验不遗漏账号",
+        "优化卡密验证逻辑，避免已激活设备反复弹窗",
+      ],
+      fixes: [
+        "修复星级队伍扫描星数时扫出上周残留队伍的问题",
+        "修复日常任务活跃度100时跳过BOSS任务导致漏号的问题",
+        "修复卡密验证服务端返回400时反复弹窗要求重新激活的问题",
+      ],
+    },
+    {
       version: "v1.3.0",
       date: "2025-01-15",
       type: "minor",

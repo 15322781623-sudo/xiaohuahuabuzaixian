@@ -230,13 +230,6 @@
               </template>
               停止
             </n-button>
-            <!-- ✅ 定时任务执行中时显示提示，但不禁用日常任务按钮 -->
-            <span
-              v-if="isScheduledTaskRunning"
-              style="color: #f0a020; font-size: 13px; padding: 4px 8px; background: rgba(240, 160, 32, 0.15); border-radius: 6px; white-space: nowrap;"
-            >
-              ⏰ 定时任务执行中，日常任务将自动暂停
-            </span>
             <n-button
               @click="openTemplateManagerModal"
               size="medium"
@@ -637,7 +630,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchOpenFragmentPacks"
+                  @click="openHelperModal('fragmentPack')"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键开碎片礼包
@@ -2366,6 +2359,31 @@
               </n-space>
             </n-checkbox-group>
           </div>
+          <div class="setting-item" v-if="helperType === 'fragmentPack'" style="flex-direction: column; align-items: flex-start;">
+            <label class="setting-label" style="margin-bottom: 8px;">选择要开启的碎片礼包（可多选）</label>
+            <n-checkbox-group v-model:value="helperSettings.fragmentPackItems">
+              <n-space item-style="display: flex;" vertical>
+                <n-checkbox :value="3007">随机红将碎片</n-checkbox>
+                <n-checkbox :value="3005">随机紫将碎片</n-checkbox>
+                <n-checkbox :value="3006">随机橙将碎片</n-checkbox>
+                <n-checkbox :value="3008">精铁福袋</n-checkbox>
+                <n-checkbox :value="3009">进阶石福袋</n-checkbox>
+                <n-checkbox :value="3011">白玉福袋</n-checkbox>
+                <n-checkbox :value="3012">扳手福袋</n-checkbox>
+                <n-checkbox :value="35011">赛车改装礼盒</n-checkbox>
+                <n-checkbox :value="3001">金币礼包</n-checkbox>
+                <n-checkbox :value="3002">金砖礼包</n-checkbox>
+                <n-checkbox :value="3010">晶石福袋</n-checkbox>
+                <n-checkbox :value="37005">怪异礼包</n-checkbox>
+              </n-space>
+            </n-checkbox-group>
+          </div>
+          <n-alert v-if="helperType === 'fragmentPack'" type="info" style="margin-bottom: 12px">
+            碎片礼包说明：<br/>
+            • 开启账号背包中拥有的对应礼包<br/>
+            • 每种礼包每次最多开启999个，超出分批开启<br/>
+            • 未选中则默认开启全部12种礼包
+          </n-alert>
           <n-alert v-if="helperType === 'weeklyMarket'" type="info" style="margin-bottom: 12px">
             黑市周商品说明：<br/>
             • 每种商品每周只能购买一次<br/>
@@ -2832,6 +2850,16 @@
                   <span class="info-value">
                     <n-tag size="small" type="blue" :bordered="false">
                       {{ Object.values(task.weeklyMarketItems).filter(i => i && i.selected).length }} 件商品
+                    </n-tag>
+                  </span>
+                </div>
+                
+                <!-- 碎片礼包配置 -->
+                <div class="task-info-item" v-if="task.selectedTasks && task.selectedTasks.includes('batchOpenFragmentPacks') && task.fragmentPackItems">
+                  <span class="info-label">碎片礼包</span>
+                  <span class="info-value">
+                    <n-tag size="small" type="blue" :bordered="false">
+                      {{ task.fragmentPackItems.length }} 种礼包
                     </n-tag>
                   </span>
                 </div>
@@ -3359,6 +3387,34 @@
             </div>
           </div>
           
+          <!-- 碎片礼包配置 -->
+          <div v-if="taskForm.selectedTasks.includes('batchOpenFragmentPacks')" class="task-config-card">
+            <div class="config-card-header">
+              <span class="config-card-title">🎁 碎片礼包 - 选择开启的礼包</span>
+            </div>
+            <div class="config-card-content">
+              <n-alert type="info" size="small" style="margin-bottom: 12px;">
+                开启账号背包中拥有的对应礼包，每种礼包每次最多开启999个，未配置时默认全量开启
+              </n-alert>
+              <n-checkbox-group v-model:value="taskForm.fragmentPackItems">
+                <n-grid :cols="2" :x-gap="12" :y-gap="8">
+                  <n-grid-item><n-checkbox :value="3007">随机红将碎片</n-checkbox></n-grid-item>
+                  <n-grid-item><n-checkbox :value="3005">随机紫将碎片</n-checkbox></n-grid-item>
+                  <n-grid-item><n-checkbox :value="3006">随机橙将碎片</n-checkbox></n-grid-item>
+                  <n-grid-item><n-checkbox :value="3008">精铁福袋</n-checkbox></n-grid-item>
+                  <n-grid-item><n-checkbox :value="3009">进阶石福袋</n-checkbox></n-grid-item>
+                  <n-grid-item><n-checkbox :value="3011">白玉福袋</n-checkbox></n-grid-item>
+                  <n-grid-item><n-checkbox :value="3012">扳手福袋</n-checkbox></n-grid-item>
+                  <n-grid-item><n-checkbox :value="35011">赛车改装礼盒</n-checkbox></n-grid-item>
+                  <n-grid-item><n-checkbox :value="3001">金币礼包</n-checkbox></n-grid-item>
+                  <n-grid-item><n-checkbox :value="3002">金砖礼包</n-checkbox></n-grid-item>
+                  <n-grid-item><n-checkbox :value="3010">晶石福袋</n-checkbox></n-grid-item>
+                  <n-grid-item><n-checkbox :value="37005">怪异礼包</n-checkbox></n-grid-item>
+                </n-grid>
+              </n-checkbox-group>
+            </div>
+          </div>
+          
           <!-- 智能发车条件配置 -->
           <div v-if="taskForm.selectedTasks.includes('batchSmartSendCar')" class="task-config-card">
             <div class="config-card-header">
@@ -3590,6 +3646,13 @@
                   <template #unchecked>关</template>
                 </n-switch>
               </div>
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive" title="开启后，自动发车没票时使用金砖刷新；关闭时使用原有逻辑">强制用金砖刷新</label>
+                <n-switch v-model:value="batchSettings.useGoldRefreshFallback" size="small">
+                  <template #checked>开</template>
+                  <template #unchecked>关</template>
+                </n-switch>
+              </div>
             </div>
             
             <n-divider title-placement="left" style="margin: 16px 0 12px 0">
@@ -3780,6 +3843,16 @@
               </div>
               <div class="setting-item-responsive" v-if="batchSettings.petMergeMaxLevelEnabled" style="flex-basis: 100%; font-size: 11px; color: #999;">
                 开启后，宠物合成只会进行到指定等级，例如设置为4则只合成到4级紫色宠物
+              </div>
+            </div>
+            
+            <n-divider title-placement="left" style="margin: 16px 0 12px 0">
+              <span style="font-size: 14px; font-weight: 600;">⚔️ 换皮闯关设置</span>
+            </n-divider>
+            <div class="settings-grid-responsive">
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive" title="连续失败多少次后跳过该BOSS">失败次数上限</label>
+                <n-input-number v-model:value="batchSettings.skinChallengeMaxFail" :min="1" :max="20" :step="1" size="small" class="input-responsive" />
               </div>
             </div>
             
@@ -5747,12 +5820,13 @@ const helperSettings = reactive({
   count: 100,
   targetRounds: 1,  // 目标轮数（1-4轮）
   weeklyMarketItems: [],  // 黑市周购买的商品列表
+  fragmentPackItems: [],  // 选中的碎片礼包 itemId 数组
   cdkCode: '',  // 兑换码
   cheerQty: 0,  // 挥鼓助威数量，0=全部
 });
 
 const helperModalTitle = computed(() => {
-  const titles = { box: "批量开宝箱", fish: "批量钓鱼", recruit: "批量招募", pointsBox: "一键宝箱周开箱", weeklyMarket: "黑市周购买", cdk: "兑换码领取", cheer: "挥鼓助威消耗" };
+  const titles = { box: "批量开宝箱", fish: "批量钓鱼", recruit: "批量招募", pointsBox: "一键宝箱周开箱", weeklyMarket: "黑市周购买", fragmentPack: "碎片礼包选择", cdk: "兑换码领取", cheer: "挥鼓助威消耗" };
   return titles[helperType.value] || "批量助手";
 });
 
@@ -6123,6 +6197,8 @@ const batchSettings = reactive({
   petMergeMaxLevel: 4,              // 合成等级上限（1-7），默认4级
   // 兑换码
   cdkCode: '',                      // 兑换码（定时任务使用）
+  // 换皮闯关失败次数控制
+  skinChallengeMaxFail: 5,          // 换皮闯关连续失败次数上限，默认5次
 });
 
 // 账号搜索关键词
@@ -6396,6 +6472,7 @@ const taskForm = reactive({
     5: { selected: false, count: 0, label: "白玉", min: 1, max: 1 },
     6: { selected: false, count: 1, label: "四圣宝珠碎片", min: 1, max: 1 },
   },
+  fragmentPackItems: [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005], // 碎片礼包选中的 itemId 数组（默认全选）
   manualBuyItems: { // 黑市多选购买商品配置
     1: { selected: false, count: 0, label: "青铜宝箱" },
     2: { selected: false, count: 0, label: "黄金宝箱" },
@@ -6524,6 +6601,45 @@ const loadScheduledTasks = () => {
   } catch (error) {
     console.error("Failed to load scheduled tasks:", error);
     scheduledTasks.value = [];
+  }
+};
+
+/**
+ * 检查任务函数是否存在（通过 eval+try-catch 安全检测）
+ */
+const isTaskFunctionExists = (taskName) => {
+  try {
+    const fn = eval(taskName);
+    return typeof fn === 'function';
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * 清理定时任务中已失效的功能模块引用
+ * 在 onMounted 中调用，自动移除已删除的任务函数
+ */
+const cleanupInvalidTaskReferences = () => {
+  let cleaned = false;
+  for (const task of scheduledTasks.value) {
+    if (task.selectedTasks && Array.isArray(task.selectedTasks)) {
+      const originalLength = task.selectedTasks.length;
+      task.selectedTasks = task.selectedTasks.filter(taskName => {
+        // 处理函数名映射
+        let fnName = taskName;
+        if (taskName === 'weekly_market_buy') fnName = 'weeklyMarketBuy';
+        return isTaskFunctionExists(fnName);
+      });
+      if (task.selectedTasks.length !== originalLength) {
+        cleaned = true;
+        const removedCount = originalLength - task.selectedTasks.length;
+        addLog({ time: new Date().toLocaleTimeString(), message: `定时任务「${task.name}」中 ${removedCount} 个已失效的功能模块已自动清理`, type: "info" });
+      }
+    }
+  }
+  if (cleaned) {
+    saveScheduledTasks();
   }
 };
 
@@ -6693,6 +6809,7 @@ const cancelTaskEdit = () => {
     taskForm.boxWeeklyRewards = {5: 1};
     taskForm.nightmarePresetIds = [];
     taskForm.nightmarePresetDelay = 10;
+    taskForm.fragmentPackItems = [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005];
     taskScheduleSelectedGroupIds.value = [];
   }, 300);
 };
@@ -6783,6 +6900,9 @@ const openTaskModal = () => {
   // 十殿预设配置
   taskForm.nightmarePresetIds = [];
   taskForm.nightmarePresetDelay = 10;
+  
+  // 碎片礼包配置（默认全选）
+  taskForm.fragmentPackItems = [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005];
   
   console.log('[新增任务] 初始化完成');
   console.log('[新增任务] weeklyMarketItems:', taskForm.weeklyMarketItems);
@@ -6932,6 +7052,7 @@ const editTask = (task) => {
     saltCrystalShopItems: mergedSaltCrystalShopItems,
     saltIngotShopItems: mergedSaltIngotShopItems,
     manualBuyItems: mergedManualBuyItems,
+    fragmentPackItems: task.fragmentPackItems || [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005],
     boxWeeklyRewards: task.boxWeeklyRewards || {5: 1},
     smartDeparture: task.smartDeparture || {
       enabled: false,
@@ -7192,6 +7313,7 @@ const saveTask = () => {
     saltCrystalShopItems: JSON.parse(JSON.stringify(taskForm.saltCrystalShopItems)),
     saltIngotShopItems: JSON.parse(JSON.stringify(taskForm.saltIngotShopItems)),
     manualBuyItems: JSON.parse(JSON.stringify(taskForm.manualBuyItems)),
+    fragmentPackItems: [...(taskForm.fragmentPackItems || [])],
     boxWeeklyRewards: {...taskForm.boxWeeklyRewards},
     smartDeparture: JSON.parse(JSON.stringify(taskForm.smartDeparture)),
     nightmarePresetIds: [...(taskForm.nightmarePresetIds || [])],
@@ -8479,7 +8601,6 @@ const isScheduledTaskRunning = ref(false);
 watch(isScheduledTaskRunning, (v) => { window._isScheduledTaskRunning = v; }, { immediate: true });
 let currentScheduledTask = null; // 当前正在执行的定时任务
 const pendingTaskQueue = []; // ✅ 待执行队列：当定时任务冲突时，排队等待执行
-let _dailyTasksPausedByScheduled = false; // ✅ 定时任务执行时暂停日常任务的标记
 let _activeNightmareBattles = []; // ✅ 模块级引用：跟踪当前十殿战斗，用于超时传导停止
 
 // Health check for the scheduler
@@ -8953,6 +9074,10 @@ onMounted(() => {
   
   // Start the task scheduler after all functions are initialized
   scheduleTaskExecution();
+
+  // 加载后清理已失效的任务引用（所有函数已在 script setup 中定义）
+  cleanupInvalidTaskReferences();
+
   // Start countdown timer
   startCountdown();
   loadTaskTemplates();
@@ -9120,14 +9245,24 @@ const verifyTaskDependencies = async (task) => {
       functionName = 'weeklyMarketBuy';
     }
     
-  const taskFunction = eval(functionName);
+    let taskFunction;
+    try {
+      taskFunction = eval(functionName);
+    } catch (e) {
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `⚠️ 任务函数不存在: ${taskName}（可能已被删除），跳过验证`,
+        type: "warning",
+      });
+      continue;
+    }
     if (typeof taskFunction !== "function") {
       addLog({
         time: new Date().toLocaleTimeString(),
-        message: `❌ 任务函数不存在: ${taskName}`,
-        type: "error",
+        message: `⚠️ 任务 "${taskName}" 不是可执行函数，跳过验证`,
+        type: "warning",
       });
-      return false;
+      continue;
     }
   }
 
@@ -9233,16 +9368,6 @@ const executeScheduledTask = async (task) => {
   
   // ✅ 重置停止标志，防止用户手动停止后影响定时任务执行
   shouldStop.value = false;
-  
-  // ✅ 定时任务绝对优先：如果日常任务正在执行，标记暂停
-  if (isRunning.value) {
-    _dailyTasksPausedByScheduled = true;
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `⏰ 定时任务触发，日常任务暂停等待...`,
-      type: "warning",
-    });
-  }
   
   addLog({
     time: new Date().toLocaleTimeString(),
@@ -9776,25 +9901,44 @@ const executeScheduledTask = async (task) => {
       if (taskName === 'weekly_market_buy') {
         functionName = 'weeklyMarketBuy';
       }
-      const taskFunction = eval(functionName);
+      let taskFunction;
+      try {
+        taskFunction = eval(functionName);
+      } catch (e) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `⚠️ 任务函数 "${functionName}" 不存在（可能已被删除），跳过执行`,
+          type: "warning",
+        });
+        continue;
+      }
       if (typeof taskFunction === "function") {
         // 根据批次间等待设置，分批执行账号
         const maxConcurrent = batchSettings.maxActive || 5;
         // 同步连接池大小，确保与当前设置一致
         wsPool.setPoolSize(maxConcurrent);
         const totalAccounts = availableTokens.length;
-        const batches = [];
+        let batches = [];
         
-        // 将账号分批
-        for (let i = 0; i < totalAccounts; i += maxConcurrent) {
-          batches.push(availableTokens.slice(i, i + maxConcurrent));
+        // 十殿阎罗挑战使用预设自带的队长/队员，不需要按 selectedTokens 分批
+        if (taskName === 'batchNightmareChallengePresets') {
+          batches = [[]];
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: ` 十殿阎罗挑战使用预设自带账号，跳过 Token 分批，只执行一次`,
+            type: "info",
+          });
+        } else {
+          // 将账号分批
+          for (let i = 0; i < totalAccounts; i += maxConcurrent) {
+            batches.push(availableTokens.slice(i, i + maxConcurrent));
+          }
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: ` 共 ${totalAccounts} 个账号，分为 ${batches.length} 批执行（每批${maxConcurrent}个）`,
+            type: "info",
+          });
         }
-        
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: ` 共 ${totalAccounts} 个账号，分为 ${batches.length} 批执行（每批${maxConcurrent}个）`,
-          type: "info",
-        });
         
         // 逐批执行
         for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
@@ -9824,7 +9968,6 @@ const executeScheduledTask = async (task) => {
               [
                 "batchOpenBox",
                 "batchOpenBoxByPoints",
-                "batchOpenFragmentPacks",
                 "batchOpenDiamondBox",
                 "batchFish",
                 "batchRecruit",
@@ -9992,6 +10135,11 @@ const executeScheduledTask = async (task) => {
                   type: "warning",
                 });
               }
+            } else if (taskName === 'batchOpenFragmentPacks') {
+              // 碎片礼包多选开启，传递选中的 itemId 数组
+              const fragmentConfig = task.fragmentPackItems || [];
+              console.log('[定时任务-碎片礼包] task.fragmentPackItems:', fragmentConfig);
+              await taskFunction({ isScheduledTask: true, selectedItems: fragmentConfig.length > 0 ? fragmentConfig : null });
             } else if (taskName === 'batchSmartSendCar') {
               // 智能发车，传递任务级发车条件配置
               const smartDeparture = task.smartDeparture;
@@ -10143,16 +10291,6 @@ const executeScheduledTask = async (task) => {
     isScheduledTaskRunning.value = false;
     currentScheduledTask = null;
     scheduledTaskStartTime = null; // ✅ 清除超时计时
-
-    // ✅ 恢复日常任务执行
-    if (_dailyTasksPausedByScheduled) {
-      _dailyTasksPausedByScheduled = false;
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `✅ 定时任务完成，日常任务恢复执行`,
-        type: "success",
-      });
-    }
 
     // ✅ 任务完成后，同步处理待执行队列（不再用 nextTick，避免与调度器兖底竞态）
     if (pendingTaskQueue.length > 0) {
@@ -10490,6 +10628,14 @@ const executeHelper = () => {
     // 挥鼓助威消耗
     showHelperModal.value = false;
     batchAutumnUseItem({ value: helperSettings.cheerQty || 0 });
+  } else if (helperType.value === 'fragmentPack') {
+    // 碎片礼包多选开启
+    if (!helperSettings.fragmentPackItems || helperSettings.fragmentPackItems.length === 0) {
+      message.warning("请至少选择一个碎片礼包");
+      return;
+    }
+    showHelperModal.value = false;
+    batchOpenFragmentPacks({ selectedItems: [...helperSettings.fragmentPackItems] });
   } else {
     if (helperSettings.count % 10 !== 0 || helperSettings.count < 10) {
       message.warning("消耗数量必须是10的整数倍，最小为10");
@@ -13316,6 +13462,46 @@ const batchNightmareChallengePresets = async (silent) => {
   const MAX_RETRY = 2; // 每个预设最多重试2次
   const retryCountMap = new Map(); // presetId → 重试次数
 
+  // ====== 跨标签页协调机制 ======
+  const getTabId = () => {
+    if (!window.__nightmareTabId) {
+      window.__nightmareTabId = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    }
+    return window.__nightmareTabId;
+  };
+
+  const isPresetRunningInOtherTab = (presetId) => {
+    try {
+      const key = `nightmare-running-${presetId}`;
+      const data = JSON.parse(localStorage.getItem(key) || '{}');
+      if (!data.tabId || !data.timestamp) return false;
+      if (Date.now() - data.timestamp > 10 * 60 * 1000) {
+        localStorage.removeItem(key);
+        return false;
+      }
+      return data.tabId !== getTabId();
+    } catch {
+      return false;
+    }
+  };
+
+  const markPresetRunning = (presetId) => {
+    try {
+      const key = `nightmare-running-${presetId}`;
+      localStorage.setItem(key, JSON.stringify({
+        tabId: getTabId(),
+        timestamp: Date.now(),
+      }));
+    } catch { /* ignore */ }
+  };
+
+  const clearPresetRunning = (presetId) => {
+    try {
+      const key = `nightmare-running-${presetId}`;
+      localStorage.removeItem(key);
+    } catch { /* ignore */ }
+  };
+
   // 初始化 sessionStorage（清除上次的批量数据）
   try { sessionStorage.removeItem('nightmare-batch-battles'); } catch { /* ignore */ }
 
@@ -13327,6 +13513,15 @@ const batchNightmareChallengePresets = async (silent) => {
       addLog({ time: new Date().toLocaleTimeString(), message: `预设「${preset.name}」队长Token不存在，跳过`, type: 'warning' });
       return null;
     }
+
+    // 防止跨标签页重复启动
+    if (isPresetRunningInOtherTab(preset.id)) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `预设「${preset.name}」在其他标签页运行中，跳过`, type: 'warning' });
+      return null;
+    }
+
+    // 标记为运行中（跨标签页协调）
+    markPresetRunning(preset.id);
 
     addLog({ time: new Date().toLocaleTimeString(), message: `▶ ${label} 队长: ${captainToken.name}`, type: 'info' });
 
@@ -13592,9 +13787,13 @@ const batchNightmareChallengePresets = async (silent) => {
       onComplete: (result) => {
         const levelInfo = result?.level ? ` (第${result.level}关)` : '';
         addLog({ time: new Date().toLocaleTimeString(), message: `✅ 预设「${preset.name}」挑战完成${levelInfo}！`, type: 'success' });
+        // 清除跨标签页运行标记
+        clearPresetRunning(preset.id);
       },
       onError: (err) => {
         addLog({ time: new Date().toLocaleTimeString(), message: `❌ 预设「${preset.name}」战斗异常: ${err.message || err}`, type: 'error' });
+        // 清除跨标签页运行标记
+        clearPresetRunning(preset.id);
       },
     });
 
@@ -13664,6 +13863,12 @@ const batchNightmareChallengePresets = async (silent) => {
       );
       for (const fb of failedBattles) {
         const currentRetries = retryCountMap.get(fb.preset.id) || 0;
+        // 实力不足/无可用成员类失败，重试只会浪费挑战次数，直接跳过
+        if (['retry_limit_reached', 'no_available_members'].includes(fb.failReason)) {
+          fb._retried = true;
+          addLog({ time: new Date().toLocaleTimeString(), message: `⏹ 预设「${fb.preset.name}」失败原因 ${fb.failReason}，重试无法解决，不再重试`, type: 'warning' });
+          continue;
+        }
         if (currentRetries < MAX_RETRY) {
           retryCountMap.set(fb.preset.id, currentRetries + 1);
           fb._retried = true; // 标记已处理，避免重复重试
@@ -13764,31 +13969,6 @@ const batchNightmareChallengePresets = async (silent) => {
   }
 };
 
-// ✅ 等待定时任务完成，日常任务暂停机制
-// 轮询等待，每5秒检查一次，不中断WebSocket连接
-const waitForScheduledTaskIfPaused = async (context = '') => {
-  if (!_dailyTasksPausedByScheduled) return;
-  
-  addLog({
-    time: new Date().toLocaleTimeString(),
-    message: `⏸️ ${context}日常任务暂停，等待定时任务完成...`,
-    type: "info",
-  });
-  
-  while (_dailyTasksPausedByScheduled) {
-    // 每5秒检查一次
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    // 更新 lastTaskExecution 防止 healthCheck 误判为卡死
-    lastTaskExecution = Date.now();
-  }
-  
-  addLog({
-    time: new Date().toLocaleTimeString(),
-    message: `▶️ ${context}定时任务已完成，日常任务继续执行`,
-    type: "success",
-  });
-};
-
 const startBatch = async () => {
   if (selectedTokens.value.length === 0) return;
 
@@ -13824,11 +14004,6 @@ const startBatch = async () => {
 
   // 定义单个Token执行函数（用于连接池滚动执行）
   const executeTokenRolling = async (tokenId) => {
-    if (shouldStop.value) return;
-
-    // ✅ 定时任务优先：如果定时任务正在执行，日常任务在此等待
-    const tokenForPause = tokens.value.find((t) => t.id === tokenId);
-    await waitForScheduledTaskIfPaused(tokenForPause ? `[${tokenForPause.name}] ` : '');
     if (shouldStop.value) return;
 
     tokenStatus.value[tokenId] = "running";
@@ -13932,10 +14107,6 @@ const startBatch = async () => {
           commandDelay: batchSettings.commandDelay,
           taskDelay: batchSettings.taskDelay,
         }, batchSettings);  // ✅ 传入batchSettings支持高级配置
-
-        // ✅ 定时任务优先：在实际执行日常任务前再次检查是否需要暂停
-        await waitForScheduledTaskIfPaused(`[${token.name}] `);
-        if (shouldStop.value) break;
 
         // Run tasks
         const runnerResult = await runner.run(tokenId, {

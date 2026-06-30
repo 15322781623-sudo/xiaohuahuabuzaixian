@@ -60,18 +60,33 @@ export class NightmareAutoBattleService {
     this._isCompleted = false;
     this._startTime = Date.now();
     this._MAX_BATTLE_TIME = 2 * 60 * 60 * 1000; // 2小时超时（不含等待）
-    this._MAX_WAIT_TIME = 35 * 60 * 1000;   // 卡点等待最多35分钟
     this._waitStartTime = null;
     this._level8FirstEntry = false; // 卡点第8关标记
     this._consecutiveFightFails = 0; // 连续出战失败计数
     this._lastFailRoleId = null;     // 上次出战失败的成员 roleId
     this._cleanupDone = false;       // 清理标记，防止重复遣散
     this._preMidnightReconnectDone = false; // 23:59重连标记，防止分钟内重复执行
+    this._reopenRetryCount = 0;      // 房间重建重试次数，最多1次
+
+    // 解析预设队伍成员 roleId 列表（用于队长变更检测）
+    this._presetMemberRoleIds = [];
+    const memberTokenIds = (this._presetData?.memberTokenIds || []);
+    for (const tid of memberTokenIds) {
+      const token = this._tokenStore.gameTokens.find(t => t.id === tid);
+      if (token?.roleId) {
+        this._presetMemberRoleIds.push(String(token.roleId));
+      }
+    }
+    // 队长也视为预设成员
+    if (this._captainRoleId && !this._presetMemberRoleIds.includes(String(this._captainRoleId))) {
+      this._presetMemberRoleIds.push(String(this._captainRoleId));
+    }
   }
 
   getStatus() { return this._status; }
   getCurrentLevel() { return this._currentLevel; }
   getRoomId() { return this._roomId; }
+  getTeamId() { return this._teamId; }
   getBossHp() {
     const boss = this._monsters.find(m => m.isBoss);
     if (!boss || !boss.maxHp) return null;
@@ -204,9 +219,16 @@ export class NightmareAutoBattleService {
       // 自动选择出战成员
       const result = this._getAutoAttacker();
       if (!result) {
-        // 第1-7关全员出战但未通关：仅遣散战斗房间，保留队伍，重建重试
+        // 第1-7关全员出战但未通关：仅遣散战斗房间，保留队伍，重建重试（最多1次）
         if (this._currentLevel > 0 && this._currentLevel < 8) {
           const prevLevel = this._currentLevel;
+          if (this._reopenRetryCount >= 1) {
+            this._onLog(`第${this._currentLevel}关已重试1次仍未通关，结束挑战`, 'error');
+            this._status = 'failed';
+            this._onStatusChange({ status: 'failed', presetName: this._presetData?.name, reason: 'retry_limit_reached' });
+            this._onError({ message: `第${this._currentLevel}关重试次数已达上限`, reason: 'retry_limit_reached' });
+            return;
+          }
           this._onLog(`第${this._currentLevel}关全员出战均未通过，遣散战斗房间重建重试...`, 'warning');
           // 防御性刷新：确认关卡确实未推进（防止服务器延迟导致误判）
           try {
@@ -244,6 +266,7 @@ export class NightmareAutoBattleService {
             return;
           }
           this._roomId = newRoomId;
+          this._reopenRetryCount++;
           this._onLog(`重建房间成功，新 RoomId: ${newRoomId}`, 'success');
           await sleep(3000);
           if (this._stopped) return;
@@ -260,6 +283,13 @@ export class NightmareAutoBattleService {
             this._status = 'failed';
             this._onStatusChange({ status: 'failed', presetName: this._presetData?.name, reason: 'level8_all_dead' });
             this._onError({ message: '第8关全员阵亡', reason: 'level8_all_dead' });
+            return;
+          }
+          if (this._reopenRetryCount >= 1) {
+            this._onLog('第8关已重试1次仍未击杀BOSS，结束挑战', 'error');
+            this._status = 'failed';
+            this._onStatusChange({ status: 'failed', presetName: this._presetData?.name, reason: 'retry_limit_reached' });
+            this._onError({ message: '第8关重试次数已达上限', reason: 'retry_limit_reached' });
             return;
           }
           // 全员已出战但BOSS未击杀（部分存活但无可用成员）→ 清空记录重试
@@ -286,6 +316,7 @@ export class NightmareAutoBattleService {
             return;
           }
           this._roomId = newRoomId8;
+          this._reopenRetryCount++;
           this._onLog(`重建房间成功，新 RoomId: ${newRoomId8}`, 'success');
           await sleep(3000);
           if (this._stopped) return;
@@ -550,7 +581,18 @@ export class NightmareAutoBattleService {
       );
       const roomInfo = resp?.roomInfo || resp?.body?.roomInfo || resp;
       const captainRoleId = resp?.captainRoleId || this._captainRoleId || '';
-      this._parseRoomInfo(roomInfo, captainRoleId);
+
+      // 队长变更检测（不更新 this._captainRoleId，保持原始预设队长用于后续纠正）
+      const serverCaptainRoleId = String(captainRoleId || '');
+      if (serverCaptainRoleId && serverCaptainRoleId !== String(this._captainRoleId)) {
+        this._onLog(`⚠️ 服务端队长变更: 预设=${this._captainRoleId} → 服务端=${serverCaptainRoleId}`, 'warning');
+        // 检查新队长是否在预设成员列表中
+        if (this._presetMemberRoleIds.length > 0 && !this._presetMemberRoleIds.includes(serverCaptainRoleId)) {
+          this._onLog(`🚨 严重异常: 服务端队长 ${serverCaptainRoleId} 不在预设成员列表中！预设成员: [${this._presetMemberRoleIds.join(', ')}]`, 'error');
+        }
+      }
+
+      this._parseRoomInfo(roomInfo, serverCaptainRoleId || this._captainRoleId);
       return true;
     } catch (err) {
       this._onLog(`获取房间信息失败: ${err.message || err}`, 'error');
@@ -559,10 +601,19 @@ export class NightmareAutoBattleService {
   }
 
   // ====== 解析房间信息 ======
-  _parseRoomInfo(roomInfo, captainRoleId) {
+  _parseRoomInfo(roomInfo, serverCaptainRoleId) {
     if (!roomInfo) return;
 
+    const prevLevel = this._currentLevel;
     this._currentLevel = roomInfo.curMonsterCfgId || 0;
+
+    // 关卡推进时重置重建重试计数
+    if (this._currentLevel !== prevLevel && this._currentLevel > 0) {
+      this._reopenRetryCount = 0;
+      if (prevLevel > 0) {
+        this._onLog(`关卡推进: 第${prevLevel}关 → 第${this._currentLevel}关，重置重试计数`, 'info');
+      }
+    }
 
     // 解析怪物
     const monsterTeamInfo = roomInfo.monsterTeamInfo || {};
@@ -629,7 +680,7 @@ export class NightmareAutoBattleService {
         roleId: String(roleId),
         name: roleData.name || String(roleId),
         heroes, isAllHeroesDead,
-        isCaptain: String(roleId) === String(captainRoleId),
+        isCaptain: String(roleId) === String(serverCaptainRoleId),
       });
     }
 
@@ -847,66 +898,21 @@ export class NightmareAutoBattleService {
       return null;
     } catch (err) {
       const errMsg = err.message || String(err);
-      // 7100020: 服务器残留队伍或房间状态异常，先尝试刷新确认关卡状态
+      // 7100020: 服务器残留队伍或房间状态异常
       if (errMsg.includes('7100020')) {
-        this._onLog('开启房间失败(7100020)，先刷新关卡状态...', 'warning');
+        this._onLog('开启房间失败(7100020)，尝试刷新房间状态...', 'warning');
         try {
-          await this._fetchRoomInfo();
-          if (this._roomId) {
+          const roomOk = await this._fetchRoomInfo();
+          if (roomOk && this._roomId) {
             this._onLog(`刷新后房间仍有效 RoomId: ${this._roomId}，跳过重建`, 'success');
             return String(this._roomId);
           }
         } catch (e) {
-          // 刷新失败，继续后续重建逻辑
+          /* ignore */
         }
-        // 刷新后无有效房间，执行解散队伍再重建
-        this._onLog('刷新后无有效房间，先解散队伍再重建...', 'warning');
-        try {
-          await this._tokenStore.sendMessageWithPromise(
-            this._captainTokenId, 'matchteam_dismiss',
-            { teamId: Number(this._teamId) }, 10000
-          );
-          this._onLog('队伍已解散，2秒后重新创建队伍和房间', 'success');
-          await sleep(2000);
-          // 重新创建队伍
-          const createResp = await this._tokenStore.sendMessageWithPromise(
-            this._captainTokenId, 'matchteam_create',
-            {
-              teamCfgId: 1,
-              setting: { name: '十殿先锋队', notice: '', secret: 1, apply: 0, applyList: [] },
-              param: 0, custom: {}, extParam: 0,
-            }, 10000
-          );
-          const newTeamId = createResp?.teamInfo?.teamId;
-          if (newTeamId) {
-            this._teamId = String(newTeamId);
-            // 通知外部 teamId 已变更
-            this._onStatusChange({ status: this._status, teamId: newTeamId, presetName: this._presetData?.name });
-            this._onLog(`新队伍已创建 TeamId: ${newTeamId}，开启房间...`, 'success');
-            await sleep(2000);
-            const openResp2 = await this._tokenStore.sendMessageWithPromise(
-              this._captainTokenId, 'matchteam_openteam',
-              { teamId: Number(newTeamId) }, 10000
-            );
-            const roomId2 = openResp2?.roomId || openResp2?.roomid || openResp2?.roomInfo?.roomId || null;
-            if (roomId2) return String(roomId2);
-            // 轮询获取 roomId
-            for (let attempt = 1; attempt <= 5; attempt++) {
-              await sleep(3000);
-              try {
-                const resp2 = await this._tokenStore.sendMessageWithPromise(
-                  this._captainTokenId, 'nightmare_getroleinfo',
-                  { roleId: Number(this._captainRoleId) }, 10000
-                );
-                const rid = resp2?.nightMareData?.roomId || resp2?.nightmareData?.roomId || resp2?.roomId || null;
-                if (rid) return String(rid);
-                this._onLog(`[debug] _reopenRoom: 7100020重试轮询中 nightmare_getroleinfo 无 roomId，原始: ${JSON.stringify(resp2 || null).substring(0, 200)}`, 'warning');
-              } catch { /* ignore */ }
-            }
-          }
-        } catch (retryErr) {
-          this._onLog(`7100020重试失败: ${retryErr.message || retryErr}`, 'error');
-        }
+        // 不再解散当前队伍并创建空队伍：重建后队员会全部丢失，导致
+        // “无可用出战成员”立即再次失败。让外层重试机制重新走完整流程。
+        this._onLog('刷新后无有效房间，不再重建空队伍，结束本次挑战', 'error');
         return null;
       }
       this._onLog(`重新开启房间失败: ${errMsg}`, 'error');
@@ -942,7 +948,7 @@ export class NightmareAutoBattleService {
       if (activeBattles && Array.isArray(activeBattles)) {
         teamShared = activeBattles.some(b =>
           b && b !== this && b.teamId === this._teamId &&
-          (b.status === 'running' || b.status === 'waiting_midnight')
+          (b.status === 'running' || b.status === 'cooling' || b.status === 'waiting_midnight')
         );
       }
       if (teamShared) {
@@ -982,35 +988,26 @@ export class NightmareAutoBattleService {
     this._status = 'waiting_midnight';
     this._waitStartTime = Date.now();
     this._onStatusChange({ status: 'waiting_midnight', currentLevel: this._currentLevel });
-    this._onLog(`第7关完成，等待周一00:00后继续挑战第8关...`, 'info');
+    this._onLog(`第7关完成，等待周一00:01后继续挑战第8关...`, 'info');
 
-    let exitReason = 'normal'; // 'normal' | 'timeout' | 'missed'
     while (!this._stopped) {
       const now = new Date();
       const day = now.getDay(); // 0=周日, 1=周一
       const hours = now.getHours();
-
-      // 周一 00:00 之后即可继续
-      if (day === 1 && hours < 6) break; // 周一6点前都视为有效午夜窗口
-      if (day !== 0) {
-        // 非周日直接跳出，区分是否已过午夜窗口
-        if (day === 1 && hours >= 6) {
-          exitReason = 'missed';
-        }
-        break;
-      }
-
-      // 等待超时保护
-      if (Date.now() - this._waitStartTime > this._MAX_WAIT_TIME) {
-        exitReason = 'timeout';
-        break;
-      }
-
-      // 计算距0点剩余时间
-      const msToMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5) - now;
-      this._onLog(`⏳ 距00:00还剩 ${Math.ceil(msToMidnight / 60000)} 分钟`, 'info');
-
       const minutes = now.getMinutes();
+
+      // 只保留：周一 00:01 自动开始第8关
+      if (day === 1 && (hours > 0 || minutes >= 1)) break;
+
+      // 非周日（周二~周六）且非周一00:01：不等待，直接继续
+      if (day !== 0 && day !== 1) break;
+
+      // 计算距周一00:01剩余时间
+      const target = day === 0
+        ? new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 1, 5)
+        : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 1, 5);
+      const msToTarget = target - now;
+      this._onLog(`⏳ 距周一00:01还剩 ${Math.max(0, Math.ceil(msToTarget / 60000))} 分钟`, 'info');
 
       // 23:59 主动断开重连（仅执行一次）
       if (hours === 23 && minutes >= 59 && !this._preMidnightReconnectDone) {
@@ -1018,7 +1015,7 @@ export class NightmareAutoBattleService {
         const reconnected = await this._forceReconnectCaptain();
         if (reconnected) {
           await this._fetchRoomInfo();
-          this._onLog('✅ 23:59 重连完成，等待0点执行', 'success');
+          this._onLog('✅ 23:59 重连完成，等待00:01执行', 'success');
         }
         this._preMidnightReconnectDone = true;
       }
@@ -1038,13 +1035,7 @@ export class NightmareAutoBattleService {
     }
 
     if (!this._stopped) {
-      if (exitReason === 'timeout') {
-        this._onLog('卡点等待超时（35分钟），自动继续第8关挑战', 'warning');
-      } else if (exitReason === 'missed') {
-        this._onLog(`已过周一00:00（当前${new Date().getHours()}时），继续第8关挑战`, 'info');
-      } else {
-        this._onLog(`已到周一00:00，开始第8关挑战！`, 'success');
-      }
+      this._onLog(`已到周一00:01，开始第8关挑战！`, 'success');
       this._status = 'running';
       this._waitStartTime = null;
     }

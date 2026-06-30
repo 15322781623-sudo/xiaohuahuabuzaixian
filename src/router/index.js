@@ -65,6 +65,15 @@ const my_routes = [
         },
       },
       {
+        path: "changelog",
+        name: "Changelog",
+        component: () => import("@/views/Changelog.vue"),
+        meta: {
+          title: "更新日志",
+          requiresToken: false,
+        },
+      },
+      {
         path: "legion-war",
         name: "LegionWar",
         component: () => import("@/views/LegionWar.vue"),
@@ -107,6 +116,15 @@ const my_routes = [
         meta: {
           title: "批量日常",
           requiresToken: true,
+        },
+      },
+      {
+        path: "card-manager",
+        name: "CardManager",
+        component: () => import("@/views/CardManager.vue"),
+        meta: {
+          title: "卡密管理",
+          requiresToken: false,
         },
       },
       // 增加自动路由引用

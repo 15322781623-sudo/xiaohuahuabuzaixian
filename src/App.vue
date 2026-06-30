@@ -9,6 +9,10 @@
                 <router-view></router-view>
               </div>
             </ApkUpdateHandler>
+            <CardKeyDialog
+              :visible="showCardKeyDialog"
+              @success="handleActivationSuccess"
+            />
           </n-dialog-provider>
         </n-notification-provider>
       </n-loading-bar-provider>
@@ -17,13 +21,17 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { darkTheme } from "naive-ui";
 import { useTheme } from "@/composables/useTheme";
 import ApkUpdateHandler from "@/components/ApkUpdateHandler.vue";
+import CardKeyDialog from "@/components/CardKeyDialog.vue";
+import { isActivated } from "@/utils/deviceFingerprint";
 
 const { isDark, initTheme, setupSystemThemeListener, updateReactiveState }
   = useTheme();
+
+const showCardKeyDialog = ref(false);
 
 // Naive UI 主题
 const naiveTheme = computed(() => {
@@ -50,8 +58,28 @@ onMounted(() => {
   // 初始化时更新状态
   updateReactiveState();
 
+  // 检查设备激活状态
+  const checkActivation = async () => {
+    try {
+      console.log('[App] 开始检查激活状态...');
+      const activated = await isActivated();
+      console.log('[App] 激活检查结果:', activated);
+      showCardKeyDialog.value = !activated;
+      console.log('[App] showCardKeyDialog:', showCardKeyDialog.value);
+    } catch (e) {
+      console.error('[App] 激活检查失败:', e);
+      showCardKeyDialog.value = true;
+    }
+  };
+
+  checkActivation();
+
   // APK更新检查已移至 ApkUpdateHandler 组件
 });
+
+const handleActivationSuccess = () => {
+  showCardKeyDialog.value = false;
+};
 
 onUnmounted(() => {
   window.removeEventListener("theme-change", handleThemeChange);

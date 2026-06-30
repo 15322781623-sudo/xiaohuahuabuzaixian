@@ -317,6 +317,8 @@ export const defaultBatchSettings = {
   defaultRetryCount: 2,             // 默认重试次数
   retryDelay: 10000,                // 重试延迟(ms)
   accountRetryInterval: 5000,       // 账号间重试间隔(ms)
+  // 换皮闯关失败次数控制
+  skinChallengeMaxFail: 5,          // 换皮闯关连续失败次数上限，默认5次
 };
 
 // 默认模板

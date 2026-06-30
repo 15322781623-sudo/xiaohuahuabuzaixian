@@ -60,6 +60,16 @@
             </n-icon>
             <span>消息测试</span>
           </router-link>
+          <router-link
+            active-class="active"
+            class="nav-item"
+            to="/admin/changelog"
+          >
+            <n-icon>
+              <DocumentText></DocumentText>
+            </n-icon>
+            <span>更新日志</span>
+          </router-link>
           <router-link v-if="isNowInLegionWarTime()" active-class="active" class="nav-item" to="/admin/legion-war">
             <n-icon>
               <LockOpen></LockOpen>
@@ -156,6 +166,16 @@
           </n-icon>
           <span>消息测试</span>
         </router-link>
+        <router-link
+          class="drawer-item"
+          to="/admin/changelog"
+          @click="isMobileMenuOpen = false"
+        >
+          <n-icon>
+            <DocumentText></DocumentText>
+          </n-icon>
+          <span>更新日志</span>
+        </router-link>
         <router-link v-if="isNowInLegionWarTime()" active-class="active" class="nav-item" to="/admin/legion-war">
           <n-icon>
             <LockOpen></LockOpen>
@@ -190,6 +210,7 @@ import {
   ChatbubbleEllipsesSharp,
   ChevronDown,
   Cube,
+  DocumentText,
   Home,
   Layers,
   LockOpen,

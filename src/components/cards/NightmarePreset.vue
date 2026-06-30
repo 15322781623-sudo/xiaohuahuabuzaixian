@@ -4,85 +4,79 @@
     :bordered="true" :closable="true" :mask-closable="true">
     <div class="preset-list">
       <div class="preset-toolbar">
-        <div class="toolbar-main-row">
-          <n-button type="primary" size="small" @click="createNewPreset">新建预设</n-button>
-          <n-button size="small" type="success" @click="executeAllPresets" :disabled="presets.length === 0">
-            按顺序执行全部 ({{ presets.filter(p => p.usePresetTeam !== false).length }}/{{ presets.length }})
-          </n-button>
-          <n-button size="small" @click="exportPresets">导出预设</n-button>
-          <n-upload
-            :show-file-list="false"
-            accept=".json"
-            :custom-request="handleImportPresets"
+        <n-button type="primary" size="small" @click="createNewPreset">新建预设</n-button>
+        <n-button size="small" type="success" @click="executeAllPresets" :disabled="presets.length === 0">
+          按顺序执行全部 ({{ presets.filter(p => p.usePresetTeam !== false).length }}/{{ presets.length }})
+        </n-button>
+        <n-button size="small" @click="exportPresets">导出预设</n-button>
+        <n-upload
+          :show-file-list="false"
+          accept=".json"
+          :custom-request="handleImportPresets"
+        >
+          <n-button size="small">导入预设</n-button>
+        </n-upload>
+        <n-popconfirm @positive-click="deleteAllPresets">
+          <template #trigger>
+            <n-button size="small" type="error" :disabled="presets.length === 0">删除全部</n-button>
+          </template>
+          确认删除全部 {{ presets.length }} 个预设？此操作不可撤销
+        </n-popconfirm>
+        <div class="toolbar-switch-group" style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 12px; white-space: nowrap;">卡点</span>
+          <n-switch
+            :value="allWaitLevel8"
+            @update:value="toggleAllWaitLevel8"
+            :disabled="presets.length === 0"
+            size="small"
+            class="feature-switch"
           >
-            <n-button size="small">导入预设</n-button>
-          </n-upload>
-        </div>
-        <div class="toolbar-ctrl-row">
-          <n-popconfirm @positive-click="deleteAllPresets">
-            <template #trigger>
-              <n-button size="small" type="error" :disabled="presets.length === 0">删除全部</n-button>
-            </template>
-            确认删除全部 {{ presets.length }} 个预设？此操作不可撤销
-          </n-popconfirm>
-          <div class="toolbar-switch-group">
-            <span class="switch-label">卡点</span>
-            <n-switch
-              :value="allWaitLevel8"
-              @update:value="toggleAllWaitLevel8"
-              :disabled="presets.length === 0"
-              size="small"
-              class="feature-switch"
-            >
-              <template #checked>启用</template>
-              <template #unchecked>关闭</template>
-            </n-switch>
-            <span class="switch-label">队伍</span>
-            <n-switch
-              :value="allPresetTeam"
-              @update:value="toggleAllPresetTeam"
-              :disabled="presets.length === 0"
-              size="small"
-              class="feature-switch"
-            >
-              <template #checked>启用</template>
-              <template #unchecked>关闭</template>
-            </n-switch>
-          </div>
+            <template #checked>启用</template>
+            <template #unchecked>关闭</template>
+          </n-switch>
+          <span style="font-size: 12px; white-space: nowrap;">队伍</span>
+          <n-switch
+            :value="allPresetTeam"
+            @update:value="toggleAllPresetTeam"
+            :disabled="presets.length === 0"
+            size="small"
+            class="feature-switch"
+          >
+            <template #checked>启用</template>
+            <template #unchecked>关闭</template>
+          </n-switch>
         </div>
       </div>
       <div v-for="(preset, pIdx) in presets" :key="preset.id" class="preset-item">
-        <div class="preset-item-top">
-          <div class="preset-info">
-            <span class="preset-name">
-              {{ pIdx + 1 }}. {{ preset.name }}
-              <n-tag v-if="preset.waitLevel8" size="tiny" type="warning" :bordered="false" style="margin-left: 4px;">🕐卡点</n-tag>
-              <n-tag v-else size="tiny" :bordered="false" style="margin-left: 4px; opacity: 0.5;">卡点:关</n-tag>
-              <n-tag v-if="preset.usePresetTeam !== false" size="tiny" type="success" :bordered="false">✅队伍</n-tag>
-              <n-tag v-else size="tiny" type="error" :bordered="false" style="opacity: 0.6;">❎队伍</n-tag>
-            </span>
-            <span class="preset-meta">
-              👑{{ getTokenName(preset.captainTokenId) }}
-              <template v-if="preset.memberTokenIds?.length">
-                | 队员: {{ preset.memberTokenIds.map(id => getTokenName(id)).join(', ') }}
-              </template>
-              <template v-else> | 无队员</template>
-            </span>
-          </div>
-          <div class="preset-actions">
-            <n-button size="tiny" @click="editPreset(preset)">编辑</n-button>
-            <n-button size="tiny" type="success" @click="executePreset(preset)">一键挑战</n-button>
-            <n-button size="tiny" type="error" @click="deletePreset(preset.id)">删除</n-button>
-            <n-switch
-              :value="preset.usePresetTeam !== false"
-              @update:value="(val) => { preset.usePresetTeam = val; savePresets(); }"
-              size="small"
-              class="team-switch"
-            >
-              <template #checked>队伍</template>
-              <template #unchecked>队伍</template>
-            </n-switch>
-          </div>
+        <div class="preset-info">
+          <span class="preset-name">
+            {{ pIdx + 1 }}. {{ preset.name }}
+            <n-tag v-if="preset.waitLevel8" size="tiny" type="warning" :bordered="false" style="margin-left: 4px;">🕐卡点</n-tag>
+            <n-tag v-else size="tiny" :bordered="false" style="margin-left: 4px; opacity: 0.5;">卡点:关</n-tag>
+            <n-tag v-if="preset.usePresetTeam !== false" size="tiny" type="success" :bordered="false">✅队伍</n-tag>
+            <n-tag v-else size="tiny" type="error" :bordered="false" style="opacity: 0.6;">❎队伍</n-tag>
+          </span>
+          <span class="preset-meta">
+            👑{{ getTokenName(preset.captainTokenId) }}
+            <template v-if="preset.memberTokenIds?.length">
+              | 队员: {{ preset.memberTokenIds.map(id => getTokenName(id)).join(', ') }}
+            </template>
+            <template v-else> | 无队员</template>
+          </span>
+        </div>
+        <div class="preset-actions">
+          <n-button size="tiny" @click="editPreset(preset)">编辑</n-button>
+          <n-button size="tiny" type="success" @click="executePreset(preset)">一键挑战</n-button>
+          <n-button size="tiny" type="error" @click="deletePreset(preset.id)">删除</n-button>
+          <n-switch
+            :value="preset.usePresetTeam !== false"
+            @update:value="(val) => { preset.usePresetTeam = val; savePresets(); }"
+            size="small"
+            class="team-switch"
+          >
+            <template #checked>队伍</template>
+            <template #unchecked>队伍</template>
+          </n-switch>
         </div>
       </div>
       <div v-if="presets.length === 0" class="preset-empty">暂无预设，点击"新建预设"创建</div>
@@ -661,63 +655,16 @@ defineExpose({ open, close });
 <style lang="scss" scoped>
 .preset-list {
   .preset-toolbar {
-    margin-bottom: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .toolbar-main-row {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    align-items: center;
-    > :deep(.n-button) { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
-    > :deep(.n-upload) { flex: 1 1 auto; min-width: 0;
-      .n-button { width: 100%; }
-    }
-  }
-  .toolbar-ctrl-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .toolbar-switch-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: nowrap;
-  }
-  .switch-label {
-    font-size: 12px;
-    white-space: nowrap;
-    color: var(--text-secondary, #888);
+    display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap;
   }
   .preset-item {
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    margin-bottom: 8px;
-    padding: 10px;
-    .preset-item-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
+    display: flex; justify-content: space-between; align-items: center; padding: 10px;
+    border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 8px;
     .preset-info {
-      flex: 1 1 0;
-      min-width: 0;
-      .preset-name { font-weight: bold; display: block; word-break: break-all; }
-      .preset-meta { font-size: 12px; color: var(--text-tertiary); word-break: break-all; }
+      .preset-name { font-weight: bold; display: block; }
+      .preset-meta { font-size: 12px; color: var(--text-tertiary); }
     }
-    .preset-actions {
-      display: flex;
-      gap: 4px;
-      align-items: center;
-      flex-shrink: 0;
-      flex-wrap: wrap;
-    }
+    .preset-actions { display: flex; gap: 4px; align-items: center; }
   }
   .preset-empty { text-align: center; color: var(--text-tertiary); padding: 20px; }
 }

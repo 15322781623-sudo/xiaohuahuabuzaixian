@@ -12,16 +12,80 @@ const GITHUB_PROXY_LIST = [
 
 // 静态兜底配置（R2 和 GitHub 都失败时使用）
 const FALLBACK_CONFIG = {
-  latestVersion: "2.10.2",
-  versionCode: 21002,
+  latestVersion: "2.12.0",
+  versionCode: 21200,
   // R2 直连下载（最快最稳）
   downloadUrl: `https://xyzw-apk-updater.15322781623.workers.dev/api/apk/download`,
   // GitHub 原始链接作为备选
   downloadUrlOriginal: `https://github.com/${GITHUB_REPO}/releases/latest/download/肝王之王.apk`,
-  changelog: "v2.10.2: 十殿队伍恢复逻辑重构+多选购买轮询模式+7100020防御性刷新+定时任务eval修复",
-  minVersionCode: 10107,
+  changelog: "v2.12.0: 星级队伍自动解散与卡密验证优化",
+  minVersionCode: 21200,
   forceUpdate: false,
 };
+
+// ==================== 卡密系统工具函数 ====================
+
+/**
+ * 生成随机卡密
+ * 格式：XXXX-XXXX-XXXX-XXXX（16位大写字母数字）
+ */
+function generateCardKey() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const segments = [];
+  for (let s = 0; s < 4; s++) {
+    let segment = '';
+    for (let i = 0; i < 4; i++) {
+      segment += chars[Math.floor(Math.random() * chars.length)];
+    }
+    segments.push(segment);
+  }
+  return segments.join('-');
+}
+
+/**
+ * 从 KV 读取卡密数据
+ */
+async function getCard(kv, cardKey) {
+  if (!kv) return null;
+  try {
+    const raw = await kv.get(`card:${cardKey}`);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error('[卡密] 读取失败:', e.message);
+    return null;
+  }
+}
+
+/**
+ * 保存卡密数据到 KV
+ */
+async function saveCard(kv, cardKey, data) {
+  if (!kv) throw new Error('CARD_KV 未绑定');
+  await kv.put(`card:${cardKey}`, JSON.stringify(data));
+}
+
+/**
+ * 验证管理员密码
+ */
+function verifyAdminPassword(password, env) {
+  const adminPassword = env.CARD_ADMIN_PASSWORD;
+  if (!adminPassword) {
+    console.error('[卡密] 未配置 CARD_ADMIN_PASSWORD');
+    return false;
+  }
+  return password === adminPassword;
+}
+
+/**
+ * 验证当前设备是否已激活（用于管理员接口）
+ */
+async function verifyDeviceActivated(kv, cardKey, deviceId) {
+  if (!cardKey || !deviceId) return false;
+  const card = await getCard(kv, cardKey);
+  if (!card || card.status !== 'activated') return false;
+  return card.deviceId === deviceId;
+}
 
 // 缓存
 let _cachedVersionInfo = null;
@@ -137,7 +201,7 @@ export default {
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Admin-Password, X-Device-Id, X-Card-Key',
     };
 
     // Handle OPTIONS request
@@ -270,6 +334,240 @@ export default {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
+      }
+    }
+
+    // ==================== 卡密激活/管理系统 ====================
+
+    const cardKv = env.CARD_KV;
+
+    // 统一返回辅助函数
+    const cardJson = (data, status = 200) => new Response(JSON.stringify(data), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
+    // 检查卡密状态（设备是否匹配）
+    if (url.pathname === '/api/card/check' && request.method === 'POST') {
+      try {
+        const { cardKey, deviceId } = await request.json();
+        const normalizedKey = (cardKey || '').toUpperCase().trim();
+        if (!normalizedKey || !deviceId) {
+          return cardJson({ success: false, error: '参数不完整' }, 400);
+        }
+        const card = await getCard(cardKv, normalizedKey);
+        if (!card) {
+          return cardJson({ success: false, error: '卡密不存在' }, 404);
+        }
+        if (card.status !== 'activated') {
+          return cardJson({ success: false, error: '卡密未激活' }, 400);
+        }
+        if (card.deviceId !== deviceId) {
+          return cardJson({ success: false, error: '设备不匹配' }, 403);
+        }
+        return cardJson({ success: true, cardKey: normalizedKey, activatedAt: card.activatedAt });
+      } catch (e) {
+        console.error('[卡密/check] 错误:', e.message);
+        return cardJson({ success: false, error: '服务器错误' }, 500);
+      }
+    }
+
+    // 激活/验证卡密
+    if (url.pathname === '/api/card/verify' && request.method === 'POST') {
+      try {
+        const { cardKey, deviceId } = await request.json();
+        const normalizedKey = (cardKey || '').toUpperCase().trim();
+        if (!normalizedKey || !deviceId) {
+          return cardJson({ success: false, error: '参数不完整' }, 400);
+        }
+        let card = await getCard(cardKv, normalizedKey);
+        if (!card) {
+          return cardJson({ success: false, error: '卡密不存在' }, 404);
+        }
+        if (card.status === 'activated') {
+          if (card.deviceId === deviceId) {
+            return cardJson({ success: true, message: '卡密已激活（当前设备）', activatedAt: card.activatedAt });
+          }
+          return cardJson({ success: false, error: '卡密已绑定其他设备，请先重置' }, 403);
+        }
+        // 激活：unused -> activated
+        card.status = 'activated';
+        card.deviceId = deviceId;
+        card.activatedAt = new Date().toISOString();
+        await saveCard(cardKv, normalizedKey, card);
+        return cardJson({ success: true, message: '激活成功', activatedAt: card.activatedAt });
+      } catch (e) {
+        console.error('[卡密/verify] 错误:', e.message);
+        return cardJson({ success: false, error: '服务器错误' }, 500);
+      }
+    }
+
+    // 自助重置卡密
+    if (url.pathname === '/api/card/reset' && request.method === 'POST') {
+      try {
+        const { cardKey, deviceId } = await request.json();
+        const normalizedKey = (cardKey || '').toUpperCase().trim();
+        if (!normalizedKey) {
+          return cardJson({ success: false, error: '参数不完整' }, 400);
+        }
+        const card = await getCard(cardKv, normalizedKey);
+        if (!card) {
+          return cardJson({ success: false, error: '卡密不存在' }, 404);
+        }
+        card.status = 'unused';
+        card.deviceId = null;
+        card.activatedAt = null;
+        card.lastResetAt = new Date().toISOString();
+        card.resetCount = (card.resetCount || 0) + 1;
+        await saveCard(cardKv, normalizedKey, card);
+        return cardJson({ success: true, message: '卡密已重置', resetCount: card.resetCount });
+      } catch (e) {
+        console.error('[卡密/reset] 错误:', e.message);
+        return cardJson({ success: false, error: '服务器错误' }, 500);
+      }
+    }
+
+    // 管理员：列出所有卡密
+    if (url.pathname === '/api/card/list' && request.method === 'GET') {
+      try {
+        const adminPassword = request.headers.get('X-Admin-Password');
+        const deviceId = request.headers.get('X-Device-Id');
+        const currentCardKey = (request.headers.get('X-Card-Key') || '').toUpperCase().trim();
+        if (!verifyAdminPassword(adminPassword, env)) {
+          return cardJson({ success: false, error: '管理员密码错误' }, 403);
+        }
+        if (!await verifyDeviceActivated(cardKv, currentCardKey, deviceId)) {
+          return cardJson({ success: false, error: '当前设备未激活或无权限' }, 403);
+        }
+        const list = await cardKv.list({ prefix: 'card:' });
+        const cards = [];
+        for (const key of list.keys) {
+          const raw = await cardKv.get(key.name);
+          if (!raw) continue;
+          try {
+            const data = JSON.parse(raw);
+            cards.push({
+              cardKey: key.name.replace(/^card:/, ''),
+              status: data.status || 'unused',
+              createdAt: data.createdAt || null,
+              deviceId: data.deviceId || null,
+              activatedAt: data.activatedAt || null,
+              resetCount: data.resetCount || 0,
+              lastResetAt: data.lastResetAt || null,
+            });
+          } catch {
+            // 忽略损坏数据
+          }
+        }
+        return cardJson({ success: true, cards });
+      } catch (e) {
+        console.error('[卡密/list] 错误:', e.message);
+        return cardJson({ success: false, error: '服务器错误' }, 500);
+      }
+    }
+
+    // 管理员：批量生成卡密
+    if (url.pathname === '/api/card/generate' && request.method === 'POST') {
+      try {
+        const adminPassword = request.headers.get('X-Admin-Password');
+        const deviceId = request.headers.get('X-Device-Id');
+        const currentCardKey = (request.headers.get('X-Card-Key') || '').toUpperCase().trim();
+        if (!verifyAdminPassword(adminPassword, env)) {
+          return cardJson({ success: false, error: '管理员密码错误' }, 403);
+        }
+        if (!await verifyDeviceActivated(cardKv, currentCardKey, deviceId)) {
+          return cardJson({ success: false, error: '当前设备未激活或无权限' }, 403);
+        }
+        const { count = 1 } = await request.json();
+        const generateCount = Math.min(Math.max(parseInt(count) || 1, 1), 100);
+        const keys = [];
+        for (let i = 0; i < generateCount; i++) {
+          let key = generateCardKey();
+          let existing = await getCard(cardKv, key);
+          let attempts = 0;
+          while (existing && attempts < 10) {
+            key = generateCardKey();
+            existing = await getCard(cardKv, key);
+            attempts++;
+          }
+          const value = {
+            status: 'unused',
+            createdAt: new Date().toISOString(),
+            resetCount: 0,
+            deviceId: null,
+            activatedAt: null,
+            lastResetAt: null,
+          };
+          await saveCard(cardKv, key, value);
+          keys.push(key);
+        }
+        return cardJson({ success: true, keys, count: keys.length });
+      } catch (e) {
+        console.error('[卡密/generate] 错误:', e.message);
+        return cardJson({ success: false, error: '服务器错误' }, 500);
+      }
+    }
+
+    // 管理员：重置/删除卡密
+    if (url.pathname === '/api/card/delete' && request.method === 'POST') {
+      try {
+        const adminPassword = request.headers.get('X-Admin-Password');
+        const deviceId = request.headers.get('X-Device-Id');
+        const currentCardKey = (request.headers.get('X-Card-Key') || '').toUpperCase().trim();
+        if (!verifyAdminPassword(adminPassword, env)) {
+          return cardJson({ success: false, error: '管理员密码错误' }, 403);
+        }
+        if (!await verifyDeviceActivated(cardKv, currentCardKey, deviceId)) {
+          return cardJson({ success: false, error: '当前设备未激活或无权限' }, 403);
+        }
+        const { targetCardKey, action = 'reset' } = await request.json();
+        const normalizedTarget = (targetCardKey || '').toUpperCase().trim();
+        if (!normalizedTarget) {
+          return cardJson({ success: false, error: '参数不完整' }, 400);
+        }
+        if (action === 'delete') {
+          await cardKv.delete(`card:${normalizedTarget}`);
+          return cardJson({ success: true, message: '卡密已删除' });
+        }
+        // 重置
+        const card = await getCard(cardKv, normalizedTarget);
+        if (!card) {
+          return cardJson({ success: false, error: '卡密不存在' }, 404);
+        }
+        card.status = 'unused';
+        card.deviceId = null;
+        card.activatedAt = null;
+        card.lastResetAt = new Date().toISOString();
+        card.resetCount = (card.resetCount || 0) + 1;
+        await saveCard(cardKv, normalizedTarget, card);
+        return cardJson({ success: true, message: '卡密已重置', resetCount: card.resetCount });
+      } catch (e) {
+        console.error('[卡密/delete] 错误:', e.message);
+        return cardJson({ success: false, error: '服务器错误' }, 500);
+      }
+    }
+
+    // 自助重置卡密（用户无需管理员密码，只需卡密即可重置）
+    if (url.pathname === '/api/card/self-reset' && request.method === 'POST') {
+      try {
+        const { cardKey } = await request.json();
+        const normalizedKey = (cardKey || '').toUpperCase().trim();
+        if (!normalizedKey) return cardJson({ success: false, error: '缺少卡密' }, 400);
+
+        const card = await getCard(cardKv, normalizedKey);
+        if (!card) return cardJson({ success: false, error: '卡密不存在' }, 404);
+        if (card.status !== 'activated') return cardJson({ success: false, error: '卡密未激活，无需重置' }, 400);
+
+        card.status = 'unused';
+        card.deviceId = null;
+        card.activatedAt = null;
+        card.lastResetAt = new Date().toISOString();
+        card.resetCount = (card.resetCount || 0) + 1;
+        await saveCard(cardKv, normalizedKey, card);
+        return cardJson({ success: true, message: '卡密已重置', resetCount: card.resetCount });
+      } catch (e) {
+        console.error('[卡密/self-reset] 错误:', e.message);
+        return cardJson({ success: false, error: '服务器错误' }, 500);
       }
     }
 

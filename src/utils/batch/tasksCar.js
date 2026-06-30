@@ -441,9 +441,10 @@ export function createTasksCar(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 车辆[${gradeLabel(car.color)}]有免费刷新次数，尝试刷新`, type: "info" });
     }
 
-    // 刷新循环（最多13次）
+    // 刷新循环（金砖模式最多20次，普通模式最多13次）
     let currentTickets = refreshTickets;
-    for (let refreshAttempt = 0; refreshAttempt < 13 && !shouldStop.value; refreshAttempt++) {
+    const maxRefreshAttempts = batchSettings.useGoldRefreshFallback ? 20 : 13;
+    for (let refreshAttempt = 0; refreshAttempt < maxRefreshAttempts && !shouldStop.value; refreshAttempt++) {
       addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 车辆[${gradeLabel(car.color)}]尝试刷新(第${refreshAttempt + 1}次)...`, type: "info" });
 
       const resp = await tokenStore.sendMessageWithPromise(tokenId, "car_refresh", { carId: String(car.id) }, getTimeout());

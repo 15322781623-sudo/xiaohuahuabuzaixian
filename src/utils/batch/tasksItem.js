@@ -1551,8 +1551,17 @@ export function createTasksItem(deps) {
   /**
    * 一键开碎片礼包
    * 开启所有类型的碎片礼包：红将、紫将、橙将、精铁、进阶石、白玉、扳手、赛车改装、金币、金砖、晶石、怪异
+   * @param {Object} options - 选项
+   * @param {boolean} options.isScheduledTask - 是否为定时任务
+   * @param {number[]|null} options.selectedItems - 选中的 itemId 数组，null 或未传时全量执行
    */
-  const batchOpenFragmentPacks = async (isScheduledTask = false) => {
+  const batchOpenFragmentPacks = async (options = {}) => {
+    // 兼容旧调用格式：如果传入布尔值，转换为对象
+    if (typeof options === 'boolean') {
+      options = { isScheduledTask: options, selectedItems: null };
+    }
+    const isScheduledTask = options.isScheduledTask || false;
+    const selectedItems = options.selectedItems || null;
     if (selectedTokens.value.length === 0)
       return;
 
@@ -1579,6 +1588,11 @@ export function createTasksItem(deps) {
         { itemId: 3010, name: "晶石福袋" },
         { itemId: 37005, name: "怪异礼包" },
       ];
+
+      // 遍历所有类型的礼包（按 selectedItems 过滤，未传参时全量执行）
+      const packsToOpen = selectedItems && selectedItems.length > 0
+        ? fragmentPacks.filter(p => selectedItems.includes(p.itemId))
+        : fragmentPacks;
 
       const processFragmentPacks = async (tokenId) => {
         if (shouldStop.value)
@@ -1609,7 +1623,7 @@ export function createTasksItem(deps) {
           let totalOpened = 0;
 
           // 遍历所有类型的礼包
-          for (const pack of fragmentPacks) {
+          for (const pack of packsToOpen) {
             if (shouldStop.value)
               break;
 

@@ -44,12 +44,20 @@ export function useApkUpdate() {
   const downloadError = ref('');
 
   /**
-   * 获取本地APK版本信息
+   * 获取本地 APK 版本信息
+   * 优先使用构建时注入的版本号（确保与 APK 实际版本一致）
    */
   const getLocalVersion = () => {
     try {
-      const versionName = localStorage.getItem(APK_VERSION_KEY) || DEFAULT_VERSION_NAME;
-      const versionCode = Number(localStorage.getItem(APK_VERSION_CODE_KEY)) || DEFAULT_VERSION_CODE;
+      // ✅ 优先使用构建时注入的版本号（来自 build.gradle，通过 Vite define 注入）
+      // 这样确保版本号与 APK 实际版本一致，不受 localStorage 旧值影响
+      const versionName = DEFAULT_VERSION_NAME;
+      const versionCode = DEFAULT_VERSION_CODE;
+        
+      // 同步到 localStorage（供其他地方读取）
+      localStorage.setItem(APK_VERSION_KEY, versionName);
+      localStorage.setItem(APK_VERSION_CODE_KEY, String(versionCode));
+        
       return { versionName, versionCode };
     } catch {
       return { versionName: DEFAULT_VERSION_NAME, versionCode: DEFAULT_VERSION_CODE };

@@ -40,6 +40,7 @@ declare interface WebSocketConnection {
   tokenId: string;
   sessionId: string;
   createdAt: string;
+  connectedAt: string | null;
   lastMessageAt: string | null;
   randomSeedSynced?: boolean;
   lastRandomSeedSource?: number | null;
@@ -824,6 +825,24 @@ export const useTokenStore = defineStore("tokens", () => {
       return true;
     } else {
       wsLogger.error(`Token刷新失败，请手动重新导入 [${tokenId}] - ${errorMessage}`);
+
+      // BIN数据转换失败时，标记连接为断开并阻止无效重连
+      // 因为旧token无效，重连也会被服务器拒绝，避免无限循环
+      if (errorMessage.includes("BIN数据转换失败") || errorMessage.includes("未找到BIN数据")) {
+        wsLogger.error(`[WS] BIN数据已失效，停止自动重连，请重新导入Token [${tokenId}]`);
+        if (wsConnections.value[tokenId]) {
+          wsConnections.value[tokenId].status = "disconnected";
+          const client = wsConnections.value[tokenId].client as any;
+          if (client) {
+            try {
+              client.disconnect();
+            } catch (e) {
+              // 忽略断开失败
+            }
+          }
+        }
+      }
+
       // 失败时增加冷却时间（已经在前面处理了）
       return false;
     }
@@ -1388,6 +1407,7 @@ export const useTokenStore = defineStore("tokens", () => {
       };
 
       wsClient.onDisconnect = async (event) => {
+        const client = wsClient as any;
         const reason = event.code === 1006 ? "异常断开" : event.reason || "";
         wsLogger.wsDisconnect(tokenId, reason);
         if (wsConnections.value[tokenId]) {
@@ -1395,17 +1415,36 @@ export const useTokenStore = defineStore("tokens", () => {
           conn.status = "disconnected";
           conn.randomSeedSynced = false;
 
-          // 如果连接异常断开(1006)且从未连接成功(握手失败)，尝试刷新Token
-          // connectedAt 为 null 表示 socket.onopen 还没触发就断开了，通常意味着握手失败（如403 Forbidden）
-          // 添加额外检查：只有当token不在刷新中时才尝试刷新
+          // 判断是否需要触发Token刷新
           const refreshCount = disconnectRefreshCount.value[tokenId] || 0;
-          if (event.code === 1006 && !conn.connectedAt && !refreshingTokenIds.value.has(tokenId) && refreshCount < MAX_DISCONNECT_REFRESH) {
+          const gameToken = gameTokens.value.find((t) => t.id === tokenId);
+          const canRefresh = (gameToken?.importMethod === "bin" || gameToken?.importMethod === "wxQrcode" || gameToken?.importMethod === "url")
+            && !refreshingTokenIds.value.has(tokenId)
+            && refreshCount < MAX_DISCONNECT_REFRESH;
+
+          // 情况A: _sys/fatal 导致的断开（服务端拒绝连接，如Token无效）
+          if (client?.fatalError && canRefresh) {
+            disconnectRefreshCount.value[tokenId] = refreshCount + 1;
+            wsLogger.warn(`[WS] 服务端拒绝连接(_sys/fatal): ${client.fatalReason || '未知原因'}，触发Token刷新 (${refreshCount + 1}/${MAX_DISCONNECT_REFRESH}) [${tokenId}]`);
+            await attemptTokenRefresh(tokenId, true);
+          }
+          // 情况B: 连接成功后极短时间内异常断开（<5秒，可能是Token无效）
+          else if (event.code === 1006 && conn.connectedAt && canRefresh) {
+            const connectedDuration = Date.now() - new Date(conn.connectedAt).getTime();
+            if (connectedDuration < 5000) {
+              disconnectRefreshCount.value[tokenId] = refreshCount + 1;
+              wsLogger.warn(`[WS] 连接后${Math.round(connectedDuration)}ms内异常断开，触发Token刷新 (${refreshCount + 1}/${MAX_DISCONNECT_REFRESH}) [${tokenId}]`);
+              await attemptTokenRefresh(tokenId, true);
+            }
+          }
+          // 情况C（原有逻辑）: 握手失败（socket.onopen未触发就断开）
+          else if (event.code === 1006 && !conn.connectedAt && canRefresh) {
             disconnectRefreshCount.value[tokenId] = refreshCount + 1;
             wsLogger.warn(`检测到握手失败(1006)，尝试刷新Token (${refreshCount + 1}/${MAX_DISCONNECT_REFRESH}) [${tokenId}]`);
-            // 强制刷新并重连
             await attemptTokenRefresh(tokenId, true);
-          } else if (event.code === 1006 && !conn.connectedAt && refreshCount >= MAX_DISCONNECT_REFRESH) {
-            wsLogger.error(`握手失败(1006)已达最大自动刷新次数(${MAX_DISCONNECT_REFRESH})，停止自动重连 [${tokenId}]，请手动重新连接`);
+          }
+          else if (event.code === 1006 && refreshCount >= MAX_DISCONNECT_REFRESH) {
+            wsLogger.error(`异常断开(1006)已达最大自动刷新次数(${MAX_DISCONNECT_REFRESH})，停止自动重连 [${tokenId}]，请手动重新连接`);
           }
         }
         updateCrossTabConnectionState(tokenId, "disconnected");

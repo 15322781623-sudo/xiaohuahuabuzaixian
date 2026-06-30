@@ -347,6 +347,29 @@ const formatHp = (hp) => {
 // 已处理的残留队伍 ID 缓存，避免同一会话重复检测
 const _dismissedStaleTeams = new Set();
 
+// 恢复预设最近战斗结果到UI
+const restorePresetLastResults = () => {
+  // 从 localStorage 读取最近战斗结果
+  try {
+    const results = JSON.parse(localStorage.getItem('nightmare-battle-results') || '{}');
+    // 结果会由 NightmarePreset.vue 打开时自动加载
+  } catch {}
+};
+
+// 更新预设最近战斗结果并持久化到 localStorage
+const updatePresetLastResult = (presetId, result) => {
+  try {
+    const presets = JSON.parse(localStorage.getItem('nightmare-presets') || '[]');
+    const preset = presets.find(p => p.id === presetId);
+    if (preset) {
+      preset.lastResult = result;
+      localStorage.setItem('nightmare-presets', JSON.stringify(presets));
+    }
+  } catch (e) {
+    // 持久化失败不影响主流程
+  }
+};
+
 // 从模块级变量恢复后台战斗
 const restoreActiveBattles = () => {
   const persisted = window.__nightmareActiveBattles;
@@ -357,6 +380,7 @@ const restoreActiveBattles = () => {
       status: item.battle?.getStatus?.() || item.status,
       currentLevel: item.battle?.getCurrentLevel?.() || item.currentLevel,
       bossHp: item.battle?.getBossHp?.() || item.bossHp || null,
+      teamId: item.battle?.getTeamId?.() || item.teamId || null,
     }));
     // 重绑定回调到当前组件实例
     activeBattles.value.forEach(b => {
@@ -374,11 +398,150 @@ const restoreActiveBattles = () => {
 
 // 保存后台战斗到模块级变量（仅保留真正活跃的战斗）
 const persistActiveBattles = () => {
-  window.__nightmareActiveBattles = activeBattles.value.filter(
+  const active = activeBattles.value.filter(
     b => b.status === 'running' || b.status === 'cooling' || b.status === 'waiting_midnight'
   );
+  window.__nightmareActiveBattles = active;
+  // 持久化 teamId 等元数据到 localStorage，供跨页面恢复
+  try {
+    const data = active.map(b => ({
+      presetId: b.preset?.id,
+      status: b.status,
+      roomId: b.roomId,
+      teamId: b.battle?.getTeamId?.() || b.teamId || null,
+      currentLevel: b.currentLevel,
+      startedAt: b.startedAt,
+    }));
+    localStorage.setItem('nightmare-active-battles', JSON.stringify(data));
+  } catch {}
+};
+
+// ====== 跨标签页协调机制 ======
+// 生成当前标签页唯一 ID（使用 sessionStorage，页面刷新后仍保持一致，标签页关闭后自动清除）
+const getTabId = () => {
+  if (!sessionStorage.getItem('__nightmare_tab_id')) {
+    sessionStorage.setItem('__nightmare_tab_id', `tab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+  }
+  return sessionStorage.getItem('__nightmare_tab_id');
+};
+
+// 检查预设是否在其他标签页运行中
+const isPresetRunningInOtherTab = (presetId) => {
+  try {
+    const key = `nightmare-running-${presetId}`;
+    const raw = localStorage.getItem(key);
+    if (!raw) return false;
+
+    const data = JSON.parse(raw);
+    if (!data.tabId || !data.timestamp) {
+      // 格式异常，清理并允许执行
+      localStorage.removeItem(key);
+      return false;
+    }
+
+    // 过期清理（3小时，与 _MAX_BATTLE_TIME 对齐）
+    if (Date.now() - data.timestamp > 3 * 60 * 60 * 1000) {
+      localStorage.removeItem(key);
+      return false;
+    }
+
+    // 同一标签页残留（页面刷新或战斗异常中断）→ 清理并允许执行
+    if (data.tabId === getTabId()) {
+      localStorage.removeItem(key);
+      return false;
+    }
+
+    // 不同标签页正在运行
+    return true;
+  } catch {
+    // JSON 解析异常，清理并允许执行
+    try { localStorage.removeItem(`nightmare-running-${presetId}`); } catch { /* ignore */ }
+    return false;
+  }
+};
+
+// 标记预设为运行中（写入 localStorage）
+const markPresetRunning = (presetId) => {
+  try {
+    const key = `nightmare-running-${presetId}`;
+    localStorage.setItem(key, JSON.stringify({
+      tabId: getTabId(),
+      timestamp: Date.now(),
+    }));
+  } catch { /* ignore */ }
+};
+
+// 清除预设的运行标记
+const clearPresetRunning = (presetId) => {
+  try {
+    const key = `nightmare-running-${presetId}`;
+    localStorage.removeItem(key);
+  } catch { /* ignore */ }
+};
+
+// 清理当前标签页的所有残留预设运行标记（页面刷新后自动清理自己 tab 之前留下的标记）
+const cleanupStalePresetMarkers = () => {
+  const currentTabId = getTabId();
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('nightmare-running-')) {
+      try {
+        const data = JSON.parse(localStorage.getItem(key));
+        if (data.tabId === currentTabId) {
+          localStorage.removeItem(key);
+          i--; // 移除后索引回退
+        }
+      } catch {
+        // 格式异常直接清理
+        localStorage.removeItem(key);
+        i--;
+      }
+    }
+  }
+};
+
+// 监听 localStorage 变化，同步其他标签页的状态
+const setupCrossTabSync = () => {
+  const handleStorage = (e) => {
+    if (e.key?.startsWith('nightmare-running-')) {
+      const presetId = e.key.replace('nightmare-running-', '');
+      if (e.newValue) {
+        // 其他标签页启动了预设，如果本地也在运行，提示用户
+        const localBattle = activeBattles.value.find(b => b.preset.id === presetId);
+        if (localBattle && localBattle.status === 'running') {
+          addLog(`⚠️ 预设「${localBattle.preset.name}」在其他标签页也被启动，可能导致冲突`, 'warning');
+        }
+      }
+    }
+  };
+  window.addEventListener('storage', handleStorage);
+  return () => window.removeEventListener('storage', handleStorage);
 };
 const isBackgroundMode = ref(true); // 后台执行 / 前台观看
+
+/**
+ * 从 matchteam_getroleteaminfo 响应中查找十殿阎罗队伍（teamCfgId=1）
+ * gDMTData 包含所有类型队伍（teamCfgId=1 十殿, teamCfgId=7 星级等），
+ * 必须严格按 teamCfgId 过滤，避免星级队伍数据污染十殿队伍查找。
+ */
+const findNightmareTeamId = (roleTeamRes) => {
+  if (!roleTeamRes) return null;
+  // 主路径：teamInfo 直接校验 teamCfgId
+  if (roleTeamRes.teamInfo?.teamCfgId === 1 && roleTeamRes.teamInfo?.teamId) {
+    return roleTeamRes.teamInfo.teamId;
+  }
+  // gDMTData 回退：遍历过滤 teamCfgId === 1
+  const gDMTData = roleTeamRes.roleMTData?.gDMTData || {};
+  for (const key of Object.keys(gDMTData)) {
+    const td = gDMTData[key];
+    if (td?.teamCfgId === 1 && td?.teamId) return td.teamId;
+  }
+  // 兼容路径
+  if (roleTeamRes.roleMTData?.teamInfo?.teamCfgId === 1) {
+    return roleTeamRes.roleMTData.teamInfo.teamId;
+  }
+  return null;
+};
 // 预设间错开延迟(ms)，从 localStorage 读取，默认 10 秒
 const staggerDelay = computed(() => {
   const val = parseInt(localStorage.getItem('nightmare-preset-delay') || '10', 10);
@@ -468,17 +631,10 @@ const switchCaptain = async (newTokenId) => {
         captainTokenId.value, "matchteam_getroleteaminfo",
         { roleID: roleId }, 10000
       );
-      // 多路径提取 teamId：兼容不同服务器/协议版本的响应结构
-      let existingTeamId = roleTeamRes?.teamInfo?.teamId;
-      if (!existingTeamId) {
-        const gDMTData = roleTeamRes?.roleMTData?.gDMTData || {};
-        const allTeamKeys = Object.keys(gDMTData);
-        if (allTeamKeys.length > 0) {
-          const numericKeys = allTeamKeys.filter((k) => /^\d+$/.test(k));
-          const pickKey = numericKeys.length > 0 ? numericKeys[0] : allTeamKeys[0];
-          existingTeamId = gDMTData[pickKey]?.teamId;
-          addLog(`gDMTData 键: [${allTeamKeys.join(", ")}]，选中: ${pickKey} → teamId: ${existingTeamId || "无"}`, "info");
-        }
+      // 严格按 teamCfgId=1 提取十殿阎罗队伍，避免星级队伍(teamCfgId=7)数据污染
+      let existingTeamId = findNightmareTeamId(roleTeamRes);
+      if (existingTeamId) {
+        addLog(`从队伍信息中找到十殿队伍 teamId: ${existingTeamId}`, 'info');
       }
       if (existingTeamId) {
         // 检查是否是已处理的残留队伍
@@ -904,8 +1060,14 @@ const disconnectTeammate = async (tid) => {
 
 // ====== 初始化：检查已有队伍 ======
 onMounted(async () => {
+  // 清理当前标签页的残留预设运行标记（防止页面刷新后残留标记阻止执行）
+  cleanupStalePresetMarkers();
+
   // 从模块级变量恢复后台战斗（跨导航持久化）
   restoreActiveBattles();
+
+  // 启动跨标签页同步监听
+  setupCrossTabSync();
 
   // 优先从 sessionStorage 恢复上次后台战斗的预设队长
   const lastBattlePresetStr = sessionStorage.getItem('nightmare-last-battle-preset');
@@ -972,18 +1134,10 @@ onMounted(async () => {
       10000
     );
 
-    // 多路径提取 teamId：兼容不同服务器/协议版本的响应结构
-    let existingTeamId = roleTeamRes?.teamInfo?.teamId;
-    if (!existingTeamId) {
-      const gDMTData = roleTeamRes?.roleMTData?.gDMTData || {};
-      const allTeamKeys = Object.keys(gDMTData);
-      if (allTeamKeys.length > 0) {
-        // 优先取数字键（十殿 teamCfgId=1），否则取第一个
-        const numericKeys = allTeamKeys.filter((k) => /^\d+$/.test(k));
-        const pickKey = numericKeys.length > 0 ? numericKeys[0] : allTeamKeys[0];
-        existingTeamId = gDMTData[pickKey]?.teamId;
-        addLog(`gDMTData 键: [${allTeamKeys.join(", ")}]，选中: ${pickKey} → teamId: ${existingTeamId || "无"}`, "info");
-      }
+    // 严格按 teamCfgId=1 提取十殿阎罗队伍，避免星级队伍(teamCfgId=7)数据污染
+    let existingTeamId = findNightmareTeamId(roleTeamRes);
+    if (existingTeamId) {
+      addLog(`从队伍信息中找到十殿队伍 teamId: ${existingTeamId}`, 'info');
     }
 
     if (!existingTeamId) {
@@ -1304,15 +1458,7 @@ const createRoom = async (isRetry = false) => {
           { roleID: Number(captainRoleId.value) },
           10000
         );
-        let staleTeamId = roleTeamRes?.teamInfo?.teamId;
-        if (!staleTeamId) {
-          const gDMTData = roleTeamRes?.roleMTData?.gDMTData || {};
-          const keys = Object.keys(gDMTData);
-          if (keys.length > 0) {
-            const numKeys = keys.filter(k => /^\d+$/.test(k));
-            staleTeamId = gDMTData[numKeys[0] || keys[0]]?.teamId;
-          }
-        }
+        let staleTeamId = findNightmareTeamId(roleTeamRes);
         if (staleTeamId) {
           addLog(`发现残留队伍 TeamId: ${staleTeamId}，正在解散...`, 'info');
           await tokenStore.sendMessageWithPromise(
@@ -1689,7 +1835,8 @@ const isStarting = ref(false);
 
 // 预设重试计数器 { presetId: count }
 const presetRetryCount = {};
-const MAX_PRESET_RETRY = 1;
+// 第8关全员阵亡不再自动重试，避免重复消耗枕头。用户可手动重新执行。
+const MAX_PRESET_RETRY = 0;
 
 // 恢复预设组队到UI
 const restorePresetTeamToUI = (preset) => {
@@ -1708,13 +1855,45 @@ const restorePresetTeamToUI = (preset) => {
 };
 
 // ====== 后台战斗回调 ======
-const handleBattleComplete = (preset, result) => {
+const handleBattleComplete = async (preset, result) => {
   const idx = activeBattles.value.findIndex(b => b.preset.id === preset.id);
   if (idx !== -1) activeBattles.value[idx].status = 'completed';
   addLog(`✅ 预设「${preset.name}」战斗完成 (第${result.level}关)`, 'success');
   // 重置重试计数
   delete presetRetryCount[preset.id];
-  // 战斗完成 → 清除本地队伍状态（服务端已 nightmare_dismiss + matchteam_dismiss）
+  // 清除跨标签页运行标记
+  clearPresetRunning(preset.id);
+  // 回写预设战斗结果并持久化
+  updatePresetLastResult(preset.id, {
+    status: 'completed',
+    maxLevel: result.level || 8,
+    timestamp: new Date().toISOString(),
+  });
+  // 战斗完成 → 在清除队伍状态前查询服务端确认队长当前队伍状态
+  const completedPreset = activeBattles.value[idx]?.preset;
+  if (completedPreset?.captainTokenId) {
+    try {
+      const captainToken = tokenStore.gameTokens.find(t => t.id === completedPreset.captainTokenId);
+      const capRoleId = captainToken?.roleId;
+      if (capRoleId) {
+        const roleTeamRes = await tokenStore.sendMessageWithPromise(
+          completedPreset.captainTokenId,
+          'matchteam_getroleteaminfo',
+          { roleID: Number(capRoleId) },
+          8000
+        );
+        // 严格按 teamCfgId=1 提取十殿阎罗队伍，避免星级队伍数据污染
+        let srvTeamId = findNightmareTeamId(roleTeamRes);
+        if (srvTeamId) {
+          teamId.value = String(srvTeamId);
+          addLog(`预设「${completedPreset.name}」战斗完成，队长队伍已恢复 (teamId: ${srvTeamId})`, 'success');
+        }
+      }
+    } catch (e) {
+      // 查询失败不影响清理流程
+    }
+  }
+  // 清除本地队伍状态
   teamId.value = '';
   teamMembers.value = [];
   captainRoleId.value = '';
@@ -1726,10 +1905,42 @@ const handleBattleComplete = (preset, result) => {
   }, 30000);
 };
 
-const handleBattleError = (preset, err) => {
+const handleBattleError = async (preset, err) => {
   const idx = activeBattles.value.findIndex(b => b.preset.id === preset.id);
   if (idx !== -1) activeBattles.value[idx].status = 'failed';
   addLog(`❌ 预设「${preset.name}」战斗失败: ${err.message || err}`, 'error');
+
+  // 回写预设战斗结果并持久化
+  updatePresetLastResult(preset.id, {
+    status: 'failed',
+    reason: err?.reason || 'unknown',
+    failedLevel: activeBattles.value[idx]?.battle?.getCurrentLevel?.() || 0,
+    timestamp: new Date().toISOString(),
+  });
+
+  // 在清除队伍状态前查询服务端确认队长当前队伍状态
+  const errorPreset = activeBattles.value[idx]?.preset;
+  if (errorPreset?.captainTokenId) {
+    try {
+      const captainToken = tokenStore.gameTokens.find(t => t.id === errorPreset.captainTokenId);
+      const capRoleId = captainToken?.roleId;
+      if (capRoleId) {
+        const roleTeamRes = await tokenStore.sendMessageWithPromise(
+          errorPreset.captainTokenId,
+          'matchteam_getroleteaminfo',
+          { roleID: Number(capRoleId) },
+          8000
+        );
+        let srvTeamId = findNightmareTeamId(roleTeamRes);
+        if (srvTeamId) {
+          teamId.value = String(srvTeamId);
+          addLog(`预设「${errorPreset.name}」战斗失败，队长队伍已恢复 (teamId: ${srvTeamId})`, 'success');
+        }
+      }
+    } catch (e) {
+      // 查询失败不影响清理流程
+    }
+  }
 
   // 第8关全员阵亡 → 自动重新执行预设
   if (err.reason === 'level8_all_dead') {
@@ -1744,15 +1955,20 @@ const handleBattleError = (preset, err) => {
       message.warning(`第8关全员阵亡，重新执行预设「${preset.name}」(${retries + 1}/${MAX_PRESET_RETRY})`);
       // 移除失败的后台战斗
       activeBattles.value = activeBattles.value.filter(b => b.preset.id !== preset.id);
-      // 延迟3秒后重新执行
+      // 延迟3秒后重新执行（不清除运行标记，因为会重试）
       setTimeout(() => onPresetExecute(preset), 3000);
     } else {
       addLog(`❌ 预设「${preset.name}」第8关全员阵亡已达最大重试次数(${MAX_PRESET_RETRY})，停止执行`, 'error');
       message.error(`预设「${preset.name}」第8关失败已达上限`);
       delete presetRetryCount[preset.id];
+      // 清除跨标签页运行标记
+      clearPresetRunning(preset.id);
     }
+  } else {
+    // 其他失败：清除跨标签页运行标记
+    clearPresetRunning(preset.id);
   }
-  // 其他失败不自动移除，保留“重连继续”按钮
+  // 其他失败不自动移除，保留"重连继续"按钮
 };
 
 const handleBattleStatusChange = (preset, info) => {
@@ -1763,6 +1979,10 @@ const handleBattleStatusChange = (preset, info) => {
     if (info.bossHp) {
       activeBattles.value[idx].bossHp = info.bossHp;
     }
+  }
+  // 心跳更新：战斗运行或卡点等待期间，持续刷新跨标签页时间戳，防止其他标签页误判过期
+  if (info.status === 'running' || info.status === 'waiting_midnight') {
+    markPresetRunning(preset.id);
   }
 };
 
@@ -1871,72 +2091,37 @@ const openTeamAndGetRoomId = async (isRetry = false) => {
     return roomId; // 可能为 null
   } catch (err) {
     const errMsg = err.message || String(err);
-    // 7100020: 服务器残留队伍导致开启失败，先解散再重建
+    // 7100020: 服务器返回队伍/房间状态异常。此时队员已经 join+prepare，
+    // 如果解散并重建队伍，所有队员会丢失，导致后续战斗立即失败。
+    // 改为先检查是否已有有效房间，有则复用；无则只重试一次 openteam。
     if (!isRetry && errMsg.includes('7100020')) {
-      addLog('开启房间失败(7100020)，检测到服务器残留队伍，正在解散后重试...', 'warning');
+      // 重试前先查询队长角色信息，检查是否已有有效 roomId（避免重复消耗枕头）
       try {
-        // 查询队长现有队伍
-        const roleTeamRes = await tokenStore.sendMessageWithPromise(
-          captainTokenId.value,
-          'matchteam_getroleteaminfo',
-          { roleID: Number(captainRoleId.value) },
-          10000
+        const roleInfo = await tokenStore.sendMessageWithPromise(
+          captainTokenId.value, 'nightmare_getroleinfo',
+          { roleId: Number(captainRoleId.value) }, 8000
         );
-        let staleTeamId = roleTeamRes?.teamInfo?.teamId;
-        if (!staleTeamId) {
-          const gDMTData = roleTeamRes?.roleMTData?.gDMTData || {};
-          const keys = Object.keys(gDMTData);
-          if (keys.length > 0) {
-            const numKeys = keys.filter(k => /^\d+$/.test(k));
-            staleTeamId = gDMTData[numKeys[0] || keys[0]]?.teamId;
-          }
+        const existingRoomId = roleInfo?.nightMareData?.roomId
+          || roleInfo?.nightmareData?.roomId
+          || roleInfo?.roomId
+          || roleInfo?.roomid
+          || null;
+        if (existingRoomId) {
+          addLog(`7100020 错误但已有有效房间 ${existingRoomId}，复用现有房间，不再消耗枕头`, 'info');
+          return existingRoomId;
         }
-        if (staleTeamId) {
-          addLog(`发现残留队伍 TeamId: ${staleTeamId}，正在解散...`, 'info');
-          await tokenStore.sendMessageWithPromise(
-            captainTokenId.value,
-            'matchteam_dismiss',
-            { teamId: Number(staleTeamId) },
-            10000
-          );
-          addLog('残留队伍已解散', 'success');
-        } else {
-          addLog('未找到残留队伍ID，尝试直接解散当前队伍...', 'warning');
-          try {
-            await tokenStore.sendMessageWithPromise(
-              captainTokenId.value,
-              'matchteam_dismiss',
-              { teamId: Number(teamId.value) },
-              10000
-            );
-          } catch { /* 可能队伍已不存在 */ }
-        }
-        await delay(2000);
-        // 重新创建队伍并开启房间
-        addLog('重新创建队伍和房间...', 'info');
-        const createResp = await tokenStore.sendMessageWithPromise(
-          captainTokenId.value,
-          'matchteam_create',
-          {
-            teamCfgId: 1,
-            setting: { name: '十殿先锋队', notice: '', secret: 1, apply: 0, applyList: [] },
-            param: 0, custom: {}, extParam: 0,
-          },
-          10000
-        );
-        const newTeamId = createResp?.teamInfo?.teamId;
-        if (newTeamId) {
-          teamId.value = String(newTeamId);
-          addLog(`新队伍已创建 TeamId: ${newTeamId}`, 'success');
-          await delay(2000);
-          return openTeamAndGetRoomId(true);
-        } else {
-          addLog('重新创建队伍失败', 'error');
-          return null;
-        }
+      } catch (e) {
+        // 查询失败，继续原有重试逻辑
+        addLog(`7100020 重试前查询房间失败: ${e.message || e}，继续重试`, 'warning');
+      }
+      // 无有效房间，执行原有重试
+      addLog('7100020 错误且无有效房间，等待3秒后重试开启房间...', 'warning');
+      await delay(3000);
+      try {
+        return await openTeamAndGetRoomId(true);
       } catch (retryErr) {
-        addLog(`7100020重试失败: ${retryErr.message || retryErr}`, 'error');
-        return null;
+        addLog(`7100020重试仍失败: ${retryErr.message || retryErr}`, 'error');
+        throw retryErr;
       }
     }
     throw err;
@@ -2102,6 +2287,24 @@ const dismissRoom = async () => {
 // ====== 预设执行：一键挑战 ======
 const onPresetExecute = async (preset) => {
   presetRef.value?.close();
+
+  // 防止同预设重复启动（运行中 / 冷却中 / 等待卡点）
+  const existing = activeBattles.value.find(
+    b => b.preset.id === preset.id && ['running', 'cooling', 'waiting_midnight'].includes(b.status)
+  );
+  if (existing) {
+    message.warning(`预设「${preset.name}」已在运行中，请勿重复启动`);
+    addLog(`预设「${preset.name}」已在运行中，跳过本次执行`, 'warning');
+    return;
+  }
+
+  // 跨标签页检查已移除：isPresetRunningInOtherTab 会因 localStorage 残留导致误判，
+  // 使预设无法正常执行。同标签页内的 activeBattles 防重检查已足够。
+  // if (isPresetRunningInOtherTab(preset.id)) { ... }
+
+  // 标记为运行中（跨标签页协调）
+  markPresetRunning(preset.id);
+
   message.info(`开始执行预设「${preset.name}」...`);
   addLog(`一键挑战：使用预设「${preset.name}」`, "info");
 
@@ -2203,15 +2406,7 @@ const onPresetExecute = async (preset) => {
           { roleID: Number(captainRoleId.value) },
           10000
         );
-        existingTeamId = roleTeamRes?.teamInfo?.teamId;
-        if (!existingTeamId) {
-          const gDMTData = roleTeamRes?.roleMTData?.gDMTData || {};
-          const keys = Object.keys(gDMTData);
-          if (keys.length > 0) {
-            const numKeys = keys.filter(k => /^\d+$/.test(k));
-            existingTeamId = gDMTData[numKeys[0] || keys[0]]?.teamId;
-          }
-        }
+        existingTeamId = findNightmareTeamId(roleTeamRes);
       } catch (err) {
         addLog(`查询队伍信息失败: ${err.message || err}`, 'warning');
       }
@@ -2347,15 +2542,7 @@ const onPresetExecute = async (preset) => {
               { roleID: Number(captainRoleId.value) },
               10000
             );
-            let oldTeamId = roleTeamRes?.teamInfo?.teamId;
-            if (!oldTeamId) {
-              const gDMTData = roleTeamRes?.roleMTData?.gDMTData || {};
-              const keys = Object.keys(gDMTData);
-              if (keys.length > 0) {
-                const numKeys = keys.filter(k => /^\d+$/.test(k));
-                oldTeamId = gDMTData[numKeys[0] || keys[0]]?.teamId;
-              }
-            }
+            let oldTeamId = findNightmareTeamId(roleTeamRes);
             if (oldTeamId) {
               addLog(`发现旧队伍 TeamId: ${oldTeamId}，正在解散...`, 'info');
               await tokenStore.sendMessageWithPromise(
@@ -2422,6 +2609,8 @@ const onPresetExecute = async (preset) => {
         presetData: preset,
         captainRoleId: captainRoleId.value,
         tokenStore,
+        // 传入活跃战斗列表引用，供 _dismissRoom 判断共享队伍是否仍在使用
+        activeBattles: activeBattles.value,
         onLog: (msg, type) => addLog(msg, type),
         onStatusChange: (info) => handleBattleStatusChange(preset, info),
         onComplete: (result) => handleBattleComplete(preset, result),

@@ -583,6 +583,8 @@ export class XyzwWebSocketClient {
     this.showMsg = false;
     this.connected = false;
     this.isReconnecting = false; // 重连状态标志
+    this.fatalError = false; // _sys/fatal 标记
+    this.fatalReason = null; // _sys/fatal 错误原因
 
     this.promises = Object.create(null);
     this.registry = registerDefaultCommands(
@@ -685,6 +687,9 @@ export class XyzwWebSocketClient {
                 // 收到Blob消息
               }
 
+              // 检查系统级致命/错误消息
+              if (this._handleSystemMessage(packet)) return;
+
               // 回调处理
               if (this.messageListener) {
                 this.messageListener(packet);
@@ -755,6 +760,9 @@ export class XyzwWebSocketClient {
             }
           }
         }
+
+        // 检查系统级致命/错误消息
+        if (this._handleSystemMessage(packet)) return;
 
         // 回调处理
         if (this.messageListener) {
@@ -1600,6 +1608,68 @@ export class XyzwWebSocketClient {
         break;
       }
     }
+  }
+
+  /**
+   * 处理系统级消息（_sys/fatal、_sys/error）
+   * @returns {boolean} 如果消息已处理（不应继续分发）返回 true
+   */
+  _handleSystemMessage(packet) {
+    const cmd = packet?.cmd || packet?._raw?.cmd;
+    if (!cmd) return false;
+
+    if (cmd === "_sys/fatal") {
+      // 服务端拒绝连接（如 Token 无效、认证失败等）
+      let reason = "";
+      if (packet.error) {
+        reason = typeof packet.error === "string" ? packet.error : JSON.stringify(packet.error);
+      } else if (packet.body) {
+        try {
+          const decoded = this.utils?.bon?.decode
+            ? this.utils.bon.decode(this.convertToUint8Array(packet.body) || packet.body)
+            : null;
+          reason = decoded ? (typeof decoded === "string" ? decoded : JSON.stringify(decoded)) : "未知原因";
+        } catch {
+          reason = formatBodyForLog(packet.body);
+        }
+      }
+      if (packet?._raw?.error) {
+        reason = typeof packet._raw.error === "string" ? packet._raw.error : reason;
+      }
+
+      wsLogger.error(`[FATAL] 服务端拒绝连接: ${reason}`);
+      this.fatalError = true;
+      this.fatalReason = reason;
+
+      // 主动关闭连接，不等服务器断开
+      try {
+        this.socket?.close(4001, "_sys/fatal");
+      } catch (e) {
+        wsLogger.warn("关闭WebSocket失败:", e?.message);
+      }
+      return true;
+    }
+
+    if (cmd === "_sys/error") {
+      // 服务端系统错误（非致命，记录警告）
+      let errMsg = "";
+      if (packet.error) {
+        errMsg = typeof packet.error === "string" ? packet.error : JSON.stringify(packet.error);
+      } else if (packet.body) {
+        try {
+          const decoded = this.utils?.bon?.decode
+            ? this.utils.bon.decode(this.convertToUint8Array(packet.body) || packet.body)
+            : null;
+          errMsg = decoded ? (typeof decoded === "string" ? decoded : JSON.stringify(decoded)) : "未知错误";
+        } catch {
+          errMsg = formatBodyForLog(packet.body);
+        }
+      }
+      wsLogger.warn(`[SYS_ERROR] 服务端系统错误: ${errMsg}`);
+      // _sys/error 不阻断消息流，仅记录日志
+    }
+
+    return false;
   }
 
   /** 清理定时器 */

@@ -6,3 +6,8 @@ compatibility_date = "2024-01-01"
 [[r2_buckets]]
 binding = "APK_BUCKET"
 bucket_name = "apk-bucket"
+
+# KV 命名空间绑定（卡密数据）
+[[kv_namespaces]]
+binding = "CARD_KV"
+id = "219f0da6a5494c14a87b44fc3992dcc4"
