@@ -20,7 +20,7 @@ const FALLBACK_CONFIG = {
   downloadUrlOriginal: `https://github.com/${GITHUB_REPO}/releases/latest/download/肝王之王.apk`,
   changelog: "v2.13.0: 卡密管理系统上线，批量推图每小时自动刷新状态",
   minVersionCode: 21200,
-  forceUpdate: false,
+  forceUpdate: true,
 };
 
 // ==================== 卡密系统工具函数 ====================

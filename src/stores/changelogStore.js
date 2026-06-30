@@ -17,11 +17,8 @@ export const useChangelogStore = defineStore("changelog", () => {
       version: "v2.13.0",
       date: "2026-06-30",
       type: "minor",
-      title: "卡密管理系统上线，批量推图每小时自动刷新状态",
+      title: "批量推图每小时自动刷新状态",
       features: [
-        "新增卡密管理系统，支持卡密生成、激活、重置和删除",
-        "新增卡密管理页面，需要管理员密码访问",
-        "新增设备指纹验证，确保卡密与设备绑定",
         "新增批量推图每小时自动刷新状态机制，防止长时间挂机卡住",
       ],
       improvements: [
@@ -30,7 +27,6 @@ export const useChangelogStore = defineStore("changelog", () => {
         "优化卡密验证逻辑，支持永久有效卡密",
       ],
       fixes: [
-        "修复卡密管理页面路由404问题",
         "修复EXE激活弹窗不显示的问题",
       ],
     },

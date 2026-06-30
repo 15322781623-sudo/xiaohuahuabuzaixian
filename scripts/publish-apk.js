@@ -83,7 +83,7 @@ async function main() {
     if (!log) log = '版本更新';
   }
 
-  const forceUpdate = forceUpdateFlag || (await ask('是否强制更新? (y/N): ')).toLowerCase() === 'y';
+  const forceUpdate = forceUpdateFlag || autoConfirm || (await ask('是否强制更新？(y/N): ')).toLowerCase() === 'y';
 
   console.log(`\n📋 发布信息:`);
   console.log(`   版本: ${version}`);
