@@ -100,14 +100,39 @@ async function main() {
     process.exit(0);
   }
 
-  // 3. 更新 build.gradle 版本号
-  console.log('\n📝 更新 build.gradle...');
+  // 3. 更新所有版本号相关文件
+  console.log('\n📝 更新版本号...');
+  
+  // 3.1 更新 build.gradle
   const buildGradlePath = join(ROOT_DIR, 'android/app/build.gradle');
   let buildGradle = readFileSync(buildGradlePath, 'utf-8');
-  buildGradle = buildGradle.replace(/versionCode\s+\d+/, `versionCode ${versionCode}`);
-  buildGradle = buildGradle.replace(/versionName\s+"[^"]*"/, `versionName "${version}"`);
+  buildGradle = buildGradle.replace(/def verName = "[^"]*"/, `def verName = "${version}"`);
   writeFileSync(buildGradlePath, buildGradle);
-  console.log(`   ✅ versionCode → ${versionCode}, versionName → ${version}`);
+  console.log(`   ✅ build.gradle → ${version}`);
+  
+  // 3.2 更新 package.json
+  const packageJsonPath = join(ROOT_DIR, 'package.json');
+  let packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+  packageJson.version = version;
+  writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
+  console.log(`   ✅ package.json → ${version}`);
+  
+  // 3.3 更新 tauri.conf.json
+  const tauriConfPath = join(ROOT_DIR, 'src-tauri/tauri.conf.json');
+  let tauriConf = JSON.parse(readFileSync(tauriConfPath, 'utf-8'));
+  tauriConf.version = version;
+  writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n');
+  console.log(`   ✅ tauri.conf.json → ${version}`);
+  
+  // 3.4 更新 version.json
+  const versionJsonPath = join(ROOT_DIR, 'version.json');
+  let versionJson = JSON.parse(readFileSync(versionJsonPath, 'utf-8'));
+  versionJson.latestVersion = version;
+  versionJson.versionCode = Number(versionCode);
+  versionJson.changelog = `v${version}: ${log}`;
+  versionJson.minVersionCode = Number(versionCode) - 100; // 允许降级100个版本
+  writeFileSync(versionJsonPath, JSON.stringify(versionJson, null, 2) + '\n');
+  console.log(`   ✅ version.json → ${version} (code: ${versionCode})`);
 
   // 4. 更新 Worker 版本配置
   console.log('\n 更新 Worker 版本配置...');
@@ -123,11 +148,11 @@ async function main() {
   );
   workerCode = workerCode.replace(
     /changelog:\s*"[^"]*"/,
-    `changelog: "${log.replace(/"/g, '\\"')}"`
+    `changelog: "v${version}: ${log.replace(/"/g, '\\"')}"`
   );
   workerCode = workerCode.replace(
     /minVersionCode:\s*\d+/,
-    `minVersionCode: ${versionCode}`
+    `minVersionCode: ${Number(versionCode) - 100}`
   );
   workerCode = workerCode.replace(
     /forceUpdate:\s*(true|false)/,
@@ -146,6 +171,37 @@ async function main() {
   
   writeFileSync(workerPath, workerCode);
   console.log(`   ✅ Worker 版本配置已更新`);
+  
+  // 4.1 更新 changelogStore.js
+  console.log('\n 更新 changelogStore.js...');
+  const changelogStorePath = join(ROOT_DIR, 'src/stores/changelogStore.js');
+  let changelogStore = readFileSync(changelogStorePath, 'utf-8');
+  
+  // 检查是否已有该版本的更新日志
+  const versionRegex = new RegExp(`version:\\s*"v${version.replace(/\./g, '\\.')}",`);
+  if (!versionRegex.test(changelogStore)) {
+    // 添加新的更新日志条目
+    const today = new Date().toISOString().split('T')[0];
+    const newChangelogEntry = `    {
+      version: "v${version}",
+      date: "${today}",
+      type: "minor",
+      title: "${log}",
+      features: [
+        "${log}",
+      ],
+    },`;
+    
+    // 在第一个 changelog 条目之前插入
+    changelogStore = changelogStore.replace(
+      /const changelogs = ref\(\[\n/,
+      `const changelogs = ref([\n${newChangelogEntry}\n`
+    );
+    writeFileSync(changelogStorePath, changelogStore);
+    console.log(`   ✅ changelogStore.js 已添加 v${version} 更新日志`);
+  } else {
+    console.log(`   ⚠️ changelogStore.js 中已存在 v${version} 的更新日志，跳过`);
+  }
 
   // 5. 构建 APK
   console.log('\n🔨 构建 Android Release APK...');
