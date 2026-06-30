@@ -203,7 +203,26 @@ async function main() {
     console.log(`   ⚠️ changelogStore.js 中已存在 v${version} 的更新日志，跳过`);
   }
 
-  // 5. 构建 APK
+  // 5. 同步前端代码到 Android 项目
+  console.log('\n🔄 同步前端代码到 Android 项目...');
+  try {
+    execSync('npx cap sync android', {
+      stdio: 'inherit',
+      cwd: ROOT_DIR,
+    });
+    console.log('   ✅ Capacitor 同步完成');
+  } catch (e) {
+    console.error('   ❌ Capacitor 同步失败:', e.message);
+    if (!autoConfirm) {
+      const cont = await ask('是否继续构建? (y/N): ');
+      if (cont.toLowerCase() !== 'y') {
+        console.log('已取消');
+        process.exit(1);
+      }
+    }
+  }
+
+  // 6. 构建 APK
   console.log('\n🔨 构建 Android Release APK...');
   try {
     execSync('cd android && .\\gradlew.bat assembleRelease', {

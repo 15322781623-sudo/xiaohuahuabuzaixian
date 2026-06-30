@@ -1,0 +1,9 @@
+{
+  "latestVersion": "2.13.0",
+  "versionCode": 21300,
+  "downloadUrl": "https://xyzw-apk-updater.15322781623.workers.dev/api/apk/download",
+  "downloadUrlOriginal": "https://xyzw-apk-updater.15322781623.workers.dev/api/apk/download",
+  "changelog": "v2.13.0: 卡密管理系统上线，批量推图每小时自动刷新状态",
+  "minVersionCode": 21200,
+  "forceUpdate": false
+}
