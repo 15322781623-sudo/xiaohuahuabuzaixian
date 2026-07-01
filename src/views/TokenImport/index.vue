@@ -2828,6 +2828,32 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
 }
 
+/* 弹窗移动端自适应 */
+:global(.token-import-modal .arco-modal) {
+  width: 44rem !important;
+  max-width: calc(100vw - 32px) !important;
+}
+
+@media (max-width: 768px) {
+  :global(.token-import-modal .arco-modal) {
+    width: calc(100vw - 24px) !important;
+    max-width: 100% !important;
+    margin: 12px !important;
+  }
+}
+
+@media (max-width: 600px) {
+  :global(.token-import-modal .arco-modal) {
+    width: calc(100vw - 16px) !important;
+    margin: 8px !important;
+  }
+
+  :global(.token-import-modal .arco-modal-body) {
+    max-height: calc(100vh - 120px) !important;
+    overflow-y: auto !important;
+  }
+}
+
 [data-theme="dark"] .token-card {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }

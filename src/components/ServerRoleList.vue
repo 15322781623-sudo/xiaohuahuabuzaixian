@@ -46,7 +46,8 @@
             :columns="columns"
             :data="filteredData"
             :pagination="{ pageSize: 5 }"
-            :scroll-x="600"
+            :scroll-x="560"
+            size="small"
           ></NDataTable>
         </div>
       </div>
@@ -170,13 +171,15 @@ const columns = computed(() => [
   {
     title: props.serverColumnTitle,
     key: "serverId",
+    width: 70,
     render(row: any) {
       return getServerIdDisplay(row);
     },
   },
   {
-    title: "角色序号",
+    title: "序号",
     key: "roleIndex",
+    width: 55,
     render(row: any) {
       return getRoleIndexDisplay(row);
     },
@@ -184,14 +187,19 @@ const columns = computed(() => [
   {
     title: "角色ID",
     key: "roleId",
+    width: 110,
+    ellipsis: { tooltip: true },
   },
   {
     title: "角色名称",
     key: "name",
+    width: 100,
+    ellipsis: { tooltip: true },
   },
   {
     title: "战力",
     key: "power",
+    width: 90,
     render(row: any) {
       return formatPower(row.power);
     },
@@ -200,15 +208,17 @@ const columns = computed(() => [
   {
     title: "操作",
     key: "actions",
+    width: 120,
+    fixed: "right" as const,
     render(row: any) {
       return h(
         "div",
-        { style: "display: flex; gap: 8px;" },
+        { style: "display: flex; gap: 6px;" },
         [
           h(
             NButton,
             {
-              size: "small",
+              size: "tiny",
               type: "primary",
               onClick: () => emit("add", row),
             },
@@ -217,7 +227,7 @@ const columns = computed(() => [
           h(
             NButton,
             {
-              size: "small",
+              size: "tiny",
               type: "info",
               onClick: () => emit("download", row),
             },
@@ -242,8 +252,10 @@ const columns = computed(() => [
 
 .server-role-list-search__input {
   max-width: 240px;
+  width: 100%;
 }
 
+/* 默认移动端卡片布局 */
 .server-role-list--desktop {
   display: none;
 }
@@ -251,7 +263,7 @@ const columns = computed(() => [
 .server-role-list--mobile {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md, 12px);
+  gap: var(--spacing-sm, 8px);
   max-height: 50vh;
   overflow-y: auto;
   overflow-x: hidden;
@@ -260,12 +272,18 @@ const columns = computed(() => [
 
 .server-role-card {
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm, 8px);
-  padding: var(--spacing-md, 12px);
-  background: var(--bg-tertiary);
+  flex-direction: row;
+  align-items: center;
+  gap: var(--spacing-md, 12px);
+  padding: 10px 12px;
+  background: var(--bg-secondary, #f7f8fa);
   border-radius: var(--border-radius-medium, 8px);
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--border-light, #eee);
+  transition: background 0.15s ease;
+
+  &:active {
+    background: var(--bg-tertiary, #f0f0f0);
+  }
 }
 
 .server-role-card__main {
@@ -275,18 +293,22 @@ const columns = computed(() => [
 
 .server-role-card__title {
   font-weight: var(--font-weight-medium, 500);
-  color: var(--text-primary);
-  font-size: var(--font-size-md, 14px);
-  margin-bottom: var(--spacing-xs, 4px);
-  word-break: break-all;
+  color: var(--text-primary, #333);
+  font-size: 14px;
+  line-height: 1.3;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .server-role-card__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-sm, 8px);
-  font-size: var(--font-size-sm, 12px);
-  color: var(--text-secondary);
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  line-height: 1.5;
 }
 
 .server-role-card__meta span {
@@ -295,25 +317,62 @@ const columns = computed(() => [
 
 .server-role-card__actions {
   display: flex;
-  gap: var(--spacing-sm, 8px);
+  flex-direction: column;
+  gap: 6px;
   flex-shrink: 0;
+  width: 64px;
 }
 
 .server-role-card__actions .n-button {
-  flex: 1;
+  width: 100%;
+  font-size: 12px;
+  padding: 0 4px;
 }
 
 .server-role-list-scroll {
   -webkit-overflow-scrolling: touch;
 }
 
-@media (min-width: 768px) {
+/* 桌面端：≥600px 显示表格 */
+@media (min-width: 600px) {
   .server-role-list--mobile {
     display: none;
   }
 
   .server-role-list--desktop {
     display: block;
+  }
+
+  .server-role-list-search__input {
+    max-width: 280px;
+  }
+
+  /* 桌面端表格紧凑化 */
+  :deep(.n-data-table-th),
+  :deep(.n-data-table-td) {
+    padding: 6px 10px !important;
+    font-size: 13px;
+  }
+
+  :deep(.n-data-table-wrapper) {
+    border-radius: 6px;
+  }
+}
+
+/* 小屏手机进一步优化 */
+@media (max-width: 374px) {
+  .server-role-card {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .server-role-card__actions {
+    width: 56px;
+  }
+
+  .server-role-card__meta {
+    font-size: 11px;
+    gap: 2px 8px;
   }
 }
 </style>

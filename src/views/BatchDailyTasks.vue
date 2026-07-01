@@ -717,6 +717,13 @@
                 </n-button>
                 <n-button
                   size="small"
+                  @click="openCollectionExchangeModal"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  珍宝阁商店购买
+                </n-button>
+                <n-button
+                  size="small"
                   @click="legionStoreBuySkinCoins"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
@@ -2546,7 +2553,7 @@
         <n-alert type="info" show-icon style="margin-bottom: 14px">
           勾选需要购买的商品并设置次数，每购买一次将刷新商品列表。
         </n-alert>
-        <n-grid :cols="2" :x-gap="10" :y-gap="8">
+        <n-grid :cols="gridCols" :x-gap="10" :y-gap="8">
           <n-grid-item v-for="item in manualBuyConfig" :key="item.goodsId">
             <div class="manual-buy-item" :class="{ 'is-checked': item._checked }">
               <n-checkbox v-model:checked="item._checked"
@@ -2566,6 +2573,41 @@
         <div class="modal-actions" style="margin-top: 16px; text-align: right">
           <n-button @click="showManualBuyModal = false" style="margin-right: 12px">取消</n-button>
           <n-button type="primary" @click="executeManualBuy" :disabled="isRunning">开始购买</n-button>
+        </div>
+      </div>
+    </n-modal>
+
+    <!-- 珍宝阁商店购买 Modal -->
+    <n-modal
+      v-model:show="showCollectionExchangeModal"
+      preset="card"
+      title="珍宝阁商店购买配置"
+      style="width: 90%; max-width: 600px"
+    >
+      <div class="settings-content">
+        <n-alert type="info" show-icon style="margin-bottom: 14px">
+          勾选需要购买的商品并设置次数，使用图鉴积分兑换，每周限购。
+        </n-alert>
+        <n-grid :cols="gridCols" :x-gap="10" :y-gap="8">
+          <n-grid-item v-for="item in collectionExchangeConfig" :key="item.value">
+            <div class="manual-buy-item" :class="{ 'is-checked': item._checked }">
+              <n-checkbox v-model:checked="item._checked"
+                          @update:checked="(checked) => { if (checked) item.count = item.count || 1; else item.count = 0; }">
+                <span class="manual-buy-label">{{ item.label }}</span>
+              </n-checkbox>
+              <n-input-number v-if="item._checked"
+                              v-model:value="item.count" :min="1" :max="item.maxCount" size="tiny"
+                              style="width: 72px;"
+                              @update:value="(val) => { if (val <= 0) item._checked = false; }" />
+            </div>
+          </n-grid-item>
+        </n-grid>
+        <div style="margin-top: 12px; padding: 8px 12px; background: #f5f5f5; border-radius: 6px; font-size: 13px; color: #666;">
+          已选 {{ collectionExchangeConfig.filter(i => i._checked && i.count > 0).length }} 个商品
+        </div>
+        <div class="modal-actions" style="margin-top: 16px; text-align: right">
+          <n-button @click="showCollectionExchangeModal = false" style="margin-right: 12px">取消</n-button>
+          <n-button type="primary" @click="executeCollectionExchange" :disabled="isRunning">开始购买</n-button>
         </div>
       </div>
     </n-modal>
@@ -2639,7 +2681,7 @@
 
           <div v-for="(merchant, id) in merchantConfig" :key="id" style="margin-bottom: 16px">
             <div style="font-weight: bold; margin-bottom: 8px">{{ merchant.name }}</div>
-            <n-grid :cols="3" :x-gap="12" :y-gap="8">
+            <n-grid :cols="dreamGridCols" :x-gap="12" :y-gap="8">
               <n-grid-item v-for="(item, index) in merchant.items" :key="index">
                 <n-checkbox
                   :value="`${id}-${index}`"
@@ -2840,6 +2882,16 @@
                   <span class="info-value">
                     <n-tag size="small" type="blue" :bordered="false">
                       {{ Object.values(task.manualBuyItems).filter(i => i && i.selected).length }} 件商品
+                    </n-tag>
+                  </span>
+                </div>
+                
+                <!-- 珍宝阁商店购买配置 -->
+                <div class="task-info-item" v-if="task.selectedTasks && task.selectedTasks.includes('collection_exchange') && task.collectionExchangeItems">
+                  <span class="info-label">珍宝阁购买</span>
+                  <span class="info-value">
+                    <n-tag size="small" type="blue" :bordered="false">
+                      {{ Object.values(task.collectionExchangeItems).filter(i => i && i.selected).length }} 件商品
                     </n-tag>
                   </span>
                 </div>
@@ -3061,7 +3113,7 @@
           <!-- 账号列表 -->
           <div class="token-list">
             <n-checkbox-group v-model:value="taskForm.selectedTokens">
-              <n-grid :cols="2" :x-gap="12" :y-gap="8">
+              <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8">
                 <n-grid-item v-for="token in sortedTokens" :key="token.id">
                   <n-checkbox :value="token.id" size="large">
                     {{ token.name }}
@@ -3092,7 +3144,7 @@
                 :name="group.name" 
                 :tab="group.label"
               >
-                <n-grid :cols="2" :x-gap="12" :y-gap="8" style="padding-top: 12px;">
+                <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8" style="padding-top: 12px;">
                   <n-grid-item v-for="task in groupedAvailableTasks[group.name]" :key="task.value">
                     <n-checkbox :value="task.value" size="large">{{ task.label }}</n-checkbox>
                   </n-grid-item>
@@ -3104,7 +3156,7 @@
                 name="other" 
                 tab="其他"
               >
-                <n-grid :cols="2" :x-gap="12" :y-gap="8" style="padding-top: 12px;">
+                <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8" style="padding-top: 12px;">
                   <n-grid-item v-for="task in groupedAvailableTasks['other']" :key="task.value">
                     <n-checkbox :value="task.value" size="large">{{ task.label }}</n-checkbox>
                   </n-grid-item>
@@ -3119,7 +3171,7 @@
               <span class="config-card-title">🏪 助威商店 - 选择商品</span>
             </div>
             <div class="config-card-content">
-              <n-grid :cols="2" :x-gap="12" :y-gap="8">
+              <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8">
                 <n-grid-item v-for="option in legionStoreItemOptions" :key="option.value">
                   <div class="store-item">
                     <n-checkbox 
@@ -3159,7 +3211,7 @@
               <span class="config-card-title">🏪 消耗活动兑换商店 - 选择商品</span>
             </div>
             <div class="config-card-content">
-              <n-grid :cols="2" :x-gap="12" :y-gap="8">
+              <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8">
                 <n-grid-item v-for="item in activityExchangeItemOptions" :key="item.suffix">
                   <div class="store-item" style="display: flex; align-items: center; gap: 8px;">
                     <n-checkbox
@@ -3197,7 +3249,7 @@
               <span class="config-card-title">🧂 盐晶商店 - 选择商品</span>
             </div>
             <div class="config-card-content">
-              <n-grid :cols="2" :x-gap="12" :y-gap="8">
+              <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8">
                 <n-grid-item v-for="option in saltCrystalShopItemOptions" :key="option.value">
                   <div class="store-item">
                     <n-checkbox 
@@ -3236,7 +3288,7 @@
               <span class="config-card-title">🧂 盐锭商店 - 选择商品</span>
             </div>
             <div class="config-card-content">
-              <n-grid :cols="2" :x-gap="12" :y-gap="8">
+              <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8">
                 <n-grid-item v-for="option in saltIngotShopItemOptions" :key="option.value">
                   <div class="store-item">
                     <n-checkbox 
@@ -3275,7 +3327,7 @@
               <span class="config-card-title">🛒 黑市多选购买 - 选择商品</span>
             </div>
             <div class="config-card-content">
-              <n-grid :cols="2" :x-gap="12" :y-gap="8">
+              <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8">
                 <n-grid-item v-for="option in manualBuyItemOptions" :key="option.value">
                   <div class="store-item">
                     <n-checkbox 
@@ -3304,6 +3356,46 @@
                 </n-grid-item>
               </n-grid>
               <n-alert v-if="!taskForm.manualBuyItems || Object.values(taskForm.manualBuyItems).filter(i => i && i.selected).length === 0" type="warning" size="small" style="margin-top: 12px;">
+                请至少选择一个商品
+              </n-alert>
+            </div>
+          </div>
+          
+          <!-- 珍宝阁商店购买配置 -->
+          <div v-if="taskForm.selectedTasks.includes('collection_exchange')" class="task-config-card">
+            <div class="config-card-header">
+              <span class="config-card-title">🏛️ 珍宝阁商店购买 - 选择商品</span>
+            </div>
+            <div class="config-card-content">
+              <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8">
+                <n-grid-item v-for="option in collectionExchangeItemOptions" :key="option.value">
+                  <div class="store-item">
+                    <n-checkbox 
+                      :checked="taskForm.collectionExchangeItems && taskForm.collectionExchangeItems[option.value] && taskForm.collectionExchangeItems[option.value].selected"
+                      @update:checked="(checked) => {
+                        if (!taskForm.collectionExchangeItems) taskForm.collectionExchangeItems = {};
+                        if (!taskForm.collectionExchangeItems[option.value]) {
+                          taskForm.collectionExchangeItems[option.value] = { selected: false, count: 0, label: option.label };
+                        }
+                        taskForm.collectionExchangeItems[option.value].selected = checked;
+                        if (checked && !taskForm.collectionExchangeItems[option.value].count) taskForm.collectionExchangeItems[option.value].count = 1;
+                      }"
+                    >
+                      {{ option.label }}
+                    </n-checkbox>
+                    <n-input-number 
+                      v-if="taskForm.collectionExchangeItems && taskForm.collectionExchangeItems[option.value] && taskForm.collectionExchangeItems[option.value].selected"
+                      v-model:value="taskForm.collectionExchangeItems[option.value].count"
+                      :min="1"
+                      :max="option.maxCount"
+                      :disabled="!taskForm.collectionExchangeItems[option.value].selected"
+                      size="small"
+                      style="width: 80px"
+                    />
+                  </div>
+                </n-grid-item>
+              </n-grid>
+              <n-alert v-if="!taskForm.collectionExchangeItems || Object.values(taskForm.collectionExchangeItems).filter(i => i && i.selected).length === 0" type="warning" size="small" style="margin-top: 12px;">
                 请至少选择一个商品
               </n-alert>
             </div>
@@ -3364,7 +3456,7 @@
                 每种商品每周只能购买一次，活动ID: 9，自动跳过已购买的商品
               </n-alert>
                         
-              <n-grid :cols="2" :x-gap="12" :y-gap="8">
+              <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8">
                 <n-grid-item v-for="option in weeklyMarketItemOptions" :key="option.value">
                   <n-checkbox 
                     :checked="taskForm.weeklyMarketItems && taskForm.weeklyMarketItems[option.value] && taskForm.weeklyMarketItems[option.value].selected"
@@ -3397,7 +3489,7 @@
                 开启账号背包中拥有的对应礼包，每种礼包每次最多开启999个，未配置时默认全量开启
               </n-alert>
               <n-checkbox-group v-model:value="taskForm.fragmentPackItems">
-                <n-grid :cols="2" :x-gap="12" :y-gap="8">
+                <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8">
                   <n-grid-item><n-checkbox :value="3007">随机红将碎片</n-checkbox></n-grid-item>
                   <n-grid-item><n-checkbox :value="3005">随机紫将碎片</n-checkbox></n-grid-item>
                   <n-grid-item><n-checkbox :value="3006">随机橙将碎片</n-checkbox></n-grid-item>
@@ -3468,6 +3560,13 @@
                 <div class="setting-item-responsive">
                   <label class="setting-label-responsive" title="开启后，满足自定义条件(金砖/招募令/白玉/刷新券)时，车辆还必须达到最低品质才会发车">品质必须同时满足</label>
                   <n-switch v-model:value="taskForm.smartDeparture.requireMinColorWithConditions" size="small">
+                    <template #checked>开</template>
+                    <template #unchecked>关</template>
+                  </n-switch>
+                </div>
+                <div class="setting-item-responsive">
+                  <label class="setting-label-responsive" title="开启后，自动发车没票时使用金砖刷新；关闭时使用原有逻辑">强制用金砖刷新</label>
+                  <n-switch v-model:value="taskForm.smartDeparture.useGoldRefreshFallback" size="small">
                     <template #checked>开</template>
                     <template #unchecked>关</template>
                   </n-switch>
@@ -3602,7 +3701,7 @@
             <div class="settings-grid-responsive">
               <div class="setting-item-responsive">
                 <label class="setting-label-responsive">启用条件检查</label>
-                <n-switch v-model:value="batchSettings.smartDepartureEnabled" size="small">
+                <n-switch v-model:value="batchSettings.smartDepartureEnabled" size="small" @update:value="autoSaveBatchSettings">
                   <template #checked>开</template>
                   <template #unchecked>关</template>
                 </n-switch>
@@ -3641,14 +3740,14 @@
               </div>
               <div class="setting-item-responsive">
                 <label class="setting-label-responsive" title="开启后，满足自定义条件(金砖/招募令/白玉/刷新券)时，车辆还必须达到最低品质才会发车">品质必须同时满足</label>
-                <n-switch v-model:value="batchSettings.requireMinColorWithConditions" size="small">
+                <n-switch v-model:value="batchSettings.requireMinColorWithConditions" size="small" @update:value="autoSaveBatchSettings">
                   <template #checked>开</template>
                   <template #unchecked>关</template>
                 </n-switch>
               </div>
               <div class="setting-item-responsive">
                 <label class="setting-label-responsive" title="开启后，自动发车没票时使用金砖刷新；关闭时使用原有逻辑">强制用金砖刷新</label>
-                <n-switch v-model:value="batchSettings.useGoldRefreshFallback" size="small">
+                <n-switch v-model:value="batchSettings.useGoldRefreshFallback" size="small" @update:value="autoSaveBatchSettings">
                   <template #checked>开</template>
                   <template #unchecked>关</template>
                 </n-switch>
@@ -3821,7 +3920,7 @@
             <div class="settings-grid-responsive">
               <div class="setting-item-responsive">
                 <label class="setting-label-responsive" title="是否启用挂机时间控制">启用时间控制</label>
-                <n-switch v-model:value="batchSettings.hangUpTimeControlEnabled" />
+                <n-switch v-model:value="batchSettings.hangUpTimeControlEnabled" @update:value="autoSaveBatchSettings" />
               </div>
               <div class="setting-item-responsive" v-if="batchSettings.hangUpTimeControlEnabled">
                 <label class="setting-label-responsive" title="领取挂机奖励和加钟的最小挂机时间">最小挂机时间(小时)</label>
@@ -3835,7 +3934,7 @@
             <div class="settings-grid-responsive">
               <div class="setting-item-responsive">
                 <label class="setting-label-responsive" title="是否启用宠物合成等级限制">启用等级限制</label>
-                <n-switch v-model:value="batchSettings.petMergeMaxLevelEnabled" />
+                <n-switch v-model:value="batchSettings.petMergeMaxLevelEnabled" @update:value="autoSaveBatchSettings" />
               </div>
               <div class="setting-item-responsive" v-if="batchSettings.petMergeMaxLevelEnabled">
                 <label class="setting-label-responsive" title="宠物合成最高等级，超过此等级将不再合成">合成等级上限</label>
@@ -3863,7 +3962,7 @@
               <div class="setting-item-responsive" style="flex-direction: column; align-items: stretch;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                   <label class="setting-label-responsive" style="flex: 1;">列表每行数量</label>
-                  <n-switch v-model:value="batchSettings.autoColumns" size="small" style="margin-right: 8px;" />
+                  <n-switch v-model:value="batchSettings.autoColumns" size="small" style="margin-right: 8px;" @update:value="autoSaveBatchSettings" />
                   <span style="font-size: 12px; color: #666;">自动</span>
                 </div>
                 <n-input-number 
@@ -3887,7 +3986,7 @@
               </div>
               <div class="setting-item-responsive">
                 <label class="setting-label-responsive">定时刷新页面</label>
-                <n-switch v-model:value="batchSettings.enableRefresh" />
+                <n-switch v-model:value="batchSettings.enableRefresh" @update:value="autoSaveBatchSettings" />
               </div>
               <div class="setting-item-responsive" v-if="batchSettings.enableRefresh">
                 <label class="setting-label-responsive">刷新间隔(分钟)</label>
@@ -4215,6 +4314,48 @@
         <n-divider title-placement="left" style="margin: 0 0 16px 0">
           分组列表
         </n-divider>
+        <!-- 批量操作工具栏 -->
+        <div
+          v-if="tokenGroups.length > 0"
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            background: #f0f0f0;
+            border-radius: 6px;
+          "
+        >
+          <n-checkbox
+            :checked="batchDeleteSelectedGroupIds.length === tokenGroups.length && tokenGroups.length > 0"
+            :indeterminate="batchDeleteSelectedGroupIds.length > 0 && batchDeleteSelectedGroupIds.length < tokenGroups.length"
+            @update:checked="toggleSelectAllGroups"
+          >
+            全选
+          </n-checkbox>
+          <n-space>
+            <span style="font-size: 12px; color: #86909c">
+              已选 {{ batchDeleteSelectedGroupIds.length }} / {{ tokenGroups.length }}
+            </span>
+            <n-popconfirm
+              @positive-click="batchDeleteGroups"
+              positive-text="确定删除"
+              negative-text="取消"
+            >
+              <template #trigger>
+                <n-button
+                  size="small"
+                  type="error"
+                  :disabled="batchDeleteSelectedGroupIds.length === 0"
+                >
+                  批量删除 ({{ batchDeleteSelectedGroupIds.length }})
+                </n-button>
+              </template>
+              确定删除选中的 {{ batchDeleteSelectedGroupIds.length }} 个分组？分组中的账号不会被删除。
+            </n-popconfirm>
+          </n-space>
+        </div>
         <div
           style="
             max-height: 500px;
@@ -4296,6 +4437,10 @@
                       margin-bottom: 8px;
                     "
                   >
+                    <n-checkbox
+                      :checked="batchDeleteSelectedGroupIds.includes(group.id)"
+                      @update:checked="(checked) => toggleBatchDeleteGroupSelection(group.id, checked)"
+                    />
                     <div
                       :style="{
                         width: '16px',
@@ -4399,7 +4544,7 @@
 
         <!-- 关闭按钮 -->
         <div class="modal-actions" style="margin-top: 20px; text-align: right">
-          <n-button @click="showGroupManageModal = false">关闭</n-button>
+          <n-button @click="showGroupManageModal = false; batchDeleteSelectedGroupIds = []">关闭</n-button>
         </div>
       </div>
     </n-modal>
@@ -4410,7 +4555,7 @@
       preset="card"
       class="add-token-modal"
       :bordered="false"
-      style="width: 92%; max-width: 540px; max-height: 85vh"
+      style="width: 92%; max-width: 680px; max-height: 85vh"
       content-style="overflow-y: auto; max-height: calc(85vh - 60px); padding: 0 20px 20px;"
       header-style="padding: 16px 20px 12px; border-bottom: 1px solid rgba(0,0,0,0.06);"
     >
@@ -5413,6 +5558,7 @@ const editingGroupId = ref(null);
 const editingGroupName = ref("");
 const editingGroupColor = ref("");
 const taskScheduleSelectedGroupIds = ref([]); // 定时任务中通过分组按钮选中的分组ID列表
+const batchDeleteSelectedGroupIds = ref([]); // 分组管理弹窗中批量删除选中的分组ID列表
 const groupColors = [
   "#1677ff", // 蓝色
   "#52c41a", // 绿色
@@ -6165,6 +6311,8 @@ const batchSettings = reactive({
   },
   // 黑市多选购买配置
   manualBuyItems: [],
+  // 珍宝阁商店购买配置
+  collectionExchangeItems: [],
   // 其他配置
   maxActive: 5,
   carMinColor: 4,
@@ -6287,6 +6435,13 @@ const saveBatchSettings = () => {
     console.error("Failed to save batch settings:", error);
     message.error("保存设置失败");
   }
+};
+
+// 开关切换时自动保存（不弹窗提示）
+const autoSaveBatchSettings = () => {
+  try {
+    localStorage.setItem("batchSettings", JSON.stringify(batchSettings));
+  } catch (e) { /* ignore */ }
 };
 
 // 恢复模块延迟默认值
@@ -6491,6 +6646,12 @@ const taskForm = reactive({
     15: { selected: false, count: 0, label: "彩玉" },
     16: { selected: false, count: 0, label: "扳手" },
   },
+  collectionExchangeItems: { // 珍宝阁商店购买配置
+    7001: { selected: false, count: 0, label: "铂金宝箱" },
+    4001: { selected: false, count: 0, label: "军团币" },
+    5001: { selected: false, count: 0, label: "招募令" },
+    6001: { selected: false, count: 0, label: "万能红将碎片" },
+  },
   weeklyMarketItems: { // 黑市周商品配置
     0: { selected: false, label: "免费金砖" },
     1: { selected: false, label: "黑市见面礼" },
@@ -6513,6 +6674,7 @@ const taskForm = reactive({
     carMinColor: 4,
     refreshDelay: 2, // 刷新后等待同步延迟（秒）
     requireMinColorWithConditions: false, // 满足自定义条件时是否还必须满足最低品质
+    useGoldRefreshFallback: false, // 强制用金砖刷新
   },
   nightmarePresetIds: [], // 十殿阎罗挑战预设ID列表
   nightmarePresetDelay: 10, // 预设间执行间隔（秒），默认10秒
@@ -6528,7 +6690,7 @@ const taskGroupDefinitions = [
   { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
   { name: 'pet', label: '宠物', tasks: ['legion_buy_spotted_egg', 'use_spotted_egg', 'claim_pet_book', 'batch_pet_merge', 'batch_pet_upgrade'] },
   { name: 'nightmare', label: '十殿', tasks: ['batchNightmareChallengePresets', 'nightmare_draw_lottery', 'nightmare_claim_book_reward', 'star_drawturntable', 'batch_star_challenge'] },
-  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'buy_top_rod_package', 'buy_super_spirit_shell', 'store_buy_jade', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchConsumeActivity', 'batchClaimConsumeRewards', 'batchAutumnUseItem', 'batchUseActivityItem', 'batchActivityExchange', 'batchClaimCdkReward', 'batchClaimApexRewards'] },
+  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'buy_top_rod_package', 'buy_super_spirit_shell', 'store_buy_jade', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchConsumeActivity', 'batchClaimConsumeRewards', 'batchAutumnUseItem', 'batchUseActivityItem', 'batchActivityExchange', 'batchClaimCdkReward', 'batchClaimApexRewards'] },
   { name: 'legacy', label: '功法', tasks: ['batchLegacyHangup', 'batchLegacyClaim', 'batchLegacyGiftSendEnhanced', 'batchLegacyClaimGiftTask'] },
   { name: 'monthly', label: '月度', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items'] }
 ];
@@ -6807,6 +6969,17 @@ const cancelTaskEdit = () => {
     };
     
     taskForm.boxWeeklyRewards = {5: 1};
+    taskForm.smartDeparture = {
+      enabled: false,
+      goldThreshold: 800,
+      recruitThreshold: 20,
+      jadeThreshold: 1500,
+      ticketThreshold: 4,
+      carMinColor: 4,
+      refreshDelay: 2,
+      requireMinColorWithConditions: false,
+      useGoldRefreshFallback: false,
+    };
     taskForm.nightmarePresetIds = [];
     taskForm.nightmarePresetDelay = 10;
     taskForm.fragmentPackItems = [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005];
@@ -6858,6 +7031,19 @@ const openTaskModal = () => {
   // 直接赋值宝箱周奖励配置
   taskForm.boxWeeklyRewards = {5: 1};
   
+  // 智能发车任务级配置
+  taskForm.smartDeparture = {
+    enabled: false,
+    goldThreshold: 800,
+    recruitThreshold: 20,
+    jadeThreshold: 1500,
+    ticketThreshold: 4,
+    carMinColor: 4,
+    refreshDelay: 2,
+    requireMinColorWithConditions: false,
+    useGoldRefreshFallback: false,
+  };
+  
   // 盐晶商店配置
   taskForm.saltCrystalShopItems = {
     201: { selected: false, count: 0, label: "四圣蓝玉", min: 1, max: 60 },
@@ -6895,6 +7081,14 @@ const openTaskModal = () => {
     14: { selected: false, count: 0, label: "白玉" },
     15: { selected: false, count: 0, label: "彩玉" },
     16: { selected: false, count: 0, label: "扳手" },
+  };
+
+  // 珍宝阁商店购买商品配置
+  taskForm.collectionExchangeItems = {
+    7001: { selected: false, count: 0, label: "铂金宝箱" },
+    4001: { selected: false, count: 0, label: "军团币" },
+    5001: { selected: false, count: 0, label: "招募令" },
+    6001: { selected: false, count: 0, label: "万能红将碎片" },
   };
 
   // 十殿预设配置
@@ -6978,6 +7172,14 @@ const editTask = (task) => {
     16: { selected: false, count: 0, label: "扳手" },
   };
   
+  // 默认珍宝阁商店购买配置
+  const defaultCollectionExchangeItems = {
+    7001: { selected: false, count: 0, label: "铂金宝箱" },
+    4001: { selected: false, count: 0, label: "军团币" },
+    5001: { selected: false, count: 0, label: "招募令" },
+    6001: { selected: false, count: 0, label: "万能红将碎片" },
+  };
+  
   // 合并助威商店配置，补充缺失的label
   const mergedLegionStoreItems = { ...defaultLegionStoreItems };
   if (task.legionStoreItems) {
@@ -7044,6 +7246,19 @@ const editTask = (task) => {
     });
   }
   
+  // 合并珍宝阁商店购买配置，补充缺失的label
+  const mergedCollectionExchangeItems = { ...defaultCollectionExchangeItems };
+  if (task.collectionExchangeItems) {
+    Object.keys(task.collectionExchangeItems).forEach(key => {
+      if (mergedCollectionExchangeItems[key]) {
+        mergedCollectionExchangeItems[key] = {
+          ...mergedCollectionExchangeItems[key],
+          ...task.collectionExchangeItems[key],
+        };
+      }
+    });
+  }
+  
   const taskData = { 
     ...task,
     taskType: task.taskType || 'normal',
@@ -7052,6 +7267,7 @@ const editTask = (task) => {
     saltCrystalShopItems: mergedSaltCrystalShopItems,
     saltIngotShopItems: mergedSaltIngotShopItems,
     manualBuyItems: mergedManualBuyItems,
+    collectionExchangeItems: mergedCollectionExchangeItems,
     fragmentPackItems: task.fragmentPackItems || [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005],
     boxWeeklyRewards: task.boxWeeklyRewards || {5: 1},
     smartDeparture: task.smartDeparture || {
@@ -7093,7 +7309,12 @@ const editTask = (task) => {
       minutes,
     );
   }
+  // 浅拷贝基本属性
   Object.assign(taskForm, taskData);
+  // 深度合并 smartDeparture，保留 Vue 响应式
+  if (taskData.smartDeparture) {
+    Object.assign(taskForm.smartDeparture, taskData.smartDeparture);
+  }
   taskScheduleSelectedGroupIds.value = [];
   showTaskModal.value = true;
 };
@@ -7261,6 +7482,15 @@ const saveTask = () => {
     }
   }
   
+  // 验证珍宝阁商店购买是否选择了商品
+  if (taskForm.selectedTasks.includes('collection_exchange')) {
+    const hasSelectedItem = taskForm.collectionExchangeItems && Object.values(taskForm.collectionExchangeItems).some(item => item.selected);
+    if (!hasSelectedItem) {
+      message.warning("珍宝阁商店购买需要至少选择一个商品");
+      return;
+    }
+  }
+  
   // 验证黑市周购买是否选择了商品
   if (taskForm.selectedTasks.includes('weekly_market_buy')) {
     const hasSelectedItem = Object.values(taskForm.weeklyMarketItems).some(item => item.selected);
@@ -7313,6 +7543,7 @@ const saveTask = () => {
     saltCrystalShopItems: JSON.parse(JSON.stringify(taskForm.saltCrystalShopItems)),
     saltIngotShopItems: JSON.parse(JSON.stringify(taskForm.saltIngotShopItems)),
     manualBuyItems: JSON.parse(JSON.stringify(taskForm.manualBuyItems)),
+    collectionExchangeItems: JSON.parse(JSON.stringify(taskForm.collectionExchangeItems)),
     fragmentPackItems: [...(taskForm.fragmentPackItems || [])],
     boxWeeklyRewards: {...taskForm.boxWeeklyRewards},
     smartDeparture: JSON.parse(JSON.stringify(taskForm.smartDeparture)),
@@ -10103,6 +10334,30 @@ const executeScheduledTask = async (task) => {
                   type: "warning",
                 });
               }
+            } else if (taskName === 'collection_exchange') {
+              // 珍宝阁商店购买，从任务配置读取选中的商品
+              const buyConfig = task.collectionExchangeItems || {};
+              const selectedItems = [];
+              Object.keys(buyConfig).forEach(key => {
+                if (buyConfig[key] && buyConfig[key].selected && buyConfig[key].count > 0) {
+                  selectedItems.push({
+                    goodsId: parseInt(key),
+                    name: buyConfig[key].label || '',
+                    count: buyConfig[key].count,
+                  });
+                }
+              });
+              if (selectedItems.length > 0) {
+                // 更新 batchSettings.collectionExchangeItems 供 collection_exchange 函数读取
+                batchSettings.collectionExchangeItems = selectedItems;
+                await taskFunction();
+              } else {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `⚠️ 珍宝阁商店购买未配置商品，跳过`,
+                  type: "warning",
+                });
+              }
             } else if (taskName === 'batchClaimBoxWeeklyRewards') {
               // 宝箱周自选大奖，传递选中的奖励配置 { rewardIndex: count }
               const rewardConfig = task.boxWeeklyRewards || {5: 1};
@@ -10657,6 +10912,12 @@ const executeHelper = () => {
 // Dream Buy Modal Logic
 const showDreamBuyModal = ref(false);
 const dreamBuyList = ref([]);
+
+// 梦境购买网格列数（手机端2列，桌面端3列）
+const dreamGridCols = computed(() => {
+  if (typeof window !== 'undefined' && window.innerWidth <= 600) return 2;
+  return 3;
+});
 
 const openDreamBuyModal = () => {
   // Load saved settings
@@ -12109,9 +12370,55 @@ const deselectAllNewGroup = () => {
 const deleteGroup = (groupId) => {
   if (confirm("确定要删除这个分组吗？分组中的token不会被删除。")) {
     tokenStore.deleteTokenGroup(groupId);
+    // 从批量删除选中列表中移除
+    const idx = batchDeleteSelectedGroupIds.value.indexOf(groupId);
+    if (idx !== -1) batchDeleteSelectedGroupIds.value.splice(idx, 1);
     message.success("分组已删除");
   }
 };
+
+/**
+ * 切换单个分组的批量删除选中状态
+ */
+const toggleBatchDeleteGroupSelection = (groupId, checked) => {
+  if (checked) {
+    if (!batchDeleteSelectedGroupIds.value.includes(groupId)) {
+      batchDeleteSelectedGroupIds.value.push(groupId);
+    }
+  } else {
+    const idx = batchDeleteSelectedGroupIds.value.indexOf(groupId);
+    if (idx !== -1) batchDeleteSelectedGroupIds.value.splice(idx, 1);
+  }
+};
+
+/**
+ * 全选/取消全选分组
+ */
+const toggleSelectAllGroups = (checked) => {
+  if (checked) {
+    batchDeleteSelectedGroupIds.value = tokenGroups.value.map(g => g.id);
+  } else {
+    batchDeleteSelectedGroupIds.value = [];
+  }
+};
+
+/**
+ * 批量删除分组
+ */
+const batchDeleteGroups = () => {
+  if (batchDeleteSelectedGroupIds.value.length === 0) return;
+  const count = batchDeleteSelectedGroupIds.value.length;
+  batchDeleteSelectedGroupIds.value.forEach(groupId => {
+    tokenStore.deleteTokenGroup(groupId);
+  });
+  batchDeleteSelectedGroupIds.value = [];
+  message.success(`已删除 ${count} 个分组`);
+};
+
+// 打开分组管理弹窗时清除选中状态
+watch(showGroupManageModal, (val) => {
+  if (val) batchDeleteSelectedGroupIds.value = [];
+});
 
 /**
  * 保存编辑的分组
@@ -13044,7 +13351,7 @@ const tasksArena = createTasksArena(createTaskDeps());
 const { batcharenafight, batchTopUpFish, batchTopUpArena } = tasksArena;
 
 const tasksStore = createTasksStore(createTaskDeps());
-const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_bronze, store_buy_platinum, store_buy_gold_rod, store_buy_jade, store_buy_selectable, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, buy_top_rod_package, buy_super_spirit_shell, batch_mail_claim_and_cleanup } = tasksStore;
+const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_bronze, store_buy_platinum, store_buy_gold_rod, store_buy_jade, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, buy_top_rod_package, buy_super_spirit_shell, batch_mail_claim_and_cleanup } = tasksStore;
 
 // ====== 采购清单配置 ======
 // 采购清单可选项（用于任务模板中多选）
@@ -13081,6 +13388,30 @@ const purchaseItemOptions = [
 const showManualBuyModal = ref(false);
 const manualBuyConfig = ref([]);
 
+// 珍宝阁商店购买 Modal State
+const showCollectionExchangeModal = ref(false);
+const collectionExchangeConfig = ref([]);
+
+// 珍宝阁商店商品选项（goodsId/限购次数）
+const collectionExchangeItemOptions = [
+  { label: "铂金宝箱", value: 7001, maxCount: 3 },
+  { label: "军团币", value: 4001, maxCount: 2 },
+  { label: "招募令", value: 5001, maxCount: 1 },
+  { label: "万能红将碎片", value: 6001, maxCount: 10 },
+];
+
+// 黑市多选购买网格列数（手机端1列，桌面端2列）
+const gridCols = computed(() => {
+  if (typeof window !== 'undefined' && window.innerWidth <= 600) return 1;
+  return 2;
+});
+
+// 定时任务弹窗网格列数（手机端1列，桌面端2列）
+const taskGridCols = computed(() => {
+  if (typeof window !== 'undefined' && window.innerWidth <= 600) return 1;
+  return 2;
+});
+
 const openManualBuyModal = () => {
   // 从已保存的配置恢复勾选状态
   const savedItems = batchSettings.manualBuyItems || [];
@@ -13115,6 +13446,42 @@ const executeManualBuy = () => {
   
   showManualBuyModal.value = false;
   store_buy_selectable(selectedItems);
+};
+
+const openCollectionExchangeModal = () => {
+  // 从已保存的配置恢复勾选状态
+  const savedItems = batchSettings.collectionExchangeItems || [];
+  collectionExchangeConfig.value = collectionExchangeItemOptions.map(item => {
+    const saved = savedItems.find(s => s.goodsId === item.value);
+    return {
+      ...item,
+      _checked: !!saved && saved.count > 0,
+      count: saved ? saved.count : 0,
+    };
+  });
+  showCollectionExchangeModal.value = true;
+};
+
+const executeCollectionExchange = () => {
+  const selectedItems = collectionExchangeConfig.value
+    .filter(item => item._checked && item.count > 0)
+    .map(item => ({
+      goodsId: item.value,
+      name: item.label,
+      count: item.count,
+    }));
+  
+  if (selectedItems.length === 0) {
+    message.warning("请至少选择一个商品");
+    return;
+  }
+  
+  // 保存配置到 batchSettings，供定时任务使用
+  batchSettings.collectionExchangeItems = selectedItems;
+  saveBatchSettings();
+  
+  showCollectionExchangeModal.value = false;
+  batchCollectionExchange(selectedItems);
 };
 
 // 采购清单 checkbox 切换辅助函数
@@ -15262,6 +15629,11 @@ const sortByActivityAfterDailyTask = async () => {
 .manual-buy-label {
   font-size: 13px;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
 /* 奖励项 */
@@ -15894,6 +16266,125 @@ const sortByActivityAfterDailyTask = async () => {
 @media (min-width: 1025px) {
   .settings-grid-responsive {
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
+
+/* ========== 定时任务弹窗手机端优化 ========== */
+@media (max-width: 600px) {
+  /* 分区卡片减少内边距 */
+  .form-section {
+    padding: 10px;
+    border-radius: 8px;
+  }
+
+  /* 分区标题缩小 */
+  .section-title {
+    font-size: 13px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+  }
+
+  /* 商店商品项紧凑化 */
+  .store-item {
+    padding: 6px 8px;
+    min-height: 36px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .store-item .n-checkbox {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .store-item .n-checkbox :deep(.n-checkbox__label) {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  /* 奖励项紧凑化 */
+  .reward-item {
+    padding: 6px 8px;
+    min-height: 36px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  /* 配置卡片头部：标题和开关纵向排列 */
+  .config-card-header {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .config-card-title {
+    font-size: 13px;
+  }
+
+  .config-card-content {
+    padding: 10px;
+  }
+
+  /* 操作按钮全宽 */
+  .form-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .form-actions .n-button {
+    width: 100%;
+  }
+
+  /* 分组标签紧凑 */
+  .group-tags {
+    gap: 6px;
+  }
+
+  /* 工具栏按钮紧凑 */
+  .section-toolbar {
+    margin-bottom: 8px;
+  }
+
+  /* 不上线时段紧凑 */
+  .offline-time-section {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start !important;
+  }
+
+  /* 十殿预设项紧凑 */
+  .nightmare-preset-item {
+    padding: 6px 0;
+  }
+
+  .preset-item-label {
+    font-size: 12px;
+  }
+
+  /* 单选按钮组手机端换行 */
+  .setting-item :deep(.n-radio-group) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .setting-item :deep(.n-radio-button) {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+  }
+
+  /* 时间选择器全宽 */
+  .setting-item :deep(.n-time-picker) {
+    width: 100% !important;
+  }
+
+  /* 输入框全宽 */
+  .setting-item :deep(.n-input) {
+    width: 100% !important;
   }
 }
 

@@ -75,6 +75,7 @@ export const availableTasks = [
   { label: "免费礼包领取", value: "claim_recruit_welfare" },
   { label: "一键黑市采购", value: "store_purchase" },
   { label: "黑市多选购买", value: "manual_buy" },
+  { label: "珍宝阁商店购买", value: "collection_exchange" },
   { label: "积分好礼领取", value: "charge_claimaddup_rewards" },
   { label: "一键购买青铜宝箱", value: "store_buy_bronze" },
   { label: "一键购买铂金宝箱", value: "store_buy_platinum" },

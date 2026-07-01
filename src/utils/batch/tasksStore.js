@@ -1483,6 +1483,120 @@ export function createTasksStore(deps) {
   };
 
   /**
+   * 珍宝阁商店购买（图鉴积分兑换）
+   * @param {Array<{goodsId: number, name: string, count: number}>} items - 商品列表
+   */
+  const batchCollectionExchange = async (items) => {
+    if (!items || items.length === 0) {
+      return;
+    }
+    if (selectedTokens.value.length === 0) {
+      return;
+    }
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    await runStreaming(selectedTokens.value, async (tokenId) => {
+      if (shouldStop.value) return;
+
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始珍宝阁商店购买: ${token.name} ===`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+        await tokenStore.sendGetRoleInfo(tokenId);
+        await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
+
+        let totalSuccess = 0;
+        let totalFail = 0;
+
+        for (const item of items) {
+          if (shouldStop.value) break;
+
+          for (let i = 0; i < item.count; i++) {
+            if (shouldStop.value) break;
+
+            try {
+              const result = await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "collection_exchange",
+                { goodsId: item.goodsId, goodsNum: 1 },
+                10000,
+              );
+
+              await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
+
+              if (result.error) {
+                totalFail++;
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 兑换${item.name}失败: ${result.error}`,
+                  type: "error",
+                });
+                // 单个失败继续下一个商品
+                break;
+              } else {
+                totalSuccess++;
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 兑换${item.name}成功 (${i + 1}/${item.count})`,
+                  type: "success",
+                });
+              }
+            } catch (e) {
+              totalFail++;
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 兑换${item.name}异常: ${e.message}`,
+                type: "error",
+              });
+              break;
+            }
+          }
+        }
+
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 珍宝阁商店购买完成: 成功${totalSuccess}，失败${totalFail}`,
+          type: "info",
+        });
+
+        tokenStatus.value[tokenId] = "completed";
+      } catch (error) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 珍宝阁商店购买出错: ${error.message}`,
+          type: "error",
+        });
+        tokenStatus.value[tokenId] = "failed";
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭 (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+      }
+    });
+
+    currentRunningTokenId.value = null;
+    isRunning.value = false;
+    shouldStop.value = false;
+  };
+
+  /**
    * 免费扭蛋
    */
   const gacha_drawreward = async () => {
@@ -5759,11 +5873,28 @@ export function createTasksStore(deps) {
     await store_buy_selectable(items);
   };
 
+  /**
+   * 珍宝阁商店购买（定时任务用，从 batchSettings.collectionExchangeItems 读取配置）
+   */
+  const collection_exchange = async () => {
+    const items = batchSettings.collectionExchangeItems;
+    if (!items || items.length === 0) {
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: '珍宝阁商店购买：未配置商品，请在设置中配置 collectionExchangeItems',
+        type: 'warning',
+      });
+      return;
+    }
+    await batchCollectionExchange(items);
+  };
+
   return {
     legion_storebuygoods,
     legionStoreBuySkinCoins,
     store_purchase,
     manual_buy,
+    collection_exchange,
     charge_claimaddup_rewards,
     collection_claimfreereward,
     weekly_market_free_gift,
@@ -5781,6 +5912,7 @@ export function createTasksStore(deps) {
     store_buy_gold_rod,
     store_buy_jade,
     store_buy_selectable,
+    batchCollectionExchange,
     gacha_drawreward,
     legion_buy_red_jade,
     legion_buy_spotted_egg,

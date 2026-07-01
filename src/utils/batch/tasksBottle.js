@@ -75,7 +75,7 @@ export function createTasksBottle(deps) {
           tokenId,
           "bottlehelper_stop",
           {},
-          5000,
+          10000,
         );
 
         await new Promise((r) => setTimeout(r, _getModuleDelay('bottle')));
@@ -89,7 +89,7 @@ export function createTasksBottle(deps) {
           tokenId,
           "bottlehelper_start",
           {},
-          5000,
+          10000,
         );
 
         tokenStatus.value[tokenId] = "completed";

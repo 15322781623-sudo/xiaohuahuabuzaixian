@@ -5,27 +5,8 @@
       <p class="page-desc">生成和管理软件激活卡密</p>
     </div>
 
-    <!-- 设备激活验证 -->
-    <div v-if="!deviceActivated" class="access-denied-card">
-      <div class="denied-icon"></div>
-      <h3>访问被拒绝</h3>
-      <p class="denied-message">
-        只有使用有效激活码绑定的设备才能访问卡密管理页面。
-      </p>
-      <p class="denied-hint">
-        请先在主页面完成卡密激活，然后再访问此页面。
-      </p>
-      <div class="device-info" v-if="currentDeviceId">
-        <span class="label">当前设备 ID：</span>
-        <code>{{ currentDeviceId }}</code>
-      </div>
-      <n-button type="primary" @click="goToActivate" size="large">
-        前往激活
-      </n-button>
-    </div>
-
     <!-- 管理员密码验证 -->
-    <div v-else-if="!adminVerified" class="admin-login-card">
+    <div v-if="!adminVerified" class="admin-login-card">
       <h3>管理员验证</h3>
       <div class="password-input-row">
         <n-input
@@ -146,19 +127,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed } from 'vue';
 import { NInput, NButton, NInputNumber, NTag, useMessage } from 'naive-ui';
-import { isActivated, getDeviceId } from '@/utils/deviceFingerprint';
 
 const WORKER_BASE = 'https://apk.xiaohuaxyzw.top';
 const message = useMessage();
-const router = useRouter();
-
-// 设备激活验证
-const deviceActivated = ref(false);
-const currentDeviceId = ref('');
-const checkingDevice = ref(true);
 
 // 管理员验证
 const adminPassword = ref('');
@@ -200,18 +173,8 @@ const verifyAdmin = async () => {
   adminError.value = '';
 
   try {
-    // 获取设备信息
-    const deviceId = await getDeviceId();
-    const activatedData = JSON.parse(localStorage.getItem('xyzw_activated') || 'null');
-    const cardKey = activatedData?.cardKey || '';
-
-    // 用 list 接口测试密码是否正确（同时验证设备）
     const resp = await fetch(`${WORKER_BASE}/api/card/list`, {
-      headers: {
-        'X-Admin-Password': adminPassword.value,
-        'X-Device-Id': deviceId,
-        'X-Card-Key': cardKey,
-      },
+      headers: { 'X-Admin-Password': adminPassword.value },
     });
     const data = await resp.json();
 
@@ -235,19 +198,13 @@ const verifyAdmin = async () => {
 const generateCards = async () => {
   generating.value = true;
   try {
-    const deviceId = await getDeviceId();
-    const activatedData = JSON.parse(localStorage.getItem('xyzw_activated') || 'null');
-    const cardKey = activatedData?.cardKey || '';
-
     const resp = await fetch(`${WORKER_BASE}/api/card/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Admin-Password': adminPassword.value,
-        'X-Device-Id': deviceId,
-        'X-Card-Key': cardKey,
       },
-      body: JSON.stringify({ count: generateCount.value, deviceId, cardKey }),
+      body: JSON.stringify({ count: generateCount.value }),
     });
     const data = await resp.json();
 
@@ -272,16 +229,8 @@ const generateCards = async () => {
 const loadCards = async () => {
   loading.value = true;
   try {
-    const deviceId = await getDeviceId();
-    const activatedData = JSON.parse(localStorage.getItem('xyzw_activated') || 'null');
-    const cardKey = activatedData?.cardKey || '';
-
     const resp = await fetch(`${WORKER_BASE}/api/card/list`, {
-      headers: {
-        'X-Admin-Password': adminPassword.value,
-        'X-Device-Id': deviceId,
-        'X-Card-Key': cardKey,
-      },
+      headers: { 'X-Admin-Password': adminPassword.value },
     });
     const data = await resp.json();
 
@@ -303,19 +252,13 @@ const loadCards = async () => {
 const resetCard = async (cardKey) => {
   actionLoading.value = cardKey;
   try {
-    const deviceId = await getDeviceId();
-    const activatedData = JSON.parse(localStorage.getItem('xyzw_activated') || 'null');
-    const currentCardKey = activatedData?.cardKey || '';
-
     const resp = await fetch(`${WORKER_BASE}/api/card/delete`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Admin-Password': adminPassword.value,
-        'X-Device-Id': deviceId,
-        'X-Card-Key': currentCardKey,
       },
-      body: JSON.stringify({ targetCardKey: cardKey, action: 'reset', deviceId, cardKey: currentCardKey }),
+      body: JSON.stringify({ targetCardKey: cardKey, action: 'reset' }),
     });
     const data = await resp.json();
 
@@ -340,19 +283,13 @@ const deleteCard = async (cardKey) => {
 
   actionLoading.value = cardKey;
   try {
-    const deviceId = await getDeviceId();
-    const activatedData = JSON.parse(localStorage.getItem('xyzw_activated') || 'null');
-    const currentCardKey = activatedData?.cardKey || '';
-
     const resp = await fetch(`${WORKER_BASE}/api/card/delete`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Admin-Password': adminPassword.value,
-        'X-Device-Id': deviceId,
-        'X-Card-Key': currentCardKey,
       },
-      body: JSON.stringify({ targetCardKey: cardKey, action: 'delete', deviceId, cardKey: currentCardKey }),
+      body: JSON.stringify({ targetCardKey: cardKey, action: 'delete' }),
     });
     const data = await resp.json();
 
@@ -406,41 +343,6 @@ const formatDate = (dateStr) => {
   });
 };
 
-/**
- * 检查设备激活状态
- */
-const checkDeviceActivation = async () => {
-  checkingDevice.value = true;
-  try {
-    // 获取当前设备 ID
-    currentDeviceId.value = await getDeviceId();
-    
-    // 检查是否已激活
-    const activated = await isActivated();
-    deviceActivated.value = activated;
-    
-    if (!activated) {
-      console.log('[卡密管理] 设备未激活，拒绝访问');
-    }
-  } catch (e) {
-    console.error('[卡密管理] 设备验证失败:', e);
-    deviceActivated.value = false;
-  } finally {
-    checkingDevice.value = false;
-  }
-};
-
-/**
- * 前往激活页面
- */
-const goToActivate = () => {
-  router.push('/');
-};
-
-// 组件挂载时检查设备激活状态
-onMounted(() => {
-  checkDeviceActivation();
-});
 </script>
 
 <style scoped>
@@ -463,63 +365,6 @@ onMounted(() => {
   color: #999;
   font-size: 14px;
   margin: 0;
-}
-
-/* 访问被拒绝卡片 */
-.access-denied-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 40px 24px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  text-align: center;
-  max-width: 480px;
-  margin: 40px auto;
-}
-
-.denied-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
-}
-
-.access-denied-card h3 {
-  margin: 0 0 16px;
-  font-size: 20px;
-  color: #333;
-}
-
-.denied-message {
-  color: #666;
-  font-size: 15px;
-  line-height: 1.6;
-  margin: 0 0 12px;
-}
-
-.denied-hint {
-  color: #999;
-  font-size: 13px;
-  margin: 0 0 20px;
-}
-
-.device-info {
-  background: #f5f5f5;
-  padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  font-size: 13px;
-}
-
-.device-info .label {
-  color: #666;
-}
-
-.device-info code {
-  font-family: 'Courier New', monospace;
-  color: #333;
-  word-break: break-all;
-}
-
-.access-denied-card .n-button {
-  margin-top: 8px;
 }
 
 /* 管理员登录卡片 */
@@ -780,31 +625,6 @@ html[data-theme="dark"] .table-header {
 html.dark .table-row,
 html[data-theme="dark"] .table-row {
   border-bottom-color: rgba(255, 255, 255, 0.05);
-}
-
-html.dark .access-denied-card,
-html[data-theme="dark"] .access-denied-card {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-html.dark .access-denied-card h3,
-html[data-theme="dark"] .access-denied-card h3 {
-  color: #fff;
-}
-
-html.dark .denied-message,
-html[data-theme="dark"] .denied-message {
-  color: #ccc;
-}
-
-html.dark .device-info,
-html[data-theme="dark"] .device-info {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-html.dark .device-info code,
-html[data-theme="dark"] .device-info code {
-  color: #fff;
 }
 
 /* 移动端响应式适配 */

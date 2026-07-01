@@ -226,6 +226,7 @@ export function registerDefaultCommands(reg) {
     .register("activity_exchange") // 消耗活动兑换商店购买
     .register("activity_claimmilestone") // 消耗活动领取里程碑进度奖励
     .register("autumn_useitem") // 挥鼓助威消耗
+    .register("collection_exchange") // 图鉴积分珍宝阁商店购买
 
     // 折扣
     .register("discount_getdiscountinfo")
@@ -1513,6 +1514,7 @@ export class XyzwWebSocketClient {
       autumn_useitemresp: "autumn_useitem",
       activity_exchangeresp: "activity_exchange",
       activity_claimmilestoneresp: "activity_claimmilestone",
+      collection_exchangeresp: "collection_exchange",
       arena_getarearankresp: "arena_getarearank",
       bosstower_gethelprankresp: "bosstower_gethelprank",
       // 功法相关响应映射

@@ -359,10 +359,16 @@ export function createCarManager({ tokenStore, connectionManager, batchSettings,
           let shouldRefresh = false;
           const free = Number(car.refreshCount ?? 0) === 0;
 
-          // 策略1: 刷新券充足(≥6)，积极刷新追求自定义条件
-          if (refreshTickets >= 6) {
+          // 策略1: 金砖模式或刷新券充足(≥6)，积极刷新追求自定义条件
+          if (batchSettings.useGoldRefreshFallback || refreshTickets >= 6) {
             shouldRefresh = true;
-            if (hasConditions) {
+            if (batchSettings.useGoldRefreshFallback) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 车辆[${gradeLabel(car.color)}]金砖刷新模式，尝试刷新追求自定义条件`,
+                type: "info",
+              });
+            } else if (hasConditions) {
               addLog({
                 time: new Date().toLocaleTimeString(),
                 message: `${token.name} 车辆[${gradeLabel(car.color)}]刷新券充足(${refreshTickets}张)，尝试刷新追求自定义条件`,
@@ -401,9 +407,10 @@ export function createCarManager({ tokenStore, connectionManager, batchSettings,
             continue;
           }
 
-          // 刷新循环（最多13次）
+          // 刷新循环（金砖模式最多20次，普通模式最多13次）
+          const maxRefreshAttempts = batchSettings.useGoldRefreshFallback ? 20 : 13;
           let refreshAttempt = 0;
-          while (shouldRefresh && !shouldStop.value && refreshAttempt < 13) {
+          while (shouldRefresh && !shouldStop.value && refreshAttempt < maxRefreshAttempts) {
             refreshAttempt++;
             addLog({
               time: new Date().toLocaleTimeString(),
@@ -498,11 +505,11 @@ export function createCarManager({ tokenStore, connectionManager, batchSettings,
               break;
             }
 
-            // 判断是否继续刷新
+            // 判断是否继续刷新（金砖模式下无视刷新券数量，持续刷新）
             const freeNow = Number(car.refreshCount ?? 0) === 0;
 
-            // 策略1: 刷新券充足(≥6)，继续刷新
-            if (refreshTickets >= 6) {
+            // 策略1: 金砖模式或刷新券充足(≥6)，继续刷新
+            if (batchSettings.useGoldRefreshFallback || refreshTickets >= 6) {
               shouldRefresh = true;
             }
             // 策略2: 有免费刷新次数，继续刷新
@@ -537,10 +544,10 @@ export function createCarManager({ tokenStore, connectionManager, batchSettings,
           }
 
           // 刷新次数用尽，强制发车
-          if (refreshAttempt >= 13 && shouldRefresh && !shouldStop.value) {
+          if (refreshAttempt >= maxRefreshAttempts && shouldRefresh && !shouldStop.value) {
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 车辆[${gradeLabel(car.color)}]刷新次数用尽(13次)，强制发车`,
+              message: `${token.name} 车辆[${gradeLabel(car.color)}]刷新次数用尽(${maxRefreshAttempts}次)，强制发车`,
               type: "warning",
             });
             // 等待服务端数据同步

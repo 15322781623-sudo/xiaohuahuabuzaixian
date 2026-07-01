@@ -139,6 +139,11 @@ export function createTasksCar(deps) {
         ? taskSmartDeparture.requireMinColorWithConditions
         : (batchSettings.requireMinColorWithConditions || false);
 
+      // 任务级"强制用金砖刷新"覆盖全局设置
+      const effectiveUseGoldRefresh = (taskSmartDeparture && taskSmartDeparture.enabled && taskSmartDeparture.useGoldRefreshFallback != null)
+        ? taskSmartDeparture.useGoldRefreshFallback
+        : (batchSettings.useGoldRefreshFallback || false);
+
       // 400340重试队列：收集第一批执行中遇到400340错误的账号
       const retry400340Tokens = [];
       const MAX_400340_RETRIES = batchSettings.defaultRetryCount ?? 2;
@@ -181,7 +186,7 @@ export function createTasksCar(deps) {
 
           try {
             // processCarForSmartSend 返回处理后的刷新券数量，用于后续车辆判断
-            refreshTickets = await processCarForSmartSend(tokenId, token.name, car, refreshTickets, customConditions, effectiveCarMinColor, effectiveRefreshDelay, effectiveRequireMinColor, sortedHelpers, helperUsageMap, updateHelperUsage);
+            refreshTickets = await processCarForSmartSend(tokenId, token.name, car, refreshTickets, customConditions, effectiveCarMinColor, effectiveRefreshDelay, effectiveRequireMinColor, effectiveUseGoldRefresh, sortedHelpers, helperUsageMap, updateHelperUsage);
           } catch (carError) {
             const errorMsg = carError.message || "未知错误";
             // 12000030限流错误向上抛出，由批次重试逻辑统一处理
@@ -414,12 +419,12 @@ export function createTasksCar(deps) {
   };
 
   /** 处理单辆车的智能发车逻辑，返回处理后的最新刷新券数量 */
-  const processCarForSmartSend = async (tokenId, tokenName, car, refreshTickets, customConditions, carMinColor, refreshDelay, requireMinColorWithConditions, sortedHelpers, helperUsageMap, updateHelperUsage) => {
-    const effectiveTickets = batchSettings.useGoldRefreshFallback ? 999 : refreshTickets;
+  const processCarForSmartSend = async (tokenId, tokenName, car, refreshTickets, customConditions, carMinColor, refreshDelay, requireMinColorWithConditions, useGoldRefresh, sortedHelpers, helperUsageMap, updateHelperUsage) => {
+    const effectiveTickets = useGoldRefresh ? 999 : refreshTickets;
     const assignHelperFn = async () => assignHelper(tokenId, tokenName, car, sortedHelpers, helperUsageMap, updateHelperUsage);
 
     // 检查是否直接满足发车条件
-    if (shouldSendCar(car, effectiveTickets, carMinColor, customConditions, batchSettings.useGoldRefreshFallback, requireMinColorWithConditions)) {
+    if (shouldSendCar(car, effectiveTickets, carMinColor, customConditions, useGoldRefresh, requireMinColorWithConditions)) {
       await assignHelperFn();
       addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 车辆[${gradeLabel(car.color)}]满足条件，直接发车`, type: "info" });
       await sendCar(tokenId, car);
@@ -428,7 +433,8 @@ export function createTasksCar(deps) {
 
     // 不满足条件，判断是否可以刷新
     const hasFreeRefresh = Number(car.refreshCount ?? 0) === 0;
-    if (refreshTickets < 6 && !hasFreeRefresh) {
+    // 金砖模式下无视刷新券数量，始终尝试刷新；普通模式下刷新券不足且无免费次数则直接发车
+    if (!useGoldRefresh && refreshTickets < 6 && !hasFreeRefresh) {
       await assignHelperFn();
       addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 车辆[${gradeLabel(car.color)}]刷新券不足(${refreshTickets}张)，保留该车辆，直接发车`, type: "warning" });
       await sendCar(tokenId, car);
@@ -443,7 +449,7 @@ export function createTasksCar(deps) {
 
     // 刷新循环（金砖模式最多20次，普通模式最多13次）
     let currentTickets = refreshTickets;
-    const maxRefreshAttempts = batchSettings.useGoldRefreshFallback ? 20 : 13;
+    const maxRefreshAttempts = useGoldRefresh ? 20 : 13;
     for (let refreshAttempt = 0; refreshAttempt < maxRefreshAttempts && !shouldStop.value; refreshAttempt++) {
       addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 车辆[${gradeLabel(car.color)}]尝试刷新(第${refreshAttempt + 1}次)...`, type: "info" });
 
@@ -461,7 +467,7 @@ export function createTasksCar(deps) {
       currentTickets = await getTicketCount(tokenId);
 
       // 检查刷新后是否满足条件
-      if (shouldSendCar(car, currentTickets, carMinColor, customConditions, batchSettings.useGoldRefreshFallback, requireMinColorWithConditions)) {
+      if (shouldSendCar(car, currentTickets, carMinColor, customConditions, useGoldRefresh, requireMinColorWithConditions)) {
         await assignHelperFn();
         addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 刷新后车辆[${gradeLabel(car.color)}]满足条件，发车`, type: "success" });
         // 等待服务端数据同步，防止刷新后立即发车触发12000030限流
@@ -472,8 +478,8 @@ export function createTasksCar(deps) {
 
       addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 刷新后: 颜色=${gradeLabel(car.color)}, 刷新券=${currentTickets}，继续刷新...`, type: "info" });
 
-      // 判断是否继续刷新
-      if (currentTickets < 6 && Number(car.refreshCount ?? 0) !== 0) {
+      // 判断是否继续刷新（金砖模式下无视刷新券数量，持续刷新）
+      if (!useGoldRefresh && currentTickets < 6 && Number(car.refreshCount ?? 0) !== 0) {
         await assignHelperFn();
         addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 刷新后车辆[${gradeLabel(car.color)}]刷新券不足(${currentTickets}张)，停止刷新，直接发车`, type: "warning" });
         // 等待服务端数据同步

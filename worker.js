@@ -58,11 +58,58 @@ async function getCard(kv, cardKey) {
 }
 
 /**
- * 保存卡密数据到 KV
+ * 保存卡密数据到 KV，并更新索引
  */
 async function saveCard(kv, cardKey, data) {
   if (!kv) throw new Error('CARD_KV 未绑定');
   await kv.put(`card:${cardKey}`, JSON.stringify(data));
+  // 更新索引
+  await addCardToIndex(kv, cardKey);
+}
+
+/**
+ * 获取卡密索引列表
+ */
+async function getCardIndex(kv) {
+  if (!kv) return [];
+  try {
+    const raw = await kv.get('card_index');
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error('[卡密] 读取索引失败:', e.message);
+    return [];
+  }
+}
+
+/**
+ * 添加卡密到索引
+ */
+async function addCardToIndex(kv, cardKey) {
+  try {
+    const index = await getCardIndex(kv);
+    if (!index.includes(cardKey)) {
+      index.push(cardKey);
+      await kv.put('card_index', JSON.stringify(index));
+    }
+  } catch (e) {
+    console.error('[卡密] 更新索引失败:', e.message);
+  }
+}
+
+/**
+ * 从索引中移除卡密
+ */
+async function removeCardFromIndex(kv, cardKey) {
+  try {
+    const index = await getCardIndex(kv);
+    const newIndex = index.filter(k => k !== cardKey);
+    if (newIndex.length !== index.length) {
+      await kv.put('card_index', JSON.stringify(newIndex));
+    }
+  } catch (e) {
+    console.error('[卡密] 更新索引失败:', e.message);
+  }
 }
 
 /**
@@ -427,56 +474,45 @@ export default {
       }
     }
 
-    // 管理员：列出所有卡密
+    // 管理员：列出所有卡密（仅需管理员密码）
     if (url.pathname === '/api/card/list' && request.method === 'GET') {
       try {
         const adminPassword = request.headers.get('X-Admin-Password');
-        const deviceId = request.headers.get('X-Device-Id');
-        const currentCardKey = (request.headers.get('X-Card-Key') || '').toUpperCase().trim();
         if (!verifyAdminPassword(adminPassword, env)) {
           return cardJson({ success: false, error: '管理员密码错误' }, 403);
         }
-        if (!await verifyDeviceActivated(cardKv, currentCardKey, deviceId)) {
-          return cardJson({ success: false, error: '当前设备未激活或无权限' }, 403);
+        if (!cardKv) {
+          return cardJson({ success: false, error: 'KV未绑定' }, 500);
         }
-        const list = await cardKv.list({ prefix: 'card:' });
+        // 使用索引列表替代 kv.list() 避免子请求限制
+        const index = await getCardIndex(cardKv);
         const cards = [];
-        for (const key of list.keys) {
-          const raw = await cardKv.get(key.name);
-          if (!raw) continue;
-          try {
-            const data = JSON.parse(raw);
-            cards.push({
-              cardKey: key.name.replace(/^card:/, ''),
-              status: data.status || 'unused',
-              createdAt: data.createdAt || null,
-              deviceId: data.deviceId || null,
-              activatedAt: data.activatedAt || null,
-              resetCount: data.resetCount || 0,
-              lastResetAt: data.lastResetAt || null,
-            });
-          } catch {
-            // 忽略损坏数据
-          }
+        for (const cardKey of index) {
+          const data = await getCard(cardKv, cardKey);
+          if (!data) continue;
+          cards.push({
+            cardKey,
+            status: data.status || 'unused',
+            createdAt: data.createdAt || null,
+            deviceId: data.deviceId || null,
+            activatedAt: data.activatedAt || null,
+            resetCount: data.resetCount || 0,
+            lastResetAt: data.lastResetAt || null,
+          });
         }
         return cardJson({ success: true, cards });
       } catch (e) {
         console.error('[卡密/list] 错误:', e.message);
-        return cardJson({ success: false, error: '服务器错误' }, 500);
+        return cardJson({ success: false, error: '服务器错误: ' + e.message }, 500);
       }
     }
 
-    // 管理员：批量生成卡密
+    // 管理员：批量生成卡密（仅需管理员密码）
     if (url.pathname === '/api/card/generate' && request.method === 'POST') {
       try {
         const adminPassword = request.headers.get('X-Admin-Password');
-        const deviceId = request.headers.get('X-Device-Id');
-        const currentCardKey = (request.headers.get('X-Card-Key') || '').toUpperCase().trim();
         if (!verifyAdminPassword(adminPassword, env)) {
           return cardJson({ success: false, error: '管理员密码错误' }, 403);
-        }
-        if (!await verifyDeviceActivated(cardKv, currentCardKey, deviceId)) {
-          return cardJson({ success: false, error: '当前设备未激活或无权限' }, 403);
         }
         const { count = 1 } = await request.json();
         const generateCount = Math.min(Math.max(parseInt(count) || 1, 1), 100);
@@ -508,17 +544,12 @@ export default {
       }
     }
 
-    // 管理员：重置/删除卡密
+    // 管理员：重置/删除卡密（仅需管理员密码）
     if (url.pathname === '/api/card/delete' && request.method === 'POST') {
       try {
         const adminPassword = request.headers.get('X-Admin-Password');
-        const deviceId = request.headers.get('X-Device-Id');
-        const currentCardKey = (request.headers.get('X-Card-Key') || '').toUpperCase().trim();
         if (!verifyAdminPassword(adminPassword, env)) {
           return cardJson({ success: false, error: '管理员密码错误' }, 403);
-        }
-        if (!await verifyDeviceActivated(cardKv, currentCardKey, deviceId)) {
-          return cardJson({ success: false, error: '当前设备未激活或无权限' }, 403);
         }
         const { targetCardKey, action = 'reset' } = await request.json();
         const normalizedTarget = (targetCardKey || '').toUpperCase().trim();
@@ -527,6 +558,7 @@ export default {
         }
         if (action === 'delete') {
           await cardKv.delete(`card:${normalizedTarget}`);
+          await removeCardFromIndex(cardKv, normalizedTarget);
           return cardJson({ success: true, message: '卡密已删除' });
         }
         // 重置

@@ -402,24 +402,41 @@ export function createTasksLegacy(deps) {
           // 根据VIP等级获取基础赠送上限
           const vipLevel = roleInfo?.role?.vip || 0;
 
-          // 检查赛季充值特权：role.statistics["legacy:charge"] 为充值金额（3000=30元），statisticsTime["legacy:charge"] 为赛季开始时间戳
-          const legacyCharge = roleInfo?.role?.statistics?.["legacy:charge"] || 0;
-          const legacyChargeTime = roleInfo?.role?.statisticsTime?.["legacy:charge"] || 0;
-          // 充值金额 >= 3000（30元）且赛季时间戳在本月内，判定为特权开启
-          const now = new Date();
-          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime() / 1000;
-          const hasLegacyPrivilege = legacyCharge >= 3000 && legacyChargeTime >= monthStart;
+          // 检查赛季充值特权：
+          // statistics["legacy:charge"] = 赛季累计充值金额（3000=30元）
+          // statisticsTime["legacy:charge"] = 赛季开始时间戳
+          // statisticsTime["today:charge"] = 实际充值时间戳
+          // 判断条件：充值金额≥3000 且 充值时间在赛季开始之后（当前赛季内充值）
+          const statistics = roleInfo?.role?.statistics || {};
+          const statisticsTime = roleInfo?.role?.statisticsTime || {};
+          const legacyCharge = statistics["legacy:charge"] || 0;
+          const seasonStartTime = statisticsTime["legacy:charge"] || 0;
+          const chargeTime = statisticsTime["today:charge"] || 0;
+          const hasLegacyPrivilege = legacyCharge >= 3000 && chargeTime > 0 && chargeTime >= seasonStartTime;
           if (hasLegacyPrivilege) {
-            const seasonDate = new Date(legacyChargeTime * 1000).toLocaleDateString();
+            const chargeDate = new Date(chargeTime * 1000).toLocaleDateString();
+            const seasonDate = new Date(seasonStartTime * 1000).toLocaleDateString();
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 本月充值 ${legacyCharge / 100}元（时间: ${seasonDate}），特权开启，赠送无上限`,
+              message: `${token.name} 赛季充值 ${legacyCharge / 100}元（充值时间: ${chargeDate}，赛季开始: ${seasonDate}），特权开启，赠送无上限`,
               type: "info",
             });
-          } else if (legacyCharge >= 3000 && legacyChargeTime > 0 && legacyChargeTime < monthStart) {
+          } else if (legacyCharge >= 3000 && (chargeTime === 0 || chargeTime < seasonStartTime)) {
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 充值记录非本月（${new Date(legacyChargeTime * 1000).toLocaleDateString()}），特权未开启`,
+              message: `${token.name} 充值 ${legacyCharge / 100}元但非本赛季（充值时间: ${chargeTime > 0 ? new Date(chargeTime * 1000).toLocaleDateString() : '无'}），特权未开启`,
+              type: "info",
+            });
+          } else if (legacyCharge > 0) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 赛季累计充值 ${legacyCharge / 100}元（<30元），特权未开启`,
+              type: "info",
+            });
+          } else {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 无充值记录，特权未开启`,
               type: "info",
             });
           }
