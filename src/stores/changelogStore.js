@@ -14,6 +14,24 @@ export const useChangelogStore = defineStore("changelog", () => {
    */
   const changelogs = ref([
     {
+      version: "v2.14.0",
+      date: "2026-07-01",
+      type: "minor",
+      title: "珍宝阁商店购买 & 功法残卷特权修复",
+      features: [
+        "新增珍宝阁商店多选购买功能，支持铂金宝箱/军团币/招募令/万能红将碎片",
+        "珍宝阁商店购买支持定时任务自动执行",
+      ],
+      improvements: [
+        "优化批量日常页面响应式布局，断点从480px调整为600px",
+        "优化珍宝阁商店购买命令超时时间为10秒",
+      ],
+      fixes: [
+        "修复功法残卷赠送充值特权判断逻辑，使用赛季充值时间与赛季开始时间对比",
+        "修复推图定时任务未包含在全量导出中的问题",
+      ],
+    },
+    {
       version: "v2.13.0",
       date: "2026-06-30",
       type: "minor",

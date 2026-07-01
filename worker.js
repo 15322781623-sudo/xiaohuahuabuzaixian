@@ -12,8 +12,8 @@ const GITHUB_PROXY_LIST = [
 
 // 静态兜底配置（R2 和 GitHub 都失败时使用）
 const FALLBACK_CONFIG = {
-  latestVersion: "2.13.0",
-  versionCode: 21300,
+  latestVersion: "2.14.0",
+  versionCode: 21400,
   // R2 直连下载（最快最稳）
   downloadUrl: `https://xyzw-apk-updater.15322781623.workers.dev/api/apk/download`,
   // GitHub 原始链接作为备选
