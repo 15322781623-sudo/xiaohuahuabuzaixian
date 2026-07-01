@@ -8236,7 +8236,7 @@ const exportConfig = async () => {
     const filteredScheduledTasks = (scheduledTasks.value || []).map((task) => ({
       ...task,
       selectedTokens: task.selectedTokens?.filter((tid) => validTokenIds.has(tid)) || [],
-    })).filter((task) => task.selectedTokens.length > 0);
+    })).filter((task) => task.taskType === 'push_map' || task.selectedTokens.length > 0);
 
     const binDataMap = await collectBinData(tokens.value);
     const binCount = Object.keys(binDataMap).length;
