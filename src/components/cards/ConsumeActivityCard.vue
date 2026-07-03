@@ -2432,4 +2432,86 @@ const queryAllMembersProgress = async () => {
   .ca-main { grid-template-columns: 1fr; gap: 10px; }
   .ca-progress-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ---- Mobile responsive ---- */
+@media (max-width: 768px) {
+  .consume-activity-card { padding: 10px 12px; }
+
+  /* Header: wrap to multiple lines */
+  .ca-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .ca-header-left {
+    flex-wrap: wrap;
+    width: 100%;
+    :deep(.n-select) { width: 140px !important; }
+    .n-select { width: 140px !important; }
+  }
+  .ca-header-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  /* Progress: 2 columns on mobile */
+  .ca-progress-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Table rows: stack vertically */
+  .ca-table-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 6px 0;
+    .col-type { font-size: 12px; }
+    .col-stock { gap: 4px; }
+    .col-ctrl {
+      justify-content: flex-start;
+      flex-wrap: wrap;
+    }
+  }
+
+  /* Auto row: wrap controls */
+  .ca-auto-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Scan targets: wrap */
+  .ca-scan-targets {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Member bar: full width search */
+  .ca-member-bar {
+    flex-wrap: wrap;
+    gap: 6px;
+    .n-input { width: 100% !important; margin-left: 0 !important; }
+  }
+
+  /* Scan head: wrap */
+  .ca-scan-head {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Points inline: wrap */
+  .ca-points-inline {
+    .pts-next { margin-left: 0; width: 100%; }
+  }
+
+  /* Section title: allow wrap */
+  .ca-section-title {
+    flex-wrap: wrap;
+  }
+}
+
+/* ---- Extra small screens ---- */
+@media (max-width: 400px) {
+  .ca-progress-grid { grid-template-columns: 1fr; }
+  .ca-header-left {
+    .n-select { width: 120px !important; }
+  }
+}
 </style>

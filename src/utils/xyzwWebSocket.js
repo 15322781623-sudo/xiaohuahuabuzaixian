@@ -586,6 +586,8 @@ export class XyzwWebSocketClient {
     this.isReconnecting = false; // 重连状态标志
     this.fatalError = false; // _sys/fatal 标记
     this.fatalReason = null; // _sys/fatal 错误原因
+    this.lastHeartbeatAck = Date.now();  // 最后心跳响应时间
+    this.heartbeatMissCount = 0;         // 连续心跳丢失计数
 
     this.promises = Object.create(null);
     this.registry = registerDefaultCommands(
@@ -688,6 +690,12 @@ export class XyzwWebSocketClient {
                 // 收到Blob消息
               }
 
+              // 心跳响应更新
+              const blobCmd = packet?.cmd || packet?._raw?.cmd;
+              if (blobCmd === "_sys/ack") {
+                this.lastHeartbeatAck = Date.now();
+              }
+
               // 检查系统级致命/错误消息
               if (this._handleSystemMessage(packet)) return;
 
@@ -710,6 +718,12 @@ export class XyzwWebSocketClient {
 
         if (this.showMsg) {
           gameLogger.verbose("收到消息:", packet);
+        }
+
+        // 心跳响应更新
+        const msgCmd = packet?.cmd || packet?._raw?.cmd;
+        if (msgCmd === "_sys/ack") {
+          this.lastHeartbeatAck = Date.now();
         }
 
         // 处理消息体解码（ProtoMsg会自动解码）
@@ -1201,6 +1215,10 @@ export class XyzwWebSocketClient {
 
   /** 设置心跳 */
   _setupHeartbeat() {
+    // 重置心跳计数
+    this.lastHeartbeatAck = Date.now();
+    this.heartbeatMissCount = 0;
+
     // 延迟3秒后开始发送第一个心跳，避免连接刚建立就发送
     setTimeout(() => {
       if (this.connected && this.socket?.readyState === WebSocket.OPEN) {
@@ -1212,6 +1230,24 @@ export class XyzwWebSocketClient {
     // 设置定期心跳
     this.heartbeatTimer = setInterval(() => {
       if (this.connected && this.socket?.readyState === WebSocket.OPEN) {
+        // 检查上一次心跳是否有响应（超过 15 秒无响应算丢失）
+        const timeSinceLastAck = Date.now() - this.lastHeartbeatAck;
+        if (timeSinceLastAck > 15000) {
+          this.heartbeatMissCount++;
+          wsLogger.warn(`心跳超时: ${timeSinceLastAck}ms 未收到响应, 连续丢失 ${this.heartbeatMissCount} 次`);
+
+          if (this.heartbeatMissCount >= 3) {
+            wsLogger.error(`连续 ${this.heartbeatMissCount} 次心跳无响应，判定连接已死，主动断开`);
+            this.heartbeatMissCount = 0;
+            this.disconnect();
+            // 重连由 tokenStore onDisconnect 回调或 pushMapRunner 循环统一处理
+            return;
+          }
+        } else {
+          // 收到响应，重置计数
+          this.heartbeatMissCount = 0;
+        }
+
         this.sendHeartbeat();
       } else {
         wsLogger.warn("心跳检查失败: 连接状态异常");

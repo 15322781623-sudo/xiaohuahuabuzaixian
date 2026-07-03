@@ -8,19 +8,25 @@
       <p>挑战关卡赢取奖励</p>
     </template>
     <template #badge>
-      <!-- Badge content moved to default slot -->
+      <span v-if="!actId && !isFighting" class="badge-closed">活动未开启</span>
+      <span v-else-if="actId" class="badge-open">活动已开启</span>
+      <span v-else>{{ isFighting ? "挑战中" : "已停止" }}</span>
     </template>
     <template #default>
       <div class="header-info">
         <span class="challenge-count">今日挑战 {{ dailyFightNum }}/10</span>
-        <span v-if="isActivityValid" class="daily-target">今日可挑战 {{ todayInfo }}</span>
-        <span v-else class="daily-target">活动已结束</span>
+        <span v-if="isActivityValid" class="daily-target">{{ todayInfo }}</span>
+        <span v-else class="daily-target">活动未开启</span>
       </div>
 
-      <div v-if="!isActivityValid" class="expired-mask">
+      <div v-if="!isActivityValid && actId" class="expired-mask">
         当前活动已结束
       </div>
-      <div class="boss-grid" :class="{ disabled: !isActivityValid }">
+      <div v-if="!actId && !isFighting" class="activity-closed-tip">
+        <span class="closed-tip-icon">⚠️</span>
+        <span class="closed-tip-text">换皮闯关活动未开启（activity_get 未返回 actEGameInfo）</span>
+      </div>
+      <div class="boss-grid" :class="{ disabled: !isActivityValid || !actId }">
         <div
           v-for="type in 6"
           :key="type"
@@ -59,12 +65,29 @@
           {{ isFighting ? "刷新中..." : "刷新进度" }}
         </button>
       </div>
+
+      <!-- 操作日志区 -->
+      <div class="log-area">
+        <span class="log-title">操作日志</span>
+        <div class="log-list" ref="logListRef">
+          <div v-if="fightLogs.length === 0" class="log-empty">暂无操作日志</div>
+          <div
+            v-for="(log, idx) in fightLogs"
+            :key="idx"
+            class="log-item"
+            :class="log.type"
+          >
+            <span class="log-time">{{ log.time }}</span>
+            <span class="log-msg">{{ log.message }}</span>
+          </div>
+        </div>
+      </div>
     </template>
   </MyCard>
 </template>
 
 <script setup>
-import { computed, ref, watch } from "vue";
+import { computed, ref, watch, nextTick } from "vue";
 import { useTokenStore } from "@/stores/tokenStore";
 import { useMessage } from "naive-ui";
 import MyCard from "../Common/MyCard.vue";
@@ -74,15 +97,13 @@ const message = useMessage();
 
 const isFighting = ref(false);
 const actId = ref(null);
+
+// 活动有效期判断：基于 actId 的日期格式 YYMMDDX
 const isActivityValid = computed(() => {
-  if (!actId.value)
-    return false;
-
+  if (!actId.value) return false;
   const idStr = String(actId.value);
-  if (idStr.length < 6)
-    return false;
+  if (idStr.length < 6) return false;
 
-  // Format: YYMMDDX -> 20YY-MM-DD
   const year = `20${idStr.substring(0, 2)}`;
   const month = idStr.substring(2, 4);
   const day = idStr.substring(4, 6);
@@ -96,17 +117,16 @@ const isActivityValid = computed(() => {
 });
 
 const levelRewardMap = ref({});
-const dailyFightNum = ref(0); // Mock or real data
+const dailyFightNum = ref(0);
 const finishedCount = computed(() => Object.keys(levelRewardMap.value).length);
 
 const statusClass = computed(() => {
-  if (finishedCount.value >= 48)
-    return "completed";
+  if (finishedCount.value >= 48) return "completed";
   return "active";
 });
 
-// Calculate today's open boss
-const todayWeekDay = new Date().getDay(); // 0-6 (Sun-Sat)
+// ====== 今日开放 BOSS ======
+const todayWeekDay = new Date().getDay();
 const openTowerMap = {
   5: [1], // Friday
   6: [2], // Saturday
@@ -125,15 +145,13 @@ const todayInfo = computed(() => {
   const weekDays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
   const dayName = weekDays[todayWeekDay];
   const towers = todayOpenTowers.value;
-  if (towers.length === 6)
-    return `${dayName} - 全部开放`;
-  if (towers.length > 0)
-    return `${dayName} - BOSS ${towers.join(",")}`;
+  if (towers.length === 6) return `${dayName} - 全部开放`;
+  if (towers.length > 0) return `${dayName} - BOSS ${towers.join(",")}`;
   return `${dayName} - 无活动`;
 });
 
 const isTowerOpen = (type) => {
-  return todayOpenTowers.value.includes(type) || todayOpenTowers.value.includes(6) && todayWeekDay === 4; // Special case for Thursday if map is correct
+  return todayOpenTowers.value.includes(type);
 };
 
 const isTowerCleared = (type) => {
@@ -143,15 +161,11 @@ const isTowerCleared = (type) => {
 };
 
 const getTowerLevel = (type) => {
-  // Find highest cleared level
   for (let i = 8; i >= 1; i--) {
     const key1 = `${type}00${i}`;
     const key2 = Number(key1);
     if (levelRewardMap.value[key1] || levelRewardMap.value[key2]) {
-      // If 8 is cleared, return 8
-      if (i === 8)
-        return 8;
-      // Else return next level
+      if (i === 8) return 8;
       return i + 1;
     }
   }
@@ -162,104 +176,187 @@ const canChallenge = (type) => {
   return isActivityValid.value && isTowerOpen(type) && !isTowerCleared(type);
 };
 
+// ====== 日志 ======
+const fightLogs = ref([]);
+const logListRef = ref(null);
+
+const addLog = (msg, type = "info") => {
+  fightLogs.value.push({
+    time: new Date().toLocaleTimeString(),
+    message: msg,
+    type,
+  });
+  if (fightLogs.value.length > 60) {
+    fightLogs.value = fightLogs.value.slice(-60);
+  }
+  nextTick(() => {
+    if (logListRef.value) {
+      logListRef.value.scrollTop = logListRef.value.scrollHeight;
+    }
+  });
+};
+
+// ====== 获取换皮闯关信息（参考 TokenCard 的 refreshTowerInfo）======
 const getInfo = async () => {
-  if (!tokenStore.selectedToken)
-    return;
+  if (!tokenStore.selectedToken) return;
   const tokenId = tokenStore.selectedToken.id;
-  if (tokenStore.getWebSocketStatus(tokenId) !== "connected")
-    return;
+  if (tokenStore.getWebSocketStatus(tokenId) !== "connected") return;
 
   try {
-    // 根据今天日期推导 actId：yymmdd1
-    const now = new Date();
-    const yy = String(now.getFullYear() % 100).padStart(2, '0');
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    const actId = Number(`${yy}${mm}${dd}1`);
+    // 从 activity_get 动态获取换皮闯关活动ID
+    // actEGameInfo.actId 为本周活动ID，减1即为 towers_getinfo 的 actId
+    let derivedActId = null;
+    try {
+      const activityRes = await tokenStore.sendMessageWithPromise(
+        tokenId,
+        "activity_get",
+        {},
+        5000,
+      );
+      const actEGameInfo = activityRes?.activity?.actEGameInfo || activityRes?.actEGameInfo;
+      if (actEGameInfo?.actId) {
+        derivedActId = Number(actEGameInfo.actId) - 1;
+        console.log(`[换皮闯关] actEGameInfo.actId=${actEGameInfo.actId}, 推导 towers actId: ${derivedActId}`);
+      }
+    } catch (e) {
+      console.warn("[换皮闯关] activity_get 失败:", e.message);
+    }
 
-    const res = await tokenStore.sendMessageWithPromise(tokenId, "towers_getinfo", { actId }, 5000);
+    if (!derivedActId) {
+      // actEGameInfo 不存在，活动未开启
+      actId.value = null;
+      levelRewardMap.value = {};
+      dailyFightNum.value = 0;
+      return;
+    }
+
+    const res = await tokenStore.sendMessageWithPromise(
+      tokenId,
+      "towers_getinfo",
+      { actId: derivedActId },
+      5000,
+    );
+
     if (res) {
-      // Handle nested data structure if necessary
       const data = res.actId ? res : (res.towerData && res.towerData.actId ? res.towerData : res);
-
       actId.value = data.actId;
       levelRewardMap.value = data.levelRewardMap || {};
-
-      console.log("SkinChallenge Info:", {
-        actId: data.actId,
-        mapSize: Object.keys(levelRewardMap.value).length,
-        keys: Object.keys(levelRewardMap.value).slice(0, 10),
-        map: levelRewardMap.value,
-        rawRes: res,
-      });
-
-      // Try to find daily num if exists in response
       if (data.todayUseTickCnt !== undefined) {
         dailyFightNum.value = data.todayUseTickCnt;
       }
     }
   } catch (e) {
-    // console.error(e);
+    const errorMsg = e.message || "";
+    // 错误码7900021表示活动未开放或不存在
+    if (errorMsg.includes("7900021")) {
+      actId.value = null;
+      levelRewardMap.value = {};
+      dailyFightNum.value = 0;
+    } else {
+      console.error("[换皮闯关] 刷新信息失败:", e);
+    }
   }
 };
 
 const refreshInfo = async () => {
   isFighting.value = true;
   await getInfo();
-  message.success("进度已刷新");
+  if (actId.value) {
+    message.success("进度已刷新");
+    addLog(`进度已刷新，actId: ${actId.value}`);
+  } else {
+    message.warning("换皮闯关活动未开启");
+    addLog("换皮闯关活动未开启", "warning");
+  }
   isFighting.value = false;
 };
 
+// ====== 挑战换皮闯关 BOSS（参考 TokenCard 的 challengeTower）======
 const challengeSingle = async (type) => {
-  if (isFighting.value)
+  if (isFighting.value) return;
+
+  // 检查 WebSocket 连接
+  const tokenId = tokenStore.selectedToken.id;
+  const wsStatus = tokenStore.getWebSocketStatus(tokenId);
+  if (wsStatus !== "connected") {
+    message.warning("WebSocket未连接，请先建立连接");
+    addLog(`WebSocket状态: ${wsStatus}，请先建立连接`, "error");
     return;
+  }
+
+  if (!actId.value) {
+    message.warning("换皮闯关活动未开启或信息未刷新");
+    addLog("actId 为空，请先刷新进度", "warning");
+    return;
+  }
 
   isFighting.value = true;
-  const tokenId = tokenStore.selectedToken.id;
+  addLog(`=== 开始挑战 BOSS ${type} ===`);
+  addLog(`actId: ${actId.value}，当前层数: 第${getTowerLevel(type)}层`);
 
   try {
-    message.info(`开始挑战 BOSS ${type}`);
-
     let needStart = true;
     let loop = true;
     let failCount = 0;
+    const currentActId = Number(actId.value);
 
     while (loop) {
       if (needStart) {
-        await tokenStore.sendMessageWithPromise(tokenId, "towers_start", { towerType: type, actId: Number(actId.value) }, 5000);
+        try {
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "towers_start",
+            { towerType: type, actId: currentActId },
+            5000,
+          );
+          addLog(`towers_start BOSS ${type} 成功`);
+        } catch (startErr) {
+          const startErrorMsg = startErr.message || "";
+          // 200330错误：已经开启过了，视为成功，继续战斗
+          if (startErrorMsg.includes("200330")) {
+            addLog(`BOSS ${type} 已开启过，继续战斗 (200330)`, "info");
+          } else {
+            addLog(`BOSS ${type} 开启失败: ${startErrorMsg.substring(0, 80)}`, "error");
+            throw startErr;
+          }
+        }
+        await new Promise((r) => setTimeout(r, 1500));
       }
 
-      const fightRes = await tokenStore.sendMessageWithPromise(tokenId, "towers_fight", { towerType: type, actId: Number(actId.value) }, 5000);
-      const towerData = fightRes?.towerData;
-      const passed = towerData?.pass === true;
+      const fightRes = await tokenStore.sendMessageWithPromise(
+        tokenId,
+        "towers_fight",
+        { towerType: type, actId: currentActId },
+        5000,
+      );
+      const battleData = fightRes?.battleData;
+      const curHP = battleData?.result?.accept?.ext?.curHP;
 
-      if (passed) {
-        // Get current level before updating info (it will be the level just cleared)
-        const currentLevel = getTowerLevel(type);
-        message.success(`BOSS ${type} 第 ${currentLevel} 层挑战成功`);
-
-        // 挑战成功，不需要重新 start，直接继续 fight
+      if (curHP === 0) {
+        // 挑战成功
         needStart = false;
         failCount = 0;
 
-        // 检查是否通关（需要更新 levelRewardMap）
+        const currentLevel = getTowerLevel(type);
+        addLog(`BOSS ${type} 第 ${currentLevel} 层挑战成功`, "success");
+
+        // 刷新数据检查是否通关
         await getInfo();
         if (isTowerCleared(type)) {
           loop = false;
-          message.success(`BOSS ${type} 已全部通关`);
+          addLog(`BOSS ${type} 已全部通关`, "success");
         } else {
-          // 等待一下避免过快请求
           await new Promise((r) => setTimeout(r, 1000));
         }
       } else {
+        // 挑战失败
         const currentLevel = getTowerLevel(type);
-        message.warning(`BOSS ${type} 第 ${currentLevel} 层挑战失败`);
-        // 挑战失败，需要重新 start
+        addLog(`BOSS ${type} 第 ${currentLevel} 层挑战失败 (curHP=${curHP})`, "warning");
         needStart = true;
         failCount++;
 
         if (failCount >= 3) {
-          message.error(`BOSS ${type} 第 ${currentLevel} 层连续失败 3 次，停止挑战`);
+          addLog(`BOSS ${type} 第 ${currentLevel} 层连续失败 3 次，停止挑战`, "error");
           loop = false;
         } else {
           await new Promise((r) => setTimeout(r, 1000));
@@ -267,13 +364,17 @@ const challengeSingle = async (type) => {
       }
     }
   } catch (e) {
-    message.error(`挑战出错: ${e.message}`);
+    const errorMsg = e.message || "未知错误";
+    addLog(`挑战 BOSS ${type} 出错: ${errorMsg}`, "error");
+    message.error(`挑战出错: ${errorMsg}`);
   } finally {
     isFighting.value = false;
     await getInfo();
+    addLog(`挑战结束，当前进度已刷新`);
   }
 };
 
+// ====== 监听 ======
 watch(
   () => tokenStore.selectedToken,
   (newVal) => {
@@ -285,7 +386,7 @@ watch(
 );
 
 watch(
-  () => tokenStore.getWebSocketStatus(tokenStore.selectedToken?.id),
+  () => tokenStore.selectedToken ? tokenStore.getWebSocketStatus(tokenStore.selectedToken.id) : "disconnected",
   (status) => {
     if (status === "connected") {
       getInfo();
@@ -295,6 +396,45 @@ watch(
 </script>
 
 <style scoped lang="scss">
+.badge-closed {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.badge-open {
+  background: #dcfce7;
+  color: #166534;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.activity-closed-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #92400e;
+  
+  .closed-tip-icon {
+    font-size: 12px;
+  }
+  
+  .closed-tip-text {
+    line-height: 1.4;
+  }
+}
+
 .header-info {
   display: flex;
   gap: var(--spacing-md);
@@ -333,7 +473,7 @@ watch(
   transition: all var(--transition-fast);
 
   &.active {
-    background: #fff;
+    background: var(--bg-primary, #fff);
     border-color: var(--primary-color);
     box-shadow: var(--shadow-sm);
   }
@@ -394,7 +534,7 @@ watch(
   }
 
   &.active {
-    display: none; // Hide "进行中" text if button is there, or show it?
+    color: var(--primary-color);
   }
 }
 
@@ -437,6 +577,65 @@ watch(
 
   &:hover {
     background: var(--bg-secondary);
+  }
+}
+
+.log-area {
+  margin-top: 8px;
+  border: 1px solid var(--border-light, #e0e0e0);
+  border-radius: 6px;
+  overflow: hidden;
+
+  .log-title {
+    display: block;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: bold;
+    color: var(--text-secondary, #888);
+    background: var(--bg-tertiary, #f5f5f5);
+    border-bottom: 1px solid var(--border-light, #e0e0e0);
+  }
+
+  .log-list {
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 4px 8px;
+    font-size: 12px;
+    line-height: 1.6;
+
+    .log-empty {
+      color: var(--text-tertiary, #aaa);
+      text-align: center;
+      padding: 8px;
+    }
+
+    .log-item {
+      display: flex;
+      gap: 6px;
+      padding: 1px 0;
+
+      .log-time {
+        color: var(--text-tertiary, #aaa);
+        flex-shrink: 0;
+        font-family: monospace;
+      }
+
+      .log-msg {
+        word-break: break-all;
+      }
+
+      &.success .log-msg {
+        color: var(--success-color, #18a058);
+      }
+
+      &.error .log-msg {
+        color: var(--error-color, #d03050);
+      }
+
+      &.warning .log-msg {
+        color: var(--warning-color, #f0a020);
+      }
+    }
   }
 }
 

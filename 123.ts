@@ -1,4 +1,3 @@
-import PQueue from "p-queue";
 import { useLocalStorage } from "@vueuse/core";
 import { defineStore } from "pinia";
 import { computed, onUnmounted, ref } from "vue";
@@ -12,14 +11,10 @@ import { XyzwWebSocketClient } from "@/utils/xyzwWebSocket";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { generateRandomSeed } from "@/utils/randomSeed";
 import { transformToken } from "@/utils/token";
-import { getBinBackupWithFallback, deleteBinBackup } from "@/utils/binBackup";
 import { emitPlus } from "./events/index.js";
 import router from "@/router";
 
 const { getArrayBuffer, storeArrayBuffer, deleteArrayBuffer, clearAll } = useIndexedDB();
-
-// BIN Token刷新专用队列：串行执行，每个间隔2秒，防止并发请求authuser触发服务器限流
-const binRefreshQueue = new PQueue({ concurrency: 1, interval: 2000 });
 
 declare interface TokenData {
   id: string;
@@ -85,9 +80,6 @@ const activeConnections = useLocalStorage("activeConnections", {});
 
 // Token分组管理
 export const tokenGroups = useLocalStorage<TokenGroup[]>("tokenGroups", []);
-
-// 推图保活防重连锁：记录正在重连中的 tokenId，避免 onDisconnect 重复调度 createWebSocketConnection
-const pushReconnecting = new Set<string>();
 
 /**
  * 重构后的Token管理存储
@@ -324,12 +316,9 @@ export const useTokenStore = defineStore("tokens", () => {
       selectedTokenId.value = null;
     }
 
-    // 同时删除 IndexedDB 中的数据
+    // 同时删除IndexedDB中的数据
     await deleteArrayBuffer(tokenId);
-    
-    // 同时删除 localStorage 备份
-    deleteBinBackup(tokenId);
-    
+
     return true;
   };
 
@@ -718,15 +707,14 @@ export const useTokenStore = defineStore("tokens", () => {
             usedOldKey = true;
             wsLogger.info(`使用名称作为键找到BIN数据: ${gameToken.name}`);
           } else {
-            errorMessage = "未找到BIN数据";
+            errorMessage = "未找到BIN数据，请重新导入原始BIN文件以恢复Token刷新功能";
             wsLogger.error(`Token刷新失败: ${errorMessage} [${tokenId}]`);
           }
         }
 
         if (userToken) {
           try {
-            // 通过队列串行执行transformToken，避免多账号并发刷新触发服务器限流
-            const token = await binRefreshQueue.add(() => transformToken(userToken));
+            const token = await transformToken(userToken);
             updateToken(tokenId, {
               ...gameToken,
               token,
@@ -840,7 +828,7 @@ export const useTokenStore = defineStore("tokens", () => {
 
       // BIN数据转换失败时，标记连接为断开并阻止无效重连
       // 因为旧token无效，重连也会被服务器拒绝，避免无限循环
-      if (errorMessage.includes("BIN数据转换失败") || errorMessage.includes("未找到BIN数据")) {
+      if (errorMessage.includes("BIN数据转换失败") || errorMessage.includes("未找到BIN数据") || errorMessage.includes("请重新导入原始BIN文件")) {
         wsLogger.error(`[WS] BIN数据已失效，停止自动重连，请重新导入Token [${tokenId}]`);
         if (wsConnections.value[tokenId]) {
           wsConnections.value[tokenId].status = "disconnected";
@@ -1434,11 +1422,22 @@ export const useTokenStore = defineStore("tokens", () => {
             && !refreshingTokenIds.value.has(tokenId)
             && refreshCount < MAX_DISCONNECT_REFRESH;
 
-          // 情况A: _sys/fatal 导致的断开（服务端拒绝连接，如Token无效）
+          // 情况A: _sys/fatal 导致的断开（服务端拒绝连接，如Token无效)
           if (client?.fatalError && canRefresh) {
             disconnectRefreshCount.value[tokenId] = refreshCount + 1;
             wsLogger.warn(`[WS] 服务端拒绝连接(_sys/fatal): ${client.fatalReason || '未知原因'}，触发Token刷新 (${refreshCount + 1}/${MAX_DISCONNECT_REFRESH}) [${tokenId}]`);
-            await attemptTokenRefresh(tokenId, true);
+            const refreshed = await attemptTokenRefresh(tokenId, true);
+            if (refreshed) {
+              wsLogger.info(`Token刷新成功，尝试重新连接 [${tokenId}]`);
+              const gameToken = gameTokens.value.find((t) => t.id === tokenId);
+              if (gameToken) {
+                setTimeout(() => {
+                  createWebSocketConnection(tokenId, gameToken.token, gameToken.wsUrl).catch((err) => {
+                    wsLogger.error(`自动重连失败 [${tokenId}]:`, err);
+                  });
+                }, 500);
+              }
+            }
           }
           // 情况B: 连接成功后极短时间内异常断开（<5秒，可能是Token无效）
           else if (event.code === 1006 && conn.connectedAt && canRefresh) {
@@ -1446,50 +1445,42 @@ export const useTokenStore = defineStore("tokens", () => {
             if (connectedDuration < 5000) {
               disconnectRefreshCount.value[tokenId] = refreshCount + 1;
               wsLogger.warn(`[WS] 连接后${Math.round(connectedDuration)}ms内异常断开，触发Token刷新 (${refreshCount + 1}/${MAX_DISCONNECT_REFRESH}) [${tokenId}]`);
-              await attemptTokenRefresh(tokenId, true);
+              const refreshed = await attemptTokenRefresh(tokenId, true);
+              if (refreshed) {
+                wsLogger.info(`Token刷新成功，尝试重新连接 [${tokenId}]`);
+                const gameToken = gameTokens.value.find((t) => t.id === tokenId);
+                if (gameToken) {
+                  setTimeout(() => {
+                    createWebSocketConnection(tokenId, gameToken.token, gameToken.wsUrl).catch((err) => {
+                      wsLogger.error(`自动重连失败 [${tokenId}]:`, err);
+                    });
+                  }, 500);
+                }
+              }
             }
           }
           // 情况C（原有逻辑）: 握手失败（socket.onopen未触发就断开）
           else if (event.code === 1006 && !conn.connectedAt && canRefresh) {
             disconnectRefreshCount.value[tokenId] = refreshCount + 1;
             wsLogger.warn(`检测到握手失败(1006)，尝试刷新Token (${refreshCount + 1}/${MAX_DISCONNECT_REFRESH}) [${tokenId}]`);
-            await attemptTokenRefresh(tokenId, true);
+            const refreshed = await attemptTokenRefresh(tokenId, true);
+            if (refreshed) {
+              wsLogger.info(`Token刷新成功，尝试重新连接 [${tokenId}]`);
+              const gameToken = gameTokens.value.find((t) => t.id === tokenId);
+              if (gameToken) {
+                setTimeout(() => {
+                  createWebSocketConnection(tokenId, gameToken.token, gameToken.wsUrl).catch((err) => {
+                    wsLogger.error(`自动重连失败 [${tokenId}]:`, err);
+                  });
+                }, 500);
+              }
+            }
           }
           else if (event.code === 1006 && refreshCount >= MAX_DISCONNECT_REFRESH) {
             wsLogger.error(`异常断开(1006)已达最大自动刷新次数(${MAX_DISCONNECT_REFRESH})，停止自动重连 [${tokenId}]，请手动重新连接`);
           }
         }
         updateCrossTabConnectionState(tokenId, "disconnected");
-
-        // 推图保活：如果该 token 正在推图，自动触发重连
-        if (window._pt && window._pt[tokenId] && window._pt[tokenId].running) {
-          // 防止重连锁：如果正在重连中，跳过
-          if (pushReconnecting.has(tokenId)) {
-            return;
-          }
-
-          // 清除主动断开标记，确保重连不被阻断
-          intentionallyDisconnected.delete(tokenId);
-          pushReconnecting.add(tokenId);
-
-          // 延迟 2 秒后重连，避免与正常断开逻辑冲突
-          setTimeout(async () => {
-            try {
-              // 再次确认仍在推图
-              if (window._pt && window._pt[tokenId] && window._pt[tokenId].running) {
-                const gameToken = gameTokens.value.find((t) => t.id === tokenId);
-                if (gameToken) {
-                  await createWebSocketConnection(tokenId, gameToken.token, gameToken.wsUrl);
-                  console.log(`[推图保活] Token ${tokenId} 断连后自动重连成功`);
-                }
-              }
-            } catch (e) {
-              console.warn(`[推图保活] Token ${tokenId} 自动重连失败:`, (e as Error).message);
-            } finally {
-              pushReconnecting.delete(tokenId);
-            }
-          }, 2000);
-        }
       };
 
       wsClient.onError = (error) => {
@@ -1592,11 +1583,6 @@ export const useTokenStore = defineStore("tokens", () => {
     intentionallyDisconnected.add(tokenId);
   };
 
-  // 清除主动断开标记（供推图重连使用）
-  const clearIntentionalDisconnect = (tokenId: string) => {
-    intentionallyDisconnected.delete(tokenId);
-  };
-
   // 获取WebSocket客户端
   const getWebSocketClient = (tokenId: string) => {
     return wsConnections.value[tokenId]?.client || null;
@@ -1677,8 +1663,6 @@ export const useTokenStore = defineStore("tokens", () => {
       "fight_startboss",
       "fight_startlegionboss",
       "fight_startdungeon",
-      "fight_calcleveltime",
-      "fight_level",
     ];
     if (battleCommands.includes(cmd)) {
       const battleVersion = gameData.value.battleVersion;
@@ -2475,7 +2459,6 @@ export const useTokenStore = defineStore("tokens", () => {
     createWebSocketConnection,
     closeWebSocketConnection,
     markIntentionalDisconnect,
-    clearIntentionalDisconnect,
     getWebSocketStatus,
     getWebSocketClient,
     sendMessage,
@@ -2533,9 +2516,6 @@ export const useTokenStore = defineStore("tokens", () => {
       }
       return parseResult;
     },
-
-    // 推图保活重连状态检查
-    isReconnecting: (tokenId: string): boolean => pushReconnecting.has(tokenId),
 
     // 连接管理增强功能
     validateConnectionUniqueness,

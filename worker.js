@@ -12,15 +12,15 @@ const GITHUB_PROXY_LIST = [
 
 // 静态兜底配置（R2 和 GitHub 都失败时使用）
 const FALLBACK_CONFIG = {
-  latestVersion: "2.14.0",
-  versionCode: 21400,
+  latestVersion: "2.17.0",
+  versionCode: 21700,
   // R2 直连下载（最快最稳）
   downloadUrl: `https://xyzw-apk-updater.15322781623.workers.dev/api/apk/download`,
   // GitHub 原始链接作为备选
   downloadUrlOriginal: `https://github.com/${GITHUB_REPO}/releases/latest/download/肝王之王.apk`,
-  changelog: "v2.13.0: 卡密管理系统上线，批量推图每小时自动刷新状态",
-  minVersionCode: 21200,
-  forceUpdate: true,
+  changelog: "v2.17.0: 火把加速验证优化 & 批量推图定时停止连接释放",
+  minVersionCode: 21500,
+  forceUpdate: false,
 };
 
 // ==================== 卡密系统工具函数 ====================

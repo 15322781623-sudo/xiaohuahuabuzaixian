@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="batch-daily-tasks">
     <div class="main-layout">
       <!-- Left Column -->
@@ -1368,30 +1368,51 @@
         <n-card class="log-card">
           <template #header>
             <div class="custom-card-header">
-              <div class="card-title">
-                {{
-                  currentRunningTokenName
-                    ? `正在执行: ${currentRunningTokenName}`
-                    : "执行日志"
-                }}
-                <span
-                  style="margin-left: 12px; font-size: 12px; color: #86909c"
-                >
-                  {{ logs.length }}/{{ batchSettings.maxLogEntries || 1000 }}
-                </span>
+              <div class="card-title-row">
+                <div class="card-title-main">
+                  {{
+                    currentRunningTokenName
+                      ? `正在执行：${currentRunningTokenName}`
+                      : "执行日志"
+                  }}
+                  <span class="log-count-badge">
+                    {{ logs.length }}/{{ batchSettings.maxLogEntries || 1000 }}
+                  </span>
+                </div>
               </div>
               <div class="log-header-controls">
-                <n-checkbox v-model:checked="autoScrollLog" size="small">
-                  自动滚动
-                </n-checkbox>
-                <n-checkbox v-model:checked="filterErrorsOnly" size="small">
-                  只看错误
-                </n-checkbox>
-                <n-tag v-if="errorCount > 0" type="error" size="small">
-                  {{ errorCount }} 个错误
-                </n-tag>
-                <n-button size="small" @click="clearLogs"> 清空日志 </n-button>
-                <n-button size="small" @click="copyLogs"> 复制日志 </n-button>
+                <div class="control-group">
+                  <n-checkbox v-model:checked="autoScrollLog" size="small">
+                    自动滚动
+                  </n-checkbox>
+                  <n-checkbox v-model:checked="filterErrorsOnly" size="small">
+                    只看错误
+                  </n-checkbox>
+                  <n-tag v-if="errorCount > 0" type="error" size="small" class="error-tag">
+                    {{ errorCount }} 个错误
+                  </n-tag>
+                </div>
+                <div class="control-group">
+                  <n-button
+                    size="small"
+                    type="info"
+                    ghost
+                    :disabled="taskExecutionRecords.length === 0"
+                    @click="showTaskRecordsModal = true"
+                    class="action-btn"
+                  >
+                    <n-icon><ListOutline /></n-icon>
+                    任务完成情况
+                  </n-button>
+                  <n-button size="small" @click="clearLogs" class="action-btn">
+                    <n-icon><TrashOutline /></n-icon>
+                    清空日志
+                  </n-button>
+                  <n-button size="small" @click="copyLogs" class="action-btn">
+                    <n-icon><CopyOutline /></n-icon>
+                    复制日志
+                  </n-button>
+                </div>
               </div>
             </div>
           </template>
@@ -1416,7 +1437,126 @@
       </div>
     </div>
 
+    <!-- 定时任务执行完成情况 Modal -->
+    <n-modal
+      v-model:show="showTaskRecordsModal"
+      preset="card"
+      :title="`定时任务执行完成情况 (${taskExecutionRecords.length})`"
+      style="width: 90%; max-width: 580px"
+    >
+      <!-- 头部操作栏 -->
+      <div class="tr-header-actions" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: #999; font-size: 12px;">最后更新：{{ new Date().toLocaleString('zh-CN') }}</span>
+        <n-button size="small" type="error" @click="clearTaskExecutionRecords">
+          <n-icon><TrashOutline /></n-icon>
+          清空记录
+        </n-button>
+      </div>
 
+      <!-- 汇总统计卡片 -->
+      <div class="tr-summary-bar">
+        <div class="tr-stat-card tr-stat-success">
+          <span class="tr-stat-num">{{ taskExecutionRecords.filter(r => r.status === 'success').length }}</span>
+          <span class="tr-stat-label">已完成</span>
+        </div>
+        <div class="tr-stat-card tr-stat-partial">
+          <span class="tr-stat-num">{{ taskExecutionRecords.filter(r => r.status === 'partial').length }}</span>
+          <span class="tr-stat-label">部分完成</span>
+        </div>
+        <div class="tr-stat-card tr-stat-fail">
+          <span class="tr-stat-num">{{ taskExecutionRecords.filter(r => r.status === 'fail').length }}</span>
+          <span class="tr-stat-label">失败</span>
+        </div>
+        <div class="tr-stat-card tr-stat-running">
+          <span class="tr-stat-num">{{ taskExecutionRecords.filter(r => r.status === 'running').length }}</span>
+          <span class="tr-stat-label">执行中</span>
+        </div>
+      </div>
+
+      <!-- 任务列表 -->
+      <div class="tr-list">
+        <div
+          v-for="(record, index) in taskExecutionRecords"
+          :key="index"
+          class="tr-item"
+          :class="`tr-item-${record.status}`"
+        >
+          <!-- 任务基本信息 -->
+          <div class="tr-item-header">
+            <div class="tr-item-left">
+              <span class="tr-status-dot" :class="`tr-dot-${record.status}`"></span>
+              <span class="tr-item-index">{{ index + 1 }}</span>
+              <span class="tr-item-name">{{ record.name }}</span>
+            </div>
+            <div class="tr-item-right">
+              <span class="tr-item-time">{{ record.elapsedStr || '执行中...' }}</span>
+              <span class="tr-item-badge" :class="`tr-badge-${record.status}`">
+                {{ record.status === 'success' ? '已完成' : record.status === 'partial' ? '部分完成' : record.status === 'fail' ? '失败' : '执行中' }}
+              </span>
+            </div>
+          </div>
+          
+          <!-- 执行时间详情 -->
+          <div class="tr-time-details" v-if="record.startTime">
+            <div class="tr-time-row">
+              <span class="tr-time-label">开始：</span>
+              <span class="tr-time-value">{{ formatTime(record.startTime) }}</span>
+              <span class="tr-time-label" style="margin-left: 16px;">结束：</span>
+              <span class="tr-time-value">{{ record.endTime ? formatTime(record.endTime) : '执行中...' }}</span>
+            </div>
+            <div class="tr-time-row" v-if="record.scheduledTime">
+              <span class="tr-time-label">计划：</span>
+              <span class="tr-time-value">{{ formatTime(record.scheduledTime) }}</span>
+              <span class="tr-time-label" style="margin-left: 16px;">延迟：</span>
+              <span class="tr-time-value" :class="getDelayClass(record)">{{ getDelayText(record) }}</span>
+            </div>
+          </div>
+          
+          <!-- 执行进度统计 -->
+          <div class="tr-progress-section" v-if="record.totalAccounts > 0">
+            <div class="tr-progress-info">
+              <span class="tr-progress-text">
+                进度：{{ record.successCount + record.failCount }}/{{ record.totalAccounts }}
+                <span class="tr-progress-percent">({{ record.progressPercent || 0 }}%)</span>
+              </span>
+              <span class="tr-progress-stats">
+                <span class="tr-stat-success">成功 {{ record.successCount }}</span>
+                <span class="tr-stat-fail">失败 {{ record.failCount }}</span>
+                <span class="tr-stat-running" v-if="record.runningCount > 0">进行中 {{ record.runningCount }}</span>
+              </span>
+            </div>
+            <div class="tr-progress-bar">
+              <div 
+                class="tr-progress-fill" 
+                :style="{ width: `${record.progressPercent || 0}%` }"
+                :class="`tr-progress-${record.status}`"
+              ></div>
+            </div>
+          </div>
+          
+          <!-- 失败账号详情（可展开） -->
+          <div class="tr-failed-accounts" v-if="record.failedAccounts && record.failedAccounts.length > 0">
+            <div class="tr-failed-header" @click="record.showFailedDetails = !record.showFailedDetails">
+              <span class="tr-failed-toggle">{{ record.showFailedDetails ? '▼' : '▶' }}</span>
+              <span class="tr-failed-count">失败账号 ({{ record.failedAccounts.length }})</span>
+            </div>
+            <div class="tr-failed-list" v-show="record.showFailedDetails">
+              <div 
+                v-for="(account, idx) in record.failedAccounts" 
+                :key="idx"
+                class="tr-failed-item"
+              >
+                <span class="tr-failed-name">{{ account.name }}</span>
+                <span class="tr-failed-error">{{ account.error }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-if="taskExecutionRecords.length === 0" class="tr-empty">
+          暂无执行记录
+        </div>
+      </div>
+    </n-modal>
 
     <!-- Settings Modal -->
     <n-modal
@@ -1460,7 +1600,7 @@
             />
           </div>
           <div class="setting-item">
-            <label class="setting-label">BOSS次数</label>
+            <label class="setting-label">俱乐部BOSS次数</label>
             <n-select
               v-model:value="currentSettings.bossTimes"
               :options="bossTimesOptions"
@@ -1612,7 +1752,7 @@
             />
           </div>
           <div class="setting-item">
-            <label class="setting-label">BOSS次数</label>
+            <label class="setting-label">俱乐部BOSS次数</label>
             <n-select
               v-model:value="currentTemplate.bossTimes"
               :options="bossTimesOptions"
@@ -2530,7 +2670,7 @@
               <div style="font-weight: 500;">{{ item.name }}</div>
               <div style="font-size: 12px; color: #888;">{{ item.cost }}盐锭/次 · 限购{{ item.limit }}次</div>
             </div>
-            <n-input、-number v-model:value="item.count" :min="0" :max="item.limit" size="small"
+            <n-input-number v-model:value="item.count" :min="0" :max="item.limit" size="small"
                             style="width: 100px;"
                             @update:value="(val) => { item._checked = val > 0; }" />
           </div>
@@ -3753,22 +3893,12 @@
                 </n-switch>
               </div>
             </div>
-            
-            <n-divider title-placement="left" style="margin: 16px 0 12px 0">
-              <span style="font-size: 14px; font-weight: 600;"> 功法赠送设置</span>
-            </n-divider>
-            <div class="settings-grid-responsive">
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">接收者ID</label>
-                <n-input v-model:value="batchSettings.receiverId" placeholder="ID" size="small" class="input-responsive" :show-button="false" />
-              </div>
-            </div>
           </n-grid-item>
-          
+                    
           <!-- 右列：延迟与连接设置 -->
           <n-grid-item>
             <n-divider title-placement="left" style="margin: 8px 0 12px 0">
-              <span style="font-size: 14px; font-weight: 600;">️ 延迟设置(ms)</span>
+              <span style="font-size: 14px; font-weight: 600;">️ 延迟设置 (ms)</span>
               <n-button size="tiny" quaternary type="primary" @click="resetDelaySettings" style="margin-left: 8px;">
                 恢复默认
               </n-button>
@@ -3914,17 +4044,37 @@
               </div>
             </div>
             
+            <!-- 合并显示：挂机时间控制 + 换皮闯关设置 + 功法赠送设置 -->
             <n-divider title-placement="left" style="margin: 16px 0 12px 0">
-              <span style="font-size: 14px; font-weight: 600;"> 挂机时间控制</span>
+              <span style="font-size: 14px; font-weight: 600;">⏰ 挂机时间控制 | ⚔️ 换皮闯关设置 | 💻 功法赠送设置</span>
             </n-divider>
-            <div class="settings-grid-responsive">
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive" title="是否启用挂机时间控制">启用时间控制</label>
-                <n-switch v-model:value="batchSettings.hangUpTimeControlEnabled" @update:value="autoSaveBatchSettings" />
+            <div class="settings-grid-responsive-3cols">
+              <!-- 挂机时间控制 -->
+              <div class="setting-group-merged">
+                <div class="setting-item-responsive">
+                  <label class="setting-label-responsive" title="是否启用挂机时间控制">启用时间控制</label>
+                  <n-switch v-model:value="batchSettings.hangUpTimeControlEnabled" @update:value="autoSaveBatchSettings" />
+                </div>
+                <div class="setting-item-responsive" v-if="batchSettings.hangUpTimeControlEnabled">
+                  <label class="setting-label-responsive" title="领取挂机奖励和加钟的最小挂机时间">最小挂机时间 (小时)</label>
+                  <n-input-number v-model:value="batchSettings.hangUpMinTime" :min="1" :max="24" :step="1" size="small" class="input-responsive" />
+                </div>
               </div>
-              <div class="setting-item-responsive" v-if="batchSettings.hangUpTimeControlEnabled">
-                <label class="setting-label-responsive" title="领取挂机奖励和加钟的最小挂机时间">最小挂机时间(小时)</label>
-                <n-input-number v-model:value="batchSettings.hangUpMinTime" :min="1" :max="24" :step="1" size="small" class="input-responsive" />
+              
+              <!-- 换皮闯关设置 -->
+              <div class="setting-group-merged">
+                <div class="setting-item-responsive">
+                  <label class="setting-label-responsive" title="连续失败多少次后跳过该 BOSS">失败次数上限</label>
+                  <n-input-number v-model:value="batchSettings.skinChallengeMaxFail" :min="1" :max="20" :step="1" size="small" class="input-responsive" />
+                </div>
+              </div>
+              
+              <!-- 功法赠送设置 -->
+              <div class="setting-group-merged">
+                <div class="setting-item-responsive">
+                  <label class="setting-label-responsive">接收者 ID</label>
+                  <n-input v-model:value="batchSettings.receiverId" placeholder="ID" size="small" class="input-responsive" :show-button="false" />
+                </div>
               </div>
             </div>
             
@@ -3944,17 +4094,7 @@
                 开启后，宠物合成只会进行到指定等级，例如设置为4则只合成到4级紫色宠物
               </div>
             </div>
-            
-            <n-divider title-placement="left" style="margin: 16px 0 12px 0">
-              <span style="font-size: 14px; font-weight: 600;">⚔️ 换皮闯关设置</span>
-            </n-divider>
-            <div class="settings-grid-responsive">
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive" title="连续失败多少次后跳过该BOSS">失败次数上限</label>
-                <n-input-number v-model:value="batchSettings.skinChallengeMaxFail" :min="1" :max="20" :step="1" size="small" class="input-responsive" />
-              </div>
-            </div>
-            
+                        
             <n-divider title-placement="left" style="margin: 16px 0 12px 0">
               <span style="font-size: 14px; font-weight: 600;">💻 系统设置</span>
             </n-divider>
@@ -4978,8 +5118,8 @@
           <div v-for="card in pushCards" :key="card.id" class="push-card" :class="{ 'push-card--running': card.running }">
             <!-- 紧凑头部：一行显示所有信息 -->
             <div class="push-card-head">
-              <span class="push-status-dot" :class="card.running ? 'dot-active' : 'dot-idle'"></span>
-              <span class="push-card-title">{{ card.name }}</span>
+              <span class="push-status-dot" :class="card.running ? 'dot-active' : card.wsStatus === 'connected' ? 'dot-connected' : card.wsStatus === 'connecting' ? 'dot-connecting' : 'dot-disconnected'"></span>
+              <span class="push-card-title">{{ shortName(card.name) }}</span>
               <span class="push-card-level" v-if="card.level">Lv.{{ card.level }}</span>
               <span class="push-card-boss" v-if="card.bossNm">{{ card.bossNm }}</span>
               <span class="push-card-stats">
@@ -4989,7 +5129,7 @@
               <n-button v-if="card.running" size="tiny" quaternary type="error" @click="pushToggleOne(card.id)" class="push-card-stop">■</n-button>
               <n-button v-else size="tiny" quaternary type="success" @click="pushToggleOne(card.id)" class="push-card-stop">▶</n-button>
             </div>
-            <!-- 进度条+倒计时（仅运行时显示） -->
+                        <!-- 进度条+倒计时（仅运行时显示） -->
             <div class="push-card-progress" v-if="card.running && card.totalTime > 0">
               <n-progress
                 type="line"
@@ -4999,8 +5139,13 @@
                 :color="card.countdown < 10 ? '#f0a020' : '#2080f0'"
                 rail-color="#eef1f5"
               />
-              <span class="push-card-timer">{{ Math.floor(card.countdown / 60) }}:{{ String(Math.floor(card.countdown % 60)).padStart(2, '0') }}<span class="push-timer-sep">/</span>{{ Math.floor(card.totalTime / 60) }}:{{ String(Math.floor(card.totalTime % 60)).padStart(2, '0') }}</span>
+              <span class="push-card-timer">
+                {{ Math.floor(card.countdown / 60) }}:{{ String(Math.floor(card.countdown % 60)).padStart(2, '0') }}
+                <span class="push-timer-sep">/</span>
+                {{ Math.floor(card.totalTime / 60) }}:{{ String(Math.floor(card.totalTime % 60)).padStart(2, '0') }}
+              </span>
             </div>
+
           </div>
         </div>
         <div v-else class="push-empty">
@@ -5046,7 +5191,7 @@ import { useRouter, useRoute } from "vue-router";
 import { DailyTaskRunner } from "@/utils/dailyTaskRunner";
 import { preloadQuestions } from "@/utils/studyQuestionsFromJSON.js";
 import { useMessage } from "naive-ui";
-import { Settings, AddCircleOutline, CheckmarkCircleOutline, ListOutline, CloudDownloadOutline, CloudUploadOutline, SearchOutline, DocumentTextOutline, CreateOutline, TrashOutline, SettingsOutline, PlayOutline, Add } from "@vicons/ionicons5";
+import { Settings, AddCircleOutline, CheckmarkCircleOutline, ListOutline, CloudDownloadOutline, CloudUploadOutline, SearchOutline, DocumentTextOutline, CreateOutline, TrashOutline, SettingsOutline, PlayOutline, Add, CopyOutline } from "@vicons/ionicons5";
 import TokenCard from "@/components/TokenCard.vue";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { storage } from "@/utils/crossPlatformStorage";
@@ -5120,6 +5265,7 @@ import {
 
 
 import { downloadFile } from "@/utils/imageExport";
+import { saveBinBackup, getBinBackupWithFallback } from "@/utils/binBackup";
 import { wakeLockManager } from "@/utils/wakeLock";
 import { WebSocketPool } from "@/utils/WebSocketPool";
 
@@ -5853,7 +5999,7 @@ const currentSettings = reactive({
   bossFormation: 1,
   nightmareFormation: 1, // 十殿阵容
   bossTimes: 2,
-  dailyBossTimes: 1,
+  dailyBossTimes: 3,
   claimBottle: true,
   payRecruit: true,
   openBox: true,
@@ -5883,7 +6029,7 @@ const currentTemplate = reactive({
   bossFormation: 1,
   nightmareFormation: 1, // 十殿阵容
   bossTimes: 2,
-  dailyBossTimes: 1,
+  dailyBossTimes: 3,
   claimBottle: true,
   payRecruit: true,
   openBox: true,
@@ -7786,15 +7932,28 @@ const importScheduledTasksConfig = async ({ file }) => {
     }
 
     let importedTasks = 0;
+    let invalidTokenCount = 0;
 
     if (Array.isArray(importData.scheduledTasks)) {
       if (!scheduledTasks.value || !Array.isArray(scheduledTasks.value)) {
         scheduledTasks.value = [];
       }
+      // 构建本地有效token ID集合
+      const localTokenIds = new Set(gameTokens.value.map(t => t.id));
+
       importData.scheduledTasks.forEach((task) => {
         if (!task.id) return;
         const exists = scheduledTasks.value.some(t => t.id === task.id);
         if (!exists) {
+          // 过滤无效账号：只保留本地存在的token ID
+          if (Array.isArray(task.selectedTokens)) {
+            const originalCount = task.selectedTokens.length;
+            task.selectedTokens = task.selectedTokens.filter(id => localTokenIds.has(id));
+            const removed = originalCount - task.selectedTokens.length;
+            if (removed > 0) {
+              invalidTokenCount += removed;
+            }
+          }
           scheduledTasks.value.push(task);
           importedTasks++;
         }
@@ -7813,6 +7972,7 @@ const importScheduledTasksConfig = async ({ file }) => {
     const parts = [];
     if (importedTasks > 0) parts.push(`${importedTasks} 个新定时任务`);
     if (importData.batchSettings) parts.push('批量设置已恢复');
+    if (invalidTokenCount > 0) parts.push(`已过滤 ${invalidTokenCount} 个无效账号`);
     if (parts.length === 0) parts.push('无新增数据（已存在）');
 
     message.success(`定时配置导入成功: ${parts.join(', ')}`);
@@ -7856,9 +8016,10 @@ const base64ToArrayBuffer = (base64) => {
   return bytes.buffer;
 };
 
-// 收集所有token的BIN数据（从IndexedDB）
+// 收集所有token的BIN数据（从IndexedDB，缺失时兜底localStorage备份）
 const collectBinData = async (tokenList) => {
   const binDataMap = {};
+  const skippedTokens = [];
   for (const token of tokenList) {
     if (token.importMethod === "bin" || token.importMethod === "wxQrcode") {
       try {
@@ -7866,24 +8027,33 @@ const collectBinData = async (tokenList) => {
         if (!binData && token.name) {
           binData = await getArrayBufferFromDB(token.name);
         }
+        // IndexedDB 缺失时，尝试 localStorage 备份
+        if (!binData) {
+          binData = await getBinBackupWithFallback(token.id, token.name);
+          if (binData) {
+            console.log(`从 localStorage 备份导出BIN数据: ${token.name} (${binData.byteLength} bytes)`);
+          }
+        }
         if (binData) {
           binDataMap[token.id] = arrayBufferToBase64(binData);
           console.log(`导出BIN数据: ${token.name} (${binData.byteLength} bytes)`);
         } else {
           console.warn(`未找到Token "${token.name}" 的BIN数据`);
+          skippedTokens.push(token.name);
         }
       } catch (error) {
         console.error(`导出Token "${token.name}" BIN数据失败:`, error);
       }
     }
   }
-  return binDataMap;
+  return { binDataMap, skippedTokens };
 };
 
 // 导入BIN数据到IndexedDB
-const importBinData = async (binData) => {
+// tokenIdMapping: { 源tokenId: 目标实际tokenId }，sourceTokens: 源配置中的token列表
+const importBinData = async (binData, tokenIdMapping, sourceTokens) => {
   if (!binData || typeof binData !== 'object' || Object.keys(binData).length === 0) {
-    return 0;
+    return { importedCount: 0, skippedCount: 0, skippedTokens: [] };
   }
   // 确保IndexedDB已就绪
   try {
@@ -7893,37 +8063,70 @@ const importBinData = async (binData) => {
   }
 
   let importedCount = 0;
+  let skippedCount = 0;
+  const skippedTokens = [];
   for (const [tokenId, base64Data] of Object.entries(binData)) {
     try {
       if (!base64Data || typeof base64Data !== 'string') {
         console.warn(`跳过无效BIN数据: Token ID ${tokenId}`);
+        skippedCount++;
         continue;
       }
-      const token = gameTokens.value.find(t => t.id === tokenId);
+      // 1. 先用tokenId精确匹配
+      let token = gameTokens.value.find(t => t.id === tokenId);
+      let actualTokenId = tokenId;
+      // 2. 如果没找到，检查tokenIdMapping映射
+      if (!token && tokenIdMapping?.[tokenId]) {
+        const mappedId = tokenIdMapping[tokenId];
+        token = gameTokens.value.find(t => t.id === mappedId);
+        if (token) actualTokenId = mappedId;
+      }
+      // 3. 如果还没找到，通过token内容匹配
+      if (!token && sourceTokens) {
+        const sourceToken = sourceTokens.find(st => st.id === tokenId);
+        if (sourceToken?.token) {
+          token = gameTokens.value.find(t => t.token === sourceToken.token);
+          if (token) actualTokenId = token.id;
+        }
+      }
       if (!token) {
         console.warn(`跳过BIN数据导入: 未找到Token ID ${tokenId}`);
+        skippedCount++;
+        // 尝试从sourceTokens获取名称
+        const srcInfo = sourceTokens?.find(st => st.id === tokenId);
+        skippedTokens.push(srcInfo?.name || tokenId);
         continue;
       }
       const arrayBuffer = base64ToArrayBuffer(base64Data);
-      const success = await storeArrayBufferToDB(tokenId, arrayBuffer);
+      // 用目标设备实际 token 的 ID 作为键存储
+      const success = await storeArrayBufferToDB(actualTokenId, arrayBuffer);
       if (success) {
         importedCount++;
+        // 同时备份到 localStorage，防止下次 IndexedDB 被清理后无法导出/刷新
+        saveBinBackup(actualTokenId, arrayBuffer);
+      
         // 验证写入
-        const verify = await getArrayBufferFromDB(tokenId);
+        const verify = await getArrayBufferFromDB(actualTokenId);
         if (!verify) {
           console.warn(`BIN数据写入验证失败: ${token.name}`);
           importedCount--;
+          skippedCount++;
+          skippedTokens.push(token.name);
         } else {
           console.log(`导入BIN数据成功: ${token.name} (${arrayBuffer.byteLength} bytes)`);
         }
       } else {
         console.error(`导入BIN数据失败: ${token.name}`);
+        skippedCount++;
+        skippedTokens.push(token.name);
       }
     } catch (error) {
       console.error(`处理Token BIN数据失败 [${tokenId}]:`, error);
+      skippedCount++;
+      skippedTokens.push(tokenId);
     }
   }
-  return importedCount;
+  return { importedCount, skippedCount, skippedTokens };
 };
 
 // 收集每个token的日常任务设置
@@ -8307,11 +8510,14 @@ const exportAccountConfig = async () => {
     }
 
     // 收集BIN数据
-    const binDataMap = await collectBinData(tokens.value);
+    const { binDataMap, skippedTokens: exportSkipped } = await collectBinData(tokens.value);
     const binCount = Object.keys(binDataMap).length;
     const totalBinTokens = tokens.value.filter(t => t.importMethod === "bin" || t.importMethod === "wxQrcode").length;
     if (totalBinTokens > 0 && binCount < totalBinTokens) {
       console.warn(`BIN数据不完整: ${binCount}/${totalBinTokens} 个token有BIN数据`);
+    }
+    if (exportSkipped.length > 0) {
+      message.warning(`以下账号缺少BIN数据，刷新Token可能失败：${exportSkipped.join('、')}`, { duration: 8000 });
     }
 
     const exportData = {
@@ -8374,6 +8580,7 @@ const importAccountConfig = async ({ file }) => {
 
     let importedTokens = 0;
     let skippedTokens = 0;
+    const tokenIdMapping = {};
 
     // 导入tokens
     if (Array.isArray(importData.tokens) && importData.tokens.length > 0) {
@@ -8390,11 +8597,17 @@ const importAccountConfig = async ({ file }) => {
         const exists = gameTokens.value.some(t => t.token === token.token || t.id === token.id);
         if (exists) {
           skippedTokens++;
+          // 建立映射：找到目标设备上的实际token ID
+          const actualToken = gameTokens.value.find(t => t.token === token.token || t.id === token.id);
+          if (actualToken) {
+            tokenIdMapping[token.id] = actualToken.id;
+          }
           // 如果已存在但有更新的BIN数据importMethod，保留原始importMethod
           return;
         }
+        const newId = token.id || "token_" + Date.now() + Math.random().toString(36).slice(2);
         gameTokens.value.push({
-          id: token.id || "token_" + Date.now() + Math.random().toString(36).slice(2),
+          id: newId,
           name: token.name || "",
           token: token.token,
           server: token.server || "",
@@ -8411,6 +8624,7 @@ const importAccountConfig = async ({ file }) => {
           expiresAt: token.expiresAt || null,
           lastRefreshAt: token.lastRefreshAt || null,
         });
+        tokenIdMapping[token.id] = newId;
         importedTokens++;
       });
     }
@@ -8418,9 +8632,13 @@ const importAccountConfig = async ({ file }) => {
     // 导入BIN数据到IndexedDB
     let importedBinCount = 0;
     if (importData.binData && Object.keys(importData.binData).length > 0) {
-      importedBinCount = await importBinData(importData.binData);
+      const binResult = await importBinData(importData.binData, tokenIdMapping, importData.tokens);
+      importedBinCount = binResult.importedCount;
       if (importedBinCount > 0) {
         console.log(`成功导入 ${importedBinCount} 个BIN数据`);
+      }
+      if (binResult.skippedTokens && binResult.skippedTokens.length > 0) {
+        message.warning(`以下账号BIN数据导入失败：${binResult.skippedTokens.join('、')}`, { duration: 8000 });
       }
     } else {
       // 兼容旧版：没有binData字段
@@ -8469,8 +8687,11 @@ const exportConfig = async () => {
       selectedTokens: task.selectedTokens?.filter((tid) => validTokenIds.has(tid)) || [],
     })).filter((task) => task.taskType === 'push_map' || task.selectedTokens.length > 0);
 
-    const binDataMap = await collectBinData(tokens.value);
+    const { binDataMap, skippedTokens: exportSkipped } = await collectBinData(tokens.value);
     const binCount = Object.keys(binDataMap).length;
+    if (exportSkipped.length > 0) {
+      message.warning(`以下账号缺少BIN数据，刷新Token可能失败：${exportSkipped.join('、')}`, { duration: 8000 });
+    }
 
     // 排序配置
     let sortConfigData = null;
@@ -8550,15 +8771,24 @@ const importConfig = async ({ file }) => {
     }
 
     const stats = { tokens: 0, tasks: 0, bin: 0, settings: 0, groups: 0, templates: 0, nightmare: 0 };
+    const tokenIdMapping = {};
 
     // 导入tokens
     if (Array.isArray(importData.tokens) && importData.tokens.length > 0) {
       importData.tokens.forEach((token) => {
         if (!token.token) return;
         const exists = gameTokens.value.some(t => t.token === token.token || t.id === token.id);
-        if (exists) return;
+        if (exists) {
+          // 建立映射：找到目标设备上的实际token ID
+          const actualToken = gameTokens.value.find(t => t.token === token.token || t.id === token.id);
+          if (actualToken) {
+            tokenIdMapping[token.id] = actualToken.id;
+          }
+          return;
+        }
+        const newId = token.id || "token_" + Date.now() + Math.random().toString(36).slice(2);
         gameTokens.value.push({
-          id: token.id || "token_" + Date.now() + Math.random().toString(36).slice(2),
+          id: newId,
           name: token.name || "",
           token: token.token,
           server: token.server || "",
@@ -8575,21 +8805,35 @@ const importConfig = async ({ file }) => {
           expiresAt: token.expiresAt || null,
           lastRefreshAt: token.lastRefreshAt || null,
         });
+        tokenIdMapping[token.id] = newId;
         stats.tokens++;
       });
     }
 
     // 导入BIN数据
     if (importData.binData) {
-      stats.bin = await importBinData(importData.binData);
+      const binResult = await importBinData(importData.binData, tokenIdMapping, importData.tokens);
+      stats.bin = binResult.importedCount;
+      if (binResult.skippedTokens && binResult.skippedTokens.length > 0) {
+        message.warning(`以下账号BIN数据导入失败：${binResult.skippedTokens.join('、')}`, { duration: 8000 });
+      }
     }
 
     // 导入定时任务
     if (Array.isArray(importData.scheduledTasks)) {
+      // 构建本地有效token ID集合
+      const localTokenIds = new Set(gameTokens.value.map(t => t.id));
+
       importData.scheduledTasks.forEach((task) => {
         if (!task.id) return;
         const exists = scheduledTasks.value.some(t => t.id === task.id);
         if (!exists) {
+          // 用tokenIdMapping修复跨设备token ID，并过滤本地不存在的账号
+          if (Array.isArray(task.selectedTokens)) {
+            task.selectedTokens = task.selectedTokens
+              .map(id => tokenIdMapping[id] || id)  // 优先使用映射后的ID
+              .filter(id => localTokenIds.has(id));  // 只保留本地存在的
+          }
           scheduledTasks.value.push(task);
           stats.tasks++;
         }
@@ -8619,24 +8863,32 @@ const importConfig = async ({ file }) => {
     // 导入管理分组
     if (Array.isArray(importData.tokenGroups) && importData.tokenGroups.length > 0) {
       const existingGroupIds = new Set(tokenGroups.value.map((g) => g.id));
+      // 构建本地有效token ID集合（用于过滤分组中的无效账号）
+      const localTokenIdsForGroups = new Set(gameTokens.value.map(t => t.id));
+
       importData.tokenGroups.forEach((group) => {
         if (!group.id || !group.name) return;
+        // 过滤分组中的无效tokenIds：先映射跨设备ID，再只保留本地存在的
+        const validTokenIds = (group.tokenIds || [])
+          .map(id => tokenIdMapping[id] || id)
+          .filter(id => localTokenIdsForGroups.has(id));
+
         if (existingGroupIds.has(group.id)) {
           // 已存在的分组：合并tokenIds（去重）
           const existing = tokenGroups.value.find((g) => g.id === group.id);
           if (existing) {
-            const mergedIds = new Set([...(existing.tokenIds || []), ...(group.tokenIds || [])]);
+            const mergedIds = new Set([...(existing.tokenIds || []), ...validTokenIds]);
             existing.tokenIds = [...mergedIds];
             existing.updatedAt = new Date().toISOString();
             stats.groups++;
           }
         } else {
-          // 新分组：直接添加
+          // 新分组：使用过滤后的tokenIds
           tokenGroups.value.push({
             id: group.id,
             name: group.name,
             color: group.color || '#18a058',
-            tokenIds: group.tokenIds || [],
+            tokenIds: validTokenIds,
             createdAt: group.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           });
@@ -8828,11 +9080,162 @@ const pageLoadTime = Date.now();
 
 // 跟踪定时任务是否正在执行
 const isScheduledTaskRunning = ref(false);
-// 同步到全局，供推图循环(pushMapRunner)检测定时任务互斥
+
+// 定时任务执行完成情况记录
+const taskExecutionRecords = ref([]);
+const showTaskRecordsModal = ref(false);
+// 同步到全局，供推图循环 (pushMapRunner) 检测定时任务互斥
 watch(isScheduledTaskRunning, (v) => { window._isScheduledTaskRunning = v; }, { immediate: true });
 let currentScheduledTask = null; // 当前正在执行的定时任务
 const pendingTaskQueue = []; // ✅ 待执行队列：当定时任务冲突时，排队等待执行
 let _activeNightmareBattles = []; // ✅ 模块级引用：跟踪当前十殿战斗，用于超时传导停止
+
+// =====================
+// 任务完成情况持久化与自动清空机制
+// =====================
+
+// 从 localStorage 加载任务完成情况（支持查看历史所有记录）
+const loadTaskExecutionRecordsFromStorage = () => {
+  try {
+    const savedData = localStorage.getItem('taskExecutionRecords');
+    if (savedData) {
+      const parsed = JSON.parse(savedData);
+      // ✅ 不再限制日期，加载所有历史记录
+      if (Array.isArray(parsed.records)) {
+        console.log(`[定时任务] 加载任务执行情况，共 ${parsed.records.length} 条记录`);
+        return parsed.records;
+      }
+    }
+    return [];
+  } catch (error) {
+    console.error('[定时任务] 加载任务执行情况失败:', error);
+    return [];
+  }
+};
+
+// 保存任务完成情况到 localStorage（新增记录，不覆盖旧记录）
+const saveTaskExecutionRecordsToStorage = () => {
+  try {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    // ✅ 先加载现有记录（如果有）
+    let existingRecords = [];
+    const savedData = localStorage.getItem('taskExecutionRecords');
+    if (savedData) {
+      const parsed = JSON.parse(savedData);
+      if (Array.isArray(parsed.records)) {
+        existingRecords = parsed.records;
+        console.log(`[定时任务] 加载现有记录 ${existingRecords.length} 条，准备追加新记录`);
+      }
+    }
+    
+    // ✅ 合并新旧记录：将新记录追加到数组末尾
+    const allRecords = [...existingRecords, ...taskExecutionRecords.value];
+    
+    const dataToSave = {
+      date: todayStr,
+      records: allRecords,
+      updatedAt: now.toISOString(),
+      totalRecords: allRecords.length
+    };
+    
+    localStorage.setItem('taskExecutionRecords', JSON.stringify(dataToSave));
+    console.log(`[定时任务] 已追加任务执行情况，累计 ${allRecords.length} 条记录`);
+  } catch (error) {
+    console.error('[定时任务] 保存任务执行情况到 localStorage 失败:', error);
+  }
+};
+
+// 清空任务执行情况（内存 + localStorage + 折叠状态）
+const clearTaskExecutionRecords = () => {
+  taskExecutionRecords.value = [];
+  
+  // 清除 localStorage
+  localStorage.removeItem('taskExecutionRecords');
+  
+  message.success('任务完成记录已清空');
+  console.log('[定时任务] 任务完成记录已清空');
+};
+
+// 注册每天凌晨 00:00:00 自动清空的任务完成情况
+const scheduleMidnightClear = () => {
+  const clearAtMidnight = () => {
+    const now = new Date();
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    
+    // 计算距离明天凌晨的毫秒数
+    const delay = tomorrow.getTime() - now.getTime();
+    
+    console.log(`[定时任务] 已调度任务完成情况自动清空，将在 ${Math.floor(delay / 1000 / 60 / 60)} 小时后执行`);
+    
+    setTimeout(() => {
+      // 在午夜执行清空
+      clearTaskExecutionRecords();
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: '🌙 每日任务完成记录已自动清空（00:00:00）',
+        type: 'info'
+      });
+      
+      // 重新调度下一次自动清空
+      scheduleMidnightClear();
+    }, delay);
+  };
+  
+  clearAtMidnight();
+};
+
+// 页面加载时恢复数据并调度自动清空
+onMounted(() => {
+  // 从 localStorage 加载当天的任务完成情况
+  const loadedRecords = loadTaskExecutionRecordsFromStorage();
+  if (loadedRecords.length > 0) {
+    taskExecutionRecords.value = loadedRecords;
+    console.log(`[定时任务] 页面加载时恢复了 ${loadedRecords.length} 条历史任务执行记录`);
+  }
+  
+  // 调度每天凌晨自动清空
+  scheduleMidnightClear();
+});
+
+// =====================
+// 任务记录辅助函数
+// =====================
+
+// 格式化时间戳为可读时间
+const formatTime = (timestamp) => {
+  if (!timestamp) return '--';
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString('zh-CN', { 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    second: '2-digit' 
+  });
+};
+
+// 获取延迟文本
+const getDelayText = (record) => {
+  if (!record.scheduledTime || !record.startTime) return '--';
+  const delay = record.startTime - record.scheduledTime;
+  if (delay < 0) return '提前';
+  const seconds = Math.floor(delay / 1000);
+  if (seconds < 60) return `${seconds}秒`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}分${remainingSeconds}秒`;
+};
+
+// 获取延迟样式类
+const getDelayClass = (record) => {
+  if (!record.scheduledTime || !record.startTime) return '';
+  const delay = record.startTime - record.scheduledTime;
+  if (delay < 0) return 'tr-delay-early';
+  if (delay < 30000) return 'tr-delay-normal'; // 30 秒内正常
+  if (delay < 60000) return 'tr-delay-warning'; // 1 分钟内警告
+  return 'tr-delay-error'; // 超过 1 分钟错误
+};
 
 // Health check for the scheduler
 const healthCheck = () => {
@@ -9600,6 +10003,15 @@ const executeScheduledTask = async (task) => {
   // ✅ 重置停止标志，防止用户手动停止后影响定时任务执行
   shouldStop.value = false;
   
+  // ✅ 记录总执行开始时间
+  const totalStartTime = Date.now();
+
+  // ✅ 清空上次的任务执行记录
+  taskExecutionRecords.value = [];
+  
+  // ✅ 清除本地存储（新一天开始）
+  localStorage.removeItem('taskExecutionRecords');
+
   addLog({
     time: new Date().toLocaleTimeString(),
     message: `=== 开始执行定时任务: ${task.name} ===`,
@@ -9756,6 +10168,58 @@ const executeScheduledTask = async (task) => {
       }
     }
 
+    // ✅ 换皮闯关活动检测：在执行前检测，未开启就跳过整个任务
+    const skinChallengeTasks = ["skinChallenge", "skinTreasure"];
+    const hasSkinChallengeTask = activeTasks.some(t => skinChallengeTasks.includes(t));
+    
+    if (hasSkinChallengeTask && availableTokens.length > 0) {
+      // 需要连接一个Token来检测活动是否开启
+      const testTokenId = availableTokens[0];
+      try {
+        await ensureConnection(testTokenId);
+        const activityRes = await tokenStore.sendMessageWithPromise(
+          testTokenId,
+          "activity_get",
+          {},
+          5000,
+        );
+        const actEGameInfo = activityRes?.activity?.actEGameInfo || activityRes?.actEGameInfo;
+        const isActivityOpen = actEGameInfo?.actId === 2606262;
+        
+        console.log('[换皮闯关检测] actEGameInfo:', actEGameInfo);
+        console.log('[换皮闯关检测] isActivityOpen:', isActivityOpen);
+        
+        if (!isActivityOpen) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `=== 定时任务 ${task.name} 包含的任务都需要换皮闯关活动，但当前活动未开启，取消执行 ===`,
+            type: "warning",
+          });
+          // 关闭测试连接
+          tokenStore.closeWebSocketConnection(testTokenId);
+          return;  // ✅ finally块会清理状态
+        }
+        
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `✅ 换皮闯关活动已开启（actId: 2606262）`,
+          type: "success",
+        });
+        
+        // 关闭测试连接，后续任务会按需连接
+        tokenStore.closeWebSocketConnection(testTokenId);
+      } catch (err) {
+        console.error('[换皮闯关检测] 检测失败:', err);
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `⚠️ 换皮闯关活动检测失败: ${err.message}，将继续执行任务`,
+          type: "warning",
+        });
+        // 关闭测试连接
+        try { tokenStore.closeWebSocketConnection(testTokenId); } catch {}
+      }
+    }
+
     // 检查任务是否包含宝箱周限制的任务
     const boxWeeklyTasks = ['batchOpenBoxByPoints', 'batchClaimBoxWeeklyRewards'];
     const hasBoxWeeklyTask = task.selectedTasks.some(t => boxWeeklyTasks.includes(t));
@@ -9805,185 +10269,18 @@ const executeScheduledTask = async (task) => {
         type: "info",
       });
 
-      // 先检查所有Token的连接状态
-      const tokensToConnect = [];
-      const tokensAlreadyConnected = [];
-      
-      console.log('[Token检查] 开始检查', availableTokens.length, '个Token');
-      
-      for (const tokenId of availableTokens) {
+      // ✅ 优化：不再预先连接所有Token，改为边连接边执行
+      // 只检查已连接的Token数量，未连接的在执行任务时按需连接
+      const connectedCount = availableTokens.filter(tokenId => {
         const connection = tokenStore.wsConnections[tokenId];
-        const tokenName = tokens.value.find(t => t.id === tokenId)?.name || tokenId;
-        
-        console.log('[Token检查]', tokenName, '连接状态:', connection?.status, connection);
-        
-        if (connection?.status === "connected") {
-          // 已经连接成功，不需要处理
-          tokensAlreadyConnected.push(tokenId);
-          console.log('[Token检查]', tokenName, '✓ 已连接');
-        } else {
-          // 未连接或连接失败，需要处理
-          tokensToConnect.push(tokenId);
-          console.log('[Token检查]', tokenName, '✗ 未连接，状态:', connection?.status || '无连接');
-        }
-      }
+        return connection?.status === "connected";
+      }).length;
       
-      console.log('[Token检查] 已连接:', tokensAlreadyConnected.length, '需要连接:', tokensToConnect.length);
-      
-      if (tokensAlreadyConnected.length > 0) {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${tokensAlreadyConnected.length} 个Token已连接，无需处理`,
-          type: "info",
-        });
-      }
-
-      if (tokensToConnect.length > 0) {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `发现 ${tokensToConnect.length} 个需要连接的Token`,
-          type: "info",
-        });
-
-        // 批量处理需要连接的Token
-        let connectSuccessCount = 0;
-        let connectFailCount = 0;
-
-        for (let i = 0; i < tokensToConnect.length; i++) {
-          const tokenId = tokensToConnect[i];
-          const token = tokens.value.find(t => t.id === tokenId);
-          if (!token) continue;
-
-          try {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `处理Token: ${token.name} (${i + 1}/${tokensToConnect.length})`,
-              type: "info",
-            });
-
-            // 1. 先尝试直接连接（不刷新Token）
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `尝试直接连接Token: ${token.name}`,
-              type: "info",
-            });
-            
-            await tokenStore.createWebSocketConnection(token.id, token.token, token.wsUrl);
-            
-            // 2. 等待连接建立（最多等待2秒）
-            let connected = false;
-            const waitStart = Date.now();
-            while (Date.now() - waitStart < 2000) {
-              const connection = tokenStore.wsConnections[token.id];
-              if (connection?.status === "connected") {
-                connected = true;
-                break;
-              }
-              await new Promise(resolve => setTimeout(resolve, 500));
-            }
-            
-            if (connected) {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `Token连接成功: ${token.name}`,
-                type: "success",
-              });
-              connectSuccessCount++;
-            } else {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `Token直接连接失败，尝试刷新Token: ${token.name}`,
-                type: "warning",
-              });
-              
-              // 3. 直接连接失败，尝试刷新Token
-              const refreshSuccess = await tokenStore.attemptTokenRefresh(tokenId);
-            
-              if (refreshSuccess) {
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `Token刷新成功: ${token.name}，准备重新连接`,
-                  type: "info",
-                });
-                
-                // 4. 保存当前选中的Token ID（避免影响用户当前选择）
-                const currentSelectedTokenId = tokenStore.selectedTokenId;
-                
-                // 5. 获取最新的Token信息
-                const updatedToken = tokens.value.find(t => t.id === tokenId);
-                if (updatedToken) {
-                  // 6. 创建WebSocket连接
-                  await tokenStore.createWebSocketConnection(updatedToken.id, updatedToken.token, updatedToken.wsUrl);
-                  
-                  // 7. 等待连接建立（最多等待2秒）
-                  let refreshedConnected = false;
-                  const refreshWaitStart = Date.now();
-                  while (Date.now() - refreshWaitStart < 2000) {
-                    const connection = tokenStore.wsConnections[updatedToken.id];
-                    if (connection?.status === "connected") {
-                      refreshedConnected = true;
-                      break;
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                  }
-                  
-                  if (refreshedConnected) {
-                    addLog({
-                      time: new Date().toLocaleTimeString(),
-                      message: `Token刷新后连接成功: ${token.name}`,
-                      type: "success",
-                    });
-                    connectSuccessCount++;
-                  } else {
-                    addLog({
-                      time: new Date().toLocaleTimeString(),
-                      message: `Token刷新后连接超时: ${token.name}`,
-                      type: "error",
-                    });
-                    connectFailCount++;
-                  }
-                }
-                
-                // 8. 恢复用户之前选中的Token
-                if (currentSelectedTokenId) {
-                  tokenStore.selectToken(currentSelectedTokenId);
-                }
-              } else {
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `Token刷新失败: ${token.name}`,
-                  type: "error",
-                });
-                connectFailCount++;
-              }
-            }
-          } catch (error) {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `处理Token失败 [${token.name}]: ${error.message}`,
-              type: "error",
-            });
-            connectFailCount++;
-          }
-
-          // 添加短暂延迟避免请求过于频繁
-          if (i < tokensToConnect.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
-        }
-
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `Token处理完成: 成功 ${connectSuccessCount}, 失败 ${connectFailCount}`,
-          type: "info",
-        });
-      } else {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `所有Token连接状态良好，无需处理`,
-          type: "success",
-        });
-      }
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `当前已连接 ${connectedCount}/${availableTokens.length} 个Token，其余将在执行时按需连接`,
+        type: "info",
+      });
     }
 
     // Always use the latest selectedTokens from the task that exist in current tokens.value
@@ -10125,6 +10422,29 @@ const executeScheduledTask = async (task) => {
         message: `执行任务: ${availableTasks.find((t) => t.value === taskName)?.label || taskName}`,
         type: "info",
       });
+      
+      // ✅ 记录单个功能模块开始时间
+      const taskStartTime = Date.now();
+      const taskLabel = availableTasks.find((t) => t.value === taskName)?.label || taskName;
+
+      // ✅ 记录子任务执行情况
+      const taskRecordIndex = taskExecutionRecords.value.push({
+        name: taskLabel,
+        startTime: taskStartTime,
+        endTime: null,
+        elapsedStr: null,
+        status: 'running',
+        // 新增：执行进度统计
+        totalAccounts: availableTokens.length,
+        successCount: 0,
+        failCount: 0,
+        runningCount: availableTokens.length,
+        progressPercent: 0,
+        // 新增：失败账号详情
+        failedAccounts: [],
+        // 新增：计划执行时间（如果是定时任务）
+        scheduledTime: null,
+      }) - 1;
 
       // Call the task function dynamically
       // 处理函数名映射（下划线格式 -> 驼峰格式）
@@ -10144,57 +10464,35 @@ const executeScheduledTask = async (task) => {
         continue;
       }
       if (typeof taskFunction === "function") {
-        // 根据批次间等待设置，分批执行账号
+        // ✅ 优化：不再预先分批，直接传递所有账号给任务函数
+        // runStreaming 内部会根据 maxActive 自动控制并发数
         const maxConcurrent = batchSettings.maxActive || 5;
         // 同步连接池大小，确保与当前设置一致
         wsPool.setPoolSize(maxConcurrent);
         const totalAccounts = availableTokens.length;
-        let batches = [];
         
-        // 十殿阎罗挑战使用预设自带的队长/队员，不需要按 selectedTokens 分批
-        if (taskName === 'batchNightmareChallengePresets') {
-          batches = [[]];
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: ` 十殿阎罗挑战使用预设自带账号，跳过 Token 分批，只执行一次`,
-            type: "info",
-          });
-        } else {
-          // 将账号分批
-          for (let i = 0; i < totalAccounts; i += maxConcurrent) {
-            batches.push(availableTokens.slice(i, i + maxConcurrent));
-          }
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: ` 共 ${totalAccounts} 个账号，分为 ${batches.length} 批执行（每批${maxConcurrent}个）`,
-            type: "info",
-          });
-        }
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: ` 共 ${totalAccounts} 个账号，使用流式执行（并发数${maxConcurrent}）`,
+          type: "info",
+        });
         
-        // 逐批执行
-        for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-          if (shouldStop.value) break;
-          
-          const batchTokens = batches[batchIndex];
-          const isLastBatch = batchIndex === batches.length - 1;
-          
-          // 设置当前批次的账号
-          selectedTokens.value = [...batchTokens];
-          
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: ` 执行第 ${batchIndex + 1}/${batches.length} 批账号 (${batchTokens.length}个)...`,
-            type: "info",
-          });
-          
-          // 执行任务函数（带超时保护，防止单个任务卡死导致整个定时任务挂起）
-          // ✅ BUG修复：十殿挑战内部有2小时超时保护，外层超时需适配
-          const isNightmareTask = taskName === 'batchNightmareChallengePresets';
-          const BATCH_TASK_TIMEOUT = isNightmareTask
-            ? (150 * 60 * 1000) // 十殿挑战：150分钟（>内部2小时超时+重试余量）
-            : ((batchSettings.batchTaskTimeout || 15) * 60 * 1000);
-          try {
-            const executeTaskFunction = async () => {
+        // ✅ 设置当前批次的账号（所有账号）
+        selectedTokens.value = [...availableTokens];
+        
+        // 执行任务函数（带超时保护，防止单个任务卡死导致整个定时任务挂起）
+        // ✅ BUG修复：十殿挑战内部有2小时超时保护，外层超时需适配
+        const isNightmareTask = taskName === 'batchNightmareChallengePresets';
+        const BATCH_TASK_TIMEOUT = isNightmareTask
+          ? (150 * 60 * 1000) // 十殿挑战：150分钟（>内部2小时超时+重试余量）
+          : ((batchSettings.batchTaskTimeout || 15) * 60 * 1000);
+        
+        // ✅ 记录当前批次的账号数量（用于统计）
+        const batchStartCount = availableTokens.length;
+        console.log(`[定时任务] ${taskName} 批次开始：batchStartCount=${batchStartCount}, totalAccounts=${totalAccounts}`);
+        
+        try {
+          const executeTaskFunction = async () => {
             if (
               [
                 "batchOpenBox",
@@ -10431,30 +10729,129 @@ const executeScheduledTask = async (task) => {
             }; // end executeTaskFunction
             await Promise.race([
               executeTaskFunction(),
-              new Promise((_, reject) => setTimeout(() =>
-                reject(new Error(`批量任务执行超时（${BATCH_TASK_TIMEOUT / 60000}分钟）`)),
-                BATCH_TASK_TIMEOUT
-              ))
+              new Promise((_, reject) => setTimeout(() => {
+                console.error(`[定时任务] 检测到 ${taskName} 执行超时 (${BATCH_TASK_TIMEOUT / 60000}分钟)，记录当前正在执行的账号数量:`, 
+                  taskExecutionRecords.value[taskRecordIndex]?.runningCount || 0);
+                reject(new Error(`批量任务执行超时（${BATCH_TASK_TIMEOUT / 60000}分钟）`));
+              }, BATCH_TASK_TIMEOUT))
             ]);
-            
-            // 如果不是最后一批，且设置了批次间等待，则等待
-            if (!isLastBatch && batchSettings.batchIntervalWait > 0) {
-              const waitSeconds = batchSettings.batchIntervalWait;
-              const waitMs = waitSeconds * 1000;
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⏳ 第 ${batchIndex + 1} 批完成，等待${waitSeconds}秒后执行下一批...`,
-                type: "info",
-              });
-              await new Promise(resolve => setTimeout(resolve, waitMs));
+          
+            // ✅ 任务执行成功，更新成功统计
+            if (taskExecutionRecords.value[taskRecordIndex]) {
+              taskExecutionRecords.value[taskRecordIndex].successCount += batchStartCount;
+              console.log(`[定时任务] ${taskName} 执行成功，设置 successCount = ${taskExecutionRecords.value[taskRecordIndex].successCount}`);
+              taskExecutionRecords.value[taskRecordIndex].runningCount = Math.max(0, 
+                taskExecutionRecords.value[taskRecordIndex].runningCount - batchStartCount);
+              // 更新进度
+              const total = taskExecutionRecords.value[taskRecordIndex].totalAccounts;
+              const completed = taskExecutionRecords.value[taskRecordIndex].successCount + taskExecutionRecords.value[taskRecordIndex].failCount;
+              taskExecutionRecords.value[taskRecordIndex].progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
             }
           } catch (error) {
-            console.error(`执行任务 ${taskName} 第 ${batchIndex + 1} 批失败:`, error);
+            console.error(`执行任务 ${taskName} 失败:`, error);
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `❌ 第 ${batchIndex + 1} 批执行失败: ${error.message}`,
+              message: `❌ 执行失败：${error.message}`,
               type: "error",
             });
+          
+            // ✅ 检查是否为真正的超时错误（区分误报和真实超时）
+            const isTimeoutError = error.message && error.message.includes('批量任务执行超时');
+                      
+            // ✅ 标记子任务执行记录
+            if (taskExecutionRecords.value[taskRecordIndex]) {
+              const currentRunningCount = taskExecutionRecords.value[taskRecordIndex].runningCount;
+              const currentSuccessCount = taskExecutionRecords.value[taskRecordIndex].successCount;
+              const currentFailCount = taskExecutionRecords.value[taskRecordIndex].failCount;
+              
+              console.log(`[定时任务] ${taskName} 进入 catch 块，当前状态:`, {
+                batchStartCount,
+                totalAccounts: taskExecutionRecords.value[taskRecordIndex].totalAccounts,
+                currentSuccessCount,
+                currentFailCount,
+                currentRunningCount,
+                isTimeoutError,
+              });
+                        
+              // ✅ 如果所有账号都已执行完成（无 running 且 success 达到总数），则不是真实超时，直接返回
+              const isAllCompleted = currentRunningCount === 0 && currentSuccessCount > 0;
+                        
+              if (isAllCompleted && !isTimeoutError) {
+                console.log(`[定时任务] ${taskName} 未检测到超时，忽略非 timeout 错误`);
+                return; // ⚠️ 不要在这里标记失败
+              }
+                        
+              // ✅ 如果是超时错误，但实际所有账号都已成功完成，可能是超时误报，需要进一步确认
+              if (isTimeoutError && isAllCompleted && currentSuccessCount === batchStartCount) {
+                console.warn(`[定时任务] 检测到超时，但所有 ${currentSuccessCount} 个账号均已成功完成，可能为误报，保留已完成的记录`);
+                
+                // ✅ 关键修复：虽然是误报，但仍需正常结束任务
+                // 防止因为超时误报导致任务状态不正确
+                if (taskExecutionRecords.value[taskRecordIndex]) {
+                  const taskElapsed = Date.now() - taskStartTime;
+                  const taskElapsedStr = taskElapsed >= 60000
+                    ? `${Math.floor(taskElapsed / 60000)}分${Math.floor((taskElapsed % 60000) / 1000)}秒`
+                    : `${(taskElapsed / 1000).toFixed(1)}秒`;
+                  
+                  taskExecutionRecords.value[taskRecordIndex].endTime = Date.now();
+                  taskExecutionRecords.value[taskRecordIndex].elapsedStr = taskElapsedStr;
+                  taskExecutionRecords.value[taskRecordIndex].runningCount = 0;
+                  taskExecutionRecords.value[taskRecordIndex].progressPercent = 100;
+                  taskExecutionRecords.value[taskRecordIndex].status = 'success'; // ✅ 明确设置为 success
+                  
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `✅ ${taskLabel} 执行完成（超时误报），用时：${taskElapsedStr}`,
+                    type: "warning",
+                  });
+                  
+                  // 保存任务完成情况到本地存储
+                  saveTaskExecutionRecordsToStorage();
+                }
+                
+                return; // ⚠️ 不要覆盖已完成的结果
+              }
+                        
+              // ✅ 只有当确实存在正在执行或未完成的任务时，才将剩余账号标记为失败
+              if (currentRunningCount > 0 || currentSuccessCount < batchStartCount) {
+                // 更新失败统计（只统计实际失败的账号数）
+                const actualFailedCount = batchStartCount - currentSuccessCount;
+                taskExecutionRecords.value[taskRecordIndex].failCount += actualFailedCount;
+                taskExecutionRecords.value[taskRecordIndex].runningCount = Math.max(0, 
+                  taskExecutionRecords.value[taskRecordIndex].runningCount - actualFailedCount);
+                          
+                // 记录失败账号（只记录尚未成功的账号）
+                const failedTokens = tokens.value.filter(t => 
+                  !availableTokens.some(id => id === t.id) || 
+                  taskExecutionRecords.value[taskRecordIndex].failedAccounts.some(fa => fa.name === t.name)
+                );
+                          
+                availableTokens.forEach(tokenId => {
+                  const token = tokens.value.find(t => t.id === tokenId);
+                  const alreadyFailed = taskExecutionRecords.value[taskRecordIndex].failedAccounts.some(fa => fa.name === token?.name);
+                            
+                  // ✅ 只记录尚未成功的账号
+                  const hasNotSucceeded = taskExecutionRecords.value[taskRecordIndex].successCount === 0 || 
+                    taskExecutionRecords.value[taskRecordIndex].failedAccounts.length < batchStartCount;
+                            
+                  if (!alreadyFailed && hasNotSucceeded) {
+                    taskExecutionRecords.value[taskRecordIndex].failedAccounts.push({
+                      name: token?.name || '未知账号',
+                      error: error.message || '执行失败',
+                      time: new Date().toLocaleTimeString(),
+                    });
+                  }
+                });
+                          
+                // 更新进度
+                const total = taskExecutionRecords.value[taskRecordIndex].totalAccounts;
+                const completed = taskExecutionRecords.value[taskRecordIndex].successCount + taskExecutionRecords.value[taskRecordIndex].failCount;
+                taskExecutionRecords.value[taskRecordIndex].progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+                          
+                // 保存任务完成情况到本地存储（失败时也保存）
+                saveTaskExecutionRecordsToStorage();
+              }
+            }
 
             // ✅ 超时或失败时，停止所有后台十殿战斗（防止资源泄漏）
             if (isNightmareTask && _activeNightmareBattles.length > 0) {
@@ -10466,18 +10863,6 @@ const executeScheduledTask = async (task) => {
                   } catch {}
                 }
               }
-            }
-            
-            // 即使失败也等待
-            if (!isLastBatch && batchSettings.batchIntervalWait > 0) {
-              const waitSeconds = batchSettings.batchIntervalWait;
-              const waitMs = waitSeconds * 1000;
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⏳ 等待${waitSeconds}秒后继续...`,
-                type: "warning",
-              });
-              await new Promise(resolve => setTimeout(resolve, waitMs));
             }
           } finally {
             // ✅ 关键修复：无论任务函数成功或失败，都必须重置 isRunning
@@ -10491,56 +10876,116 @@ const executeScheduledTask = async (task) => {
             scheduledTaskStartTime = Date.now();
             lastTaskExecution = Date.now();
           }
-        }
-        
-        // 任务执行完成后，如果不是最后一个任务，根据设置等待一段时间再执行下一个
-        const currentIndex = activeTasks.indexOf(taskName);
-        const isLastTask = currentIndex === activeTasks.length - 1;
-        
-        if (!isLastTask && batchSettings.taskIntervalWait > 0) {
-          const waitSeconds = batchSettings.taskIntervalWait;
-          const waitMs = waitSeconds * 1000;
+          
+          // ✅ 显示当前功能模块用时
+          const taskElapsed = Date.now() - taskStartTime;
+          const taskElapsedStr = taskElapsed >= 60000
+            ? `${Math.floor(taskElapsed / 60000)}分${Math.floor((taskElapsed % 60000) / 1000)}秒`
+            : `${(taskElapsed / 1000).toFixed(1)}秒`;
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `⏳ 等待${waitSeconds}秒后执行下一个功能...`,
-            type: "info",
+            message: `✅ ${taskLabel} 执行完成，用时：${taskElapsedStr}`,
+            type: "success",
           });
-          await new Promise(resolve => setTimeout(resolve, waitMs));
+          
+          // ✅ 更新子任务执行记录
+          if (taskExecutionRecords.value[taskRecordIndex]) {
+            taskExecutionRecords.value[taskRecordIndex].endTime = Date.now();
+            taskExecutionRecords.value[taskRecordIndex].elapsedStr = taskElapsedStr;
+            // 更新最终状态统计
+            taskExecutionRecords.value[taskRecordIndex].runningCount = 0;
+            taskExecutionRecords.value[taskRecordIndex].progressPercent = 100;
+                        
+            // 🔍 DEBUG: 输出最终的统计信息
+            console.log(`[定时任务] ${taskName} 最终结果:`, {
+              successCount: taskExecutionRecords.value[taskRecordIndex].successCount,
+              failCount: taskExecutionRecords.value[taskRecordIndex].failCount,
+              runningCount: 0,
+              totalAccounts: taskExecutionRecords.value[taskRecordIndex].totalAccounts,
+              failedAccountsLength: taskExecutionRecords.value[taskRecordIndex].failedAccounts.length,
+            });
+                        
+            taskExecutionRecords.value[taskRecordIndex].status = taskExecutionRecords.value[taskRecordIndex].status === 'fail' ? 'partial' : 'success';
+            // 保存任务完成情况到本地存储
+            saveTaskExecutionRecordsToStorage();
+          }
+          
+          // 任务执行完成后，如果不是最后一个任务，根据设置等待一段时间再执行下一个
+          const currentIndex = activeTasks.indexOf(taskName);
+          const isLastTask = currentIndex === activeTasks.length - 1;
+          
+          if (!isLastTask && batchSettings.taskIntervalWait > 0) {
+            const waitSeconds = batchSettings.taskIntervalWait;
+            const waitMs = waitSeconds * 1000;
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `⏳ 等待${waitSeconds}秒后执行下一个功能...`,
+              type: "info",
+            });
+            await new Promise(resolve => setTimeout(resolve, waitMs));
+          }
+        } else {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `任务函数不存在: ${taskName}`,
+            type: "error",
+          });
+          // ✅ 更新子任务执行记录为失败
+          if (taskExecutionRecords.value[taskRecordIndex]) {
+            taskExecutionRecords.value[taskRecordIndex].status = 'fail';
+            taskExecutionRecords.value[taskRecordIndex].elapsedStr = '函数不存在';
+          }
         }
-      } else {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `任务函数不存在: ${taskName}`,
-          type: "error",
-        });
       }
-    }
 
     // 标记所有Token为任务完成
     availableTokens.forEach(tokenId => {
       tokenStore.setTokenRunning(tokenId, false);
     });
 
+    // ✅ 显示总执行用时
+    const totalElapsed = Date.now() - totalStartTime;
+    const totalElapsedStr = totalElapsed >= 60000
+      ? `${Math.floor(totalElapsed / 60000)}分${Math.floor((totalElapsed % 60000) / 1000)}秒`
+      : `${(totalElapsed / 1000).toFixed(1)}秒`;
+    
     addLog({
       time: new Date().toLocaleTimeString(),
-      message: `=== 定时任务执行完成: ${task.name} ===`,
+      message: `=== 定时任务执行完成：${task.name}，总用时：${totalElapsedStr} ===`,
       type: "success",
     });
+    
+    // 定时任务完成后保存所有记录到本地存储
+saveTaskExecutionRecordsToStorage();
   } catch (error) {
     // 标记所有Token为任务完成
     availableTokens.forEach(tokenId => {
       tokenStore.setTokenRunning(tokenId, false);
     });
 
+    // ✅ 失败时也显示总用时
+    const failElapsed = Date.now() - totalStartTime;
+    const failElapsedStr = failElapsed >= 60000
+      ? `${Math.floor(failElapsed / 60000)}分${Math.floor((failElapsed % 60000) / 1000)}秒`
+      : `${(failElapsed / 1000).toFixed(1)}秒`;
+
     addLog({
       time: new Date().toLocaleTimeString(),
-      message: `=== 定时任务执行失败: ${error.message} ===`,
+      message: `=== 定时任务执行失败: ${error.message}，已用时: ${failElapsedStr} ===`,
       type: "error",
     });
     console.error(
       `[${new Date().toISOString()}] Error executing scheduled task ${task.name}:`,
       error,
     );
+
+    // ✅ 将所有仍在执行中的子任务标记为失败
+    taskExecutionRecords.value.forEach(record => {
+      if (record.status === 'running') {
+        record.status = 'fail';
+        record.elapsedStr = '未完成';
+      }
+    });
   } finally {
     // 清除任务执行状态
     isScheduledTaskRunning.value = false;
@@ -10985,7 +11430,7 @@ const loadSettings = (tokenId) => {
       bossFormation: 1,
       nightmareFormation: 1, // 十殿阵容
       bossTimes: 2,
-      dailyBossTimes: 1,
+      dailyBossTimes: 3,
       claimBottle: true,
       payRecruit: true,
       openBox: true,
@@ -11066,7 +11511,7 @@ const openTaskTemplateModal = () => {
     towerFormation: 1,
     bossFormation: 1,
     bossTimes: 2,
-    dailyBossTimes: 1,
+    dailyBossTimes: 3,
     claimBottle: true,
     payRecruit: true,
     openBox: true,
@@ -11270,7 +11715,7 @@ const resetTemplateForm = () => {
     towerFormation: 1,
     bossFormation: 1,
     bossTimes: 2,
-    dailyBossTimes: 1,
+    dailyBossTimes: 3,
     claimBottle: true,
     payRecruit: true,
     openBox: true,
@@ -12855,7 +13300,7 @@ const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
             tokenId,
             "role_getroleinfo",
             {},
-            5000,
+            20000,
           );
 
           // Fetch Battle Version
@@ -12863,7 +13308,7 @@ const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
             tokenId,
             "fight_startlevel",
             {},
-            5000,
+            20000,
           );
           if (res?.battleData?.version) {
             tokenStore.setBattleVersion(res.battleData.version);
@@ -12956,6 +13401,14 @@ const createTaskDeps = () => ({
     if (md) return md[moduleName] || md.default || batchSettings.taskDelay || 1000;
     return batchSettings.taskDelay || 1000;
   },
+  // 安全延迟函数（支持中途停止）
+  safeDelay: async (ms, checkInterval = 100) => {
+    const endTime = Date.now() + ms;
+    while (Date.now() < endTime && !shouldStop.value) {
+      await new Promise((r) => setTimeout(r, Math.min(checkInterval, endTime - Date.now())));
+    }
+    return !shouldStop.value;
+  },
   // 其他特定依赖
   logs,
   logContainer,
@@ -12982,20 +13435,59 @@ const createTaskDeps = () => ({
   loadSettings,
 });
 
+// 包装函数：为单独执行的功能添加用时显示
+const wrapTaskFunctions = (obj) => {
+  const wrapped = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (typeof val === 'function') {
+      wrapped[key] = async (...args) => {
+        const startTime = Date.now();
+        try {
+          const result = await val(...args);
+          const elapsed = Date.now() - startTime;
+          const elapsedStr = elapsed >= 60000
+            ? `${Math.floor(elapsed / 60000)}分${Math.floor((elapsed % 60000) / 1000)}秒`
+            : `${(elapsed / 1000).toFixed(1)}秒`;
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `✅ 功能执行完成，用时: ${elapsedStr}`,
+            type: "success",
+          });
+          return result;
+        } catch (error) {
+          const elapsed = Date.now() - startTime;
+          const elapsedStr = elapsed >= 60000
+            ? `${Math.floor(elapsed / 60000)}分${Math.floor((elapsed % 60000) / 1000)}秒`
+            : `${(elapsed / 1000).toFixed(1)}秒`;
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `❌ 功能执行异常，已用时: ${elapsedStr}，错误: ${error.message}`,
+            type: "error",
+          });
+          throw error;
+        }
+      };
+    } else {
+      wrapped[key] = val;
+    }
+  }
+  return wrapped;
+};
+
 // 初始化任务模块
-const tasksHangUp = createTasksHangUp(createTaskDeps());
+const tasksHangUp = wrapTaskFunctions(createTasksHangUp(createTaskDeps()));
 const { claimHangUpRewards, batchAddHangUpTime, batchStudy, batchclubsign, batchWarGuessCheer } = tasksHangUp;
 
-const tasksBottle = createTasksBottle(createTaskDeps());
+const tasksBottle = wrapTaskFunctions(createTasksBottle(createTaskDeps()));
 const { resetBottles, batchlingguanzi } = tasksBottle;
 
-const tasksTower = createTasksTower(createTaskDeps());
+const tasksTower = wrapTaskFunctions(createTasksTower(createTaskDeps()));
 const { climbTower, climbWeirdTower, batchClaimFreeEnergy, skinChallenge, skinTreasure, batchUseItems, batchMergeItems } = tasksTower;
 
-const tasksCar = createTasksCar(createTaskDeps());
+const tasksCar = wrapTaskFunctions(createTasksCar(createTaskDeps()));
 const { batchSmartSendCar, batchClaimCars, batchCarResearchUpgrade } = tasksCar;
 
-const tasksItem = createTasksItem(createTaskDeps());
+const tasksItem = wrapTaskFunctions(createTasksItem(createTaskDeps()));
 const {
   batchOpenBox,
   batchOpenBoxByPoints,
@@ -13062,7 +13554,7 @@ const pushTokenOptions = computed(() => {
   return tkList.map(t => {
     const st = tokenStore.getWebSocketStatus(t.id);
     const tag = st === "connected" ? " ✅" : st === "connecting" ? " ⏳" : " ⚪";
-    return { label: (t.name || t.id) + tag, value: t.id };
+    return { label: shortName(t.name || t.id) + tag, value: t.id };
   });
 });
 
@@ -13108,12 +13600,14 @@ const _refreshPushCards = () => {
   pushCards.value = ids.map(id => {
     const st = window._pt[id] || {};
     const tk = tokens.value.find(t => t.id === id);
+    const wsStatus = tokenStore.getWebSocketStatus(id);
     return {
       id, name: tk ? tk.name : id,
       running: !!st.running, level: st.level || 0,
       wins: st.wins || 0, losses: st.losses || 0,
       countdown: st.countdown || 0, totalTime: st.totalTime || 0,
       bossNm: getBoss(st.level || 0),
+      wsStatus,
     };
   });
 };
@@ -13125,16 +13619,30 @@ const _startPushCheck = () => {
     if (!window._pt) { isAnyPushRunning.value = false; return; }
     isAnyPushRunning.value = pushSelectedTokens.value.some(id => window._pt[id] && window._pt[id].running);
     if (showPushMapModal.value) _refreshPushCards();
-  }, 1500);
+  }, 1000);  // 1秒刷新一次，让倒计时显示更流畅
 };
 _startPushCheck();
 
-// 全部开始（错开启动避免限流：每个账号间隔3秒 + 随机延迟）
+// 全部开始（错开启动避免限流：根据账号数量动态调整间隔）
 const pushStartAll = async () => {
   const ids = pushSelectedTokens.value;
   if (!ids || !ids.length) return;
   if (!window._pt) window._pt = {};
   if (window._bpLoadBossData) await window._bpLoadBossData();
+
+  // 根据账号数量动态调整间隔：
+  // - 1-10个账号：3-5秒间隔
+  // - 11-30个账号：2-4秒间隔
+  // - 31个以上：1-3秒间隔（避免总时间过长）
+  const count = ids.length;
+  let minDelay, maxDelay;
+  if (count <= 10) {
+    minDelay = 3000; maxDelay = 5000;
+  } else if (count <= 30) {
+    minDelay = 2000; maxDelay = 4000;
+  } else {
+    minDelay = 1000; maxDelay = 3000;
+  }
 
   // 使用_bpStartOne（内含自动连接逻辑），错开启动避免瞬时并发
   if (window._bpStartOne) {
@@ -13142,9 +13650,11 @@ const pushStartAll = async () => {
       const id = ids[idx];
       if (!window._pt || !window._pt[id] || !window._pt[id].running) {
         window._bpStartOne(id);
-        // 基础间隔3秒 + 随机延迟0~2秒，错开每个账号的执行
-        const staggerDelay = 3000 + Math.floor(Math.random() * 2000);
-        await new Promise(r => setTimeout(r, staggerDelay));
+        // 动态间隔 + 随机延迟，错开每个账号的执行
+        if (idx < ids.length - 1) {  // 最后一个不需要等待
+          const staggerDelay = minDelay + Math.floor(Math.random() * (maxDelay - minDelay));
+          await new Promise(r => setTimeout(r, staggerDelay));
+        }
       }
     }
   }
@@ -13163,8 +13673,25 @@ const pushStopAll = (stopAll = false) => {
     if (window._bpStopOne) window._bpStopOne(id);
     else if (window._pt[id]) window._pt[id].stopFlag = true;
   });
+  // 定时停止时延迟 5 秒断开 WebSocket 连接，给 pushLoop 时间检测 stopFlag 并优雅退出
   if (stopAll && ids.length) {
-    console.log(`[定时停止] 已向 ${ids.length} 个账号发送停止指令`);
+    console.log(`[定时停止] 已向 ${ids.length} 个账号发送停止指令，5秒后断开连接`);
+    const stopIds = [...ids]; // 快照，避免 ids 引用在异步前被修改
+    setTimeout(() => {
+      stopIds.forEach(id => {
+        // 只关闭仍在推图的连接（pushLoop 退出后 running 会变 false）
+        if (window._pt && window._pt[id] && window._pt[id].running) {
+          // pushLoop 仍在运行，先强制标记停止
+          window._pt[id].running = false;
+        }
+        try {
+          tokenStore.closeWebSocketConnection(id);
+        } catch (e) {
+          console.warn(`[定时停止] 延迟断开连接失败: ${id}`, e);
+        }
+      });
+      console.log(`[定时停止] 延迟断开完成，共处理 ${stopIds.length} 个账号`);
+    }, 5000);
   }
 };
 
@@ -13327,9 +13854,13 @@ const togglePushAccount = (tokenId) => {
     pushSelectedTokens.value.push(tokenId);
   }
 };
+const shortName = (name) => {
+  if (!name) return name;
+  return name.replace(/-\d+$/, '');
+};
 const getTokenDisplayName = (tokenId) => {
   const opt = pushTokenOptions.value.find(o => o.value === tokenId);
-  return opt ? opt.label.replace(/[✅⏳⚪]/g, '').trim() : tokenId.slice(0, 8);
+  return opt ? shortName(opt.label.replace(/[✅⏳⚪]/g, '').trim()) : tokenId.slice(0, 8);
 };
 
 // 单个切换
@@ -13344,13 +13875,13 @@ const pushToggleOne = (id) => {
   }
 };
 
-const tasksDungeon = createTasksDungeon(createTaskDeps());
+const tasksDungeon = wrapTaskFunctions(createTasksDungeon(createTaskDeps()));
 const { batchbaoku13, batchbaoku45, batchmengjing, batchBuyDreamItems } = tasksDungeon;
 
-const tasksArena = createTasksArena(createTaskDeps());
+const tasksArena = wrapTaskFunctions(createTasksArena(createTaskDeps()));
 const { batcharenafight, batchTopUpFish, batchTopUpArena } = tasksArena;
 
-const tasksStore = createTasksStore(createTaskDeps());
+const tasksStore = wrapTaskFunctions(createTasksStore(createTaskDeps()));
 const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_bronze, store_buy_platinum, store_buy_gold_rod, store_buy_jade, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, buy_top_rod_package, buy_super_spirit_shell, batch_mail_claim_and_cleanup } = tasksStore;
 
 // ====== 采购清单配置 ======
@@ -13696,7 +14227,7 @@ const applyBatchPurchaseConfig = async () => {
   batchPurchaseSyncing.value = false;
 };
 
-const tasksLegacy = createTasksLegacy(createTaskDeps());
+const tasksLegacy = wrapTaskFunctions(createTasksLegacy(createTaskDeps()));
 const { batchLegacyClaim, batchLegacyHangup, batchLegacyGiftSendEnhanced, batchLegacyClaimGiftTask } = tasksLegacy;
 
 // ====== 十殿阀罗挑战（弹窗打开组队界面） ======
@@ -14339,6 +14870,9 @@ const batchNightmareChallengePresets = async (silent) => {
 const startBatch = async () => {
   if (selectedTokens.value.length === 0) return;
 
+  // ✅ 记录日常任务开始时间
+  const batchStartTime = Date.now();
+
   isRunning.value = true;
   shouldStop.value = false;
   // ✅ 修复：手动批量任务开始时也更新 lastTaskExecution，防止 healthCheck 误判为卡死
@@ -14815,6 +15349,17 @@ const startBatch = async () => {
     });
   }
 
+  // ✅ 显示日常任务总用时
+  const batchElapsed = Date.now() - batchStartTime;
+  const batchElapsedStr = batchElapsed >= 60000
+    ? `${Math.floor(batchElapsed / 60000)}分${Math.floor((batchElapsed % 60000) / 1000)}秒`
+    : `${(batchElapsed / 1000).toFixed(1)}秒`;
+  addLog({
+    time: new Date().toLocaleTimeString(),
+    message: `=== 日常任务执行完成，总用时: ${batchElapsedStr} ===`,
+    type: "success",
+  });
+
   isRunning.value = false;
   currentRunningTokenId.value = null;
   
@@ -15221,15 +15766,39 @@ const sortByActivityAfterDailyTask = async () => {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
-.card-title {
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.card-title-main {
   font-size: 16px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.log-count-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: #666;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .log-header-controls {
@@ -15237,7 +15806,490 @@ const sortByActivityAfterDailyTask = async () => {
   align-items: center;
   gap: 12px;
   justify-content: flex-end;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.error-tag {
+  animation: pulse-error 2s ease-in-out infinite;
+}
+
+@keyframes pulse-error {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.action-btn:active {
+  transform: translateY(0);
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .custom-card-header {
+    gap: 10px;
+  }
+  
+  .card-title-row {
+    gap: 8px;
+  }
+  
+  .card-title-main {
+    font-size: 15px;
+  }
+  
+  .log-count-badge {
+    padding: 2px 8px;
+    font-size: 11px;
+  }
+  
+  .log-header-controls {
+    gap: 8px;
+    justify-content: flex-start;
+  }
+  
+  .control-group {
+    gap: 6px;
+    width: 100%;
+  }
+  
+  .action-btn {
+    flex: 1;
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 12px;
+    justify-content: center;
+  }
+  
+  .action-btn :deep(.n-icon) {
+    font-size: 14px;
+  }
+}
+
+/* 超小屏幕适配 */
+@media (max-width: 480px) {
+  .card-title-main {
+    font-size: 14px;
+  }
+  
+  .control-group {
+    width: 100%;
+  }
+  
+  .action-btn {
+    min-height: 40px;
+    padding: 0 8px;
+  }
+}
+/* 任务执行完成情况样式 */
+.tr-summary-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.tr-stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 4px;
+  border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tr-stat-num {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.tr-stat-label {
+  font-size: 12px;
+  margin-top: 2px;
+  opacity: 0.85;
+}
+
+.tr-stat-success { background: rgba(76, 175, 80, 0.12); }
+.tr-stat-success .tr-stat-num { color: #2E7D32; }
+.tr-stat-success .tr-stat-label { color: #2E7D32; }
+
+.tr-stat-partial { background: rgba(255, 152, 0, 0.12); }
+.tr-stat-partial .tr-stat-num { color: #E65100; }
+.tr-stat-partial .tr-stat-label { color: #E65100; }
+
+.tr-stat-fail { background: rgba(244, 67, 54, 0.12); }
+.tr-stat-fail .tr-stat-num { color: #C62828; }
+.tr-stat-fail .tr-stat-label { color: #C62828; }
+
+.tr-stat-running { background: rgba(33, 150, 243, 0.12); }
+.tr-stat-running .tr-stat-num { color: #1565C0; }
+.tr-stat-running .tr-stat-label { color: #1565C0; }
+
+/* 暗色主题适配 */
+html[data-theme="dark"] .tr-stat-success { background: rgba(76, 175, 80, 0.18); }
+html[data-theme="dark"] .tr-stat-success .tr-stat-num,
+html[data-theme="dark"] .tr-stat-success .tr-stat-label { color: #66BB6A; }
+html[data-theme="dark"] .tr-stat-partial { background: rgba(255, 152, 0, 0.18); }
+html[data-theme="dark"] .tr-stat-partial .tr-stat-num,
+html[data-theme="dark"] .tr-stat-partial .tr-stat-label { color: #FFA726; }
+html[data-theme="dark"] .tr-stat-fail { background: rgba(244, 67, 54, 0.18); }
+html[data-theme="dark"] .tr-stat-fail .tr-stat-num,
+html[data-theme="dark"] .tr-stat-fail .tr-stat-label { color: #EF5350; }
+html[data-theme="dark"] .tr-stat-running { background: rgba(33, 150, 243, 0.18); }
+html[data-theme="dark"] .tr-stat-running .tr-stat-num,
+html[data-theme="dark"] .tr-stat-running .tr-stat-label { color: #42A5F5; }
+
+/* Modal 头部操作栏样式 */
+.tr-header-actions {
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecef 100%);
+  border-radius: 8px;
+}
+
+html[data-theme="dark"] .tr-header-actions {
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+}
+
+.tr-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #999;
+  font-size: 14px;
+}
+
+html[data-theme="dark"] .tr-empty {
+  color: #666;
+}
+
+.tr-list {
+  max-height: 420px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tr-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.05);
+  border-left: 3px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.tr-item:hover {
+  background: rgba(128, 128, 128, 0.1);
+  transform: translateX(2px);
+}
+
+.tr-item-success { border-left-color: #4CAF50; }
+.tr-item-partial { border-left-color: #FF9800; }
+.tr-item-fail { border-left-color: #F44336; }
+.tr-item-running { border-left-color: #2196F3; }
+
+.tr-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tr-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.tr-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tr-dot-success { background: #4CAF50; box-shadow: 0 0 6px rgba(76, 175, 80, 0.5); }
+.tr-dot-partial { background: #FF9800; box-shadow: 0 0 6px rgba(255, 152, 0, 0.5); }
+.tr-dot-fail { background: #F44336; box-shadow: 0 0 6px rgba(244, 67, 54, 0.5); }
+.tr-dot-running {
+  background: #2196F3;
+  box-shadow: 0 0 6px rgba(33, 150, 243, 0.5);
+  animation: tr-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tr-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.tr-item-index {
+  font-size: 13px;
+  font-weight: 600;
+  color: #888;
+  min-width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+html[data-theme="dark"] .tr-item-index { color: #aaa; }
+
+.tr-item-name {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tr-item-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.tr-item-time {
+  font-size: 13px;
+  color: #888;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-theme="dark"] .tr-item-time { color: #aaa; }
+
+.tr-item-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.tr-badge-success { background: rgba(76, 175, 80, 0.15); color: #2E7D32; }
+.tr-badge-partial { background: rgba(255, 152, 0, 0.15); color: #E65100; }
+.tr-badge-fail { background: rgba(244, 67, 54, 0.15); color: #C62828; }
+.tr-badge-running { background: rgba(33, 150, 243, 0.15); color: #1565C0; }
+
+html[data-theme="dark"] .tr-badge-success { background: rgba(76, 175, 80, 0.2); color: #66BB6A; }
+html[data-theme="dark"] .tr-badge-partial { background: rgba(255, 152, 0, 0.2); color: #FFA726; }
+html[data-theme="dark"] .tr-badge-fail { background: rgba(244, 67, 54, 0.2); color: #EF5350; }
+html[data-theme="dark"] .tr-badge-running { background: rgba(33, 150, 243, 0.2); color: #42A5F5; }
+
+/* 执行时间详情 */
+.tr-time-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+html[data-theme="dark"] .tr-time-details {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tr-time-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tr-time-label {
+  color: #888;
+  font-weight: 500;
+}
+
+html[data-theme="dark"] .tr-time-label { color: #aaa; }
+
+.tr-time-value {
+  color: #333;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+html[data-theme="dark"] .tr-time-value { color: #ddd; }
+
+.tr-delay-early { color: #4CAF50; }
+.tr-delay-normal { color: #2196F3; }
+.tr-delay-warning { color: #FF9800; }
+.tr-delay-error { color: #F44336; }
+
+/* 执行进度统计 */
+.tr-progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tr-progress-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.tr-progress-text {
+  color: #666;
+  font-weight: 500;
+}
+
+html[data-theme="dark"] .tr-progress-text { color: #aaa; }
+
+.tr-progress-percent {
+  color: #2196F3;
+  font-weight: 600;
+}
+
+.tr-progress-stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tr-stat-success { color: #4CAF50; font-weight: 500; }
+.tr-stat-fail { color: #F44336; font-weight: 500; }
+.tr-stat-running { color: #2196F3; font-weight: 500; }
+
+.tr-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+html[data-theme="dark"] .tr-progress-bar {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tr-progress-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+  border-radius: 3px;
+}
+
+.tr-progress-success { background: linear-gradient(90deg, #4CAF50, #66BB6A); }
+.tr-progress-partial { background: linear-gradient(90deg, #FF9800, #FFA726); }
+.tr-progress-fail { background: linear-gradient(90deg, #F44336, #EF5350); }
+.tr-progress-running { 
+  background: linear-gradient(90deg, #2196F3, #42A5F5);
+  animation: tr-progress-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes tr-progress-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* 失败账号详情 */
+.tr-failed-accounts {
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  padding-top: 10px;
+}
+
+html[data-theme="dark"] .tr-failed-accounts {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.tr-failed-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+  font-size: 13px;
+  color: #F44336;
+  font-weight: 500;
+}
+
+.tr-failed-header:hover {
+  background: rgba(244, 67, 54, 0.1);
+}
+
+.tr-failed-toggle {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+.tr-failed-count {
+  flex: 1;
+}
+
+.tr-failed-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tr-failed-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: rgba(244, 67, 54, 0.05);
+  border-radius: 6px;
+  border-left: 2px solid #F44336;
+  font-size: 12px;
+}
+
+.tr-failed-name {
+  font-weight: 600;
+  color: #333;
+}
+
+html[data-theme="dark"] .tr-failed-name { color: #ddd; }
+
+.tr-failed-error {
+  color: #F44336;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.tr-empty {
+  text-align: center;
+  color: #999;
+  padding: 32px;
+  font-size: 14px;
 }
 
 /* Cron Parser Styles */
@@ -16269,6 +17321,56 @@ const sortByActivityAfterDailyTask = async () => {
   }
 }
 
+/* 三列合并布局 */
+.settings-grid-responsive-3cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.setting-group-merged {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-secondary, #f9fafb);
+  border-radius: 8px;
+  border: 1px solid var(--border-light, #e5e7eb);
+  transition: all 0.2s ease;
+}
+
+.setting-group-merged:hover {
+  background: var(--bg-tertiary, #f3f4f6);
+  border-color: var(--border-hover, #d1d5db);
+}
+
+/* 三列合并布局 - 移动端适配 */
+@media (max-width: 768px) {
+  .settings-grid-responsive-3cols {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .setting-group-merged {
+    padding: 10px;
+  }
+}
+
+/* 三列合并布局 - 平板端适配 */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .settings-grid-responsive-3cols {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 三列合并布局 - 桌面端适配 */
+@media (min-width: 1025px) {
+  .settings-grid-responsive-3cols {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
 /* ========== 定时任务弹窗手机端优化 ========== */
 @media (max-width: 600px) {
   /* 分区卡片减少内边距 */
@@ -16516,6 +17618,7 @@ const sortByActivityAfterDailyTask = async () => {
   color: var(--n-text-color-3, #9ca3af);
   flex-shrink: 0;
 }
+
 /* 绿色开关样式（与预设卡点开关一致） */
 :deep(.feature-switch) {
   --n-rail-color-active: #18a058 !important;
@@ -17043,8 +18146,40 @@ const sortByActivityAfterDailyTask = async () => {
   box-shadow: 0 0 4px #18a058aa;
   animation: dot-pulse 2s infinite;
 }
+.push-card-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.push-card-progress .n-progress {
+  flex: 1;
+}
+.push-card-timer {
+  font-size: 10.5px;
+  color: #2080f0;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.push-timer-sep {
+  color: #aab;
+  margin: 0 1px;
+  font-weight: 400;
+}
 .dot-idle {
   background: #c0c4cc;
+}
+.dot-connected {
+  background: #18a058;
+}
+.dot-connecting {
+  background: #f0a020;
+  animation: dot-pulse 1.5s infinite;
+}
+.dot-disconnected {
+  background: #d03050;
 }
 @keyframes dot-pulse {
   0%, 100% { opacity: 1; }
@@ -17113,29 +18248,6 @@ const sortByActivityAfterDailyTask = async () => {
   margin-left: 2px;
 }
 
-/* 进度条+倒计时 */
-.push-card-progress {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-}
-.push-card-progress .n-progress {
-  flex: 1;
-}
-.push-card-timer {
-  font-size: 10.5px;
-  color: #2080f0;
-  font-weight: 600;
-  font-family: 'Courier New', monospace;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.push-timer-sep {
-  color: #aab;
-  margin: 0 1px;
-  font-weight: 400;
-}
 
 .push-empty {
   text-align: center;

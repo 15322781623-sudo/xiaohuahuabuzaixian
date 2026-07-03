@@ -91,7 +91,7 @@ const DEFAULT_SETTINGS = {
   towerFormation: 1,
   bossFormation: 1,
   bossTimes: 2,
-  dailyBossTimes: 1,
+  dailyBossTimes: 3,
   claimBottle: true,
   payRecruit: true,
   openBox: true,
@@ -424,8 +424,8 @@ export class DailyTaskRunner {
       // ✅ 连接错误或可重试错误码重试
       if ((isConnectionError(error) || isRetryableError(error)) && retryCount < MAX_RETRIES) {
         const isRateLimit = isRetryableError(error);
-        // ✅ 限流错误用更长的重试间隔（15秒），连接错误保持2秒
-        const retryDelay = isRateLimit ? 15000 : 2000;
+        // ✅ 限流错误用更长的重试间隔（30 秒），连接错误保持 2 秒
+        const retryDelay = isRateLimit ? 30000 : 2000;
         if (!silent) this.warn(`[${isRateLimit ? '服务器限流' : '连接错误'}] ${description}，${retryDelay/1000}秒后重试 (${retryCount + 1}/${MAX_RETRIES})`);
         await delay(retryDelay);
         return this.sendCommand(cmd, params, { ...options, retryCount: retryCount + 1 });
@@ -854,11 +854,11 @@ export class DailyTaskRunner {
       });
     }
 
-    // 每日BOSS
+    // 俱乐部BOSS
     let dailyBossCount = statistics['boss'] ?? 0;
     if (isToday(statisticsTime['boss'])) dailyBossCount = 0;
 
-    const dailyBossMax = this.settings.dailyBossTimes ?? 1;
+    const dailyBossMax = this.settings.dailyBossTimes ?? 3;
     const dailyBossRemaining = Math.max(dailyBossMax - dailyBossCount, 0);
 
     if (dailyBossRemaining > 0) {
@@ -869,7 +869,7 @@ export class DailyTaskRunner {
       });
       for (let i = 0; i < dailyBossRemaining; i++) {
         tasks.push(() => this.sendCommandSafe('fight_startboss', 
-          { bossId: getTodayBossId() }, { description: `每日BOSS ${i + 1}/${dailyBossRemaining}` }));
+          { bossId: getTodayBossId() }, { description: `俱乐部BOSS ${i + 1}/${dailyBossRemaining}` }));
       }
 
       tasks.push(async () => {

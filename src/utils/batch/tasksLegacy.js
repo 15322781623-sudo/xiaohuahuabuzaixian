@@ -132,6 +132,7 @@ export function createTasksLegacy(deps) {
     securityPassword,
     delayConfig,
     getModuleDelay,
+    safeDelay,
   } = deps;
 
   // 模块延迟辅助函数
@@ -403,28 +404,39 @@ export function createTasksLegacy(deps) {
           const vipLevel = roleInfo?.role?.vip || 0;
 
           // 检查赛季充值特权：
+          // 通过28天赛季周期计算当前赛季开始时间
           // statistics["legacy:charge"] = 赛季累计充值金额（3000=30元）
-          // statisticsTime["legacy:charge"] = 赛季开始时间戳
           // statisticsTime["today:charge"] = 实际充值时间戳
-          // 判断条件：充值金额≥3000 且 充值时间在赛季开始之后（当前赛季内充值）
+          // 判断条件：充值金额≥3000 且 充值时间落在当前赛季区间内
           const statistics = roleInfo?.role?.statistics || {};
           const statisticsTime = roleInfo?.role?.statisticsTime || {};
           const legacyCharge = statistics["legacy:charge"] || 0;
-          const seasonStartTime = statisticsTime["legacy:charge"] || 0;
           const chargeTime = statisticsTime["today:charge"] || 0;
-          const hasLegacyPrivilege = legacyCharge >= 3000 && chargeTime > 0 && chargeTime >= seasonStartTime;
+
+          // 计算当前赛季开始时间（28天周期，新赛季中午12:00开启）
+          const SEASON_REF_DATE = new Date(2026, 0, 16, 12, 0, 0); // 第1赛季: 2026-01-16 12:00
+          const SEASON_DURATION_MS = 28 * 24 * 60 * 60 * 1000; // 28天（毫秒）
+          const now = Date.now();
+          const elapsed = now - SEASON_REF_DATE.getTime();
+          const completedCycles = Math.floor(elapsed / SEASON_DURATION_MS);
+          const currSeasonStartMs = SEASON_REF_DATE.getTime() + completedCycles * SEASON_DURATION_MS;
+          const currSeasonStartSec = Math.floor(currSeasonStartMs / 1000); // 转秒级时间戳
+          const currSeasonStartDate = new Date(currSeasonStartMs);
+
+          // 特权判断：充值金额≥30元 且 充值发生在当前赛季区间内
+          const hasLegacyPrivilege = legacyCharge >= 3000 && chargeTime > 0 && chargeTime >= currSeasonStartSec;
           if (hasLegacyPrivilege) {
             const chargeDate = new Date(chargeTime * 1000).toLocaleDateString();
-            const seasonDate = new Date(seasonStartTime * 1000).toLocaleDateString();
+            const seasonDate = currSeasonStartDate.toLocaleDateString();
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 赛季充值 ${legacyCharge / 100}元（充值时间: ${chargeDate}，赛季开始: ${seasonDate}），特权开启，赠送无上限`,
+              message: `${token.name} 赛季充值 ${legacyCharge / 100}元（充值时间: ${chargeDate}，当前赛季: ${seasonDate}），特权开启，赠送无上限`,
               type: "info",
             });
-          } else if (legacyCharge >= 3000 && (chargeTime === 0 || chargeTime < seasonStartTime)) {
+          } else if (legacyCharge >= 3000 && (chargeTime === 0 || chargeTime < currSeasonStartSec)) {
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 充值 ${legacyCharge / 100}元但非本赛季（充值时间: ${chargeTime > 0 ? new Date(chargeTime * 1000).toLocaleDateString() : '无'}），特权未开启`,
+              message: `${token.name} 充值 ${legacyCharge / 100}元但非本赛季（充值时间: ${chargeTime > 0 ? new Date(chargeTime * 1000).toLocaleDateString() : '无'}，当前赛季: ${currSeasonStartDate.toLocaleDateString()}），特权未开启`,
               type: "info",
             });
           } else if (legacyCharge > 0) {
@@ -451,6 +463,8 @@ export function createTasksLegacy(deps) {
 
           // 解析 roleLegacy 对象
           const roleLegacy = legacyInfo?.roleLegacy || {};
+
+
 
           // 解析已领取的任务记录 giftTaskClaim（数据在 roleLegacy 内）
           const giftTaskClaim = roleLegacy?.giftTaskClaim || legacyInfo?.giftTaskClaim || {};
@@ -814,7 +828,7 @@ export function createTasksLegacy(deps) {
       });
       // 重置状态为 running
       currentRetryIds.forEach((id) => { tokenStatus.value[id] = "running"; });
-      await new Promise((resolve) => setTimeout(resolve, retryWait));
+      if (!(await safeDelay(retryWait))) break;
       await runStreaming(currentRetryIds, processLegacyGift);
       currentRetryIds = selectedTokens.value.filter((id) => tokenStatus.value[id] === "retryable");
     }

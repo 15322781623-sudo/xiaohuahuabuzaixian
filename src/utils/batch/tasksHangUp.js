@@ -260,8 +260,13 @@ export function createTasksHangUp(deps) {
       if (shouldStop.value) { addLog({ time: new Date().toLocaleTimeString(), message: `已停止，取消重试`, type: "warning" }); break; }
 
       const nextRetryTokens = [];
-      const retryPromises = currentRetryTokens.map(async ({ tokenId, tokenName }) => {
+      // ✅ 并发重试，通过runStreaming控制并发
+      await runStreaming(currentRetryTokens.map(r => r.tokenId), async (tokenId) => {
         if (shouldStop.value) return;
+        const info = currentRetryTokens.find(r => r.tokenId === tokenId);
+        if (!info) return;
+        const { tokenName } = info;
+
         tokenStatus.value[tokenId] = "running";
         const token = tokens.value.find((t) => t.id === tokenId);
         let conn = false;
@@ -630,9 +635,11 @@ export function createTasksHangUp(deps) {
         await safeDelay(batchSettings.retryDelay || 60000); // 等待重试
 
         const failedThisRound = [];
-        for (const { tokenId, name } of retryTokens) {
-          if (shouldStop.value)
-            break;
+        await runStreaming(retryTokens.map(r => r.tokenId), async (tokenId) => {
+          if (shouldStop.value) return;
+          const info = retryTokens.find(r => r.tokenId === tokenId);
+          if (!info) return;
+          const { name } = info;
           tokenStatus.value[tokenId] = "running";
           try {
             const success = await studyForToken(tokenId, name, true);
@@ -647,9 +654,7 @@ export function createTasksHangUp(deps) {
             tokenStatus.value[tokenId] = "failed";
             addLog({ time: new Date().toLocaleTimeString(), message: `${name} 重试答题失败: ${err.message}`, type: "error" });
           }
-          // 账号间间隔
-          await safeDelay(_getModuleDelay('hangup'));
-        }
+        });
         retryTokens.length = 0;
         retryTokens.push(...failedThisRound);
       }

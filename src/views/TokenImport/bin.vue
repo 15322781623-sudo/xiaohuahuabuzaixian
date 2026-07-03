@@ -87,6 +87,7 @@ import {
 import PQueue from "p-queue";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { getServerList, getTokenId, transformToken } from "@/utils/token";
+import { saveBinBackup } from "@/utils/binBackup";
 import { g_utils } from "@/utils/bonProtocol";
 
 const $emit = defineEmits(["cancel", "ok"]);
@@ -227,6 +228,9 @@ const addSelectedRole = async (roleInfo: any) => {
     if (!saved) {
       throw new Error("保存BIN数据到IndexedDB失败，请检查浏览器存储空间或权限");
     }
+
+    // 同时备份到 localStorage，防止 IndexedDB 被清理后无法导出/刷新
+    saveBinBackup(tokenId, newBinBuffer);
 
     let sid = Number(roleInfo.serverId);
     let roleIndex = 0;

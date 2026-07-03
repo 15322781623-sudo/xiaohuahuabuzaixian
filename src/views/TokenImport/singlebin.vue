@@ -87,6 +87,7 @@ import {
 
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { getTokenId, transformToken } from "@/utils/token";
+import { saveBinBackup } from "@/utils/binBackup";
 
 const $emit = defineEmits(["cancel", "ok"]);
 
@@ -169,9 +170,11 @@ const uploadBin = (binFile: File) => {
 
 // 监听文件队列，串行逐个处理，每个间隔 2 秒
 let processingStarted = false;
+let consecutiveFailures = 0; // 连续失败计数
 watch(pendingFiles, async (files) => {
   if (files.length === 0 || processingStarted) return;
   processingStarted = true;
+  consecutiveFailures = 0; // 重置连续失败计数
 
   const totalFiles = files.length;
   uploadProgress.value = { current: 0, total: totalFiles, processing: true };
@@ -206,7 +209,10 @@ watch(pendingFiles, async (files) => {
         } catch (err: any) {
           console.warn(`transformToken 第${attempt}次失败:`, err.message);
           if (attempt < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            // 如果是限流错误，等待更长时间
+            const isRateLimit = err.message.includes('限流') || err.message.includes('异常响应');
+            const waitTime = isRateLimit ? 5000 : 1500;
+            await new Promise(resolve => setTimeout(resolve, waitTime));
           } else {
             throw new Error(`Token转换失败(已重试${maxRetries}次): ${err.message}`);
           }
@@ -220,6 +226,9 @@ watch(pendingFiles, async (files) => {
       if (!saved) {
         throw new Error("保存BIN数据到IndexedDB失败");
       }
+
+      // 同时备份到 localStorage，防止 IndexedDB 被清理后无法导出/刷新
+      saveBinBackup(tokenId, userToken);
 
       // 检查重复
       if (roleList.value.some((role) => role.id === tokenId)) {
@@ -242,9 +251,24 @@ watch(pendingFiles, async (files) => {
       });
 
       message.success(`第 ${i + 1}/${totalFiles} 个文件处理完成: ${roleName}`);
+      consecutiveFailures = 0; // 成功后重置连续失败计数
     } catch (err: any) {
       console.error(`文件处理失败: ${binFile.name}`, err);
       message.error(`第 ${i + 1}/${totalFiles} 个文件处理失败: ${err.message}`);
+      consecutiveFailures++;
+
+      // 连续失败3次以上，提示用户是否继续
+      if (consecutiveFailures >= 3) {
+        const shouldContinue = confirm(`已连续失败 ${consecutiveFailures} 次，可能是服务器限流或网络问题。\n\n是否继续处理剩余文件？\n点击"确定"继续，点击"取消"停止。`);
+        if (!shouldContinue) {
+          message.warning(`用户手动停止，已处理 ${i + 1}/${totalFiles} 个文件`);
+          break;
+        }
+        // 用户选择继续，重置连续失败计数并等待更长时间
+        consecutiveFailures = 0;
+        message.info('等待30秒后继续处理...');
+        await new Promise(resolve => setTimeout(resolve, 30000));
+      }
     }
 
     // 每个文件处理完后等待 2 秒再处理下一个

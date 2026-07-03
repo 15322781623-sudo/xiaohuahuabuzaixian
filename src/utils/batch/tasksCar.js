@@ -32,6 +32,7 @@ export function createTasksCar(deps) {
     countRacingRefreshTickets,
     delayConfig,
     getModuleDelay,
+    safeDelay,
   } = deps;
 
   // 模块延迟辅助函数
@@ -262,7 +263,7 @@ export function createTasksCar(deps) {
             message: `⏳ 等待${waitDesc}后进行第${retryRound + 1}次重试（${retry400340Tokens.length}个账号）...`,
             type: "info",
           });
-          await new Promise((r) => setTimeout(r, RETRY_WAIT_TIME));
+          if (!(await safeDelay(RETRY_WAIT_TIME))) break;
 
           if (shouldStop.value) break;
 
@@ -274,22 +275,10 @@ export function createTasksCar(deps) {
 
           const stillFailed = [];
 
-          for (let i = 0; i < retry400340Tokens.length; i++) {
-            if (shouldStop.value) break;
-
-            const tokenId = retry400340Tokens[i];
+          await runStreaming(retry400340Tokens, async (tokenId) => {
+            if (shouldStop.value) return;
             const token = tokens.value.find((t) => t.id === tokenId);
-            if (!token) continue;
-
-            // 账号间延迟（非第一个账号时）
-            if (i > 0 && (batchSettings.accountRetryInterval || 0) > 0) {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⏳ 等待${batchSettings.accountRetryInterval / 1000}秒后处理下一个账号...`,
-                type: "info",
-              });
-              await new Promise((r) => setTimeout(r, batchSettings.accountRetryInterval || 3000));
-            }
+            if (!token) return;
 
             try {
               // 重试时先关闭旧连接再重新连接
@@ -321,7 +310,7 @@ export function createTasksCar(deps) {
                 closeConnection(tokenId, token.name);
               }
             }
-          }
+          });
 
           retry400340Tokens.length = 0;
           retry400340Tokens.push(...stillFailed);
@@ -629,7 +618,7 @@ export function createTasksCar(deps) {
       if (pendingTasks.length > 0 && round < maxRetries) {
         const retryDelay = batchSettings.retryDelay || 60000;
         addLog({ time: new Date().toLocaleTimeString(), message: `⏱️ 等待${retryDelay / 1000}秒后进行第 ${round + 1} 轮重试...`, type: "info" });
-        await new Promise((r) => setTimeout(r, retryDelay));
+        if (!(await safeDelay(retryDelay))) break;
       }
     }
 

@@ -54,6 +54,7 @@ export function createTasksArena(deps) {
     delayConfig,
     getModuleDelay,
     loadSettings,
+    safeDelay,
   } = deps;
 
   // 模块延迟辅助函数
@@ -91,16 +92,21 @@ export function createTasksArena(deps) {
     }
 
     // 执行战斗
-    await tokenStore.sendMessageWithPromise(
+    const fightResult = await tokenStore.sendMessageWithPromise(
       tokenId,
       "fight_startareaarena",
       { targetId: targetResult.targetId },
       battleTimeout,
     );
 
+    // 解析战斗结果
+    const body = fightResult?.body || fightResult || {};
+    const result = body.result || body;
+    const isWin = result.isWin ?? result.iswin ?? result.win;
+
     await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
 
-    return { success: true, error: null, errorCode: null };
+    return { success: true, isWin, error: null, errorCode: null };
   };
 
   /**
@@ -219,11 +225,19 @@ export function createTasksArena(deps) {
           const result = await executeArenaFight(tokenId, tokenName, playerInfo, delayConfig);
 
           if (result.success) {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${tokenName} 重试竞技场战斗 ${i + 1}/${totalFights}`,
-              type: "success",
-            });
+            if (result.isWin) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${tokenName} 重试竞技场战斗 ${i + 1}/${totalFights} 挑战成功`,
+                type: "success",
+              });
+            } else {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${tokenName} 重试竞技场战斗 ${i + 1}/${totalFights} 挑战失败`,
+                type: "warning",
+              });
+            }
           } else {
             addLog({
               time: new Date().toLocaleTimeString(),
@@ -313,8 +327,7 @@ export function createTasksArena(deps) {
       type: "info",
     });
 
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
-
+    if (!(await safeDelay(waitTime))) return;
     for (let retryCount = 0; retryCount < maxRetries; retryCount++) {
       if (shouldStop.value || retryTokens.length === 0)
         break;
@@ -327,24 +340,25 @@ export function createTasksArena(deps) {
 
       const failedTokens = [];
 
-      for (const retryInfo of retryTokens) {
-        if (shouldStop.value)
-          break;
+      await runStreaming(retryTokens.map(r => r.tokenId), async (tokenId) => {
+        if (shouldStop.value) return;
+        const retryInfo = retryTokens.find(r => r.tokenId === tokenId);
+        if (!retryInfo) return;
 
         const result = await retryArenaFight(retryInfo, retryCount, maxRetries, errorType, waitTime);
 
         if (!result.success) {
           failedTokens.push(retryInfo);
-          tokenStatus.value[retryInfo.tokenId] = result.reason === "门票不足" ? "completed" : "waiting_retry";
+          tokenStatus.value[tokenId] = result.reason === "门票不足" ? "completed" : "waiting_retry";
         } else {
-          tokenStatus.value[retryInfo.tokenId] = "completed";
+          tokenStatus.value[tokenId] = "completed";
           addLog({
             time: new Date().toLocaleTimeString(),
             message: `=== ${retryInfo.tokenName} 重试成功 ===`,
             type: "success",
           });
         }
-      }
+      });
 
       retryTokens.length = 0;
       retryTokens.push(...failedTokens);
@@ -355,7 +369,7 @@ export function createTasksArena(deps) {
           message: `${failedTokens.length} 个账号重试失败，等待${waitTime / 1000}秒后进行下一轮重试`,
           type: "warning",
         });
-        await new Promise((resolve) => setTimeout(resolve, waitTime));
+        if (!(await safeDelay(waitTime))) break;
       }
     }
 
@@ -756,16 +770,31 @@ export function createTasksArena(deps) {
               });
 
               try {
-                await tokenStore.sendMessageWithPromise(
+                const fightResult = await tokenStore.sendMessageWithPromise(
                   tokenId,
                   "fight_startareaarena",
                   { targetId: targetResult.targetId },
                 );
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `${token.name} 竞技场战斗 ${i + 1}/3`,
-                  type: "info",
-                });
+                
+                // 解析战斗结果
+                const body = fightResult?.body || fightResult || {};
+                const result = body.result || body;
+                const isWin = result.isWin ?? result.iswin ?? result.win;
+                
+                if (isWin) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 竞技场战斗 ${i + 1}/3 挑战成功`,
+                    type: "success",
+                  });
+                } else {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 竞技场战斗 ${i + 1}/3 挑战失败`,
+                    type: "warning",
+                  });
+                }
+                
                 await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
               } catch (e) {
                 const errorMsg = e.message || "未知错误";
@@ -1104,9 +1133,10 @@ export function createTasksArena(deps) {
           type: "info",
         });
 
-        await new Promise((resolve) => setTimeout(resolve, retryWaitTime));
-
-        for (let retryCount = 0; retryCount < maxRetries; retryCount++) {
+        if (!(await safeDelay(retryWaitTime))) {
+          retryTargetTokens.length = 0;
+        }
+        for (let retryCount = 0; retryCount < maxRetries && retryTargetTokens.length > 0; retryCount++) {
           if (shouldStop.value || retryTargetTokens.length === 0)
             break;
 
@@ -1118,11 +1148,12 @@ export function createTasksArena(deps) {
 
           const failedTokens = [];
 
-          for (const retryInfo of retryTargetTokens) {
-            if (shouldStop.value)
-              break;
+          await runStreaming(retryTargetTokens.map(r => r.tokenId), async (tokenId) => {
+            if (shouldStop.value) return;
+            const retryInfo = retryTargetTokens.find(r => r.tokenId === tokenId);
+            if (!retryInfo) return;
 
-            const { tokenId, tokenName, fightIndex, totalFights, originalFormation, isSwitched, tokenSettings, ticketCount, errorType } = retryInfo;
+            const { tokenName, fightIndex, totalFights, originalFormation, isSwitched, tokenSettings, ticketCount, errorType } = retryInfo;
             const token = tokens.value.find((t) => t.id === tokenId);
 
             try {
@@ -1158,7 +1189,7 @@ export function createTasksArena(deps) {
                   type: "warning",
                 });
                 failedTokens.push(retryInfo);
-                continue;
+                return;
               }
 
               // 恢复阵容（如果需要）
@@ -1256,19 +1287,33 @@ export function createTasksArena(deps) {
                   }
 
                   // 执行战斗
-                  await tokenStore.sendMessageWithPromise(
+                  const fightResult = await tokenStore.sendMessageWithPromise(
                     tokenId,
                     "fight_startareaarena",
                     { targetId: targetResult.targetId },
                     8000,
                   );
 
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${tokenName} 重试竞技场战斗 ${i + 1}/${fightsToRetry}`,
-                    type: "success",
-                  });
-                  successCount++;
+                  // 解析战斗结果
+                  const body = fightResult?.body || fightResult || {};
+                  const result = body.result || body;
+                  const isWin = result.isWin ?? result.iswin ?? result.win;
+                  
+                  if (isWin) {
+                    addLog({
+                      time: new Date().toLocaleTimeString(),
+                      message: `${tokenName} 重试竞技场战斗 ${i + 1}/${fightsToRetry} 挑战成功`,
+                      type: "success",
+                    });
+                    successCount++;
+                  } else {
+                    addLog({
+                      time: new Date().toLocaleTimeString(),
+                      message: `${tokenName} 重试竞技场战斗 ${i + 1}/${fightsToRetry} 挑战失败`,
+                      type: "warning",
+                    });
+                  }
+                  
                   await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
                 } catch (e) {
                   const errorMsg = e.message || "未知错误";
@@ -1334,7 +1379,7 @@ export function createTasksArena(deps) {
               // ignore
               }
             }
-          }
+          });
 
           retryTargetTokens.length = 0;
           retryTargetTokens.push(...failedTokens);
@@ -1345,7 +1390,7 @@ export function createTasksArena(deps) {
               message: `${failedTokens.length} 个账号重试失败，等待1分钟后进行下一轮重试`,
               type: "warning",
             });
-            await new Promise((resolve) => setTimeout(resolve, retryWaitTime));
+            if (!(await safeDelay(retryWaitTime))) break;
           }
         }
 

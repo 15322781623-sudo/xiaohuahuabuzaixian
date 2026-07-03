@@ -29,7 +29,7 @@ export const bossTimesOptions = [0, 1, 2, 3, 4].map((v) => ({
   value: v,
 }));
 
-// 每日BOSS次数选项
+// 俱乐部BOSS次数选项
 export const dailyBossTimesOptions = [0, 1, 2, 3, 4, 5].map((v) => ({
   label: `${v}次`,
   value: v,
@@ -253,7 +253,7 @@ export const defaultSettings = {
   towerFormation: 1,
   bossFormation: 1,
   bossTimes: 2,
-  dailyBossTimes: 1,
+  dailyBossTimes: 3,
   claimBottle: true,
   payRecruit: true,
   openBox: true,
@@ -328,7 +328,7 @@ export const defaultTemplate = {
   towerFormation: 1,
   bossFormation: 1,
   bossTimes: 2,
-  dailyBossTimes: 1,
+  dailyBossTimes: 3,
   claimBottle: true,
   payRecruit: true,
   openBox: true,

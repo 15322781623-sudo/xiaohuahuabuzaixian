@@ -108,7 +108,7 @@ export function useApkUpdate() {
         updateInfo.value = {
           ...serverInfo,
           localVersion: localVersion.versionName,
-          forceUpdate: serverInfo.forceUpdate || isBelowMinVersion,
+          forceUpdate: false,
         };
 
         console.log(`[APK更新] 发现更新: local=${localCode}, server=${serverCode}, force=${updateInfo.value.forceUpdate}`);

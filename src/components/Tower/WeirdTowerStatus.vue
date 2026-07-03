@@ -7,13 +7,22 @@
         src="/icons/1733492491706152.png"
       >
       <div class="status-info">
-        <h3>怪异塔</h3>
+        <h3>
+          怪异塔
+          <span v-if="!isWeirdTowerActivityOpen" class="activity-badge activity-closed">未开启</span>
+          <span v-else class="activity-badge activity-open">黑市周</span>
+        </h3>
         <p>一个不小心就过了</p>
       </div>
       <div class="energy-display">
         <img alt="小鱼干" class="energy-icon" src="/icons/xiaoyugan.png">
         <span class="energy-count">{{ towerEnergy }}</span>
       </div>
+    </div>
+
+    <div v-if="!isWeirdTowerActivityOpen" class="activity-closed-notice">
+      <span class="notice-icon">⚠️</span>
+      <span class="notice-text">怪异塔仅在黑市周开放（每周五12点至下周四24点）</span>
     </div>
 
     <div class="card-content">
@@ -28,14 +37,14 @@
         class="climb-button"
         :class="[
           {
-            active: canClimb,
-            disabled: !canClimb,
+            active: canClimb && isWeirdTowerActivityOpen,
+            disabled: !canClimb || !isWeirdTowerActivityOpen,
           },
         ]"
-        :disabled="!canClimb"
+        :disabled="!canClimb || !isWeirdTowerActivityOpen"
         @click="startTowerClimb"
       >
-        {{ isClimbing.value ? "爬塔中..." : "开始爬塔" }}
+        {{ !isWeirdTowerActivityOpen ? "活动未开启" : isClimbing.value ? "爬塔中..." : "开始爬塔" }}
       </button>
 
       <!-- 停止批量爬塔按钮，仅批量时显示 -->
@@ -43,19 +52,23 @@
 
       <button
         v-if="!isClimbing && !isUsingItems && !isMerging"
-        class="climb-button active"
+        class="climb-button"
+        :class="{ active: isWeirdTowerActivityOpen, disabled: !isWeirdTowerActivityOpen }"
+        :disabled="!isWeirdTowerActivityOpen"
         @click="startUseItems"
       >
-        一键使用道具
+        {{ !isWeirdTowerActivityOpen ? "活动未开启" : "一键使用道具" }}
       </button>
       <button v-if="isUsingItems" class="stop-button" @click="stopUsingItems">停止使用</button>
 
       <button
         v-if="!isClimbing && !isUsingItems && !isMerging"
-        class="climb-button active"
+        class="climb-button"
+        :class="{ active: isWeirdTowerActivityOpen, disabled: !isWeirdTowerActivityOpen }"
+        :disabled="!isWeirdTowerActivityOpen"
         @click="autoMergeItems"
       >
-        {{ isMerging ? "合成中..." : "一键合成" }}
+        {{ !isWeirdTowerActivityOpen ? "活动未开启" : isMerging ? "合成中..." : "一键合成" }}
       </button>
     </div>
   </div>
@@ -689,6 +702,49 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
+.activity-badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  font-weight: 500;
+  vertical-align: middle;
+  
+  &.activity-open {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #a7f3d0;
+  }
+  
+  &.activity-closed {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+  }
+}
+
+.activity-closed-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #92400e;
+  
+  .notice-icon {
+    font-size: 12px;
+  }
+  
+  .notice-text {
+    line-height: 1.4;
+  }
+}
+
 .stop-button {
   width: 100%;
   padding: var(--spacing-sm) var(--spacing-md);

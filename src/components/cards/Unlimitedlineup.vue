@@ -125,42 +125,52 @@
                 </div>
               </div>
               <div v-if="expandedLineup === lineup" class="lineup-detail">
-                <div class="lineup-heroes-row">
-                  <div v-for="(hero, hIdx) in lineup.heroes" :key="hIdx" class="lineup-hero-card">
-                    <img v-if="getHeroAvatar(hero.heroId)" class="hero-avatar" :src="getHeroAvatar(hero.heroId)">
-                    <div v-else class="hero-avatar-placeholder">{{ getHeroName(hero.heroId)?.[0] || "?" }}</div>
-                    <div class="hero-info-small">
-                      <div class="hero-header-small">
-                        <div class="hero-name-small">{{ getHeroName(hero.heroId) || `武将${hero.heroId}` }}</div>
-                        <div v-if="hero.level" class="hero-level-small">Lv.{{ formatLevel(hero.level) }}</div>
+                <div class="lineup-heroes-grid">
+                  <div v-for="(hero, hIdx) in lineup.heroes" :key="hIdx" class="saved-hero-card">
+                    <div class="saved-hero-top">
+                      <img v-if="getHeroAvatar(hero.heroId)" class="saved-hero-avatar" :src="getHeroAvatar(hero.heroId)">
+                      <div v-else class="saved-hero-avatar-ph">{{ getHeroName(hero.heroId)?.[0] || "?" }}</div>
+                      <div class="saved-hero-name-row">
+                        <span class="saved-hero-name">{{ getHeroName(hero.heroId) || `武将${hero.heroId}` }}</span>
+                        <span v-if="hero.level" class="saved-hero-level">Lv.{{ formatLevel(hero.level) }}</span>
                       </div>
-                      <div v-if="hero.fishId" class="hero-fish-info">
-                        <div class="hero-fish-row">
-                          <span class="hero-fish-name">
-                            {{ getFishNameById(hero.fishId) }}
-                            <span v-if="hero.skillId" class="hero-fish-skill-name">{{ getPearlSkillNameById(hero.skillId) }}</span>
-                          </span>
-                          <div v-if="getSlotColors(hero.slotMap)" class="hero-fish-slots">
-                            <span v-for="(color, idx) in getSlotColors(hero.slotMap)" :key="idx"
-                              class="slot-dot" :style="{ backgroundColor: color }"></span>
-                          </div>
-                        </div>
+                    </div>
+                    <div v-if="hero.fishId" class="saved-hero-fish">
+                      <span class="saved-fish-name">{{ getFishNameById(hero.fishId) }}</span>
+                      <span v-if="hero.skillId" class="saved-fish-skill">{{ getPearlSkillNameById(hero.skillId) }}</span>
+                      <div v-if="getSlotColors(hero.slotMap)" class="saved-fish-slots">
+                        <span v-for="(color, idx) in getSlotColors(hero.slotMap)" :key="idx"
+                          class="saved-slot-dot" :style="{ backgroundColor: color }"></span>
                       </div>
-                      <div v-if="hero.power" class="hero-stats-small">
-                        <div class="stat-row-small">
-                          <span class="stat-power">战力{{ formatPower(hero.power) }}</span>
-                          <span v-if="hero.speed" class="stat-speed">速度{{ hero.speed }}</span>
-                        </div>
-                        <div class="stat-row-small">
-                          <span v-if="hero.attack" class="stat-attack">攻击{{ formatPower(hero.attack) }}</span>
-                          <span v-if="hero.hp" class="stat-hp">血量{{ formatPower(hero.hp) }}</span>
-                        </div>
-                      </div>
+                    </div>
+                    <div v-if="hero.power" class="saved-hero-stats">
+                      <span class="s-stat s-stat-power">{{ formatPower(hero.power) }}</span>
+                      <span v-if="hero.speed" class="s-stat s-stat-speed">{{ hero.speed }}</span>
+                      <span v-if="hero.attack" class="s-stat s-stat-atk">{{ formatPower(hero.attack) }}</span>
+                      <span v-if="hero.hp" class="s-stat s-stat-hp">{{ formatPower(hero.hp) }}</span>
                     </div>
                   </div>
                 </div>
               </div>
+            <div v-if="lineup.applying || (lineup.applyLogs && lineup.applyLogs.length > 0)" class="lineup-apply-logs">
+              <div class="logs-header">
+                <span class="logs-title">应用日志</span>
+                <n-button v-if="!lineup.applying && lineup.applyLogs && lineup.applyLogs.length > 0" size="tiny" text type="error" @click.stop="lineup.applyLogs = []">清空</n-button>
+              </div>
+              <div class="logs-list" :class="{ 'logs-scrolling': lineup.applyLogs && lineup.applyLogs.length > 4 }">
+                <div v-if="!lineup.applyLogs || lineup.applyLogs.length === 0" class="logs-empty">等待开始...</div>
+                <div
+                  v-for="(log, lIdx) in lineup.applyLogs"
+                  :key="lIdx"
+                  class="log-item"
+                  :class="`log-type-${log.type}`"
+                >
+                  <span class="log-time">{{ log.time }}</span>
+                  <span class="log-message">{{ log.message }}</span>
+                </div>
+              </div>
             </div>
+          </div>
             <div v-if="getLineupsByTeamId(selectedTeamTab).length === 0" class="no-lineup-tip">
               暂无保存的阵容
             </div>
@@ -1404,6 +1414,16 @@ const confirmHeroAction = async () => {
         } catch (err) {}
         await delay(COMMAND_DELAY);
       }
+    } else if (exchangeMode.value === "lossless" && exchangeHero.value) {
+      // 无损换将：直接调用 hero_exchange 交换两个武将
+      const originalHeroId = exchangeHero.value.heroId;
+      try {
+        await tokenStore.sendMessageWithPromise(tokenId, "hero_exchange", {
+          heroId: originalHeroId,
+          targetHeroId,
+        });
+      } catch (err) {}
+      await delay(COMMAND_DELAY);
     } else if (exchangeMode.value === "add") {
       const slot = getFirstEmptySlot();
       if (!currentHeroIds.has(targetHeroId)) {
@@ -1686,6 +1706,9 @@ const saveCurrentLineup = async () => {
     const currentArtifactBooks = role?.artifactBooks || {};
     const currentHeroes = role?.heroes || {};
     const pearlMap = role?.pearlMap || {};
+    const enchantMap = role?.enchantMap || {};
+    const petData = role?.pet || {};
+    const petUId = petData?.petUId || role?.petUId || null;
 
     const presetTeamResult = await tokenStore.sendMessageWithPromise(
       tokenId,
@@ -1724,7 +1747,7 @@ const saveCurrentLineup = async () => {
       return {
         position: hero.position,
         heroId: hero.heroId,
-        level: teamHeroInfo?.level || null,
+        level: heroData?.level ?? teamHeroInfo?.level ?? null,
         attachmentUid: hero.attachmentUid || null,
         fishId: fishId || null,
         pearlId,
@@ -1746,6 +1769,9 @@ const saveCurrentLineup = async () => {
       applying: false,
       legionResearch,
       weaponId,
+      petUId,
+      petData,
+      enchantMap,
     });
 
     saveLineupsToStorage();
@@ -1932,6 +1958,16 @@ const applyHeroLevel = async (
   return { success: true, message: `等级已升至 ${actualCurrentLevel}` };
 };
 
+const addApplyLog = (lineup, msg, type = "info") => {
+  if (!lineup.applyLogs) lineup.applyLogs = [];
+  lineup.applyLogs.unshift({
+    time: new Date().toLocaleTimeString(),
+    message: msg,
+    type,
+  });
+  if (lineup.applyLogs.length > 50) lineup.applyLogs.pop();
+};
+
 const applyLineup = async (lineup) => {
   const token = tokenStore.selectedToken;
   if (!token) {
@@ -1955,7 +1991,8 @@ const applyLineup = async (lineup) => {
 
   lineup.applying = true;
   state.value.isRunning = true;
-  const errors = [];
+  lineup.applyLogs = [];
+  addApplyLog(lineup, `开始应用阵容: ${lineup.name}`, "info");
 
   const getTeamHeroes = (teamInfo) => {
     if (!teamInfo)
@@ -2008,8 +2045,10 @@ const applyLineup = async (lineup) => {
 
   try {
     const targetHeroes = [...lineup.heroes];
+    addApplyLog(lineup, `目标武将: ${targetHeroes.map(h => getHeroName(h.heroId)).join(", ") || "无"}`, "info");
 
     let { heroes, teamInfo } = await fetchLatestData();
+    addApplyLog(lineup, "已获取当前阵容数据", "info");
     let currentHeroes = getTeamHeroes(teamInfo);
 
     const attachmentToHero = {};
@@ -2029,11 +2068,13 @@ const applyLineup = async (lineup) => {
       const currentHolderId = attachmentToHero[targetHero.attachmentUid];
 
       if (currentHolderId && currentHolderId !== targetHero.heroId) {
+        addApplyLog(lineup, `处理附件武将: ${getHeroName(targetHero.heroId)} 的 attachmentUid=${targetHero.attachmentUid} 当前持有者为 ${getHeroName(currentHolderId)}`, "info");
         const holderInTeam = currentHeroIds.has(currentHolderId);
         const targetInTeam = currentHeroIds.has(targetHero.heroId);
 
         if (!holderInTeam && !targetInTeam) {
           const emptySlot = currentHeroes.length < 5 ? currentHeroes.length : 0;
+          addApplyLog(lineup, `上阵持有者 ${getHeroName(currentHolderId)} 到槽位 ${emptySlot}`, "info");
           try {
             await tokenStore.sendMessageWithPromise(
               tokenId,
@@ -2062,6 +2103,7 @@ const applyLineup = async (lineup) => {
         }
 
         try {
+          addApplyLog(lineup, `执行无损换将: ${getHeroName(currentHolderId)} <-> ${getHeroName(targetHero.heroId)}`, "info");
           await tokenStore.sendMessageWithPromise(tokenId, "hero_exchange", {
             heroId: currentHolderId,
             targetHeroId: targetHero.heroId,
@@ -2071,6 +2113,7 @@ const applyLineup = async (lineup) => {
       }
     }
 
+    addApplyLog(lineup, "附件处理完成，刷新阵容数据", "info");
     await delay(COMMAND_DELAY);
     const data1 = await fetchLatestData();
     await delay(COMMAND_DELAY);
@@ -2084,8 +2127,60 @@ const applyLineup = async (lineup) => {
     currentHeroIds.clear();
     currentHeroes.forEach((h) => currentHeroIds.add(h.heroId));
 
+    // 优先使用 hero_exchange 在同位置直接替换，保留等级/装备
+    const exchangePairs = [];
+    for (const targetHero of targetHeroes) {
+      const currentHeroAtPos = currentHeroes.find(
+        (h) => h.position === targetHero.position,
+      );
+      if (
+        currentHeroAtPos
+        && !targetHeroIds.has(currentHeroAtPos.heroId)
+        && !currentHeroIds.has(targetHero.heroId)
+      ) {
+        exchangePairs.push({ currentHero: currentHeroAtPos, targetHero });
+      }
+    }
+
+    // 记录无损换将中已成功换下的武将，后续移除步骤需跳过
+    const exchangedOutHeroIds = new Set();
+    // 记录无损换将中已成功换上的武将，后续上阵步骤需跳过
+    const exchangedInHeroIds = new Set();
+
+    if (exchangePairs.length > 0) {
+      addApplyLog(lineup, `开始位置配对无损换将，共 ${exchangePairs.length} 对`, "info");
+      for (const { currentHero, targetHero } of exchangePairs) {
+        try {
+          addApplyLog(lineup, `无损换将: ${getHeroName(currentHero.heroId)}(槽位 ${currentHero.position}) <-> ${getHeroName(targetHero.heroId)}(槽位 ${targetHero.position})`, "info");
+          await tokenStore.sendMessageWithPromise(tokenId, "hero_exchange", {
+            heroId: currentHero.heroId,
+            targetHeroId: targetHero.heroId,
+          });
+          addApplyLog(lineup, `无损换将成功: ${getHeroName(targetHero.heroId)} 进入槽位 ${targetHero.position}`, "success");
+          exchangedOutHeroIds.add(currentHero.heroId);
+          exchangedInHeroIds.add(targetHero.heroId);
+        } catch (err) {
+          addApplyLog(lineup, `无损换将失败 ${getHeroName(currentHero.heroId)} <-> ${getHeroName(targetHero.heroId)}: ${err?.message || err}`, "error");
+        }
+        await delay(COMMAND_DELAY);
+      }
+
+      addApplyLog(lineup, "无损换将完成，刷新阵容数据", "info");
+      await delay(COMMAND_DELAY);
+      const dataExchange = await fetchLatestData();
+      await delay(COMMAND_DELAY);
+      currentHeroes = getTeamHeroes(dataExchange.teamInfo);
+      currentHeroIds.clear();
+      currentHeroes.forEach((h) => currentHeroIds.add(h.heroId));
+    }
+
     for (const hero of [...currentHeroes]) {
+      if (exchangedOutHeroIds.has(hero.heroId)) {
+        // 已通过无损换将换下，无需再次移除
+        continue;
+      }
       if (!targetHeroIds.has(hero.heroId)) {
+        addApplyLog(lineup, `移除不在目标阵容中的武将: ${getHeroName(hero.heroId)} (槽位 ${hero.position})`, "info");
         try {
           await tokenStore.sendMessageWithPromise(
             tokenId,
@@ -2094,7 +2189,10 @@ const applyLineup = async (lineup) => {
               slot: hero.position,
             },
           );
-        } catch (err) {}
+          addApplyLog(lineup, `已移除武将 ${getHeroName(hero.heroId)}`, "success");
+        } catch (err) {
+          addApplyLog(lineup, `移除武将失败 ${getHeroName(hero.heroId)}: ${err?.message || err}`, "error");
+        }
         await delay(COMMAND_DELAY);
       }
     }
@@ -2105,10 +2203,15 @@ const applyLineup = async (lineup) => {
     currentHeroes = getTeamHeroes(data2.teamInfo);
 
     for (const targetHero of targetHeroes) {
+      // 已通过无损换将换上，无需再次上阵
+      if (exchangedInHeroIds.has(targetHero.heroId)) {
+        continue;
+      }
       const currentHero = currentHeroes.find(
         (h) => h.heroId === targetHero.heroId,
       );
       if (!currentHero) {
+        addApplyLog(lineup, `上阵武将: ${getHeroName(targetHero.heroId)} -> 槽位 ${targetHero.position}`, "info");
         try {
           await tokenStore.sendMessageWithPromise(
             tokenId,
@@ -2118,9 +2221,13 @@ const applyLineup = async (lineup) => {
               slot: targetHero.position,
             },
           );
-        } catch (err) {}
+          addApplyLog(lineup, `已上阵武将 ${getHeroName(targetHero.heroId)}`, "success");
+        } catch (err) {
+          addApplyLog(lineup, `上阵武将失败 ${getHeroName(targetHero.heroId)}: ${err?.message || err}`, "error");
+        }
         await delay(COMMAND_DELAY);
       } else if (currentHero.position !== targetHero.position) {
+        addApplyLog(lineup, `调整武将位置: ${getHeroName(targetHero.heroId)} ${currentHero.position} -> ${targetHero.position}`, "info");
         try {
           await tokenStore.sendMessageWithPromise(
             tokenId,
@@ -2139,15 +2246,21 @@ const applyLineup = async (lineup) => {
                 slot: targetHero.position,
               },
             );
-          } catch (err) {}
+            addApplyLog(lineup, `位置调整成功: ${getHeroName(targetHero.heroId)} -> 槽位 ${targetHero.position}`, "success");
+          } catch (err) {
+            addApplyLog(lineup, `位置调整上阵失败 ${getHeroName(targetHero.heroId)}: ${err?.message || err}`, "error");
+          }
           await delay(COMMAND_DELAY);
-        } catch (err) {}
+        } catch (err) {
+          addApplyLog(lineup, `位置调整下阵失败 ${getHeroName(targetHero.heroId)}: ${err?.message || err}`, "error");
+        }
         await delay(COMMAND_DELAY);
       }
     }
 
     const hasLevelData = lineup.heroes.some((h) => h.level && h.level > 0);
     if (hasLevelData) {
+      addApplyLog(lineup, "开始应用武将等级", "info");
       const levelData = await fetchLatestData();
       const currentHeroesData = levelData.heroes;
 
@@ -2157,14 +2270,16 @@ const applyLineup = async (lineup) => {
           continue;
 
         const heroData = currentHeroesData[String(targetHero.heroId)];
-        const currentLevel = heroData?.level || 1;
-        const currentOrder = heroData?.order || 0;
+        const currentLevel = Number(heroData?.level) || 1;
+        const currentOrder = Number(heroData?.order) || 0;
+        const targetLevel = Number(targetHero.level);
 
-        if (currentLevel !== targetHero.level) {
+        if (currentLevel !== targetLevel) {
+          addApplyLog(lineup, `武将等级不匹配: ${getHeroName(targetHero.heroId)} 当前 ${currentLevel} -> 目标 ${targetLevel}`, "info");
           const result = await applyHeroLevel(
             tokenId,
             targetHero.heroId,
-            targetHero.level,
+            targetLevel,
             currentLevel,
             currentOrder,
             targetHero.position,
@@ -2173,32 +2288,39 @@ const applyLineup = async (lineup) => {
           if (result.success) {
             levelApplied++;
           } else {
+            addApplyLog(lineup, `武将等级应用失败 ${getHeroName(targetHero.heroId)}: ${result.message || "未知错误"}`, "error");
           }
+        } else {
+          addApplyLog(lineup, `武将等级已匹配: ${getHeroName(targetHero.heroId)} = ${targetLevel}`, "info");
         }
       }
 
       if (levelApplied > 0) {
+        addApplyLog(lineup, `已应用 ${levelApplied} 个武将等级配置`, "success");
         message.success(`已应用 ${levelApplied} 个武将等级配置`);
+      } else {
+        addApplyLog(lineup, "武将等级无需调整", "info");
       }
-    }
-
-    if (errors.length > 0) {
-      message.warning(`阵容已应用，但有部分错误:\n${errors.join("\n")}`);
-    } else {
-      message.success(`阵容 "${lineup.name}" 已应用`);
     }
 
     const hasFishData = lineup.heroes.some((h) => h.pearlId || h.fishId);
     if (hasFishData) {
+      addApplyLog(lineup, "开始应用鱼灵配置", "info");
       const fishData = await fetchLatestData();
       const currentHeroes = fishData.heroes;
       const pearlMap = fishData.pearlMap || {};
       const artifactBooks = fishData.artifactBooks || {};
 
       const artifactToHero = {};
+      const artifactToPearl = {};
       for (const [heroId, hero] of Object.entries(currentHeroes)) {
         if (hero.artifactId && hero.artifactId !== -1) {
           artifactToHero[hero.artifactId] = Number(heroId);
+        }
+      }
+      for (const [pid, pearlData] of Object.entries(pearlMap)) {
+        if (pearlData?.artifactId && pearlData.artifactId !== -1) {
+          artifactToPearl[pearlData.artifactId] = Number(pid);
         }
       }
 
@@ -2209,13 +2331,15 @@ const applyLineup = async (lineup) => {
         }
       }
 
+      let fishAttempted = 0;
       let fishApplied = 0;
+      let fishFailed = 0;
       for (const targetHero of targetHeroes) {
         if (!targetHero.fishId && !targetHero.pearlId)
           continue;
 
         let artifactId = null;
-        const pearlId = targetHero.pearlId || 0;
+        let pearlId = Number(targetHero.pearlId) || 0;
 
         if (targetHero.fishId) {
           artifactId = fishToArtifact[targetHero.fishId];
@@ -2228,16 +2352,31 @@ const applyLineup = async (lineup) => {
           }
         }
 
-        if (!artifactId)
+        if (!artifactId) {
+          addApplyLog(lineup, `无法找到鱼灵映射: fishId=${targetHero.fishId}, pearlId=${targetHero.pearlId}，跳过`, "warning");
           continue;
+        }
+
+        // 如果保存的 pearlId 与 artifact 不匹配，使用当前镶嵌在 artifact 上的珍珠
+        const pearlDataForSaved = pearlMap[targetHero.pearlId];
+        if (!pearlDataForSaved || pearlDataForSaved.artifactId !== artifactId) {
+          const mappedPearlId = artifactToPearl[artifactId];
+          if (mappedPearlId) {
+            pearlId = mappedPearlId;
+          }
+        }
 
         const currentHolderId = artifactToHero[artifactId];
 
         if (currentHolderId === targetHero.heroId) {
+          addApplyLog(lineup, `鱼灵已在 ${getHeroName(targetHero.heroId)} 身上，无需装备`, "info");
           continue;
         }
 
+        fishAttempted++;
+
         if (currentHolderId) {
+          addApplyLog(lineup, `卸除持有者 ${getHeroName(currentHolderId)} 的鱼灵 artifactId=${artifactId}`, "info");
           try {
             await tokenStore.sendMessageWithPromise(
               tokenId,
@@ -2246,26 +2385,63 @@ const applyLineup = async (lineup) => {
                 heroId: currentHolderId,
               },
             );
-          } catch (err) {}
+            addApplyLog(lineup, `已从 ${getHeroName(currentHolderId)} 卸除鱼灵`, "success");
+          } catch (err) {
+            addApplyLog(lineup, `卸除 ${getHeroName(currentHolderId)} 鱼灵失败: ${err?.message || err}`, "error");
+            fishFailed++;
+            continue;
+          }
+          await delay(COMMAND_DELAY);
+        }
+
+        // 如果目标武将身上已有其他鱼灵，先卸除
+        const targetCurrentArtifactId = currentHeroes[String(targetHero.heroId)]?.artifactId;
+        if (targetCurrentArtifactId && targetCurrentArtifactId !== -1 && targetCurrentArtifactId !== artifactId) {
+          addApplyLog(lineup, `目标武将 ${getHeroName(targetHero.heroId)} 已有鱼灵 artifactId=${targetCurrentArtifactId}，先卸除`, "info");
+          try {
+            await tokenStore.sendMessageWithPromise(tokenId, "artifact_unload", {
+              heroId: targetHero.heroId,
+            });
+            addApplyLog(lineup, `已卸除 ${getHeroName(targetHero.heroId)} 的原有鱼灵`, "success");
+          } catch (err) {
+            addApplyLog(lineup, `卸除 ${getHeroName(targetHero.heroId)} 原有鱼灵失败: ${err?.message || err}`, "error");
+          }
           await delay(COMMAND_DELAY);
         }
 
         try {
+          addApplyLog(lineup, `装备鱼灵: ${getHeroName(targetHero.heroId)} <- artifactId=${artifactId}, pearlId=${pearlId}`, "info");
           await tokenStore.sendMessageWithPromise(tokenId, "artifact_load", {
             heroId: targetHero.heroId,
             itemId: artifactId,
             pearlId,
           });
           fishApplied++;
-        } catch (err) {}
+          addApplyLog(lineup, `鱼灵应用成功: ${getHeroName(targetHero.heroId)}`, "success");
+        } catch (err) {
+          fishFailed++;
+          addApplyLog(lineup, `装备鱼灵失败 ${getHeroName(targetHero.heroId)}: ${err?.message || err}`, "error");
+        }
         await delay(COMMAND_DELAY);
       }
 
-      if (fishApplied > 0) {
+      if (fishApplied > 0 && fishFailed === 0) {
+        addApplyLog(lineup, `已应用 ${fishApplied} 个鱼灵配置`, "success");
         message.success(`已应用 ${fishApplied} 个鱼灵配置`);
+      } else if (fishApplied > 0 && fishFailed > 0) {
+        addApplyLog(lineup, `鱼灵配置部分成功: 成功 ${fishApplied} 个，失败 ${fishFailed} 个`, "warning");
+        message.warning(`鱼灵配置部分成功: 成功 ${fishApplied} 个，失败 ${fishFailed} 个`);
+      } else if (fishFailed > 0) {
+        addApplyLog(lineup, `鱼灵配置应用失败 ${fishFailed} 个`, "error");
+        message.error(`鱼灵配置应用失败 ${fishFailed} 个`);
+      } else if (fishAttempted > 0) {
+        addApplyLog(lineup, "鱼灵配置无需调整", "info");
+      } else {
+        addApplyLog(lineup, "没有需要处理的鱼灵配置", "info");
       }
 
       let skillApplied = 0;
+      addApplyLog(lineup, "开始切换鱼珠技能", "info");
       const skillData = await fetchLatestData();
       const latestPearlMap = skillData.pearlMap || {};
 
@@ -2286,6 +2462,7 @@ const applyLineup = async (lineup) => {
         if (!targetSkillId) {
           if (currentSkillId) {
             try {
+              addApplyLog(lineup, `卸除鱼珠技能: pearlId=${pearlId}`, "info");
               await tokenStore.sendMessageWithPromise(
                 tokenId,
                 "pearl_unloadskill",
@@ -2295,13 +2472,17 @@ const applyLineup = async (lineup) => {
               );
               skillApplied++;
               processedPearlIds.add(pearlId);
-            } catch (err) {}
+              addApplyLog(lineup, `已卸除鱼珠技能 pearlId=${pearlId}`, "success");
+            } catch (err) {
+              addApplyLog(lineup, `卸除鱼珠技能失败 pearlId=${pearlId}: ${err?.message || err}`, "error");
+            }
             await delay(COMMAND_DELAY);
           }
           continue;
         }
 
         if (currentSkillId === targetSkillId) {
+          addApplyLog(lineup, `鱼珠技能已匹配 pearlId=${pearlId}, skillId=${targetSkillId}`, "info");
           continue;
         }
 
@@ -2314,6 +2495,7 @@ const applyLineup = async (lineup) => {
 
         if (holderPearlId && !processedPearlIds.has(Number(holderPearlId))) {
           try {
+            addApplyLog(lineup, `交换鱼珠技能: ${pearlId} <-> ${holderPearlId}`, "info");
             await tokenStore.sendMessageWithPromise(
               tokenId,
               "pearl_exchangeskill",
@@ -2325,10 +2507,14 @@ const applyLineup = async (lineup) => {
             skillApplied += 2;
             processedPearlIds.add(pearlId);
             processedPearlIds.add(Number(holderPearlId));
-          } catch (err) {}
+            addApplyLog(lineup, `已交换鱼珠技能: ${pearlId} <-> ${holderPearlId}`, "success");
+          } catch (err) {
+            addApplyLog(lineup, `交换鱼珠技能失败 ${pearlId}: ${err?.message || err}`, "error");
+          }
           await delay(COMMAND_DELAY);
         } else {
           try {
+            addApplyLog(lineup, `替换鱼珠技能: pearlId=${pearlId}, skillId=${targetSkillId}`, "info");
             await tokenStore.sendMessageWithPromise(
               tokenId,
               "pearl_replaceskill",
@@ -2339,13 +2525,19 @@ const applyLineup = async (lineup) => {
             );
             skillApplied++;
             processedPearlIds.add(pearlId);
-          } catch (err) {}
+            addApplyLog(lineup, `已替换鱼珠技能 pearlId=${pearlId}`, "success");
+          } catch (err) {
+            addApplyLog(lineup, `替换鱼珠技能失败 pearlId=${pearlId}: ${err?.message || err}`, "error");
+          }
           await delay(COMMAND_DELAY);
         }
       }
 
       if (skillApplied > 0) {
+        addApplyLog(lineup, `已切换 ${skillApplied} 个鱼珠技能`, "success");
         message.success(`已切换 ${skillApplied} 个鱼珠技能`);
+      } else {
+        addApplyLog(lineup, "鱼珠技能无需调整", "info");
       }
     }
 
@@ -2353,15 +2545,18 @@ const applyLineup = async (lineup) => {
       lineup.legionResearch
       && Object.keys(lineup.legionResearch).length > 0
     ) {
+      addApplyLog(lineup, "开始同步俱乐部科技", "info");
       const syncResult = await syncLegionResearch(
         tokenId,
         lineup.legionResearch,
       );
       if (syncResult.success) {
+        addApplyLog(lineup, syncResult.message, "success");
         if (syncResult.message !== "科技配置已匹配，无需调整") {
           message.success(syncResult.message);
         }
       } else {
+        addApplyLog(lineup, `科技同步失败: ${syncResult.message || "未知错误"}`, "error");
       }
     }
 
@@ -2381,6 +2576,7 @@ const applyLineup = async (lineup) => {
       const currentWeaponId = currentTeamData?.weapon?.weaponId || null;
 
       if (currentWeaponId !== lineup.weaponId) {
+        addApplyLog(lineup, `切换玩具: ${weapon[currentWeaponId] || currentWeaponId || "无"} -> ${weapon[lineup.weaponId] || lineup.weaponId}`, "info");
         try {
           await tokenStore.sendMessageWithPromise(
             tokenId,
@@ -2392,14 +2588,55 @@ const applyLineup = async (lineup) => {
           message.success(
             `玩具已切换为: ${weapon[lineup.weaponId] || lineup.weaponId}`,
           );
-        } catch (err) {}
+          addApplyLog(lineup, `玩具已切换为: ${weapon[lineup.weaponId] || lineup.weaponId}`, "success");
+        } catch (err) {
+          addApplyLog(lineup, `玩具切换失败: ${err?.message || err}`, "error");
+        }
         await delay(COMMAND_DELAY);
+      } else {
+        addApplyLog(lineup, "玩具无需调整", "info");
       }
+    }
+
+    if (lineup.petUId) {
+      // 从保存的宠物数据中查找对应的 slot
+      let petSlot = null;
+      const savedPetData = lineup.petData || {};
+      for (const [slot, info] of Object.entries(savedPetData)) {
+        if (info?.uId === lineup.petUId) {
+          petSlot = Number(slot);
+          break;
+        }
+      }
+      if (petSlot == null) {
+        petSlot = 1; // 默认宠物槽位
+      }
+      addApplyLog(lineup, `切换宠物 -> slot=${petSlot}, uId=${lineup.petUId}`, "info");
+
+      try {
+        await tokenStore.sendMessageWithPromise(tokenId, "pet_load", {
+          slotUId: {
+            slot: petSlot,
+            uId: lineup.petUId,
+          },
+        });
+        message.success("宠物已切换");
+        addApplyLog(lineup, "宠物已切换", "success");
+      } catch (err) {
+        addApplyLog(lineup, `宠物切换失败: ${err?.message || err}`, "error");
+      }
+      await delay(COMMAND_DELAY);
+    } else {
+      addApplyLog(lineup, "宠物无需调整", "info");
     }
 
     lastRefreshTime = 0;
     await refreshTeamInfo();
+    addApplyLog(lineup, `阵容 "${lineup.name}" 应用完成`, "success");
+    message.success(`阵容 "${lineup.name}" 已应用`);
   } catch (error) {
+    console.error("应用阵容失败:", error);
+    addApplyLog(lineup, `应用阵容失败: ${error.message}`, "error");
     message.error(`应用阵容失败: ${error.message}`);
   } finally {
     lineup.applying = false;
@@ -2743,6 +2980,70 @@ onMounted(() => {
   }
   .lineup-right-col {
     position: static;
+  }
+  .lineup-heroes-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .saved-hero-avatar,
+  .saved-hero-avatar-ph {
+    width: 36px;
+    height: 36px;
+  }
+  .saved-hero-name {
+    font-size: 11px;
+    max-width: 52px;
+  }
+  .saved-hero-level {
+    font-size: 8px;
+  }
+  .saved-fish-name {
+    font-size: 10px;
+  }
+  .s-stat {
+    font-size: 9px;
+    padding: 1px 3px;
+  }
+  .lineup-title-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .lineup-quick-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 480px) {
+  .lineup-heroes-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .saved-hero-card {
+    padding: 6px;
+  }
+  .saved-hero-avatar,
+  .saved-hero-avatar-ph {
+    width: 32px;
+    height: 32px;
+  }
+  .saved-hero-name {
+    font-size: 10px;
+    max-width: 48px;
+  }
+  .saved-hero-fish {
+    padding: 2px 4px;
+    gap: 3px;
+  }
+  .saved-fish-name {
+    font-size: 9px;
+  }
+  .saved-fish-skill {
+    font-size: 8px;
+    padding: 1px 3px;
+  }
+  .s-stat {
+    font-size: 8px;
   }
 }
 
@@ -3185,175 +3486,161 @@ onMounted(() => {
   margin-bottom: var(--spacing-sm);
 }
 
-.lineup-heroes-row {
-  display: flex;
-  gap: var(--spacing-md);
-  justify-content: center;
-  margin-bottom: var(--spacing-sm);
+/* ===== 保存阵容英雄卡片 ===== */
+.lineup-heroes-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
 }
 
-.lineup-hero-card {
+.saved-hero-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.saved-hero-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.saved-hero-top {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 110px;
-  padding: 8px 6px;
-  background: var(--bg-secondary);
-  border-radius: var(--border-radius-small);
+  gap: 6px;
+  margin-bottom: 6px;
 }
 
-.hero-avatar {
-  width: 60px;
-  height: 60px;
-  border-radius: var(--border-radius-small);
+.saved-hero-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
   object-fit: cover;
   border: 2px solid var(--border-color);
+  flex-shrink: 0;
 }
 
-.hero-avatar-placeholder {
-  width: 60px;
-  height: 60px;
-  border-radius: var(--border-radius-small);
+.saved-hero-avatar-ph {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
   background: var(--bg-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
+  font-size: 16px;
+  font-weight: 600;
   color: var(--text-secondary);
   border: 2px solid var(--border-color);
+  flex-shrink: 0;
 }
 
-.hero-info-small {
+.saved-hero-name-row {
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  gap: 4px;
   width: 100%;
 }
 
-.hero-header-small {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  margin-bottom: 4px;
-}
-
-.hero-name-small {
-  font-size: 13px;
+.saved-hero-name {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-primary);
-  max-width: 100px;
+  max-width: 64px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
-.hero-level-small {
-  font-size: 12px;
-  color: white;
+.saved-hero-level {
+  font-size: 9px;
   font-weight: 600;
+  color: #fff;
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  padding: 2px 6px;
+  padding: 1px 5px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(240, 147, 251, 0.3);
+  flex-shrink: 0;
 }
 
-.hero-fish-info {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 4px;
-  gap: 2px;
-  background: linear-gradient(
-    135deg,
-    rgba(114, 46, 209, 0.12) 0%,
-    rgba(114, 46, 209, 0.06) 100%
-  );
-  border: 1px solid rgba(114, 46, 209, 0.18);
-  border-radius: 6px;
-  padding: 4px 8px;
-  width: 100%;
-}
-
-.hero-fish-row {
+.saved-hero-fish {
   display: flex;
   align-items: center;
-  gap: 6px;
   flex-wrap: wrap;
-  justify-content: center;
-  width: 100%;
-}
-
-.hero-stats-small {
-  font-size: 10px;
-  color: var(--text-secondary);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  width: 100%;
-
-  .stat-row-small {
-    display: flex;
-    justify-content: center;
-    gap: 4px;
-  }
-
-  span {
-    padding: 3px 5px;
-    border-radius: 4px;
-    font-weight: 500;
-    white-space: nowrap;
-    min-width: 70px;
-    text-align: center;
-  }
-
-  .stat-power {
-    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
-    color: white;
-  }
-
-  .stat-attack {
-    background: linear-gradient(135deg, #ffa940 0%, #fa8c16 100%);
-    color: white;
-  }
-
-  .stat-hp {
-    background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
-    color: white;
-  }
-
-  .stat-speed {
-    background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
-    color: white;
-  }
-}
-
-.hero-fish-name {
-  font-size: 11px;
-  color: var(--primary-color);
-  font-weight: 500;
-}
-
-.hero-fish-skill-name {
-  font-size: 10px;
-  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
-  color: white;
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-left: 4px;
-  font-weight: 500;
-}
-
-.hero-fish-slots {
-  display: flex;
   gap: 4px;
-  justify-content: center;
-  padding-top: 3px;
+  padding: 3px 6px;
+  background: rgba(114, 46, 209, 0.08);
+  border: 1px solid rgba(114, 46, 209, 0.15);
+  border-radius: 5px;
+  margin-bottom: 6px;
+  min-height: 24px;
+}
+
+.saved-fish-name {
+  font-size: 11px;
+  color: #7c3aed;
+  font-weight: 500;
+}
+
+.saved-fish-skill {
+  font-size: 10px;
+  color: #fff;
+  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.saved-fish-slots {
+  display: flex;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.saved-slot-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.saved-hero-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+}
+
+.s-stat {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 4px;
+  border-radius: 3px;
+  text-align: center;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.s-stat-power {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+}
+
+.s-stat-speed {
+  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+}
+
+.s-stat-atk {
+  background: linear-gradient(135deg, #ffa940 0%, #fa8c16 100%);
+}
+
+.s-stat-hp {
+  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
 }
 
 .lineup-actions {
@@ -3876,5 +4163,82 @@ onMounted(() => {
   font-size: var(--font-size-sm);
   text-align: center;
   padding: var(--spacing-lg);
+}
+
+.lineup-apply-logs {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.logs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-xs);
+}
+
+.logs-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.logs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: none;
+  overflow-y: visible;
+}
+
+.logs-scrolling {
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.logs-empty {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  text-align: center;
+  padding: var(--spacing-xs) 0;
+}
+
+.log-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  padding: 3px 6px;
+  border-radius: var(--border-radius-small);
+  background: var(--bg-primary);
+  word-break: break-all;
+}
+
+.log-time {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-family: monospace;
+  min-width: 60px;
+}
+
+.log-message {
+  flex: 1;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.log-type-success .log-message {
+  color: var(--success-color);
+}
+
+.log-type-error .log-message {
+  color: var(--error-color);
+}
+
+.log-type-warning .log-message {
+  color: var(--warning-color);
 }
 </style>

@@ -1835,7 +1835,7 @@ const isStarting = ref(false);
 
 // 预设重试计数器 { presetId: count }
 const presetRetryCount = {};
-// 第8关全员阵亡不再自动重试，避免重复消耗枕头。用户可手动重新执行。
+// 第 8 关全员阵亡后最大重试次数（0=不重试，1-20=重试次数）
 const MAX_PRESET_RETRY = 0;
 
 // 恢复预设组队到UI

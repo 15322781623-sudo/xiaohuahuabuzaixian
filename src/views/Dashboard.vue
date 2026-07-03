@@ -194,13 +194,8 @@ onMounted(async () => {
     return;
   }
 
-  // 初始化Token数据
+  // 初始化 Token 数据
   tokenStore.initTokenStore();
-
-  // 2分钟后自动跳转到批量日常页面
-  autoRedirectTimer = setTimeout(() => {
-    router.push("/admin/batch-daily-tasks");
-  }, 120000); // 120秒 = 2分钟
 });
 
 onUnmounted(() => {

@@ -171,8 +171,9 @@
     <!-- 换皮闯关 -->
     <SkinChallengeCard v-show="activeSection === 'activity'"></SkinChallengeCard>
 
-    <!-- 十殿星级挑战 -->
-    <div v-show="activeSection === 'activity'" class="star-challenge-trigger">
+    <!-- 十殿挑战组合（星级挑战 + 阎罗挑战，上下排列） -->
+    <div v-show="activeSection === 'activity'" class="ten-kings-group">
+      <!-- 十殿星级挑战 -->
       <MyCard class="star-challenge-entry" statusClass="energy">
         <template #icon>
           <img src="/icons/ta.png" alt="星级挑战" />
@@ -193,10 +194,8 @@
           </button>
         </template>
       </MyCard>
-    </div>
 
-    <!-- 十殿阎罗挑战 -->
-    <div v-show="activeSection === 'activity'" class="nightmare-challenge-trigger">
+      <!-- 十殿阎罗挑战 -->
       <MyCard class="nightmare-challenge-entry" statusClass="energy">
         <template #icon>
           <img src="/icons/ta.png" alt="十殿挑战" />
@@ -925,6 +924,12 @@ onUnmounted(() => {
   grid-column: 1 / -1;
   border-bottom: 1px solid var(--border-light);
   overflow: auto;
+}
+
+.ten-kings-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
 }
 
 .wide-card {

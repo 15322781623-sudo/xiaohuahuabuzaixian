@@ -205,15 +205,8 @@ export const shouldSendCar = (car, tickets, minColor = 4, customConditions = {},
     return false;
   }
 
-  // 没有设置自定义条件,使用默认判断逻辑 (只看颜色/刷新券/大奖)
-  const racingTickets = countRacingRefreshTickets(rewards);
-  if (tickets >= 6) {
-    return (
-      color >= minColor
-      && (color >= 5 || racingTickets >= 4 || isBigPrize(rewards))
-    );
-  }
-  return color >= minColor || racingTickets >= 2 || isBigPrize(rewards);
+  // 没有设置自定义条件,优先按照保底车辆颜色进行发车
+  return color >= minColor;
 };
 
 /**

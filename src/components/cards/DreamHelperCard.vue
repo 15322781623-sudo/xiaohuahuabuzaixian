@@ -328,10 +328,14 @@ async function selectDreamTeam() {
   }
 }
 
+// 连续失败上限（防华佗/董卓回血死循环，因为无法识别对手，统一用连续失败判断）
+const MAX_CONSECUTIVE_LOSSES = 10;
+
 // 单个英雄战斗
+// 返回值: "win" | "lose" | "stop" | "error"
 async function startSingleBattle(heroId) {
   if (!tokenStore.selectedToken) {
-    return false;
+    return "error";
   }
 
   const tokenId = tokenStore.selectedToken.id;
@@ -375,9 +379,9 @@ async function startSingleBattle(heroId) {
         }
       }
 
-      return true;
+      return isWin ? "win" : "lose";
     }
-    return false;
+    return "error";
   } catch (error) {
     // 检查是否是2600080或2600050错误码
     if (
@@ -387,7 +391,7 @@ async function startSingleBattle(heroId) {
       return "stop"; // 返回特殊值表示需要停止
     }
     console.error(`${heroName} 开始战斗出错:`, error);
-    return false;
+    return "error";
   }
 }
 
@@ -399,6 +403,7 @@ async function startContinuousBattle(heroId) {
   message.info(`${heroName} 开始连续战斗`);
 
   let consecutiveErrors = 0; // 连续错误计数
+  let consecutiveLosses = 0; // 连续失败计数（防华佗/董卓回血死循环）
   const MAX_CONSECUTIVE_ERRORS = 3; // 连续3次错误自动停止
 
   // 连续战斗循环
@@ -411,16 +416,28 @@ async function startContinuousBattle(heroId) {
       break;
     }
 
-    // 返回false表示遇到其他错误（网络超时、限流等），累计连续错误
-    if (result === false) {
-      consecutiveErrors++;
-      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        message.warning(`${heroName} 连续${consecutiveErrors}次战斗失败，自动停止`);
+    // 战斗胜利：重置所有计数
+    if (result === "win") {
+      consecutiveErrors = 0;
+      consecutiveLosses = 0;
+    } else if (result === "lose") {
+      consecutiveErrors = 0;
+      consecutiveLosses++;
+
+      // 连续失败达到上限，疑似遇到回血型武将（华佗/董卓），自动停止
+      if (consecutiveLosses >= MAX_CONSECUTIVE_LOSSES) {
+        message.warning(`${heroName} 连续${consecutiveLosses}次战斗失败，疑似遇到华佗/董卓等回血型武将，自动停止挑战`);
         stopContinuousBattle(heroId);
         break;
       }
     } else {
-      consecutiveErrors = 0; // 成功则重置计数
+      // result === "error"：网络超时、限流等
+      consecutiveErrors++;
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        message.warning(`${heroName} 连续${consecutiveErrors}次战斗出错，自动停止`);
+        stopContinuousBattle(heroId);
+        break;
+      }
     }
 
     // 等待0.1秒再进行下一次战斗

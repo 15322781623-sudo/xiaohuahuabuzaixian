@@ -128,9 +128,9 @@
             ></n-select>
           </div>
 
-          <!-- 每日BOSS次数 -->
+          <!-- 俱乐部BOSS次数 -->
           <div class="setting-item">
-            <label class="setting-label">每日BOSS次数</label>
+            <label class="setting-label">俱乐部BOSS次数</label>
             <n-select
               size="small"
               v-model:value="settings.dailyBossTimes"
@@ -362,7 +362,7 @@ const settings = reactive({
   arenaFormation: 1,
   bossFormation: 1,
   bossTimes: 2,
-  dailyBossTimes: 1,
+  dailyBossTimes: 3,
   claimBottle: true,
   payRecruit: true,
   openBox: true,

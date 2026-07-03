@@ -274,6 +274,12 @@
           <div class="tower-status-header" :title="isTowerExpanded ? '点击最小化' : '点击展开'" @click.stop="isTowerExpanded = !isTowerExpanded">
             <img class="tag-icon tag-icon-img" src="/icons/闯关.png" alt="闯关">
             <span class="tag-text">闯关</span>
+            <span v-if="!towerInfo.actId && !towerInfo.isRefreshing" class="activity-status-tag activity-closed" title="换皮闯关活动未开启">
+              未开启
+            </span>
+            <span v-else-if="towerInfo.actId" class="activity-status-tag activity-open" title="换皮闯关活动已开启">
+              已开启
+            </span>
             <span class="expand-icon">{{ isTowerExpanded ? '▼' : '▶' }}</span>
             <img class="refresh-icon refresh-icon-img" title="点击刷新闯关进度" @click.stop="refreshTowerInfo" src="/icons/刷新.png" alt="刷新">
           </div>
@@ -308,6 +314,10 @@
               已通关 {{ towerInfo.finishedCount }}/6
             </span>
           </div>
+          <div v-if="isTowerExpanded && !towerInfo.actId && !towerInfo.isRefreshing" class="tower-activity-closed-tip">
+            <span class="closed-tip-icon">️</span>
+            <span class="closed-tip-text">换皮闯关活动未开启</span>
+          </div>
         </div>
         <!-- 爬塔状态 -->
         <div class="climb-tower-container">
@@ -340,6 +350,12 @@
           <div class="weird-tower-header" :title="weirdTowerData.isExpanded ? '点击最小化' : '点击展开'" @click.stop="toggleWeirdTower">
             <img class="tag-icon tag-icon-img" src="/icons/ta.png" alt="怪塔">
             <span class="tag-text">怪塔</span>
+            <span v-if="!isBlackMarketWeek && !weirdTowerData.isRefreshing" class="activity-status-tag activity-closed" title="黑市周未开启，怪异塔不开放">
+              未开启
+            </span>
+            <span v-else-if="isBlackMarketWeek" class="activity-status-tag activity-open" title="黑市周已开启，怪异塔开放">
+              黑市周
+            </span>
             <span class="expand-icon">{{ weirdTowerData.isExpanded ? '▼' : '▶' }}</span>
             <img class="refresh-icon refresh-icon-img" title="点击刷新怪异塔数据" @click.stop="refreshWeirdTowerData" src="/icons/刷新.png" alt="刷新">
           </div>
@@ -359,6 +375,10 @@
               <div class="item-label">剩余钥匙</div>
               <div class="item-value">{{ weirdTowerData.lotteryLeftCnt }}</div>
             </div>
+          </div>
+          <div v-if="weirdTowerData.isExpanded && !isBlackMarketWeek && !weirdTowerData.isRefreshing" class="tower-activity-closed-tip">
+            <span class="closed-tip-icon">⚠️</span>
+            <span class="closed-tip-text">怪异塔仅在黑市周开放（每周五12点至下周四24点）</span>
           </div>
         </div>
         <!-- 赛车状态 -->
@@ -976,6 +996,17 @@ const weirdTowerData = ref({
   lotteryLeftCnt: 0, // 剩余抽奖次数
   isExpanded: false, // 是否展开，默认为false
   isRefreshing: false, // 是否正在刷新
+});
+
+// 黑市周判断：每3周循环，第1周是黑市周
+const isBlackMarketWeek = computed(() => {
+  const now = new Date();
+  const start = new Date("2025-12-12T12:00:00");
+  const weekDuration = 7 * 24 * 60 * 60 * 1000;
+  const cycleDuration = 3 * weekDuration;
+  const elapsed = now.getTime() - start.getTime();
+  const cyclePosition = elapsed % cycleDuration;
+  return cyclePosition < weekDuration;
 });
 
 // 监听怪异塔展开状态props变化
@@ -2418,6 +2449,7 @@ const handleArenaFight = async () => {
     isArenaFighting.value = false;
   }
 };
+
 
 // 监听连接状态变化，自动获取数据
 watch(() => isConnected.value, (connected) => {
@@ -5227,11 +5259,32 @@ const challengeTower = async (type) => {
     flex: 1;
   }
 
+  .activity-status-tag {
+    font-size: 8px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-left: 3px;
+    font-weight: 500;
+    line-height: 1.2;
+    
+    &.activity-open {
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #a7f3d0;
+    }
+    
+    &.activity-closed {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+  }
+
   .expand-icon {
     font-size: 9px;
     margin-right: 6px;
     color: #000000;
-    transition: transform 0.2s ease;
+    transition: transform 0.3s ease;
   }
 
   &:hover .expand-icon {
@@ -5538,6 +5591,27 @@ const challengeTower = async (type) => {
     flex: 1;
   }
 
+  .activity-status-tag {
+    font-size: 8px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-left: 3px;
+    font-weight: 500;
+    line-height: 1.2;
+    
+    &.activity-open {
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #a7f3d0;
+    }
+    
+    &.activity-closed {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+  }
+
   .expand-icon {
     font-size: 9px;
     margin-right: 6px;
@@ -5612,6 +5686,27 @@ const challengeTower = async (type) => {
   font-size: 9px;
   color: #000000;
   padding-top: 4px;
+}
+
+.tower-activity-closed-tip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  margin-top: 6px;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 4px;
+  font-size: 9px;
+  color: #92400e;
+  
+  .closed-tip-icon {
+    font-size: 10px;
+  }
+  
+  .closed-tip-text {
+    line-height: 1.3;
+  }
 }
 
 /* 赛车状态容器样式 */

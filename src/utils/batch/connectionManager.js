@@ -72,6 +72,8 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
     // 无论是否已连接，都需要获取连接槽位来限制并发数
     await waitForConnectionSlot();
 
+    let lastError = null;
+
     if (!connected) {
       // 如果当前正在连接中，等待一段时间看是否能连接成功
       if (status === "connecting") {
@@ -95,12 +97,16 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
           type: "info",
         });
 
-        await tokenStore.createWebSocketConnection(
-          tokenId,
-          latestToken.token,
-          latestToken.wsUrl,
-        );
-        connected = await waitForConnection(tokenId);
+        try {
+          await tokenStore.createWebSocketConnection(
+            tokenId,
+            latestToken.token,
+            latestToken.wsUrl,
+          );
+          connected = await waitForConnection(tokenId);
+        } catch (err) {
+          lastError = err;
+        }
       }
 
       if (!connected && maxRetries > 0) {
@@ -120,13 +126,16 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
         });
 
         const refreshedToken = tokens.find((t) => t.id === tokenId);
-        await tokenStore.createWebSocketConnection(
-          tokenId,
-          refreshedToken.token,
-          refreshedToken.wsUrl,
-        );
-
-        connected = await waitForConnection(tokenId);
+        try {
+          await tokenStore.createWebSocketConnection(
+            tokenId,
+            refreshedToken.token,
+            refreshedToken.wsUrl,
+          );
+          connected = await waitForConnection(tokenId);
+        } catch (err) {
+          lastError = err;
+        }
       }
 
       if (!connected) {
@@ -134,11 +143,11 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
         releaseConnectionSlot();
 
         // 检查是否是因为在其他地方登录导致的连接失败
-        const isKickedError = e.message && (
-          e.message.includes("90da564c")
-          || e.message.includes("在其他地方登录")
-          || e.message.includes("被踢")
-          || e.message.includes("kick")
+        const isKickedError = lastError?.message && (
+          lastError.message.includes("90da564c")
+          || lastError.message.includes("在其他地方登录")
+          || lastError.message.includes("被踢")
+          || lastError.message.includes("kick")
         );
 
         if (isKickedError) {
