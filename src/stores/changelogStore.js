@@ -10,6 +10,31 @@ export const useChangelogStore = defineStore("changelog", () => {
 
   const changelogs = ref([
     {
+      version: "v2.18.0",
+      date: "2026-07-04",
+      type: "patch",
+      title: "竞技场战斗结果反馈修复 & 战败判定fallback & 批量任务时序修复",
+      fixes: [
+        "修复一键竞技场3次战斗后不显示胜负和积分变化的问题，正确解析 battleData.result.isWin、selfScore、oppoScore 字段",
+        "新增 fallback 逻辑，当 isWin 字段缺失时通过 sponsor/accept 队伍血量判定胜负（全队curHP=0为战败）",
+        "修复对手积分始终显示为正的问题，胜利时对手扣分、战败时对手加分",
+        "修复 loadArenaRank() 在失败或未找到排名时将数据清零的问题，改为保留已有数据",
+        '修复账号卡片领取挂机时"开始领取挂机"日志重复显示两次的问题',
+        "修复单 token 模式调用 createTasksHangUp 时缺少 runStreaming 依赖导致的 TypeError",
+        '修复 taskPromises 未 await 导致"批量竞技场战斗完成"在战斗结束前就打印的问题',
+        "删除硬编码重试逻辑（等60秒手动重连），统一到 retryTargetTokens + batchSettings 参数驱动的重试机制",
+        "修复 WebSocket 连接成功后立即加载数据，因服务端验证 token expired 导致 StarChallenge/MeritBook/ArenaRank 三个请求各超时5秒的问题",
+        "修复定时任务执行完成情况中账号状态误判为失败的问题，实际已成功执行的账号现在正确显示为成功",
+        "修复定时任务执行记录只显示最近3条的限制，现在显示全部历史记录",
+        "解除定时任务执行完成情况 Modal 的打开限制，不再要求必须先运行定时任务才能点击查看",
+        "解除 Token 页面2分钟自动跳转到批量日常页面的限制，Token 页面不再自动跳转，仅首页保留自动跳转逻辑",
+      ],
+      improvements: [
+        "连接成功后延迟1.5秒再加载数据，并二次校验连接状态，避免 token 过期时发送无效请求",
+        "竞技场响应结构兼容 battleData.result.isWin、result.isWin、body.result.isWin 多种响应路径",
+      ],
+    },
+    {
       version: "v2.17.0",
       date: "2026-07-02",
       type: "patch",

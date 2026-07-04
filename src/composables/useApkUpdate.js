@@ -8,7 +8,7 @@ import { CapacitorHttp } from '@capacitor/core';
  */
 
 // Worker 地址（Cloudflare Worker 部署地址）
-const WORKER_BASE = 'https://apk.xiaohuaxyzw.top';
+const WORKER_BASE = 'https://xyzw-apk-updater.15322781623.workers.dev';
 
 // 本地存储的当前APK版本
 const APK_VERSION_KEY = 'apk_current_version';
@@ -33,8 +33,10 @@ const GITHUB_MIRRORS = [
 
 // 默认当前版本（构建时由 Vite 从 build.gradle 自动注入，无需手动同步）
 // 开发环境回退值（dev server 不经过构建）
-const DEFAULT_VERSION_NAME = typeof __APK_VERSION_NAME__ !== 'undefined' ? __APK_VERSION_NAME__ : '1.1.3';
-const DEFAULT_VERSION_CODE = typeof __APK_VERSION_CODE__ !== 'undefined' ? __APK_VERSION_CODE__ : 10103;
+const DEFAULT_VERSION_NAME = typeof __APK_VERSION_NAME__ !== 'undefined' && __APK_VERSION_NAME__ ? __APK_VERSION_NAME__ : '2.18.0';
+const DEFAULT_VERSION_CODE = typeof __APK_VERSION_CODE__ !== 'undefined' && __APK_VERSION_CODE__ ? __APK_VERSION_CODE__ : 21800;
+
+console.log(`[APK 更新检测] 初始化版本: ${DEFAULT_VERSION_NAME} (code: ${DEFAULT_VERSION_CODE})`);
 
 export function useApkUpdate() {
   const isChecking = ref(false);
@@ -52,15 +54,18 @@ export function useApkUpdate() {
       // ✅ 优先使用构建时注入的版本号（来自 build.gradle，通过 Vite define 注入）
       // 这样确保版本号与 APK 实际版本一致，不受 localStorage 旧值影响
       const versionName = DEFAULT_VERSION_NAME;
-      const versionCode = DEFAULT_VERSION_CODE;
+      const versionCode = Number(DEFAULT_VERSION_CODE); // 确保是数字类型
         
+      console.log(`[APK 更新检测] getLocalVersion: name=${versionName}, code=${versionCode} (${typeof versionCode})`);
+      
       // 同步到 localStorage（供其他地方读取）
       localStorage.setItem(APK_VERSION_KEY, versionName);
       localStorage.setItem(APK_VERSION_CODE_KEY, String(versionCode));
         
       return { versionName, versionCode };
-    } catch {
-      return { versionName: DEFAULT_VERSION_NAME, versionCode: DEFAULT_VERSION_CODE };
+    } catch (error) {
+      console.error('[APK 更新检测] getLocalVersion 异常:', error);
+      return { versionName: DEFAULT_VERSION_NAME, versionCode: Number(DEFAULT_VERSION_CODE) };
     }
   };
 

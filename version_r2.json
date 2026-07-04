@@ -1,9 +1,9 @@
 {
-  "latestVersion": "2.13.0",
-  "versionCode": 21300,
+  "latestVersion": "2.18.0",
+  "versionCode": 21800,
   "downloadUrl": "https://xyzw-apk-updater.15322781623.workers.dev/api/apk/download",
-  "downloadUrlOriginal": "https://xyzw-apk-updater.15322781623.workers.dev/api/apk/download",
-  "changelog": "v2.13.0: 卡密管理系统上线，批量推图每小时自动刷新状态",
-  "minVersionCode": 21200,
+  "downloadUrlOriginal": "https://github.com/15322781623-sudo/xiaohuahuabuzaixian/releases/latest/download/肝王之王.apk",
+  "changelog": "v2.18.0: 竞技场战斗结果反馈修复 & 战败判定 fallback & 任务执行状态修复 & 批量任务时序修复 & Token 页面自动跳转解除 & APK 更新检测修复",
+  "minVersionCode": 21500,
   "forceUpdate": false
 }

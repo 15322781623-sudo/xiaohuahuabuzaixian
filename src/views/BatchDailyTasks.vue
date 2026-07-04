@@ -9113,7 +9113,7 @@ const loadTaskExecutionRecordsFromStorage = () => {
   }
 };
 
-// 保存任务完成情况到 localStorage（新增记录，不覆盖旧记录）
+// 保存任务完成情况到 localStorage（只保存已完成的新记录，避免重复）
 const saveTaskExecutionRecordsToStorage = () => {
   try {
     const now = new Date();
@@ -9121,27 +9121,47 @@ const saveTaskExecutionRecordsToStorage = () => {
     
     // ✅ 先加载现有记录（如果有）
     let existingRecords = [];
+    let lastSavedIds = new Set(); // 记录已保存过的 record id
     const savedData = localStorage.getItem('taskExecutionRecords');
     if (savedData) {
       const parsed = JSON.parse(savedData);
       if (Array.isArray(parsed.records)) {
         existingRecords = parsed.records;
-        console.log(`[定时任务] 加载现有记录 ${existingRecords.length} 条，准备追加新记录`);
+        // 提取已保存的 record id（使用 startTime + name 作为唯一标识）
+        parsed.records.forEach(r => {
+          const id = `${r.startTime}-${r.name}`;
+          lastSavedIds.add(id);
+        });
+        console.log(`[定时任务] 加载现有记录 ${existingRecords.length} 条`);
       }
     }
     
-    // ✅ 合并新旧记录：将新记录追加到数组末尾
-    const allRecords = [...existingRecords, ...taskExecutionRecords.value];
+    // ✅ 只收集未保存过的已完成记录
+    const newlyCompletedRecords = taskExecutionRecords.value.filter(record => {
+      if (record.status === 'running') return false; // 跳过着跑中的任务
+      
+      const recordId = `${record.startTime}-${record.name}`;
+      return !lastSavedIds.has(recordId); // 只保存未保存过的已完成记录
+    });
     
-    const dataToSave = {
-      date: todayStr,
-      records: allRecords,
-      updatedAt: now.toISOString(),
-      totalRecords: allRecords.length
-    };
-    
-    localStorage.setItem('taskExecutionRecords', JSON.stringify(dataToSave));
-    console.log(`[定时任务] 已追加任务执行情况，累计 ${allRecords.length} 条记录`);
+    if (newlyCompletedRecords.length > 0) {
+      console.log(`[定时任务] 检测到 ${newlyCompletedRecords.length} 条新完成记录，准备保存`);
+      
+      // ✅ 合并新旧记录
+      const allRecords = [...existingRecords, ...newlyCompletedRecords];
+      
+      const dataToSave = {
+        date: todayStr,
+        records: allRecords,
+        updatedAt: now.toISOString(),
+        totalRecords: allRecords.length
+      };
+      
+      localStorage.setItem('taskExecutionRecords', JSON.stringify(dataToSave));
+      console.log(`[定时任务] 已保存 ${newlyCompletedRecords.length} 条记录，累计 ${allRecords.length} 条`);
+    } else {
+      console.log(`[定时任务] 无新完成记录，跳过保存`);
+    }
   } catch (error) {
     console.error('[定时任务] 保存任务执行情况到 localStorage 失败:', error);
   }
@@ -14949,29 +14969,25 @@ const startBatch = async () => {
           message: ` 正在获取活跃度信息...`,
           type: "info",
         });
-        
+                
         try {
-          const roleInfo = await tokenStore.sendMessageWithPromise(
-            tokenId,
-            "role_getroleinfo",
-            {},
-            10000
-          );
-          
+          // ✅ 使用轻量级刷新函数获取角色信息（仅用于判断活跃度）
+          const roleInfo = await tokenStore.refreshForBatchRoleOnly(tokenId);
+                  
           // 尝试多种可能的路径
           const dailyTask = roleInfo?.role?.dailyTask 
             || roleInfo?.body?.role?.dailyTask
             || roleInfo?.dailyTask
             || roleInfo?.body?.dailyTask;
-          
+                  
           const activityPoints = dailyTask?.dailyPoint ?? 0;
-          
+                  
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `📊 ${token.name} 当前活跃度: ${activityPoints}/110`,
+            message: `📊 ${token.name} 当前活跃度：${activityPoints}/110`,
             type: "info",
           });
-          
+                  
           // 如果活跃度 >= 105，跳过日常任务
           if (activityPoints >= 105) {
             addLog({
@@ -14988,7 +15004,7 @@ const startBatch = async () => {
             });
             continue; // 跳过后续的任务执行
           }
-          
+                  
           addLog({
             time: new Date().toLocaleTimeString(),
             message: `🚀 ${token.name} 活跃度 ${activityPoints}，开始执行日常任务...`,
@@ -15036,8 +15052,8 @@ const startBatch = async () => {
             type: "info",
           });
           
-          // 使用sendGetRoleInfo获取最新角色信息
-          const roleInfoResp = await tokenStore.sendGetRoleInfo(tokenId);
+          // ✅ 使用轻量级刷新函数获取最新角色信息
+          const roleInfoResp = await tokenStore.refreshForBatchRoleOnly(tokenId);
           
           addLog({
             time: new Date().toLocaleTimeString(),

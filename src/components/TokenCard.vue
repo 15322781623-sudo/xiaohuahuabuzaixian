@@ -1872,9 +1872,16 @@ watch(() => tokenGameData.value, syncGameData, { deep: true, immediate: true });
 // 监听连接状态变化，加载星级挑战数据
 watch(() => isConnected.value, (connected) => {
   if (connected) {
-    loadStarChallengeStars();
-    loadMeritBookStars();
-    loadArenaRank(); // 加载竞技场排名
+    // 延迟1.5秒等待连接稳定（服务端可能因token过期等原因关闭连接）
+    setTimeout(() => {
+      if (!isConnected.value) {
+        console.log('[TokenCard] 连接已断开，跳过数据加载:', props.token.id);
+        return;
+      }
+      loadStarChallengeStars();
+      loadMeritBookStars();
+      loadArenaRank(); // 加载竞技场排名
+    }, 1500);
   }
 });
 
@@ -2218,15 +2225,18 @@ const loadArenaRank = async () => {
     );
 
     if (myRankData) {
-      arenaRank.value = myRankData.rank || myRankData.info?.rank || 0;
-      console.log("[ArenaRank] 获取到竞技场排名:", arenaRank.value);
+      const newRank = myRankData.rank || myRankData.info?.rank || 0;
+      if (newRank > 0) {
+        arenaRank.value = newRank;
+        console.log("[ArenaRank] 获取到竞技场排名:", arenaRank.value);
+      }
+      // newRank 为 0 时不覆盖已有数据
     } else {
-      arenaRank.value = 0;
-      console.log("[ArenaRank] 未在前100名中找到自己");
+      console.log("[ArenaRank] 未在前100名中找到自己，保留已有排名:", arenaRank.value);
     }
   } catch (err) {
-    console.warn("[ArenaRank] 获取竞技场排名失败:", err.message);
-    arenaRank.value = 0;
+    console.warn("[ArenaRank] 获取竞技场排名失败，保留已有数据:", err.message, "当前排名:", arenaRank.value);
+    // 失败时不清零，保留之前成功获取的排名数据
   }
 };
 
@@ -2414,7 +2424,35 @@ const handleArenaFight = async () => {
           { targetId },
           // 不传超时时间,使用默认值
         );
-        console.log("[竞技场] 战斗结果:", fightResult);
+        // 解析战斗结果：胜负 + 积分变化
+        // 响应结构：battleData.result.isWin 在嵌套层，selfScore/oppoScore 在顶层
+        const battleResult = fightResult?.battleData?.result || fightResult?.result || fightResult?.body?.result || fightResult;
+        let isWin = battleResult?.isWin;
+        const selfScore = fightResult?.selfScore;
+        const oppoScore = fightResult?.oppoScore;
+
+        // fallback：通过队伍血量判定胜负
+        if (isWin === undefined && fightResult?.battleData?.result) {
+          const sponsorTeam = fightResult.battleData.result?.sponsor?.teamInfo || [];
+          const acceptTeam = fightResult.battleData.result?.accept?.teamInfo || [];
+          const sponsorTotalHP = sponsorTeam.reduce((sum, h) => sum + (h?.hp || 0), 0);
+          const acceptTotalHP = acceptTeam.reduce((sum, h) => sum + (h?.hp || 0), 0);
+          if (sponsorTotalHP === 0 && acceptTotalHP > 0) {
+            isWin = false;
+          } else if (acceptTotalHP === 0 && sponsorTotalHP > 0) {
+            isWin = true;
+          }
+        }
+
+        if (isWin !== undefined) {
+          let fightMsg = `第 ${i + 1}/${fights} 次战斗: ${isWin ? '✅ 胜利' : '❌ 失败'}`;
+          // selfScore/oppoScore 为绝对值，正负号取决于胜负
+          const displaySelfScore = isWin ? Math.abs(selfScore) : -Math.abs(selfScore);
+          const displayOppoScore = isWin ? -Math.abs(oppoScore) : Math.abs(oppoScore);
+          if (selfScore !== undefined) fightMsg += ` | 我方积分${displaySelfScore >= 0 ? '+' : ''}${displaySelfScore}`;
+          if (oppoScore !== undefined) fightMsg += ` | 对手积分${displayOppoScore >= 0 ? '+' : ''}${displayOppoScore}`;
+          addLog({ message: fightMsg, type: isWin ? 'success' : 'warning' });
+        }
       } catch (fightError) {
         console.error("[竞技场] 战斗失败详情:", {
           error: fightError,
@@ -2422,6 +2460,7 @@ const handleArenaFight = async () => {
           targetId,
           targets,
         });
+        addLog({ message: `第 ${i + 1}/${fights} 次战斗失败: ${fightError.message}`, type: 'error' });
       }
 
       // 等待 1 秒再进行下一次
@@ -2576,8 +2615,8 @@ const handleLegacyClaim = async () => {
       });
     }
 
-    // 领取后刷新游戏数据
-    tokenStore.refreshGameData(props.token.id);
+    // 领取残卷后只刷新角色信息（不需要刷新俱乐部、赛车等无关数据）
+    await tokenStore.sendGetRoleInfo(props.token.id);
 
     // 5秒后自动关闭日志显示（不清空日志，只隐藏）
     autoCloseLogs();
@@ -2701,8 +2740,8 @@ const loadStarChallengeStars = async () => {
       starChallengeTotalStars.value = 0;
     }
   } catch (error) {
-    console.error("[StarChallenge] 加载星级挑战数据失败:", error);
-    starChallengeTotalStars.value = 0;
+    console.error("[StarChallenge] 加载星级挑战数据失败，保留已有数据:", error);
+    // 失败时不清零，保留之前成功获取的星数
   }
 };
 
@@ -3182,12 +3221,42 @@ const completeMonthlyArena = async () => {
 
           if (targetId) {
             // 执行战斗（与MonthlyTasksCard保持一致）
-            await tokenStore.sendMessageWithPromise(
+            const fightResult = await tokenStore.sendMessageWithPromise(
               tokenId,
               "fight_startareaarena",
               { targetId },
               15000,
             );
+
+            // 解析战斗结果：胜负 + 积分变化
+            const battleResult = fightResult?.battleData?.result || fightResult?.result || fightResult?.body?.result || fightResult;
+            let isWin = battleResult?.isWin;
+            const selfScore = fightResult?.selfScore;
+            const oppoScore = fightResult?.oppoScore;
+
+            // fallback：通过队伍血量判定胜负
+            if (isWin === undefined && fightResult?.battleData?.result) {
+              const sponsorTeam = fightResult.battleData.result?.sponsor?.teamInfo || [];
+              const acceptTeam = fightResult.battleData.result?.accept?.teamInfo || [];
+              const sponsorTotalHP = sponsorTeam.reduce((sum, h) => sum + (h?.hp || 0), 0);
+              const acceptTotalHP = acceptTeam.reduce((sum, h) => sum + (h?.hp || 0), 0);
+              if (sponsorTotalHP === 0 && acceptTotalHP > 0) {
+                isWin = false;
+              } else if (acceptTotalHP === 0 && sponsorTotalHP > 0) {
+                isWin = true;
+              }
+            }
+
+            if (isWin !== undefined) {
+              let fightMsg = `${tokenName} 战斗: ${isWin ? '✅ 胜利' : '❌ 失败'}`;
+              // selfScore/oppoScore 为绝对值，正负号取决于胜负
+              const displaySelfScore = isWin ? Math.abs(selfScore) : -Math.abs(selfScore);
+              const displayOppoScore = isWin ? -Math.abs(oppoScore) : Math.abs(oppoScore);
+              if (selfScore !== undefined) fightMsg += ` | 我方积分${displaySelfScore >= 0 ? '+' : ''}${displaySelfScore}`;
+              if (oppoScore !== undefined) fightMsg += ` | 对手积分${displayOppoScore >= 0 ? '+' : ''}${displayOppoScore}`;
+              addLog({ message: fightMsg, type: isWin ? 'success' : 'warning' });
+            }
+
             actualFights++;
             successCount++;
             ticketsLeft--;
@@ -4229,8 +4298,8 @@ const handleCarClick = async (car, carNumber) => {
         type: "success",
       });
 
-      // 领取奖励后立即刷新赛车状态
-      tokenStore.refreshGameData(props.token.id);
+      // 领取赛车奖励后只刷新赛车信息（不需要刷新角色、俱乐部等无关数据）
+      await tokenStore.sendMessageWithPromise(props.token.id, "car_getrolecar", {}, 10000);
 
       // 5秒后自动关闭日志显示（不清空日志，只隐藏）
       autoCloseLogs();
@@ -4315,8 +4384,8 @@ const handleCarClick = async (car, carNumber) => {
         { value: false },
       );
 
-      // 发车后立即刷新赛车状态
-      tokenStore.refreshGameData(props.token.id);
+      // 发车后只刷新赛车信息（不需要刷新角色、俱乐部等无关数据）
+      await tokenStore.sendMessageWithPromise(props.token.id, "car_getrolecar", {}, 10000);
 
       // 5秒后自动关闭日志显示（不清空日志，只隐藏）
       autoCloseLogs();
@@ -4377,23 +4446,25 @@ const handleHangUp = async () => {
       shouldStop: { value: false },
       ensureConnection: async () => {}, // 账号卡片已连接，不需要重新连接
       releaseConnectionSlot: () => {},
+      runStreaming: async (tokenIds, processFn) => {
+        // 单token模式：直接执行，无需并发控制
+        for (const id of tokenIds) {
+          await processFn(id);
+        }
+      },
       connectionQueue: { active: 0 },
       batchSettings,
       tokenStore,
       addLog,
       message,
       currentRunningTokenId: { value: null },
+      getModuleDelay: null,
     };
 
     const { claimHangUpRewards } = createTasksHangUp(deps);
 
     // ✅ 执行领取挂机（使用与批量领取相同的逻辑）
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `=== 开始领取挂机: ${tokenName} ===`,
-      type: "info",
-    });
-
+    // 日志由 claimHangUpRewards 内部的 claimAndAddTime 输出，此处不再重复
     await claimHangUpRewards();
 
     addLog({

@@ -1652,6 +1652,112 @@ export const useTokenStore = defineStore("tokens", () => {
     }
   };
 
+  /**
+   * 轻量级刷新：仅获取角色信息（用于批量竞技场等只需要角色数据的任务）
+   * @param tokenId - Token ID
+   * @returns 角色信息响应
+   */
+  const refreshForBatchRoleOnly = async (tokenId: string) => {
+    try {
+      const connection = wsConnections.value[tokenId];
+      if (!connection || connection.status !== "connected") {
+        wsLogger.warn(`批量刷新角色信息时发现未连接 [${tokenId}]`);
+        return null;
+      }
+
+      wsLogger.info(`[批量] 开始刷新角色信息 [${tokenId}]`);
+      const roleInfo = await sendMessageWithPromise(
+        tokenId,
+        "role_getroleinfo",
+        {},
+        10000,
+      );
+      
+      // 更新到本地存储
+      if (roleInfo) {
+        updateTokenGameData(tokenId, { roleInfo });
+      }
+      
+      wsLogger.info(`[批量] 角色信息刷新完成 [${tokenId}]`);
+      return roleInfo;
+    } catch (error) {
+      wsLogger.error(`[批量] 刷新角色信息失败 [${tokenId}]:`, error);
+      return null;
+    }
+  };
+
+  /**
+   * 轻量级刷新：获取竞技场战斗所需的 battleVersion（用于批量竞技场）
+   * @param tokenId - Token ID
+   * @returns fight_startlevel 响应
+   */
+  const refreshForBatchArena = async (tokenId: string) => {
+    try {
+      const connection = wsConnections.value[tokenId];
+      if (!connection || connection.status !== "connected") {
+        wsLogger.warn(`批量刷新竞技场数据时发现未连接 [${tokenId}]`);
+        return null;
+      }
+
+      wsLogger.info(`[批量] 开始刷新竞技场战斗版本 [${tokenId}]`);
+      const fightLevelResult = await sendMessageWithPromise(
+        tokenId,
+        "fight_startlevel",
+        {},
+        8000,
+      );
+      
+      // 提取并缓存 battleVersion
+      const battleVersion = fightLevelResult?.battleData?.version 
+        || fightLevelResult?.battleVersion;
+      
+      if (battleVersion !== undefined) {
+        // 更新到全局 gameData，供后续战斗命令使用
+        gameData.value.battleVersion = battleVersion;
+        wsLogger.info(`[批量] 竞技场战斗版本已缓存：${battleVersion} [${tokenId}]`);
+      }
+      
+      return fightLevelResult;
+    } catch (error) {
+      wsLogger.error(`[批量] 刷新竞技场数据失败 [${tokenId}]:`, error);
+      return null;
+    }
+  };
+
+  /**
+   * 轻量级刷新：获取爬塔任务所需的塔信息（用于批量爬塔）
+   * @param tokenId - Token ID
+   * @returns evotower_getinfo 响应
+   */
+  const refreshForBatchTower = async (tokenId: string) => {
+    try {
+      const connection = wsConnections.value[tokenId];
+      if (!connection || connection.status !== "connected") {
+        wsLogger.warn(`批量刷新爬塔数据时发现未连接 [${tokenId}]`);
+        return null;
+      }
+
+      wsLogger.info(`[批量] 开始刷新爬塔信息 [${tokenId}]`);
+      const towerInfo = await sendMessageWithPromise(
+        tokenId,
+        "evotower_getinfo",
+        {},
+        10000,
+      );
+      
+      // 更新到本地存储
+      if (towerInfo) {
+        updateTokenGameData(tokenId, { evoTowerInfo: towerInfo });
+      }
+      
+      wsLogger.info(`[批量] 爬塔信息刷新完成 [${tokenId}]`);
+      return towerInfo;
+    } catch (error) {
+      wsLogger.error(`[批量] 刷新爬塔数据失败 [${tokenId}]:`, error);
+      return null;
+    }
+  };
+
   // Promise版发送消息
   const sendMessageWithPromise = async (
     tokenId: string,
@@ -2504,6 +2610,11 @@ export const useTokenStore = defineStore("tokens", () => {
     isTokenRunning,
     attemptTokenRefresh,
     refreshGameData,
+
+    // 批量任务专用轻量级刷新函数
+    refreshForBatchRoleOnly,
+    refreshForBatchArena,
+    refreshForBatchTower,
 
     // 游戏内发送消息方法
     sendMessageToLegion,

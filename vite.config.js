@@ -169,9 +169,9 @@ export default defineConfig(async () => {
       minify: 'terser',
       terserOptions: {
         compress: {
-          drop_console: true,   // 移除 console.log
+          // drop_console: true,   // 移除 console.log - ❌ 临时禁用以调试版本号注入
           drop_debugger: true,  // 移除 debugger
-          pure_funcs: ['console.log', 'console.info'], // 额外清除
+          // pure_funcs: ['console.log', 'console.info'], // 额外清除
           passes: 2,            // 多轮压缩优化
         },
         mangle: {

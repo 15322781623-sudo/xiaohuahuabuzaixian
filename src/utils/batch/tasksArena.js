@@ -401,9 +401,8 @@ export function createTasksArena(deps) {
       });
     }
   };
-
-  /**
-   * 一键竞技场战斗3次
+ /**
+  * 一键竞技场战斗3次
    */
   const batcharenafight = async () => {
     if (selectedTokens.value.length === 0)
@@ -493,6 +492,7 @@ export function createTasksArena(deps) {
               } catch {}
             }
             const ticketCount = role?.items?.[1007]?.quantity || 0;
+            const fights = Math.min(3, ticketCount); // 提前声明，catch块重试时需要
             addLog({
               time: new Date().toLocaleTimeString(),
               message: `${token.name} 当前咸神门票: ${ticketCount}`,
@@ -554,7 +554,6 @@ export function createTasksArena(deps) {
               });
             }
 
-            const fights = Math.min(3, ticketCount);
             if (fights < 3) {
               addLog({
                 time: new Date().toLocaleTimeString(),
@@ -775,26 +774,38 @@ export function createTasksArena(deps) {
                   "fight_startareaarena",
                   { targetId: targetResult.targetId },
                 );
-                
-                // 解析战斗结果
-                const body = fightResult?.body || fightResult || {};
-                const result = body.result || body;
-                const isWin = result.isWin ?? result.iswin ?? result.win;
-                
-                if (isWin) {
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 竞技场战斗 ${i + 1}/3 挑战成功`,
-                    type: "success",
-                  });
-                } else {
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 竞技场战斗 ${i + 1}/3 挑战失败`,
-                    type: "warning",
-                  });
+                // 解析战斗结果：胜负 + 积分变化
+                // 响应结构：battleData.result.isWin 在嵌套层，selfScore/oppoScore 在顶层
+                const battleResult = fightResult?.battleData?.result || fightResult?.result || fightResult?.body?.result || fightResult;
+                let isWin = battleResult?.isWin;
+                const selfScore = fightResult?.selfScore;
+                const oppoScore = fightResult?.oppoScore;
+
+                // fallback：通过队伍血量判定胜负
+                if (isWin === undefined && fightResult?.battleData?.result) {
+                  const sponsorTeam = fightResult.battleData.result?.sponsor?.teamInfo || [];
+                  const acceptTeam = fightResult.battleData.result?.accept?.teamInfo || [];
+                  const sponsorTotalHP = sponsorTeam.reduce((sum, h) => sum + (h?.hp || 0), 0);
+                  const acceptTotalHP = acceptTeam.reduce((sum, h) => sum + (h?.hp || 0), 0);
+                  // 我方全队血量=0 → 战败；对手全队血量=0 → 胜利
+                  if (sponsorTotalHP === 0 && acceptTotalHP > 0) {
+                    isWin = false;
+                  } else if (acceptTotalHP === 0 && sponsorTotalHP > 0) {
+                    isWin = true;
+                  }
                 }
-                
+
+                if (isWin !== undefined) {
+                  // selfScore/oppoScore 为绝对值，正负号取决于胜负
+                  const displaySelfScore = isWin ? Math.abs(selfScore) : -Math.abs(selfScore);
+                  const displayOppoScore = isWin ? -Math.abs(oppoScore) : Math.abs(oppoScore);
+                  let fightMsg = `${token.name} 竞技场战斗 ${i + 1}/3: ${isWin ? '✅ 胜利' : '❌ 失败'}`;
+                  if (selfScore !== undefined) fightMsg += ` | 我方积分${displaySelfScore >= 0 ? '+' : ''}${displaySelfScore}`;
+                  if (oppoScore !== undefined) fightMsg += ` | 对手积分${displayOppoScore >= 0 ? '+' : ''}${displayOppoScore}`;
+                  addLog({ time: new Date().toLocaleTimeString(), message: fightMsg, type: isWin ? 'success' : 'warning' });
+                } else {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞技场战斗 ${i + 1}/3 (isWin未找到，请检查控制台)`, type: "warning" });
+                }
                 await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
               } catch (e) {
                 const errorMsg = e.message || "未知错误";
@@ -897,155 +908,25 @@ export function createTasksArena(deps) {
               return;
             }
 
-            // 检查是否是arena_startarena超时错误
-            if (errorMsg.includes("arena_startarena") && errorMsg.includes("请求超时")) {
+            // arena_startarea超时，记录到重试列表，由统一重试逻辑处理
+            if (errorMsg.includes("arena_startarea") && errorMsg.includes("请求超时")) {
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `${token.name} 检测到arena_startarena超时，将在60秒后重新执行...`,
+                message: `${token.name} 检测到arena_startarea超时，已记录等待统一重试`,
                 type: "warning",
               });
-
-              // 等待60秒
-              await new Promise((r) => setTimeout(r, 60000));
-
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 开始重新执行竞技场战斗...`,
-                type: "info",
+              retryTargetTokens.push({
+                tokenId,
+                tokenName: token.name,
+                fightIndex: 1,
+                totalFights: fights,
+                originalFormation,
+                isSwitched,
+                tokenSettings,
+                ticketCount,
+                errorType: "arena_startarea_timeout",
               });
-
-              try {
-                // 重新连接
-                tokenStore.closeWebSocketConnection(tokenId);
-                releaseConnectionSlot();
-                await ensureConnection(tokenId);
-
-                // 重新执行竞技场战斗（简化版）
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `${token.name} 重新执行竞技场战斗...`,
-                  type: "info",
-                });
-
-                // 检查咸神门票
-                let role = tokenStore.gameData?.roleInfo?.role;
-                if (!role) {
-                  try {
-                    const roleInfo = await tokenStore.sendGetRoleInfo(tokenId);
-                    role = roleInfo?.role;
-                  } catch {}
-                }
-                const ticketCount = role?.items?.[1007]?.quantity || 0;
-
-                if (ticketCount <= 0) {
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 咸神门票不足，无法进行竞技场战斗`,
-                    type: "warning",
-                  });
-                  tokenStatus.value[tokenId] = "completed";
-                } else {
-                  const fights = Math.min(3, ticketCount);
-
-                  for (let i = 0; i < fights; i++) {
-                    if (shouldStop.value)
-                      break;
-
-                    try {
-                      // ✅ 使用用户配置
-                      const commandTimeout = batchSettings.defaultCommandTimeout || 3000;
-                      await tokenStore.sendMessageWithPromise(tokenId, "arena_startarea", {}, commandTimeout);
-
-                      const targets = await tokenStore.sendMessageWithPromise(
-                        tokenId,
-                        "arena_getareatarget",
-                        {},
-                        5000,
-                      );
-
-                      // 获取玩家自身信息
-                      const roleInfo = tokenStore.gameData?.roleInfo?.role || {};
-
-                      // 尝试获取竞技场排名
-                      let playerRank = 0;
-                      try {
-                        const arenaRankData = await tokenStore.sendMessageWithPromise(
-                          tokenId,
-                          "arena_getarearank",
-                          {},
-                          10000,
-                        );
-                        playerRank = arenaRankData?.rank || arenaRankData?.myRank || arenaRankData?.myRankData?.rank || 0;
-                      } catch (err) {
-                        console.warn("[竞技场] 获取排名失败:", err.message);
-                      }
-
-                      const playerInfo = {
-                        rank: playerRank,
-                        power: roleInfo.power || roleInfo.fightPower || 0,
-                      };
-
-                      // 智能选择目标
-                      const targetResult = pickArenaTargetId(targets, playerInfo);
-                      if (!targetResult || !targetResult.targetId) {
-                        addLog({
-                          time: new Date().toLocaleTimeString(),
-                          message: `${token.name} 未找到可用的竞技场目标`,
-                          type: "error",
-                        });
-                        break;
-                      }
-
-                      await tokenStore.sendMessageWithPromise(
-                        tokenId,
-                        "fight_startareaarena",
-                        { targetId: targetResult.targetId },
-                        8000,
-                      );
-
-                      addLog({
-                        time: new Date().toLocaleTimeString(),
-                        message: `${token.name} 重试竞技场战斗 ${i + 1}/${fights}`,
-                        type: "info",
-                      });
-
-                      await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
-                    } catch (e) {
-                      const errorMsg = e.message || "";
-                      // ✅ 200020错误表示关卡未达标
-                      if (errorMsg.includes("200020")) {
-                        addLog({
-                          time: new Date().toLocaleTimeString(),
-                          message: `${token.name} 当前账号关卡未达标，无法开启竞技场`,
-                          type: "warning",
-                        });
-                        break;
-                      }
-
-                      addLog({
-                        time: new Date().toLocaleTimeString(),
-                        message: `${token.name} 重试竞技场对决失败: ${e.message || "未知错误"}`,
-                        type: "error",
-                      });
-                    }
-                  }
-
-                  tokenStatus.value[tokenId] = "completed";
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `=== ${token.name} 重试竞技场战斗完成 ===`,
-                    type: "success",
-                  });
-                }
-              } catch (retryError) {
-                console.error("重试失败:", retryError);
-                tokenStatus.value[tokenId] = "failed";
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `${token.name} 重试竞技场战斗失败: ${retryError.message || "未知错误"}`,
-                  type: "error",
-                });
-              }
+              tokenStatus.value[tokenId] = "waiting_retry";
             } else {
               // 其他错误直接失败
               tokenStatus.value[tokenId] = "failed";
@@ -1110,6 +991,9 @@ export function createTasksArena(deps) {
             }
           }
         });
+
+        // 等待本批所有战斗完成
+        await Promise.all(taskPromises);
       }
 
       // 合并所有需要重试的账号
@@ -1125,18 +1009,20 @@ export function createTasksArena(deps) {
         await handleBatchRetry(allRetryTokens, maxRetries, "400340|200750|11800010", retryWaitTime, "400340/200750/11800010");
       }
 
-      // 处理获取目标超时或未找到目标的账号（需要重连）
+      // 处理获取目标超时、arena_startarea超时或未找到目标的账号（需要重连）
       if (retryTargetTokens.length > 0) {
+        const errorDesc = retryTargetTokens.some(t => t.errorType === 'arena_startarea_timeout')
+          ? 'arena_startarea超时/获取目标失败'
+          : '获取目标失败';
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `\n=== 发现 ${retryTargetTokens.length} 个账号获取目标失败，需要重连重试，等待1分钟后开始 ===`,
+          message: `\n=== 发现 ${retryTargetTokens.length} 个账号${errorDesc}，需要重连重试，等待${retryWaitTime / 1000}秒后开始 ===`,
           type: "info",
         });
 
-        if (!(await safeDelay(retryWaitTime))) {
-          retryTargetTokens.length = 0;
-        }
-        for (let retryCount = 0; retryCount < maxRetries && retryTargetTokens.length > 0; retryCount++) {
+        await new Promise((resolve) => setTimeout(resolve, retryWaitTime));
+
+        for (let retryCount = 0; retryCount < maxRetries; retryCount++) {
           if (shouldStop.value || retryTargetTokens.length === 0)
             break;
 
@@ -1148,18 +1034,18 @@ export function createTasksArena(deps) {
 
           const failedTokens = [];
 
-          await runStreaming(retryTargetTokens.map(r => r.tokenId), async (tokenId) => {
-            if (shouldStop.value) return;
-            const retryInfo = retryTargetTokens.find(r => r.tokenId === tokenId);
-            if (!retryInfo) return;
+          for (const retryInfo of retryTargetTokens) {
+            if (shouldStop.value)
+              break;
 
-            const { tokenName, fightIndex, totalFights, originalFormation, isSwitched, tokenSettings, ticketCount, errorType } = retryInfo;
+            const { tokenId, tokenName, fightIndex, totalFights, originalFormation, isSwitched, tokenSettings, ticketCount, errorType } = retryInfo;
             const token = tokens.value.find((t) => t.id === tokenId);
 
             try {
+              const errorLabel = errorType === '400340' ? '获取目标超时' : errorType === 'arena_startarea_timeout' ? 'arena_startarea超时' : '未找到目标';
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `\n=== 重连重试 ${tokenName} (第${retryCount + 1}轮，原错误:${errorType === "400340" ? "获取目标超时" : "未找到目标"}) ===`,
+                message: `\n=== 重连重试 ${tokenName} (第${retryCount + 1}轮，原错误:${errorLabel}) ===`,
                 type: "info",
               });
 
@@ -1189,7 +1075,7 @@ export function createTasksArena(deps) {
                   type: "warning",
                 });
                 failedTokens.push(retryInfo);
-                return;
+                continue;
               }
 
               // 恢复阵容（如果需要）
@@ -1294,26 +1180,38 @@ export function createTasksArena(deps) {
                     8000,
                   );
 
-                  // 解析战斗结果
-                  const body = fightResult?.body || fightResult || {};
-                  const result = body.result || body;
-                  const isWin = result.isWin ?? result.iswin ?? result.win;
-                  
-                  if (isWin) {
-                    addLog({
-                      time: new Date().toLocaleTimeString(),
-                      message: `${tokenName} 重试竞技场战斗 ${i + 1}/${fightsToRetry} 挑战成功`,
-                      type: "success",
-                    });
-                    successCount++;
-                  } else {
-                    addLog({
-                      time: new Date().toLocaleTimeString(),
-                      message: `${tokenName} 重试竞技场战斗 ${i + 1}/${fightsToRetry} 挑战失败`,
-                      type: "warning",
-                    });
+                  // 解析战斗结果：胜负 + 积分变化
+                  // 响应结构：battleData.result.isWin 在嵌套层，selfScore/oppoScore 在顶层
+                  const battleResult = fightResult?.battleData?.result || fightResult?.result || fightResult?.body?.result || fightResult;
+                  let isWin = battleResult?.isWin;
+                  const selfScore = fightResult?.selfScore;
+                  const oppoScore = fightResult?.oppoScore;
+
+                  // fallback：通过队伍血量判定胜负
+                  if (isWin === undefined && fightResult?.battleData?.result) {
+                    const sponsorTeam = fightResult.battleData.result?.sponsor?.teamInfo || [];
+                    const acceptTeam = fightResult.battleData.result?.accept?.teamInfo || [];
+                    const sponsorTotalHP = sponsorTeam.reduce((sum, h) => sum + (h?.hp || 0), 0);
+                    const acceptTotalHP = acceptTeam.reduce((sum, h) => sum + (h?.hp || 0), 0);
+                    if (sponsorTotalHP === 0 && acceptTotalHP > 0) {
+                      isWin = false;
+                    } else if (acceptTotalHP === 0 && sponsorTotalHP > 0) {
+                      isWin = true;
+                    }
                   }
-                  
+
+                  if (isWin !== undefined) {
+                    let fightMsg = `${tokenName} 重试竞技场战斗 ${i + 1}/${fightsToRetry}: ${isWin ? '✅ 胜利' : '❌ 失败'}`;
+                    // selfScore/oppoScore 为绝对值，正负号取决于胜负
+                    const displaySelfScore = isWin ? Math.abs(selfScore) : -Math.abs(selfScore);
+                    const displayOppoScore = isWin ? -Math.abs(oppoScore) : Math.abs(oppoScore);
+                    if (selfScore !== undefined) fightMsg += ` | 我方积分${displaySelfScore >= 0 ? '+' : ''}${displaySelfScore}`;
+                    if (oppoScore !== undefined) fightMsg += ` | 对手积分${displayOppoScore >= 0 ? '+' : ''}${displayOppoScore}`;
+                    addLog({ time: new Date().toLocaleTimeString(), message: fightMsg, type: isWin ? 'success' : 'warning' });
+                  } else {
+                    addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 重试竞技场战斗 ${i + 1}/${fightsToRetry}`, type: "info" });
+                  }
+                  successCount++;
                   await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
                 } catch (e) {
                   const errorMsg = e.message || "未知错误";
@@ -1379,7 +1277,7 @@ export function createTasksArena(deps) {
               // ignore
               }
             }
-          });
+          }
 
           retryTargetTokens.length = 0;
           retryTargetTokens.push(...failedTokens);
@@ -1390,7 +1288,7 @@ export function createTasksArena(deps) {
               message: `${failedTokens.length} 个账号重试失败，等待1分钟后进行下一轮重试`,
               type: "warning",
             });
-            if (!(await safeDelay(retryWaitTime))) break;
+            await new Promise((resolve) => setTimeout(resolve, retryWaitTime));
           }
         }
 
@@ -1456,7 +1354,6 @@ export function createTasksArena(deps) {
       currentRunningTokenId.value = null;
     }
   };
-
   /**
    * 批量钓鱼补齐
    */
@@ -2151,20 +2048,45 @@ export function createTasksArena(deps) {
                 let consecutive200020Retries = 0;
                 const MAX_200020_RETRIES = 3;
                 try {
-                  await tokenStore.sendMessageWithPromise(
+                  const fightResult = await tokenStore.sendMessageWithPromise(
                     tokenId,
                     "fight_startareaarena",
                     { targetId: targetResult.targetId },
                     15000,
                   );
+
+                  // 解析战斗结果：胜负 + 积分变化
+                  // 响应结构：battleData.result.isWin 在嵌套层，selfScore/oppoScore 在顶层
+                  const battleResult = fightResult?.battleData?.result || fightResult?.result || fightResult?.body?.result || fightResult;
+                  let isWin = battleResult?.isWin;
+                  const selfScore = fightResult?.selfScore;
+                  const oppoScore = fightResult?.oppoScore;
+
+                  // fallback：通过队伍血量判定胜负
+                  if (isWin === undefined && fightResult?.battleData?.result) {
+                    const sponsorTeam = fightResult.battleData.result?.sponsor?.teamInfo || [];
+                    const acceptTeam = fightResult.battleData.result?.accept?.teamInfo || [];
+                    const sponsorTotalHP = sponsorTeam.reduce((sum, h) => sum + (h?.hp || 0), 0);
+                    const acceptTotalHP = acceptTeam.reduce((sum, h) => sum + (h?.hp || 0), 0);
+                    if (sponsorTotalHP === 0 && acceptTotalHP > 0) {
+                      isWin = false;
+                    } else if (acceptTotalHP === 0 && sponsorTotalHP > 0) {
+                      isWin = true;
+                    }
+                  }
+
+                  if (isWin !== undefined) {
+                    let fightMsg = `${token.name} 竞技场战斗 ${i + 1}/${planFights}: ${isWin ? '✅ 胜利' : '❌ 失败'}`;
+                    // selfScore/oppoScore 为绝对值，正负号取决于胜负
+                    const displaySelfScore = isWin ? Math.abs(selfScore) : -Math.abs(selfScore);
+                    const displayOppoScore = isWin ? -Math.abs(oppoScore) : Math.abs(oppoScore);
+                    if (selfScore !== undefined) fightMsg += ` | 我方积分${displaySelfScore >= 0 ? '+' : ''}${displaySelfScore}`;
+                    if (oppoScore !== undefined) fightMsg += ` | 对手积分${displayOppoScore >= 0 ? '+' : ''}${displayOppoScore}`;
+                    addLog({ time: new Date().toLocaleTimeString(), message: fightMsg, type: isWin ? 'success' : 'warning' });
+                  }
                   actualFights++;
                   ticketsLeft--;
                   consecutive200020Retries = 0; // 战斗成功，重置重试计数
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 竞技场战斗 ${i + 1}/${planFights} 完成`,
-                    type: "info",
-                  });
                 } catch (e) {
                   const errorMsg = e.message || "未知错误";
 

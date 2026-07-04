@@ -1761,10 +1761,6 @@ const handleUrlParams = async () => {
 // 监听路由参数变化
 watch(() => [props.token, props.api], handleUrlParams, { immediate: false });
 
-// 自动跳转定时器
-const AUTO_REDIRECT_DELAY = 2 * 60 * 1000; // 2分钟
-let redirectTimer = null;
-
 // 生命周期
 onMounted(async () => {
   tokenStore.initTokenStore();
@@ -1775,18 +1771,6 @@ onMounted(async () => {
   // 如果没有token且没有URL参数，显示导入表单
   if (!tokenStore.hasTokens && !props.token && !props.api) {
     showImportForm.value = true;
-  }
-
-  // 2分钟后自动跳转到批量日常页面
-  redirectTimer = setTimeout(() => {
-    router.push("/admin/batch-daily-tasks");
-  }, AUTO_REDIRECT_DELAY);
-});
-
-onBeforeUnmount(() => {
-  if (redirectTimer) {
-    clearTimeout(redirectTimer);
-    redirectTimer = null;
   }
 });
 </script>
