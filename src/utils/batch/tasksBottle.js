@@ -149,6 +149,7 @@ export function createTasksBottle(deps) {
         await ensureConnection(tokenId);
         if (shouldStop.value)
           return;
+        
         await tokenStore.sendMessageWithPromise(
           tokenId,
           "bottlehelper_claim",

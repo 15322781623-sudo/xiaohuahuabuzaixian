@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 爬塔类任务
  * 包含: climbTower, climbWeirdTower, batchClaimFreeEnergy
  */
@@ -650,6 +650,10 @@ export function createTasksTower(deps) {
     for (let retryRound = 0; retryRound < retryCount_max && failedTokenIds.length > 0; retryRound++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWaitMs/1000}秒后重试 ${failedTokenIds.length} 个失败账号（第${retryRound+1}/${retryCount_max}轮）`, type: "info" });
+      
+      // ✅ 重试前将失败账号状态改为 waiting，让进度条正确显示重试状态
+      failedTokenIds.forEach(id => { tokenStatus.value[id] = "waiting"; });
+      
       await safeDelay(retryWaitMs);
       const currentRetry = [...failedTokenIds];
       failedTokenIds = [];

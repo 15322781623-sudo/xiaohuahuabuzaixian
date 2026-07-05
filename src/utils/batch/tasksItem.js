@@ -1175,12 +1175,8 @@ export function createTasksItem(deps) {
 
         await ensureConnection(tokenId);
 
-        const res = await tokenStore.sendMessageWithPromise(
-          tokenId,
-          "legion_getpayloadtask",
-          {},
-          5000,
-        );
+        // 使用专用轻量级刷新函数获取桃园任务信息
+        const res = await tokenStore.refreshForBatchPeach(tokenId);
 
         const payloadTask = res?.payloadTask || res?.data?.payloadTask;
 

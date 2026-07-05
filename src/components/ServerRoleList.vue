@@ -1,7 +1,7 @@
 <template>
   <div ref="listRootRef">
     <NCard v-if="data && data.length > 0" class="server-role-list-card" :title="title">
-      <div class="server-role-list-search">
+      <div class="server-role-list-header">
         <NInput
           clearable
           class="server-role-list-search__input"
@@ -13,6 +13,17 @@
             <NIcon :component="SearchIcon"></NIcon>
           </template>
         </NInput>
+        <NButton
+          size="small"
+          type="success"
+          @click="emit('addAll', filteredData)"
+          class="add-all-btn"
+        >
+          <template #icon>
+            <NIcon :component="AddAllIcon"></NIcon>
+          </template>
+          一键添加全部
+        </NButton>
       </div>
       <!-- 移动端：卡片列表 -->
       <div class="server-role-list server-role-list--mobile">
@@ -58,7 +69,7 @@
 <script lang="ts" setup>
 import { computed, h, nextTick, ref, watch } from "vue";
 import { NButton, NCard, NDataTable, NIcon, NInput } from "naive-ui";
-import { Search } from "@vicons/ionicons5";
+import { Search, AddCircleOutline } from "@vicons/ionicons5";
 import { formatPower } from "@/utils/legionWar";
 
 const props = withDefaults(
@@ -77,8 +88,10 @@ const props = withDefaults(
 const emit = defineEmits<{
   add: [row: any];
   download: [row: any];
+  addAll: [rows: any[]];
 }>();
 const SearchIcon = Search;
+const AddAllIcon = AddCircleOutline;
 const serverSearchKeyword = ref("");
 const listRootRef = ref<HTMLElement | null>(null);
 
@@ -246,13 +259,20 @@ const columns = computed(() => [
   margin-bottom: 16px;
 }
 
-.server-role-list-search {
+.server-role-list-header {
+  display: flex;
+  gap: var(--spacing-md, 12px);
   margin-bottom: var(--spacing-md, 12px);
+  align-items: center;
 }
 
 .server-role-list-search__input {
-  max-width: 240px;
-  width: 100%;
+  flex: 1;
+  max-width: 280px;
+}
+
+.add-all-btn {
+  flex-shrink: 0;
 }
 
 /* 默认移动端卡片布局 */
@@ -344,7 +364,7 @@ const columns = computed(() => [
   }
 
   .server-role-list-search__input {
-    max-width: 280px;
+    max-width: 320px;
   }
 
   /* 桌面端表格紧凑化 */

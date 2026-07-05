@@ -14,23 +14,36 @@
       <div class="refine-container">
         <!-- 工具栏 -->
         <div class="toolbar">
-          <n-button size="small" type="primary" @click="refreshHeroes">
-            刷新阵容
-          </n-button>
-          <n-button size="small" @click="resetCount">清零</n-button>
+          <div class="toolbar-left">
+            <n-button size="small" type="primary" @click="refreshHeroes">
+              <template #icon><n-icon><RefreshOutline /></n-icon></template>
+              刷新阵容
+            </n-button>
+            <n-button size="small" @click="resetCount">清零</n-button>
+          </div>
           <div class="jade-info">
-            <span>白玉: {{ jadeCount }}</span>
-            <span>彩玉: {{ colorJadeCount }}</span>
+            <n-tag size="small" type="info" :bordered="false">
+              白玉: {{ jadeCount }}
+            </n-tag>
+            <n-tag size="small" type="warning" :bordered="false">
+              彩玉: {{ colorJadeCount }}
+            </n-tag>
           </div>
         </div>
 
         <!-- 武将列表 -->
-        <div class="hero-list-section">
-          <h4>选择武将</h4>
+        <div class="section">
+          <div class="section-header">
+            <h4>选择武将</h4>
+            <span class="section-hint">点击选择要洗练的武将</span>
+          </div>
           <div class="hero-list">
-            <div v-if="loading" class="loading">加载中...</div>
-            <div v-else-if="heroes.length === 0" class="empty">
-              暂无武将数据
+            <div v-if="loading" class="loading-state">
+              <n-spin size="small" />
+              <span>加载中...</span>
+            </div>
+            <div v-else-if="heroes.length === 0" class="empty-state">
+              <n-empty description="暂无武将数据" size="small" />
             </div>
             <div
               v-for="hero in heroes"
@@ -52,8 +65,11 @@
         </div>
 
         <!-- 装备列表 -->
-        <div v-if="selectedHeroId" class="equip-section">
-          <h4>选择装备</h4>
+        <div v-if="selectedHeroId" class="section">
+          <div class="section-header">
+            <h4>选择装备</h4>
+            <span class="section-hint">点击选择要洗练的装备部位</span>
+          </div>
           <div class="equip-tabs">
             <div
               v-for="part in equipParts"
@@ -71,55 +87,69 @@
         <!-- 洗练详情 -->
         <div v-if="selectedPart" class="refine-detail">
           <!-- 洗练统计 -->
-          <div class="stats">
+          <div class="stats-bar">
             <div class="stat-item">
               <span class="stat-label">淬炼次数</span>
               <span class="stat-value">{{ quenchTimes }}</span>
+              <template v-if="remainingForNextSlot">
+                <span class="stat-remaining">
+                  (剩余{{ remainingForNextSlot.remaining }}次解锁{{ remainingForNextSlot.slotNumber }}孔)
+                </span>
+              </template>
+              <span v-else class="stat-complete">✓全部孔位已解锁</span>
             </div>
             <div class="stat-item">
               <span class="stat-label">{{ equipBonusName }}</span>
-              <span class="stat-value">+{{ equipBonusValue }}</span>
+              <span class="stat-value bonus-value">+{{ equipBonusValue }}</span>
             </div>
           </div>
 
           <!-- 洗练孔位 -->
-          <div class="slots-section">
-            <h4>孔位锁定</h4>
-            <div class="slots">
+          <div class="section">
+            <div class="section-header">
+              <h4>孔位锁定</h4>
+              <span class="section-hint">勾选锁定孔位，洗练时不会改变</span>
+            </div>
+            <div class="slots-row">
               <div
                 v-for="slot in slots"
                 :key="slot.id"
-                class="slot"
+                class="slot-item"
                 :class="{
                   locked: slot.isLocked,
                   [`color-${slot.colorId}`]: slot.colorId > 0,
                 }"
               >
-                <n-checkbox
-                  v-model:checked="slot.isLocked"
-                  @change="handleSlotLock(slot.id, slot.isLocked)"
-                ></n-checkbox>
-                <span class="slot-label">孔{{ slot.id }}</span>
-                <div v-if="slot.attrId" class="slot-attr">
-                  <span>{{ getAttrName(slot.attrId) }}</span>
-                  <span>+{{ slot.attrNum }}%</span>
+                <div class="slot-icon">
+                  <n-checkbox
+                    v-model:checked="slot.isLocked"
+                    @change="handleSlotLock(slot.id, slot.isLocked)"
+                    size="small"
+                  ></n-checkbox>
                 </div>
-                <div v-else class="slot-empty">未淬炼</div>
+                <div class="slot-name">孔{{ slot.id }}</div>
+                <div v-if="slot.attrId" class="slot-attr-info">
+                  <div class="slot-attr-name">{{ getAttrName(slot.attrId) }}</div>
+                  <div class="slot-attr-value">+{{ slot.attrNum }}%</div>
+                </div>
+                <div v-else class="slot-attr-info empty">
+                  <span>未淬炼</span>
+                </div>
               </div>
             </div>
           </div>
 
           <!-- 密码验证区域 -->
           <div class="password-section">
-            <div v-if="!isPasswordValidated" class="password-info">
+            <div v-if="!isPasswordValidated" class="password-form">
               <span class="password-label">解锁二级密码：</span>
               <n-input
                 placeholder="请输入二级密码"
                 size="small"
-                style="width: 150px"
                 type="password"
                 v-model:value="password"
                 @input="passwordError = ''"
+                style="flex: 1; max-width: 150px;"
               ></n-input>
               <n-button
                 size="small"
@@ -132,7 +162,10 @@
               <span v-if="passwordError" class="password-error">{{ passwordError }}</span>
             </div>
             <div v-else class="password-validated">
-              <n-tag size="small" type="success">密码已验证</n-tag>
+              <n-tag size="small" type="success" :bordered="false">
+                <template #icon><n-icon><CheckmarkCircleOutline /></n-icon></template>
+                密码已验证
+              </n-tag>
               <n-button
                 size="small"
                 type="warning"
@@ -144,48 +177,67 @@
           </div>
 
           <!-- 操作按钮 -->
-          <div class="actions">
-            <n-button
-              size="small"
-              type="primary"
-              :disabled="state.isRunning"
-              @click="quenchOnce"
-            >
-              淬炼一次
-            </n-button>
-            <n-button
-              size="small"
-              type="success"
-              :disabled="state.isRunning"
-              @click="quenchContinuous"
-            >
-              连续淬炼
-            </n-button>
-            <n-button
-              size="small"
-              type="warning"
-              :disabled="state.isRunning"
-              @click="startAutoQuench"
-            >
-              自动淬炼
-            </n-button>
-            <n-button
-              size="small"
-              type="error"
-              :disabled="!state.isRunning"
-              @click="stopQuench"
-            >
-              停止
-            </n-button>
-            <div class="count-info">
-              已淬炼: <strong>{{ quenchCount }}</strong>
+          <div class="actions-section">
+            <div class="actions-row">
+              <n-button
+                size="small"
+                type="primary"
+                :disabled="state.isRunning"
+                @click="quenchOnce"
+              >
+                <template #icon><n-icon><FlashOutline /></n-icon></template>
+                淬炼一次
+              </n-button>
+              <n-button
+                size="small"
+                type="success"
+                :disabled="state.isRunning"
+                @click="quenchContinuous"
+              >
+                <template #icon><n-icon><PlayCircleOutline /></n-icon></template>
+                连续淬炼
+              </n-button>
+              <div class="quench-count-wrapper">
+                <span class="count-label">次数</span>
+                <n-input-number
+                  v-model:value="continuousQuenchCount"
+                  :min="0"
+                  :max="9000"
+                  :step="10"
+                  size="small"
+                  :disabled="state.isRunning"
+                  style="width: 90px;"
+                />
+              </div>
             </div>
-            <!-- 跳过橙红开关 -->
-            <div class="skip-high-quality">
+            <div class="actions-row">
+              <n-button
+                size="small"
+                type="warning"
+                :disabled="state.isRunning"
+                @click="startAutoQuench"
+              >
+                <template #icon><n-icon><SettingsOutline /></n-icon></template>
+                自动淬炼
+              </n-button>
+              <n-button
+                size="small"
+                type="error"
+                :disabled="!state.isRunning"
+                @click="stopQuench"
+              >
+                <template #icon><n-icon><StopCircleOutline /></n-icon></template>
+                停止
+              </n-button>
+              <div class="quench-status">
+                <span class="status-label">已淬炼</span>
+                <span class="status-value">{{ quenchCount }}</span>
+              </div>
               <n-switch
                 size="small"
                 v-model:value="skipHighQuality"
                 :disabled="state.isRunning"
+                class="skip-switch"
               >
                 <template #checked>跳过橙红</template>
                 <template #unchecked>遇见橙红停止</template>
@@ -195,68 +247,73 @@
 
           <!-- 自动淬炼设置 -->
           <div class="auto-section">
-            <h4>自动淬炼设置</h4>
+            <div class="section-header">
+              <h4>自动淬炼设置</h4>
+              <span class="section-hint">设置目标属性，达到条件自动停止</span>
+            </div>
             <!-- 条件列表 -->
             <div class="conditions-list">
               <div
                 v-for="(condition, index) in targetConditions"
                 :key="index"
-                class="condition-item"
+                class="condition-row"
               >
-                <div class="auto-form">
-                  <div class="form-item">
+                <div class="condition-form">
+                  <div class="form-group">
                     <span class="form-label">属性</span>
                     <n-select
                       placeholder="选择属性"
                       size="small"
-                      style="width: 120px"
                       v-model:value="condition.attrId"
                       :options="attrOptions"
+                      style="width: 100%;"
                     ></n-select>
                   </div>
-                  <div class="form-item">
+                  <div class="form-group">
                     <span class="form-label">≥</span>
                     <n-input-number
                       size="small"
-                      style="width: 80px"
                       v-model:value="condition.attrValue"
                       :max="100"
                       :min="1"
+                      style="width: 100%;"
                     ></n-input-number>
                   </div>
-                  <div class="form-item">
-                    <n-button
-                      size="small"
-                      type="error"
-                      :disabled="targetConditions.length <= 1"
-                      @click="removeCondition(index)"
-                    >
-                      删除
-                    </n-button>
-                  </div>
+                  <n-button
+                    size="small"
+                    type="error"
+                    quaternary
+                    :disabled="targetConditions.length <= 1"
+                    @click="removeCondition(index)"
+                  >
+                    <template #icon><n-icon><TrashOutline /></n-icon></template>
+                  </n-button>
                 </div>
               </div>
             </div>
             <!-- 添加条件按钮 -->
-            <div class="add-condition">
+            <div class="add-condition-row">
               <n-button
                 size="small"
                 type="primary"
+                dashed
                 @click="addCondition"
+                style="width: 100%;"
               >
-                + 添加条件
+                <template #icon><n-icon><AddCircleOutline /></n-icon></template>
+                添加条件
               </n-button>
             </div>
             <!-- 延迟设置 -->
-            <div class="auto-form delay-setting">
-              <div class="form-item">
+            <div class="delay-setting">
+              <div class="form-group">
                 <span class="form-label">延迟(ms)</span>
                 <n-input-number
                   size="small"
-                  style="width: 100px"
                   v-model:value="delay"
                   :min="0"
                   :step="100"
+                  style="width: 100px;"
                 ></n-input-number>
               </div>
             </div>
@@ -273,6 +330,16 @@ import { useMessage } from "naive-ui";
 import { useTokenStore } from "@/stores/tokenStore";
 import MyCard from "../Common/MyCard.vue";
 import { HERO_DICT } from "@/utils/HeroList.js";
+import {
+  RefreshOutline,
+  CheckmarkCircleOutline,
+  FlashOutline,
+  PlayCircleOutline,
+  SettingsOutline,
+  StopCircleOutline,
+  TrashOutline,
+  AddCircleOutline,
+} from "@vicons/ionicons5";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
@@ -285,6 +352,21 @@ const selectedPart = ref(null);
 const quenchCount = ref(0);
 const delay = ref(350);
 const skipHighQuality = ref(false); // 跳过橙红品质
+// 连续淬炼次数（初始值100，后续根据装备动态计算）
+const continuousQuenchCount = ref(100);
+
+// 计算连续淬炼默认值（下一孔所需次数 - 500）
+const calculateDefaultQuenchCount = () => {
+  const nextSlot = remainingForNextSlot.value;
+  if (!nextSlot) {
+    // 全部孔位已解锁，默认9999
+    return 9999;
+  }
+  
+  // 下一孔所需次数 - 500，最小为1
+  const defaultCount = nextSlot.remaining - 500;
+  return Math.max(1, defaultCount);
+};
 const MAX_QUENCH_COUNT = 9000; // 最大淬炼次数
 // 将单个条件改为数组形式，支持多个条件
 const targetConditions = ref([{
@@ -351,6 +433,28 @@ const slots = ref([]);
 const quenchTimes = ref(0);
 const equipBonusName = ref("攻击");
 const equipBonusValue = ref(0);
+
+// 孔位解锁所需次数
+const SLOT_THRESHOLDS = [0, 10, 100, 1000, 10000];
+
+// 剩余下一孔次数
+const remainingForNextSlot = computed(() => {
+  const current = quenchTimes.value;
+  
+  // 找到下一个未解锁的孔位
+  for (let i = 0; i < SLOT_THRESHOLDS.length; i++) {
+    if (current < SLOT_THRESHOLDS[i]) {
+      return {
+        remaining: SLOT_THRESHOLDS[i] - current,
+        slotNumber: i + 1,
+        threshold: SLOT_THRESHOLDS[i],
+      };
+    }
+  }
+  
+  // 全部解锁
+  return null;
+});
 
 // 属性选项
 const attrOptions = computed(() => {
@@ -550,6 +654,9 @@ const selectPart = (partId) => {
 
     // 更新孔位信息
     updateSlots(equip.quenches || {});
+    
+    // 更新连续淬炼次数默认值（下一孔所需次数 - 500）
+    continuousQuenchCount.value = calculateDefaultQuenchCount();
   } else {
     quenchTimes.value = 0;
     equipBonusValue.value = 0;
@@ -701,19 +808,22 @@ const quenchContinuous = () => {
   state.value.continuousQuenching = true;
   state.value.isRunning = true;
 
+  // 次数为0时使用9999上限
+  const targetCount = continuousQuenchCount.value === 0 ? 9999 : (continuousQuenchCount.value || 100);
+
   if (skipHighQuality.value) {
-    message.info(`开始连续淬炼(跳过橙红)，最多${MAX_QUENCH_COUNT}次`);
+    message.info(`开始连续淬炼(跳过橙红)，共${targetCount}次`);
   } else {
-    message.info("开始连续淬炼，出现橙色或红色属性时自动暂停");
+    message.info(`开始连续淬炼，共${targetCount}次，出现橙色或红色属性时自动暂停`);
   }
 
   const continuousQuench = async () => {
     if (!state.value.continuousQuenching)
       return;
 
-    // 检查是否达到最大次数
-    if (quenchCount.value >= MAX_QUENCH_COUNT) {
-      message.warning(`已达到最大淬炼次数(${MAX_QUENCH_COUNT}次)，自动停止`);
+    // 检查是否达到目标次数
+    if (quenchCount.value >= targetCount) {
+      message.success(`已完成${targetCount}次淬炼`);
       stopQuench();
       return;
     }
@@ -730,7 +840,7 @@ const quenchContinuous = () => {
 
       // 如果跳过橙红，且检测到高品质属性，则记录日志但继续
       if (skipHighQuality.value && result && checkHighQualityAttr(result)) {
-        console.log(`跳过橙红属性，继续淬炼 (${quenchCount.value}/${MAX_QUENCH_COUNT})`);
+        console.log(`跳过橙红属性，继续淬炼 (${quenchCount.value}/${targetCount})`);
       }
 
       // 随机延迟
@@ -1072,64 +1182,85 @@ const resetCount = () => {
 
 <style scoped lang="scss">
 .refine-container {
-  padding: var(--spacing-sm);
+  padding: 8px;
 }
 
+// 工具栏
 .toolbar {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-md);
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .jade-info {
-  margin-left: auto;
   display: flex;
-  gap: var(--spacing-md);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  gap: 8px;
 }
 
-.hero-list-section,
-.equip-section {
-  margin-bottom: var(--spacing-md);
+// 通用区块样式
+.section {
+  margin-bottom: 8px;
 }
 
-h4 {
-  margin: 0 0 var(--spacing-sm) 0;
-  font-size: var(--font-size-sm);
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+
+.section-header h4 {
+  margin: 0;
+  font-size: 13px;
   font-weight: var(--font-weight-medium);
   color: var(--text-primary);
 }
 
+.section-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+// 武将列表 - 一行排列
 .hero-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-sm);
-  max-height: 220px;
-  overflow-y: auto;
-  padding: var(--spacing-sm);
-  background: var(--bg-tertiary);
-  border-radius: var(--border-radius-medium);
+  flex-wrap: nowrap;
+  gap: 6px;
+  max-height: none;
+  overflow-x: auto;
+  padding: 4px 0;
+  background: transparent;
+  border-radius: 0;
 }
 
 .hero-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
-  background: var(--bg-primary);
+  gap: 3px;
+  padding: 6px 8px;
+  background: var(--bg-tertiary);
   border: 2px solid transparent;
   border-radius: var(--border-radius-medium);
+  border-bottom: 3px solid var(--border-light);
   cursor: pointer;
-  font-size: var(--font-size-sm);
+  font-size: 11px;
   transition: all 0.2s;
   color: var(--text-primary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  min-width: 140px;
-  flex: 0 0 calc(25% - 8px);
-  box-sizing: border-box;
+  min-width: 0;
+  flex: 1;
+  flex-shrink: 1;
 }
 
 .hero-item:hover {
@@ -1141,13 +1272,14 @@ h4 {
   border-color: var(--primary-color);
   background: var(--primary-color-light);
   color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
 }
 
 .hero-avatar {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: var(--bg-tertiary);
+  background: var(--bg-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1162,7 +1294,7 @@ h4 {
 }
 
 .hero-placeholder {
-  font-size: var(--font-size-md);
+  font-size: 11px;
   font-weight: var(--font-weight-bold);
   color: var(--text-secondary);
 }
@@ -1170,50 +1302,64 @@ h4 {
 .hero-info {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 2px;
-  flex: 1;
+  width: 100%;
   min-width: 0;
 }
 
 .hero-name {
   font-weight: var(--font-weight-medium);
-  font-size: var(--font-size-sm);
+  font-size: 11px;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .hero-level {
-  font-size: var(--font-size-xs);
+  font-size: 10px;
   color: var(--text-secondary);
 }
 
-.loading,
-.empty {
-  padding: var(--spacing-md);
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px;
   color: var(--text-secondary);
-  text-align: center;
-  font-size: var(--font-size-sm);
+  font-size: 12px;
 }
 
+.empty-state {
+  padding: 12px;
+}
+
+// 装备标签 - 一行排列
 .equip-tabs {
   display: flex;
-  gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-md);
-  overflow-x: auto;
   flex-wrap: nowrap;
+  gap: 6px;
 }
 
 .equip-tab {
-  flex: 1;
-  padding: var(--spacing-sm) var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 8px;
   background: var(--bg-tertiary);
   border: 2px solid transparent;
   border-radius: var(--border-radius-medium);
+  border-bottom: 3px solid var(--border-light);
   cursor: pointer;
   text-align: center;
   transition: all 0.2s;
+  min-width: 0;
+  flex: 1;
+  flex-shrink: 1;
 }
 
 .equip-tab:hover {
@@ -1223,278 +1369,478 @@ h4 {
 .equip-tab.active {
   border-color: var(--primary-color);
   background: var(--primary-color-light);
+  border-bottom-color: var(--primary-color);
 }
 
 .tab-name {
   font-weight: var(--font-weight-medium);
-  font-size: var(--font-size-sm);
+  font-size: 11px;
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .tab-level {
-  font-size: var(--font-size-xs);
+  font-size: 10px;
   color: var(--text-secondary);
-  margin-top: var(--spacing-xs);
 }
 
-.stats {
+// 统计栏
+.stats-bar {
   display: flex;
-  gap: var(--spacing-lg);
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-tertiary);
+  gap: 16px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
   border-radius: var(--border-radius-medium);
-  margin-bottom: var(--spacing-md);
+  margin-bottom: 8px;
   flex-wrap: wrap;
 }
 
 .stat-item {
   display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
+  flex-direction: column;
+  gap: 2px;
 }
 
 .stat-label {
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: 11px;
 }
 
 .stat-value {
   font-weight: var(--font-weight-bold);
-  font-size: var(--font-size-md);
+  font-size: 16px;
   color: var(--primary-color);
 }
 
-.slots-section {
-  margin-bottom: var(--spacing-md);
+.stat-remaining {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 2px;
 }
 
-.slots {
+.stat-complete {
+  font-size: 10px;
+  color: var(--color-success);
+  font-weight: var(--font-weight-medium);
+  margin-top: 2px;
+}
+
+.bonus-value {
+  color: var(--color-success);
+}
+
+// 孔位行 - 类似宝箱一行排列
+.slots-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 2px 0;
+}
+
+.slot-item {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
-.slot {
-  display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
+  gap: 2px;
+  padding: 4px 6px;
   background: var(--bg-tertiary);
-  border-radius: var(--border-radius-medium);
-  border-left: 4px solid var(--border-light);
+  border-radius: var(--border-radius-small);
+  border-bottom: 2px solid var(--border-light);
   transition: all 0.2s;
+  min-width: 0;
+  flex: 1;
+  flex-shrink: 1;
 }
 
-.slot:hover {
+.slot-item:hover {
   background: var(--bg-secondary);
 }
 
-.slot.locked {
-  border-left-color: var(--primary-color);
+.slot-item.locked {
+  border-bottom-color: var(--primary-color);
   background: var(--primary-color-light);
 }
 
-/* 孔位颜色样式 */
-.slot.color-1 {
-  background: rgba(255, 255, 255, 0.1);
-  border-left-color: #ffffff;
-}
-
-.slot.color-2 {
-  background: rgba(76, 175, 80, 0.1);
-  border-left-color: #4caf50;
-}
-
-.slot.color-3 {
-  background: rgba(33, 150, 243, 0.1);
-  border-left-color: #2196f3;
-}
-
-.slot.color-4 {
-  background: rgba(156, 39, 176, 0.1);
-  border-left-color: #9c27b0;
-}
-
-.slot.color-5 {
-  background: rgba(255, 152, 0, 0.1);
-  border-left-color: #ff9800;
-}
-
-.slot.color-6 {
-  background: rgba(244, 67, 54, 0.1);
-  border-left-color: #f44336;
-}
-
-/* 锁定状态下的颜色样式 */
-.slot.locked.color-1 {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.slot.locked.color-2 {
-  background: rgba(76, 175, 80, 0.2);
-}
-
-.slot.locked.color-3 {
-  background: rgba(33, 150, 243, 0.2);
-}
-
-.slot.locked.color-4 {
-  background: rgba(156, 39, 176, 0.2);
-}
-
-.slot.locked.color-5 {
-  background: rgba(255, 152, 0, 0.2);
-}
-
-.slot.locked.color-6 {
-  background: rgba(244, 67, 54, 0.2);
-}
-
-.slot-label {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  min-width: 40px;
-  font-weight: var(--font-weight-medium);
-}
-
-.slot-attr {
-  flex: 1;
-  display: flex;
-  justify-content: space-between;
-  font-weight: var(--font-weight-medium);
-  font-size: var(--font-size-sm);
-}
-
-.slot-empty {
-  flex: 1;
-  color: var(--text-tertiary);
-  font-size: var(--font-size-sm);
-}
-
-.actions {
-  display: flex;
-  gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-md);
-  flex-wrap: wrap;
-}
-
-.count-info {
-  margin-left: auto;
+.slot-icon {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
-  font-size: var(--font-size-sm);
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.slot-name {
+  font-size: 10px;
   color: var(--text-secondary);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
 }
 
-.skip-high-quality {
+.slot-attr-info {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--spacing-xs);
-  margin-left: var(--spacing-sm);
-  padding: 2px 8px;
-  background: var(--bg-tertiary);
-  border-radius: var(--border-radius-small);
+  gap: 1px;
+  width: 100%;
+  min-width: 0;
 }
 
-.count-info strong {
+.slot-attr-name {
+  font-size: 9px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.slot-attr-value {
+  font-size: 11px;
+  font-weight: var(--font-weight-bold);
   color: var(--primary-color);
-  font-size: var(--font-size-md);
+  flex-shrink: 0;
 }
 
-.auto-section {
-  padding: var(--spacing-sm);
+.slot-attr-info.empty {
+  color: var(--text-tertiary);
+  font-size: 9px;
+}
+
+// 孔位颜色样式
+.slot-item.color-1 { border-bottom-color: #ffffff; background: rgba(255, 255, 255, 0.05); }
+.slot-item.color-2 { border-bottom-color: #4caf50; background: rgba(76, 175, 80, 0.05); }
+.slot-item.color-3 { border-bottom-color: #2196f3; background: rgba(33, 150, 243, 0.05); }
+.slot-item.color-4 { border-bottom-color: #9c27b0; background: rgba(156, 39, 176, 0.05); }
+.slot-item.color-5 { border-bottom-color: #ff9800; background: rgba(255, 152, 0, 0.05); }
+.slot-item.color-6 { border-bottom-color: #f44336; background: rgba(244, 67, 54, 0.05); }
+
+.slot-item.locked.color-1 { background: rgba(255, 255, 255, 0.15); }
+.slot-item.locked.color-2 { background: rgba(76, 175, 80, 0.15); }
+.slot-item.locked.color-3 { background: rgba(33, 150, 243, 0.15); }
+.slot-item.locked.color-4 { background: rgba(156, 39, 176, 0.15); }
+.slot-item.locked.color-5 { background: rgba(255, 152, 0, 0.15); }
+.slot-item.locked.color-6 { background: rgba(244, 67, 54, 0.15); }
+
+// 密码验证区域
+.password-section {
+  margin-bottom: 8px;
+  padding: 8px;
   background: var(--bg-tertiary);
   border-radius: var(--border-radius-medium);
-}
-
-.auto-form {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  flex-wrap: wrap;
-}
-
-/* 条件列表样式 */
-.conditions-list {
-  margin-bottom: var(--spacing-sm);
-}
-
-.condition-item {
-  padding: var(--spacing-sm);
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: var(--border-radius-medium);
-  margin-bottom: var(--spacing-sm);
   border: 1px solid var(--border-light);
 }
 
-/* 添加条件按钮样式 */
-.add-condition {
-  margin-bottom: var(--spacing-sm);
-  display: flex;
-  justify-content: flex-start;
-}
-
-/* 延迟设置样式 */
-.delay-setting {
-  padding-top: var(--spacing-sm);
-  border-top: 1px dashed var(--border-light);
-}
-
-/* 密码验证区域样式 */
-.password-section {
-  margin-bottom: var(--spacing-md);
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: var(--border-radius-medium);
-  border: 1px solid var(--border-light);
-}
-
-.password-info,
-.password-validated {
+.password-form {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .password-label {
-  font-size: var(--font-size-sm);
+  font-size: 12px;
   color: var(--text-secondary);
   font-weight: var(--font-weight-medium);
 }
 
 .password-error {
   color: var(--color-error);
-  font-size: var(--font-size-xs);
-  margin-left: var(--spacing-sm);
+  font-size: 11px;
 }
 
 .password-validated {
+  display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.form-item {
+// 操作按钮区域
+.actions-section {
+  margin-bottom: 8px;
+}
+
+.actions-row {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
 }
 
-.form-label {
-  font-size: var(--font-size-sm);
+.quench-count-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-small);
+}
+
+.count-label {
+  font-size: 11px;
   color: var(--text-secondary);
 }
 
+.quench-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-small);
+}
+
+.status-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.status-value {
+  font-weight: var(--font-weight-bold);
+  font-size: 14px;
+  color: var(--primary-color);
+}
+
+.skip-switch {
+  margin-left: auto;
+}
+
+// 自动淬炼设置
+.auto-section {
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-medium);
+}
+
+.conditions-list {
+  margin-bottom: 6px;
+}
+
+.condition-row {
+  padding: 6px;
+  background: var(--bg-primary);
+  border-radius: var(--border-radius-medium);
+  margin-bottom: 6px;
+  border: 1px solid var(--border-light);
+}
+
+.condition-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.form-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 100px;
+}
+
+.form-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.add-condition-row {
+  margin-bottom: 6px;
+}
+
+.delay-setting {
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-light);
+  display: flex;
+  justify-content: flex-start;
+}
+
+// 响应式设计
 @media (max-width: 768px) {
-  .hero-item {
-    flex: 0 0 calc(50% - 8px);
-    min-width: 120px;
+  .refine-container {
+    padding: 6px;
   }
 
-  .refine-container {
-    max-width: 100%;
-    overflow: hidden;
+  .hero-list {
+    gap: 4px;
+  }
+
+  .hero-item {
+    padding: 5px 6px;
+  }
+
+  .hero-avatar {
+    width: 28px;
+    height: 28px;
+  }
+
+  .hero-name {
+    font-size: 10px;
+  }
+
+  .hero-level {
+    font-size: 9px;
+  }
+
+  .equip-tabs {
+    gap: 4px;
+  }
+
+  .equip-tab {
+    padding: 5px 6px;
+  }
+
+  .tab-name {
+    font-size: 10px;
+  }
+
+  .tab-level {
+    font-size: 9px;
+  }
+
+  .slots-row {
+    flex-wrap: nowrap;
+    gap: 3px;
+  }
+
+  .slot-item {
+    min-width: 0;
+    flex: 1;
+    padding: 3px 5px;
+    gap: 2px;
+  }
+
+  .slot-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .slot-name {
+    font-size: 9px;
+  }
+
+  .slot-attr-name {
+    font-size: 8px;
+  }
+
+  .slot-attr-value {
+    font-size: 10px;
+  }
+
+  .actions-row {
+    flex-wrap: wrap;
+  }
+
+  .skip-switch {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .quench-count-wrapper,
+  .quench-status {
+    flex: 1;
+  }
+
+  .condition-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .form-group {
+    width: 100%;
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-left {
+    justify-content: center;
+  }
+
+  .jade-info {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-list {
+    gap: 3px;
+  }
+
+  .hero-item {
+    padding: 4px 5px;
+    gap: 2px;
+  }
+
+  .hero-avatar {
+    width: 24px;
+    height: 24px;
+  }
+
+  .hero-name {
+    font-size: 9px;
+  }
+
+  .hero-level {
+    font-size: 8px;
+  }
+
+  .equip-tabs {
+    gap: 3px;
+  }
+
+  .equip-tab {
+    padding: 4px 5px;
+    gap: 2px;
+  }
+
+  .tab-name {
+    font-size: 9px;
+  }
+
+  .tab-level {
+    font-size: 8px;
+  }
+
+  .slots-row {
+    flex-wrap: nowrap;
+    gap: 3px;
+  }
+
+  .slot-item {
+    min-width: 0;
+    flex: 1;
+    padding: 3px 4px;
+    gap: 1px;
+  }
+
+  .slot-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .slot-name {
+    font-size: 9px;
+  }
+
+  .slot-attr-name {
+    font-size: 8px;
+  }
+
+  .slot-attr-value {
+    font-size: 10px;
+  }
+
+  .stats-bar {
+    flex-direction: column;
+    gap: 8px;
   }
 }
 </style>

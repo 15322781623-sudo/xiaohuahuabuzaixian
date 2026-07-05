@@ -741,7 +741,8 @@ export function createTasksCar(deps) {
   const refreshCompletedTokens = () => {
     selectedTokens.value.forEach((tokenId) => {
       if (tokenStatus.value[tokenId] === "completed") {
-        tokenStore.refreshGameData(tokenId);
+        // 使用专用轻量级刷新函数，减少不必要的请求
+        tokenStore.refreshForBatchCar(tokenId);
       }
     });
   };

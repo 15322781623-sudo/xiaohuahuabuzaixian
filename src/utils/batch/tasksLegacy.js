@@ -116,6 +116,7 @@ export function createTasksLegacy(deps) {
     selectedTokens,
     tokens,
     tokenStatus,
+    tokenFailReasons,
     isRunning,
     shouldStop,
     ensureConnection,
@@ -186,28 +187,33 @@ export function createTasksLegacy(deps) {
         // 错误码12400160或200020表示未达到开启残卷关卡
         if (errorMsg.includes("12400160") || errorMsg.includes("服务器错误: 12400160")
           || errorMsg.includes("200020") || errorMsg.includes("服务器错误: 200020")) {
+          const failReason = '模块未开启无法领取功法';
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `=== ${token.name} 未达到关卡无法领取 ===`,
-            type: "info",
+            message: `=== ${token.name} 领取失败：模块未开启无法领取功法 ===`,
+            type: "error",
           });
           tokenStatus.value[tokenId] = "failed";
+          tokenFailReasons.value[tokenId] = failReason;
         } else if (errorMsg.includes("12400000") || errorMsg.includes("挂机奖励领取过于频繁")
           || errorMsg.includes("800040") || errorMsg.includes("服务器错误: 800040")) {
-          // 错误码12400000或800040表示残卷为0
+          // 错误码 12400000 或 800040 表示残卷为 0
+          const failReason = '残卷为 0 无法领取';
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `=== ${token.name} 残卷为0无法领取 ===`,
-            type: "info",
+            message: `=== ${token.name} 领取失败：残卷为 0 无法领取 ===`,
+            type: "error",
           });
           tokenStatus.value[tokenId] = "failed";
+          tokenFailReasons.value[tokenId] = failReason;
         } else {
           tokenStatus.value[tokenId] = "failed";
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `=== ${token.name} 领取功法残卷失败: ${errorMsg}`,
+            message: `=== ${token.name} 领取功法残卷失败：${errorMsg}`,
             type: "error",
           });
+          tokenFailReasons.value[tokenId] = errorMsg.substring(0, 100);
         }
       } finally {
         tokenStore.closeWebSocketConnection(tokenId);

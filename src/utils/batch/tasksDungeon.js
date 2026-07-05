@@ -62,12 +62,11 @@ export function createTasksDungeon(deps) {
           type: "info",
         });
         await ensureConnection(tokenId);
-        const bosstowerinfo = await tokenStore.sendMessageWithPromise(
-          tokenId,
-          "bosstower_getinfo",
-          {},
-        );
-        const towerId = bosstowerinfo.bossTower.towerId;
+        
+        // 使用专用轻量级刷新函数获取宝库信息
+        const bosstowerinfo = await tokenStore.refreshForBatchBossTower(tokenId);
+        const towerId = bosstowerinfo?.bossTower?.towerId || bosstowerinfo?.towerId;
+        
         if (towerId >= 1 && towerId <= 3) {
           for (let i = 0; i < 2; i++) {
             if (shouldStop.value)

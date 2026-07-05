@@ -128,6 +128,9 @@ export const useTokenStore = defineStore("tokens", () => {
 
   // 每个token的游戏数据存储（用于批量显示）
   const tokenGameDataMap = ref<Record<string, any>>({});
+  
+  // 活跃度数据缓存（30秒有效期，用于批量活跃度检查）
+  const activityCache = ref<Record<string, { data: any; timestamp: number }>>({});
 
   // 每个token的活跃度存储（用于批量排序）
   const tokenActivityMap = ref<Record<string, number>>({});
@@ -1758,6 +1761,235 @@ export const useTokenStore = defineStore("tokens", () => {
     }
   };
 
+  /**
+   * 轻量级刷新：获取赛车任务所需的车辆信息（用于批量赛车）
+   * @param tokenId - Token ID
+   * @returns car_getrolecar 响应
+   */
+  const refreshForBatchCar = async (tokenId: string) => {
+    try {
+      const connection = wsConnections.value[tokenId];
+      if (!connection || connection.status !== "connected") {
+        wsLogger.warn(`批量刷新赛车数据时发现未连接 [${tokenId}]`);
+        return null;
+      }
+
+      wsLogger.info(`[批量] 开始刷新车辆信息 [${tokenId}]`);
+      const carInfo = await sendMessageWithPromise(
+        tokenId,
+        "car_getrolecar",
+        {},
+        10000,
+      );
+      
+      // 更新到本地存储
+      if (carInfo) {
+        updateTokenGameData(tokenId, { carInfo });
+      }
+      
+      wsLogger.info(`[批量] 车辆信息刷新完成 [${tokenId}]`);
+      return carInfo;
+    } catch (error) {
+      wsLogger.error(`[批量] 刷新赛车数据失败 [${tokenId}]:`, error);
+      return null;
+    }
+  };
+
+  /**
+   * 轻量级刷新：获取俱乐部签到所需信息（用于批量俱乐部签到）
+   * @param tokenId - Token ID
+   * @returns legion_getinfo 响应
+   */
+  const refreshForBatchClub = async (tokenId: string) => {
+    try {
+      const connection = wsConnections.value[tokenId];
+      if (!connection || connection.status !== "connected") {
+        wsLogger.warn(`批量刷新俱乐部数据时发现未连接 [${tokenId}]`);
+        return null;
+      }
+
+      wsLogger.info(`[批量] 开始刷新俱乐部信息 [${tokenId}]`);
+      const clubInfo = await sendMessageWithPromise(
+        tokenId,
+        "legion_getinfo",
+        {},
+        10000,
+      );
+      
+      // 更新到本地存储
+      if (clubInfo) {
+        updateTokenGameData(tokenId, { legionInfo: clubInfo });
+      }
+      
+      wsLogger.info(`[批量] 俱乐部信息刷新完成 [${tokenId}]`);
+      return clubInfo;
+    } catch (error) {
+      wsLogger.error(`[批量] 刷新俱乐部数据失败 [${tokenId}]:`, error);
+      return null;
+    }
+  };
+
+  /**
+   * 轻量级刷新：获取活跃度信息（用于批量活跃度检查，带30秒缓存）
+   * @param tokenId - Token ID
+   * @param forceRefresh - 是否强制刷新（忽略缓存）
+   * @returns 活跃度数据
+   */
+  const refreshForBatchActivity = async (tokenId: string, forceRefresh = false) => {
+    try {
+      // 检查缓存（30秒有效期）
+      if (!forceRefresh) {
+        const cached = activityCache.value[tokenId];
+        if (cached && Date.now() - cached.timestamp < 30000) {
+          wsLogger.debug(`[批量] 使用缓存的活跃度数据 [${tokenId}]`);
+          return cached.data;
+        }
+      }
+
+      const connection = wsConnections.value[tokenId];
+      if (!connection || connection.status !== "connected") {
+        wsLogger.warn(`批量刷新活跃度数据时发现未连接 [${tokenId}]`);
+        return null;
+      }
+
+      wsLogger.info(`[批量] 开始刷新活跃度信息 [${tokenId}]`);
+      const roleInfo = await sendMessageWithPromise(
+        tokenId,
+        "role_getroleinfo",
+        {},
+        10000,
+      );
+      
+      if (roleInfo) {
+        // 提取活跃度相关数据
+        const activityData = {
+          hangUp: roleInfo?.role?.hangUp,
+          items: roleInfo?.role?.items,
+          dailyTask: roleInfo?.role?.dailyTask,
+        };
+        
+        // 更新缓存
+        activityCache.value[tokenId] = {
+          data: activityData,
+          timestamp: Date.now(),
+        };
+        
+        // 更新到本地存储
+        updateTokenGameData(tokenId, { roleInfo });
+        
+        wsLogger.info(`[批量] 活跃度信息刷新完成并缓存30秒 [${tokenId}]`);
+        return activityData;
+      }
+      
+      return null;
+    } catch (error) {
+      wsLogger.error(`[批量] 刷新活跃度数据失败 [${tokenId}]:`, error);
+      return null;
+    }
+  };
+
+  /**
+   * 轻量级刷新：获取宝库信息（用于批量宝库任务）
+   * @param tokenId - Token ID
+   * @returns bosstower_getinfo 响应
+   */
+  const refreshForBatchBossTower = async (tokenId: string) => {
+    try {
+      const connection = wsConnections.value[tokenId];
+      if (!connection || connection.status !== "connected") {
+        wsLogger.warn(`批量刷新宝库数据时发现未连接 [${tokenId}]`);
+        return null;
+      }
+
+      wsLogger.info(`[批量] 开始刷新宝库信息 [${tokenId}]`);
+      const bossTowerInfo = await sendMessageWithPromise(
+        tokenId,
+        "bosstower_getinfo",
+        {},
+        10000,
+      );
+      
+      // 更新到本地存储
+      if (bossTowerInfo) {
+        updateTokenGameData(tokenId, { bossTowerInfo });
+      }
+      
+      wsLogger.info(`[批量] 宝库信息刷新完成 [${tokenId}]`);
+      return bossTowerInfo;
+    } catch (error) {
+      wsLogger.error(`[批量] 刷新宝库数据失败 [${tokenId}]:`, error);
+      return null;
+    }
+  };
+
+  /**
+   * 轻量级刷新：获取换皮闯关/寻宝信息（用于批量换皮任务）
+   * @param tokenId - Token ID
+   * @returns actegame_getinfo 响应
+   */
+  const refreshForBatchSkinChallenge = async (tokenId: string) => {
+    try {
+      const connection = wsConnections.value[tokenId];
+      if (!connection || connection.status !== "connected") {
+        wsLogger.warn(`批量刷新换皮闯关数据时发现未连接 [${tokenId}]`);
+        return null;
+      }
+
+      wsLogger.info(`[批量] 开始刷新换皮闯关信息 [${tokenId}]`);
+      const skinInfo = await sendMessageWithPromise(
+        tokenId,
+        "actegame_getinfo",
+        {},
+        10000,
+      );
+      
+      // 更新到本地存储
+      if (skinInfo) {
+        updateTokenGameData(tokenId, { actEGameInfo: skinInfo });
+      }
+      
+      wsLogger.info(`[批量] 换皮闯关信息刷新完成 [${tokenId}]`);
+      return skinInfo;
+    } catch (error) {
+      wsLogger.error(`[批量] 刷新换皮闯关数据失败 [${tokenId}]:`, error);
+      return null;
+    }
+  };
+
+  /**
+   * 轻量级刷新：获取桃园任务信息（用于批量领取桃园任务）
+   * @param tokenId - Token ID
+   * @returns peach_getinfo 响应
+   */
+  const refreshForBatchPeach = async (tokenId: string) => {
+    try {
+      const connection = wsConnections.value[tokenId];
+      if (!connection || connection.status !== "connected") {
+        wsLogger.warn(`批量刷新桃园数据时发现未连接 [${tokenId}]`);
+        return null;
+      }
+
+      wsLogger.info(`[批量] 开始刷新桃园信息 [${tokenId}]`);
+      const peachInfo = await sendMessageWithPromise(
+        tokenId,
+        "peach_getinfo",
+        {},
+        10000,
+      );
+      
+      // 更新到本地存储
+      if (peachInfo) {
+        updateTokenGameData(tokenId, { peachInfo });
+      }
+      
+      wsLogger.info(`[批量] 桃园信息刷新完成 [${tokenId}]`);
+      return peachInfo;
+    } catch (error) {
+      wsLogger.error(`[批量] 刷新桃园数据失败 [${tokenId}]:`, error);
+      return null;
+    }
+  };
+
   // Promise版发送消息
   const sendMessageWithPromise = async (
     tokenId: string,
@@ -2615,6 +2847,13 @@ export const useTokenStore = defineStore("tokens", () => {
     refreshForBatchRoleOnly,
     refreshForBatchArena,
     refreshForBatchTower,
+    refreshForBatchCar,
+    refreshForBatchClub,
+    refreshForBatchActivity,
+    refreshForBatchBossTower, // 宝库信息
+    refreshForBatchSkinChallenge, // 换皮闯关/寻宝信息
+    refreshForBatchPeach, // 桃园任务信息
+    activityCache, // 导出活跃度缓存供外部访问
 
     // 游戏内发送消息方法
     sendMessageToLegion,

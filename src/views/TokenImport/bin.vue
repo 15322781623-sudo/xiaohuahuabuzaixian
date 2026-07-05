@@ -48,8 +48,20 @@
       max-height="50vh"
       :data="serverListData"
       @add="addSelectedRole"
+      @addAll="addAllRoles"
       @download="handleDownload"
     ></ServerRoleList>
+
+    <!-- 待添加角色列表 -->
+    <div v-if="roleList.length > 0" class="role-list-header">
+      <span class="role-list-title">待添加角色 ({{ roleList.length }})</span>
+      <NButton size="small" type="error" @click="clearAllRoles">
+        <template #icon>
+          <NIcon><TrashOutline /></NIcon>
+        </template>
+        全部删除
+      </NButton>
+    </div>
 
     <a-list>
       <a-list-item v-for="(role, index) in roleList" :key="index">
@@ -73,7 +85,7 @@
 <script lang="ts" setup>
 import { reactive, ref, watch } from "vue";
 import { useTokenStore } from "@/stores/tokenStore";
-import { CloudUpload } from "@vicons/ionicons5";
+import { CloudUpload, TrashOutline } from "@vicons/ionicons5";
 
 import {
   NButton,
@@ -101,6 +113,22 @@ const cancel = () => {
 
 const removeRole = (index: number) => {
   roleList.value.splice(index, 1);
+};
+
+// 全部删除待添加角色
+const clearAllRoles = () => {
+  if (roleList.value.length === 0) {
+    message.warning("没有可删除的角色");
+    return;
+  }
+
+  const confirmed = window.confirm(`确定要删除全部 ${roleList.value.length} 个待添加角色吗？`);
+  if (!confirmed) {
+    return;
+  }
+
+  roleList.value = [];
+  message.success(`已删除全部 ${roleList.value.length} 个角色`);
 };
 
 const tokenStore = useTokenStore();
@@ -279,6 +307,48 @@ const addSelectedRole = async (roleInfo: any) => {
   });
 };
 
+// 一键添加所有角色
+const addAllRoles = async (roles: any[]) => {
+  if (!originalBinData.value) {
+    message.error("Bin数据丢失，请重新上传");
+    return;
+  }
+
+  if (roles.length === 0) {
+    message.warning("没有可添加的角色");
+    return;
+  }
+
+  // 过滤掉战力低于1亿的角色（1亿 = 100000000）
+  const POWER_THRESHOLD = 100000000;
+  const validRoles = roles.filter(role => role.power >= POWER_THRESHOLD);
+  const filteredCount = roles.length - validRoles.length;
+
+  if (validRoles.length === 0) {
+    message.warning(`没有可添加的角色（所有角色战力均低于1亿）`);
+    return;
+  }
+
+  // 确认是否要添加所有角色
+  let confirmMsg = `确定要一键添加全部 ${validRoles.length} 个角色吗？`;
+  if (filteredCount > 0) {
+    confirmMsg += `\n（已自动过滤 ${filteredCount} 个战力低于1亿的角色）`;
+  }
+  const confirmed = window.confirm(confirmMsg);
+  if (!confirmed) {
+    return;
+  }
+
+  message.info(`开始批量添加 ${validRoles.length} 个角色，请稍候...`);
+
+  // 通过队列串行处理所有角色
+  for (const roleInfo of validRoles) {
+    await addSelectedRole(roleInfo);
+  }
+
+  message.success(`批量添加完成，共添加 ${validRoles.length} 个角色${filteredCount > 0 ? `（过滤${filteredCount}个战力低于1亿）` : ''}`);
+};
+
 // 待处理文件队列（收集所有上传的文件，然后串行处理）
 const pendingFiles = ref<File[]>([]);
 
@@ -452,5 +522,22 @@ const downloadBinFile = (fileName, bin) => {
   color: #888;
   padding: 40px 20px;
   font-size: 12px;
+}
+
+.role-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary, #f5f5f5);
+  border-radius: var(--border-radius-medium, 8px);
+}
+
+.role-list-title {
+  font-weight: var(--font-weight-medium, 500);
+  font-size: 14px;
+  color: var(--text-primary, #333);
 }
 </style>

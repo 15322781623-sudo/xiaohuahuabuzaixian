@@ -49,7 +49,7 @@ export function createTasksHangUp(deps) {
   };
 
   /**
-   * 获取挂机状态
+   * 获取挂机状态（使用活跃度缓存，30秒有效期）
    * @param {string} tokenId Token ID
    * @param {object} options 配置选项
    * @param {boolean} options.checkAddTime 是否检查是否需要加钟（默认false）
@@ -61,11 +61,9 @@ export function createTasksHangUp(deps) {
     const { checkAddTime = false, thresholdSeconds = 3600, maxHangUpTime = 43200 } = options;
 
     try {
-      // 获取角色信息
-      const roleInfo = await callWithRetry(tokenId, "role_getroleinfo", {}, {
-        noRetryErrors: ["400000", "200020", "3100080", "3100030", "400340"], // 400340由外层重试机制处理
-      });
-      const hangUpData = roleInfo?.role?.hangUp;
+      // 使用专用轻量级刷新函数获取活跃度数据（带30秒缓存）
+      const activityData = await tokenStore.refreshForBatchActivity(tokenId);
+      const hangUpData = activityData?.hangUp;
 
       if (!hangUpData) {
         return {
@@ -405,7 +403,6 @@ export function createTasksHangUp(deps) {
   const performAddTime = async (tokenId, tokenName) => {
     return performAddTimeWithCount(tokenId, tokenName, 4);
   };
-
   /**
    * 领取挂机奖励 + 加钟（支持400340/200750/11800010错误最多3次重试）
    * 逻辑：判断elapsedTime>=配置阈值 → 领取奖励 → 加钟4次
@@ -688,6 +685,10 @@ export function createTasksHangUp(deps) {
 
       const clubSignForToken = async (tokenId, token) => {
         addLog({ time: new Date().toLocaleTimeString(), message: `=== 俱乐部签到: ${token.name} ===`, type: "info" });
+        
+        // 使用专用轻量级刷新函数获取俱乐部信息
+        await tokenStore.refreshForBatchClub(tokenId);
+        
         await callWithRetry(tokenId, "legion_signin", {});
         await safeDelay(_getModuleDelay('hangup'));
         addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${token.name} 签到成功`, type: "success" });

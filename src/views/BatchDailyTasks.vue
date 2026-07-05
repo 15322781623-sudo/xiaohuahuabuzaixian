@@ -312,49 +312,49 @@
               <n-space>
                 <n-button
                   size="small"
-                  @click="claimHangUpRewards"
+                  @click="executeManualTaskWithRecord('claimHangUpRewards', '领取挂机', claimHangUpRewards)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   领取挂机
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchAddHangUpTime"
+                  @click="executeManualTaskWithRecord('batchAddHangUpTime', '一键加钟', batchAddHangUpTime)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键加钟
                 </n-button>
                 <n-button
                   size="small"
-                  @click="resetBottles"
+                  @click="executeManualTaskWithRecord('resetBottles', '重置罐子', resetBottles)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   重置罐子
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchlingguanzi"
+                  @click="executeManualTaskWithRecord('batchlingguanzi', '一键领取罐子', batchlingguanzi)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键领取罐子
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchclubsign"
+                  @click="executeManualTaskWithRecord('batchclubsign', '一键俱乐部签到', batchclubsign)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键俱乐部签到
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchStudy"
+                  @click="executeManualTaskWithRecord('batchStudy', '一键答题', batchStudy)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键答题
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batcharenafight"
+                  @click="executeManualTaskWithRecord('batcharenafight', '一键竞技场战斗3次', batcharenafight)"
                   :disabled="
                     isRunning || selectedTokens.length === 0 || !isarenaActivityOpen
                   "
@@ -363,7 +363,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchSmartSendCar"
+                  @click="executeManualTaskWithRecord('batchSmartSendCar', '智能发车', batchSmartSendCar)"
                   :disabled="
                     isRunning || selectedTokens.length === 0 || !isCarActivityOpen
                   "
@@ -372,7 +372,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchClaimCars"
+                  @click="executeManualTaskWithRecord('batchClaimCars', '一键收车', batchClaimCars)"
                   :disabled="
                     isRunning || selectedTokens.length === 0 || !isCarActivityOpen
                   "
@@ -381,7 +381,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchCarResearchUpgrade"
+                  @click="executeManualTaskWithRecord('batchCarResearchUpgrade', '升级改装', batchCarResearchUpgrade)"
                   :disabled="
                     isRunning || selectedTokens.length === 0 || !isCarActivityOpen
                   "
@@ -390,7 +390,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="store_purchase"
+                  @click="executeManualTaskWithRecord('store_purchase', '一键黑市采购', store_purchase)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键黑市采购
@@ -404,7 +404,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batch_mail_claim_and_cleanup"
+                  @click="executeManualTaskWithRecord('batch_mail_claim_and_cleanup', '邮箱领取与清理', batch_mail_claim_and_cleanup)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   邮箱领取与清理
@@ -423,35 +423,35 @@
               <n-space>
                 <n-button
                   size="small"
-                  @click="charge_claimaddup_rewards"
+                  @click="executeManualTaskWithRecord('charge_claimaddup_rewards', '积分好礼领取', charge_claimaddup_rewards)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   积分好礼领取
                 </n-button>
                 <n-button
                   size="small"
-                  @click="collection_claimfreereward"
+                  @click="executeManualTaskWithRecord('collection_claimfreereward', '一键领取珍宝阁', collection_claimfreereward)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键领取珍宝阁
                 </n-button>
                 <n-button
                   size="small"
-                  @click="gacha_drawreward"
+                  @click="executeManualTaskWithRecord('gacha_drawreward', '免费扭蛋', gacha_drawreward)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   免费扭蛋
                 </n-button>
                 <n-button
                   size="small"
-                  @click="claim_recruit_welfare"
+                  @click="executeManualTaskWithRecord('claim_recruit_welfare', '免费礼包领取', claim_recruit_welfare)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   免费礼包领取
                 </n-button>
                 <n-button
                   size="small"
-                  @click="pkroom_appoint"
+                  @click="executeManualTaskWithRecord('pkroom_appoint', '预约直播', pkroom_appoint)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   预约直播
@@ -462,14 +462,14 @@
               <n-space>
                 <n-button
                   size="small"
-                  @click="climbTower"
+                  @click="executeManualTaskWithRecord('climbTower', '一键爬塔', climbTower)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键爬塔
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchmengjing"
+                  @click="executeManualTaskWithRecord('batchmengjing', '一键梦境', batchmengjing)"
                   :disabled="
                     isRunning ||
                     selectedTokens.length === 0 ||
@@ -480,28 +480,28 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="skinChallenge"
+                  @click="executeManualTaskWithRecord('skinChallenge', '一键换皮闯关', skinChallenge)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键换皮闯关
                 </n-button>
                 <n-button
                   size="small"
-                  @click="skinTreasure"
+                  @click="executeManualTaskWithRecord('skinTreasure', '一键换皮寻宝', skinTreasure)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键换皮寻宝
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchClaimPeachTasks"
+                  @click="executeManualTaskWithRecord('batchClaimPeachTasks', '一键领取蟠桃园任务', batchClaimPeachTasks)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键领取蟠桃园任务
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchBuyDreamItems"
+                  @click="executeManualTaskWithRecord('batchBuyDreamItems', '一键购买梦境商品', batchBuyDreamItems)"
                   :disabled="
                     isRunning ||
                     selectedTokens.length === 0 ||
@@ -516,7 +516,7 @@
               <n-space>
                 <n-button
                   size="small"
-                  @click="batchbaoku13"
+                  @click="executeManualTaskWithRecord('batchbaoku13', '一键宝库前3层', batchbaoku13)"
                   :disabled="
                     isRunning || selectedTokens.length === 0 || !isbaokuActivityOpen
                   "
@@ -525,7 +525,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchbaoku45"
+                  @click="executeManualTaskWithRecord('batchbaoku45', '一键宝库4,5层', batchbaoku45)"
                   :disabled="
                     isRunning || selectedTokens.length === 0 || !isbaokuActivityOpen
                   "
@@ -538,7 +538,7 @@
               <n-space>
                 <n-button
                   size="small"
-                  @click="climbWeirdTower"
+                  @click="executeManualTaskWithRecord('climbWeirdTower', '一键爬怪异塔', climbWeirdTower)"
                   :disabled="
                     isRunning ||
                     selectedTokens.length === 0 ||
@@ -549,7 +549,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchUseItems"
+                  @click="executeManualTaskWithRecord('batchUseItems', '一键使用怪异塔道具', batchUseItems)"
                   :disabled="
                     isRunning ||
                     selectedTokens.length === 0 ||
@@ -560,7 +560,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchMergeItems"
+                  @click="executeManualTaskWithRecord('batchMergeItems', '一键怪异塔合成', batchMergeItems)"
                   :disabled="
                     isRunning ||
                     selectedTokens.length === 0 ||
@@ -571,7 +571,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchClaimFreeEnergy"
+                  @click="executeManualTaskWithRecord('batchClaimFreeEnergy', '一键领取怪异塔免费道具', batchClaimFreeEnergy)"
                   :disabled="
                     isRunning ||
                     selectedTokens.length === 0 ||
@@ -582,7 +582,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="claim_weird_tower_all"
+                  @click="executeManualTaskWithRecord('claim_weird_tower_all', '领取怪异塔宝箱目标特权', claim_weird_tower_all)"
                   :disabled="
                     isRunning ||
                     selectedTokens.length === 0 ||
@@ -593,7 +593,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="claim_weird_tower_pass"
+                  @click="executeManualTaskWithRecord('claim_weird_tower_pass', '领取怪异塔通行证', claim_weird_tower_pass)"
                   :disabled="
                     isRunning ||
                     selectedTokens.length === 0 ||
@@ -623,7 +623,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchOpenDiamondBox"
+                  @click="executeManualTaskWithRecord('batchOpenDiamondBox', '一键开钻石宝箱', batchOpenDiamondBox)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键开钻石宝箱
@@ -645,7 +645,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchClaimBoxPointReward"
+                  @click="executeManualTaskWithRecord('batchClaimBoxPointReward', '领取宝箱积分', batchClaimBoxPointReward)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   领取宝箱积分
@@ -666,7 +666,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="legion_storebuygoods"
+                  @click="executeManualTaskWithRecord('legion_storebuygoods', '一键购买四圣碎片', legion_storebuygoods)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键购买四圣碎片
@@ -681,7 +681,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="weekly_market_free_gift"
+                  @click="executeManualTaskWithRecord('weekly_market_free_gift', '黑市周免费礼包', weekly_market_free_gift)"
                   :disabled="isRunning || selectedTokens.length === 0 || !isWeirdTowerActivityOpen"
                   :title="!isWeirdTowerActivityOpen ? '仅在黑市周开放期间可用' : ''"
                 >
@@ -689,21 +689,21 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="buy_top_rod_package"
+                  @click="executeManualTaskWithRecord('buy_top_rod_package', '购买顶级鱼竿包', buy_top_rod_package)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   购买顶级鱼竿包
                 </n-button>
                 <n-button
                   size="small"
-                  @click="buy_super_spirit_shell"
+                  @click="executeManualTaskWithRecord('buy_super_spirit_shell', '购买超级灵魂壳', buy_super_spirit_shell)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   购买特级灵贝包
                 </n-button>
                 <n-button
                   size="small"
-                  @click="store_buy_jade"
+                  @click="executeManualTaskWithRecord('store_buy_jade', '一键购买彩玉', store_buy_jade)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键购买彩玉
@@ -724,21 +724,21 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="legionStoreBuySkinCoins"
+                  @click="executeManualTaskWithRecord('legionStoreBuySkinCoins', '一键购买俱乐部5皮肤币', legionStoreBuySkinCoins)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键购买俱乐部5皮肤币
                 </n-button>
                 <n-button
                   size="small"
-                  @click="legion_buy_red_jade"
+                  @click="executeManualTaskWithRecord('legion_buy_red_jade', '一键购买5次红玉', legion_buy_red_jade)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键购买5次红玉
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchGenieSweep"
+                  @click="executeManualTaskWithRecord('batchGenieSweep', '一键灯神扫荡', batchGenieSweep)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键灯神扫荡
@@ -767,7 +767,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchClaimConsumeRewards"
+                  @click="executeManualTaskWithRecord('batchClaimConsumeRewards', '领取消耗活动道具', batchClaimConsumeRewards)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   领取消耗活动道具
@@ -781,7 +781,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchUseActivityItem"
+                  @click="executeManualTaskWithRecord('batchUseActivityItem', '使用消耗活动道具', batchUseActivityItem)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   使用消耗活动道具
@@ -802,7 +802,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchClaimApexRewards"
+                  @click="executeManualTaskWithRecord('batchClaimApexRewards', '领取竞技大厅道具', batchClaimApexRewards)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   领取竞技大厅道具
@@ -813,35 +813,35 @@
               <n-space>
                 <n-button
                   size="small"
-                  @click="legion_buy_spotted_egg"
+                  @click="executeManualTaskWithRecord('legion_buy_spotted_egg', '一键购买斑点蛋', legion_buy_spotted_egg)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键购买斑点蛋
                 </n-button>
                 <n-button
                   size="small"
-                  @click="use_spotted_egg"
+                  @click="executeManualTaskWithRecord('use_spotted_egg', '使用斑点蛋', use_spotted_egg)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   使用斑点蛋
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batch_pet_merge"
+                  @click="executeManualTaskWithRecord('batch_pet_merge', '宠物合成', batch_pet_merge)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   宠物合成
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batch_pet_upgrade"
+                  @click="executeManualTaskWithRecord('batch_pet_upgrade', '宠物一键升级', batch_pet_upgrade)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   宠物一键升级
                 </n-button>
                 <n-button
                   size="small"
-                  @click="claim_pet_book"
+                  @click="executeManualTaskWithRecord('claim_pet_book', '宠物领取图鉴奖励', claim_pet_book)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   宠物领取图鉴奖励
@@ -859,35 +859,35 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchHeroUpgrade"
+                  @click="executeManualTaskWithRecord('batchHeroUpgrade', '一键英雄升星', batchHeroUpgrade)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键英雄升星
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchBookUpgrade"
+                  @click="executeManualTaskWithRecord('batchBookUpgrade', '一键图鉴升星', batchBookUpgrade)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键图鉴升星
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchFishUpgrade"
+                  @click="executeManualTaskWithRecord('batchFishUpgrade', '一键鱼灵升星', batchFishUpgrade)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键鱼灵升星
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchClaimStarRewards"
+                  @click="executeManualTaskWithRecord('batchClaimStarRewards', '一键领取图鉴奖励', batchClaimStarRewards)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键领取图鉴奖励
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchCollectionActivate"
+                  @click="executeManualTaskWithRecord('batchCollectionActivate', '橱窗咸将激活', batchCollectionActivate)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   橱窗咸将激活
@@ -899,35 +899,35 @@
                 <n-button
                   size="small"
                   type="warning"
-                  @click="batchNightmareChallenge"
+                  @click="executeManualTaskWithRecord('batchNightmareChallenge', '十殿阎罗挑战', batchNightmareChallenge)"
                   :disabled="isRunning"
                 >
                   十殿阎罗挑战
                 </n-button>
                 <n-button
                   size="small"
-                  @click="nightmare_draw_lottery"
+                  @click="executeManualTaskWithRecord('nightmare_draw_lottery', '十殿抽奖', nightmare_draw_lottery)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   十殿抽奖
                 </n-button>
                 <n-button
                   size="small"
-                  @click="nightmare_claim_book_reward"
+                  @click="executeManualTaskWithRecord('nightmare_claim_book_reward', '十殿抽奖达标奖励', nightmare_claim_book_reward)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   十殿抽奖达标奖励
                 </n-button>
                 <n-button
                   size="small"
-                  @click="star_drawturntable"
+                  @click="executeManualTaskWithRecord('star_drawturntable', '星级抽奖', star_drawturntable)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   星级抽奖
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batch_star_challenge"
+                  @click="executeManualTaskWithRecord('batch_star_challenge', '十殿星级挑战', batch_star_challenge)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   十殿星级挑战
@@ -945,14 +945,14 @@
               <n-space>
                 <n-button
                   size="small"
-                  @click="batchLegacyHangup"
+                  @click="executeManualTaskWithRecord('batchLegacyHangup', '开启残卷挂机', batchLegacyHangup)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   开启残卷挂机
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchLegacyClaim"
+                  @click="executeManualTaskWithRecord('batchLegacyClaim', '批量功法残卷领取', batchLegacyClaim)"
                   :disabled="isRunning || selectedTokens.length === 0 || isLegacyRestricted"
                   :title="isLegacyRestricted ? '赛季日00:00-12:00为残卷更新时间，禁止操作' : ''"
                 >
@@ -968,7 +968,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchLegacyClaimGiftTask"
+                  @click="executeManualTaskWithRecord('batchLegacyClaimGiftTask', '领取残卷赠送奖励', batchLegacyClaimGiftTask)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   领取残卷赠送奖励
@@ -979,14 +979,14 @@
               <n-space>
                 <n-button
                   size="small"
-                  @click="batchTopUpFish"
+                  @click="executeManualTaskWithRecord('batchTopUpFish', '一键钓鱼补齐', batchTopUpFish)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   一键钓鱼补齐
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchTopUpArena"
+                  @click="executeManualTaskWithRecord('batchTopUpArena', '一键竞技场补齐', batchTopUpArena)"
                   :disabled="
                     isRunning || selectedTokens.length === 0 || !isarenaActivityOpen
                   "
@@ -1003,7 +1003,7 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="claim_guess_coin"
+                  @click="executeManualTaskWithRecord('claim_guess_coin', '领取助威币', claim_guess_coin)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   领取助威币
@@ -1397,8 +1397,7 @@
                     size="small"
                     type="info"
                     ghost
-                    :disabled="taskExecutionRecords.length === 0"
-                    @click="showTaskRecordsModal = true"
+                    @click="openTaskRecordsModal"
                     class="action-btn"
                   >
                     <n-icon><ListOutline /></n-icon>
@@ -1546,8 +1545,8 @@
                 :key="idx"
                 class="tr-failed-item"
               >
-                <span class="tr-failed-name">{{ account.name }}</span>
-                <span class="tr-failed-error">{{ account.error }}</span>
+                <span class="tr-failed-name">{{ typeof account === 'string' ? account : account.name }}</span>
+                <span class="tr-failed-error">{{ typeof account === 'string' ? '' : (account.error || '') }}</span>
               </div>
             </div>
           </div>
@@ -2860,6 +2859,26 @@
         </n-button>
         <n-button
           size="small"
+          type="primary"
+          @click="selectAllTokensForAllTasks"
+        >
+          <template #icon>
+            <n-icon><CheckmarkCircleOutline /></n-icon>
+          </template>
+          全选账号
+        </n-button>
+        <n-button
+          size="small"
+          type="warning"
+          @click="clearAllTokensForAllTasks"
+        >
+          <template #icon>
+            <n-icon><CloseCircleOutline /></n-icon>
+          </template>
+          取消账号
+        </n-button>
+        <n-button
+          size="small"
           type="error"
           @click="deleteAllScheduledTasks"
         >
@@ -2894,15 +2913,26 @@
                 <span class="task-status-dot" :class="{ 'enabled': task.enabled, 'disabled': !task.enabled }"></span>
                 <span class="task-name">{{ task.name }}</span>
               </div>
-              <n-switch
-                v-model:value="task.enabled"
-                @update:value="toggleTaskEnabled(task.id, $event)"
-                size="small"
-                class="feature-switch"
-              >
-                <template #checked>禁用</template>
-                <template #unchecked>禁用</template>
-              </n-switch>
+              <div class="task-header-actions">
+                <n-switch
+                  :value="task.selectedTokens.length > 0"
+                  @update:value="(val) => val ? selectAllTokensForTask(task) : clearAllTokensForTask(task)"
+                  size="small"
+                  class="feature-switch"
+                >
+                  <template #checked>全选</template>
+                  <template #unchecked>取消</template>
+                </n-switch>
+                <n-switch
+                  v-model:value="task.enabled"
+                  @update:value="toggleTaskEnabled(task.id, $event)"
+                  size="small"
+                  class="feature-switch"
+                >
+                  <template #checked>禁用</template>
+                  <template #unchecked>禁用</template>
+                </n-switch>
+              </div>
             </div>
 
             <!-- 任务信息 -->
@@ -4010,8 +4040,8 @@
                 <n-input-number v-model:value="batchSettings.connectionTimeout" :min="1000" :max="30000" :step="1000" size="small" class="input-responsive" />
               </div>
               <div class="setting-item-responsive">
-                <label class="setting-label-responsive">重连等待(ms)</label>
-                <n-input-number v-model:value="batchSettings.reconnectDelay" :min="100" :max="5000" :step="100" size="small" class="input-responsive" />
+                <label class="setting-label-responsive">重连等待 (ms)</label>
+                <n-input-number v-model:value="batchSettings.reconnectDelay" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
               </div>
             </div>
             
@@ -5191,7 +5221,7 @@ import { useRouter, useRoute } from "vue-router";
 import { DailyTaskRunner } from "@/utils/dailyTaskRunner";
 import { preloadQuestions } from "@/utils/studyQuestionsFromJSON.js";
 import { useMessage } from "naive-ui";
-import { Settings, AddCircleOutline, CheckmarkCircleOutline, ListOutline, CloudDownloadOutline, CloudUploadOutline, SearchOutline, DocumentTextOutline, CreateOutline, TrashOutline, SettingsOutline, PlayOutline, Add, CopyOutline } from "@vicons/ionicons5";
+import { Settings, AddCircleOutline, CheckmarkCircleOutline, CloseCircleOutline, ListOutline, CloudDownloadOutline, CloudUploadOutline, SearchOutline, DocumentTextOutline, CreateOutline, TrashOutline, SettingsOutline, PlayOutline, Add, CopyOutline } from "@vicons/ionicons5";
 import TokenCard from "@/components/TokenCard.vue";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { storage } from "@/utils/crossPlatformStorage";
@@ -5687,6 +5717,7 @@ const warGuessActivityTip = computed(() => {
 
 const selectedTokens = ref([]);
 const tokenStatus = ref({}); // { tokenId: 'waiting' | 'running' | 'completed' | 'failed' | 'waiting_retry' }
+const tokenFailReasons = ref({}); // { tokenId: '失败原因' }，用于追踪每个账号的失败原因
 const isRunning = ref(false);
 const shouldStop = ref(false);
 const shouldRefreshAfterTask = ref(false); // 标记是否需要在任务完成后刷新页面
@@ -7797,6 +7828,66 @@ const disableAllScheduledTasks = () => {
   });
 };
 
+// ✅ 全选账号：将所有定时任务的选中账号设置为所有可用账号
+const selectAllTokensForAllTasks = () => {
+  if (scheduledTasks.value.length === 0) { message.warning("暂无定时任务"); return; }
+  if (!tokens.value || tokens.value.length === 0) { message.warning("暂无可用账号"); return; }
+  
+  const allTokenIds = tokens.value.map(t => t.id);
+  let updatedCount = 0;
+  
+  scheduledTasks.value.forEach(task => {
+    // 将任务的选中账号设置为所有账号
+    task.selectedTokens = [...allTokenIds];
+    updatedCount++;
+  });
+  
+  saveScheduledTasks();
+  message.success(`已为所有 ${updatedCount} 个定时任务选中全部 ${allTokenIds.length} 个账号`);
+  addLog({
+    time: new Date().toLocaleTimeString(),
+    message: `=== 已为所有定时任务选中全部 ${allTokenIds.length} 个账号 ===`,
+    type: "success",
+  });
+};
+
+// ✅ 取消账号：清空所有定时任务的选中账号
+const clearAllTokensForAllTasks = () => {
+  if (scheduledTasks.value.length === 0) { message.warning("暂无定时任务"); return; }
+  
+  let updatedCount = 0;
+  
+  scheduledTasks.value.forEach(task => {
+    // 清空任务的选中账号
+    task.selectedTokens = [];
+    updatedCount++;
+  });
+  
+  saveScheduledTasks();
+  message.success(`已清空所有 ${updatedCount} 个定时任务的选中账号`);
+  addLog({
+    time: new Date().toLocaleTimeString(),
+    message: `=== 已清空所有定时任务的选中账号 ===`,
+    type: "info",
+  });
+};
+
+// ✅ 单个任务全选账号
+const selectAllTokensForTask = (task) => {
+  if (!tokens.value || tokens.value.length === 0) { message.warning("暂无可用账号"); return; }
+  const allTokenIds = tokens.value.map(t => t.id);
+  task.selectedTokens = [...allTokenIds];
+  saveScheduledTasks();
+  message.success(`已为任务「${task.name}」选中全部 ${allTokenIds.length} 个账号`);
+};
+
+// ✅ 单个任务取消账号
+const clearAllTokensForTask = (task) => {
+  task.selectedTokens = [];
+  saveScheduledTasks();
+  message.success(`已清空任务「${task.name}」的选中账号`);
+};
+
 // 注: addTaskSaveLog 已从 @/utils/batch 导入，调用时需传入 addLog
 
 // Reset run type related fields
@@ -9084,6 +9175,34 @@ const isScheduledTaskRunning = ref(false);
 // 定时任务执行完成情况记录
 const taskExecutionRecords = ref([]);
 const showTaskRecordsModal = ref(false);
+
+// 打开任务完成情况Modal（重新加载数据）
+const openTaskRecordsModal = () => {
+  // ✅ 从 localStorage 加载历史记录
+  const loadedRecords = loadTaskExecutionRecordsFromStorage();
+  
+  // ✅ 获取内存中所有记录的 startTime（用于去重）
+  const memoryRecordIds = new Set(
+    taskExecutionRecords.value.map(r => `${r.startTime}-${r.name}`)
+  );
+  
+  // ✅ 过滤掉 localStorage 中已在内存中的记录（避免重复）
+  const newRecordsFromStorage = loadedRecords.filter(r => {
+    const recordId = `${r.startTime}-${r.name}`;
+    return !memoryRecordIds.has(recordId);
+  });
+  
+  // ✅ 合并：内存中的记录（最新） + localStorage 中的新记录
+  if (newRecordsFromStorage.length > 0) {
+    taskExecutionRecords.value = [...taskExecutionRecords.value, ...newRecordsFromStorage];
+    console.log(`[定时任务] 打开任务完成情况，内存 ${taskExecutionRecords.value.length - newRecordsFromStorage.length} 条 + localStorage ${newRecordsFromStorage.length} 条 = 共 ${taskExecutionRecords.value.length} 条记录`);
+  } else {
+    console.log(`[定时任务] 打开任务完成情况，共 ${taskExecutionRecords.value.length} 条记录（全部来自内存）`);
+  }
+  
+  showTaskRecordsModal.value = true;
+};
+
 // 同步到全局，供推图循环 (pushMapRunner) 检测定时任务互斥
 watch(isScheduledTaskRunning, (v) => { window._isScheduledTaskRunning = v; }, { immediate: true });
 let currentScheduledTask = null; // 当前正在执行的定时任务
@@ -9113,7 +9232,7 @@ const loadTaskExecutionRecordsFromStorage = () => {
   }
 };
 
-// 保存任务完成情况到 localStorage（只保存已完成的新记录，避免重复）
+// 保存任务完成情况到 localStorage（保存所有已完成记录，去重）
 const saveTaskExecutionRecordsToStorage = () => {
   try {
     const now = new Date();
@@ -9121,46 +9240,51 @@ const saveTaskExecutionRecordsToStorage = () => {
     
     // ✅ 先加载现有记录（如果有）
     let existingRecords = [];
-    let lastSavedIds = new Set(); // 记录已保存过的 record id
     const savedData = localStorage.getItem('taskExecutionRecords');
     if (savedData) {
       const parsed = JSON.parse(savedData);
       if (Array.isArray(parsed.records)) {
         existingRecords = parsed.records;
-        // 提取已保存的 record id（使用 startTime + name 作为唯一标识）
-        parsed.records.forEach(r => {
-          const id = `${r.startTime}-${r.name}`;
-          lastSavedIds.add(id);
-        });
         console.log(`[定时任务] 加载现有记录 ${existingRecords.length} 条`);
       }
     }
     
-    // ✅ 只收集未保存过的已完成记录
-    const newlyCompletedRecords = taskExecutionRecords.value.filter(record => {
-      if (record.status === 'running') return false; // 跳过着跑中的任务
-      
-      const recordId = `${record.startTime}-${record.name}`;
-      return !lastSavedIds.has(recordId); // 只保存未保存过的已完成记录
+    // ✅ 收集所有已完成的记录（running 状态的任务不保存）
+    const completedRecords = taskExecutionRecords.value.filter(record => {
+      return record.status !== 'running'; // 只跳过正在执行的任务
     });
     
-    if (newlyCompletedRecords.length > 0) {
-      console.log(`[定时任务] 检测到 ${newlyCompletedRecords.length} 条新完成记录，准备保存`);
+    if (completedRecords.length > 0) {
+      console.log(`[定时任务] 检测到 ${completedRecords.length} 条已完成记录，准备保存`);
       
-      // ✅ 合并新旧记录
-      const allRecords = [...existingRecords, ...newlyCompletedRecords];
+      // ✅ 去重：使用 startTime + name 作为唯一标识，只添加 localStorage 中不存在的记录
+      const existingRecordIds = new Set(
+        existingRecords.map(r => `${r.startTime}-${r.name}`)
+      );
       
-      const dataToSave = {
-        date: todayStr,
-        records: allRecords,
-        updatedAt: now.toISOString(),
-        totalRecords: allRecords.length
-      };
+      const newRecords = completedRecords.filter(record => {
+        const recordId = `${record.startTime}-${record.name}`;
+        return !existingRecordIds.has(recordId);
+      });
       
-      localStorage.setItem('taskExecutionRecords', JSON.stringify(dataToSave));
-      console.log(`[定时任务] 已保存 ${newlyCompletedRecords.length} 条记录，累计 ${allRecords.length} 条`);
+      if (newRecords.length > 0) {
+        // ✅ 合并新旧记录（只添加新记录）
+        const allRecords = [...existingRecords, ...newRecords];
+        
+        const dataToSave = {
+          date: todayStr,
+          records: allRecords,
+          updatedAt: now.toISOString(),
+          totalRecords: allRecords.length
+        };
+        
+        localStorage.setItem('taskExecutionRecords', JSON.stringify(dataToSave));
+        console.log(`[定时任务] 已保存 ${newRecords.length} 条新记录，累计 ${allRecords.length} 条`);
+      } else {
+        console.log(`[定时任务] 无新记录需要保存（所有记录已存在于 localStorage）`);
+      }
     } else {
-      console.log(`[定时任务] 无新完成记录，跳过保存`);
+      console.log(`[定时任务] 无已完成记录，跳过保存`);
     }
   } catch (error) {
     console.error('[定时任务] 保存任务执行情况到 localStorage 失败:', error);
@@ -9176,6 +9300,161 @@ const clearTaskExecutionRecords = () => {
   
   message.success('任务完成记录已清空');
   console.log('[定时任务] 任务完成记录已清空');
+};
+
+/**
+ * 为手动执行的批量功能添加任务完成记录
+ * @param {string} taskName - 任务名称（如 'claimHangUpRewards'）
+ * @param {string} taskLabel - 任务显示名称（如 '领取挂机'）
+ * @param {Function} taskFunction - 实际执行的任务函数
+ * @returns {Promise<void>}
+ */
+const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) => {
+  if (selectedTokens.value.length === 0) {
+    message.warning('请先选择账号');
+    return;
+  }
+  
+  const taskStartTime = Date.now();
+  const availableTokens = [...selectedTokens.value];
+  
+  // 清理本次执行相关的失败原因缓存
+  availableTokens.forEach(tokenId => {
+    delete tokenFailReasons.value[tokenId];
+  });
+  
+  // 添加任务记录
+  const taskRecordIndex = taskExecutionRecords.value.push({
+    name: taskLabel,
+    startTime: taskStartTime,
+    endTime: null,
+    elapsedStr: null,
+    status: 'running',
+    totalAccounts: availableTokens.length,
+    successCount: 0,
+    failCount: 0,
+    runningCount: availableTokens.length,
+    progressPercent: 0,
+    failedAccounts: [],
+    scheduledTime: null,
+    isManual: true, // 标记为手动执行
+  }) - 1;
+  
+  // 监听 tokenStatus 变化，实时更新成功/失败计数
+  const updateProgressFromTokenStatus = () => {
+    let successCount = 0;
+    let failCount = 0;
+    let runningCount = 0;
+    const failedAccounts = [];
+    
+    availableTokens.forEach(tokenId => {
+      const status = tokenStatus.value[tokenId];
+      if (status === 'completed') {
+        successCount++;
+      } else if (status === 'failed') {
+        failCount++;
+        const token = tokens.value.find(t => t.id === tokenId);
+        failedAccounts.push({
+          name: token?.name || '未知账号',
+          error: tokenFailReasons.value[tokenId] || '未知错误',
+          time: new Date().toLocaleTimeString(),
+        });
+      } else if (status === 'running' || status === 'waiting' || status === 'waiting_retry') {
+        runningCount++;
+      }
+    });
+    
+    // 更新任务记录
+    if (taskExecutionRecords.value[taskRecordIndex]) {
+      taskExecutionRecords.value[taskRecordIndex].successCount = successCount;
+      taskExecutionRecords.value[taskRecordIndex].failCount = failCount;
+      taskExecutionRecords.value[taskRecordIndex].runningCount = runningCount;
+      taskExecutionRecords.value[taskRecordIndex].failedAccounts = failedAccounts;
+      
+      // 更新进度百分比
+      const completed = successCount + failCount;
+      const total = taskExecutionRecords.value[taskRecordIndex].totalAccounts;
+      taskExecutionRecords.value[taskRecordIndex].progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+    }
+  };
+  
+  // 设置定时器，每500ms更新一次进度
+  const progressTimer = setInterval(updateProgressFromTokenStatus, 500);
+  
+  try {
+    // 执行任务函数
+    await taskFunction();
+    
+    // 最后一次更新进度
+    updateProgressFromTokenStatus();
+    
+    // 任务成功完成
+    const taskElapsed = Date.now() - taskStartTime;
+    const taskElapsedStr = taskElapsed >= 60000
+      ? `${Math.floor(taskElapsed / 60000)}分${Math.floor((taskElapsed % 60000) / 1000)}秒`
+      : `${(taskElapsed / 1000).toFixed(1)}秒`;
+    
+    taskExecutionRecords.value[taskRecordIndex].endTime = Date.now();
+    taskExecutionRecords.value[taskRecordIndex].elapsedStr = taskElapsedStr;
+    taskExecutionRecords.value[taskRecordIndex].runningCount = 0;
+    taskExecutionRecords.value[taskRecordIndex].progressPercent = 100;
+    
+    // ✅ 根据实际完成情况设置状态（而不是直接设置为 success）
+    const record = taskExecutionRecords.value[taskRecordIndex];
+    if (record.failCount === 0) {
+      record.status = 'success'; // 全部成功
+    } else if (record.successCount > 0 && record.failCount > 0) {
+      record.status = 'partial'; // 部分完成
+    } else {
+      record.status = 'fail'; // 全部失败
+    }
+    
+    // 保存任务完成情况到本地存储
+    saveTaskExecutionRecordsToStorage();
+    
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `✅ ${taskLabel} 手动执行完成，用时：${taskElapsedStr}，成功：${taskExecutionRecords.value[taskRecordIndex].successCount}，失败：${taskExecutionRecords.value[taskRecordIndex].failCount}`,
+      type: "success",
+    });
+  } catch (error) {
+    // 最后一次更新进度
+    updateProgressFromTokenStatus();
+    
+    // 任务执行失败
+    const taskElapsed = Date.now() - taskStartTime;
+    const taskElapsedStr = taskElapsed >= 60000
+      ? `${Math.floor(taskElapsed / 60000)}分${Math.floor((taskElapsed % 60000) / 1000)}秒`
+      : `${(taskElapsed / 1000).toFixed(1)}秒`;
+    
+    taskExecutionRecords.value[taskRecordIndex].endTime = Date.now();
+    taskExecutionRecords.value[taskRecordIndex].elapsedStr = taskElapsedStr;
+    taskExecutionRecords.value[taskRecordIndex].runningCount = 0;
+    
+    // ✅ 根据实际完成情况设置状态（即使抛异常，也可能有部分账号成功）
+    const record = taskExecutionRecords.value[taskRecordIndex];
+    if (record.failCount === 0 && record.successCount === 0) {
+      record.status = 'fail'; // 全部失败（无成功）
+    } else if (record.successCount > 0 && record.failCount > 0) {
+      record.status = 'partial'; // 部分完成
+    } else if (record.successCount > 0) {
+      record.status = 'success'; // 全部成功（虽然有异常但都成功了）
+    } else {
+      record.status = 'fail'; // 全部失败
+    }
+    
+    // 保存任务完成情况到本地存储
+    saveTaskExecutionRecordsToStorage();
+    
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `❌ ${taskLabel} 手动执行失败：${error.message}，成功：${taskExecutionRecords.value[taskRecordIndex].successCount}，失败：${taskExecutionRecords.value[taskRecordIndex].failCount}`,
+      type: "error",
+    });
+  } finally {
+    // 清除定时器
+    clearInterval(progressTimer);
+  }
 };
 
 // 注册每天凌晨 00:00:00 自动清空的任务完成情况
@@ -10026,11 +10305,11 @@ const executeScheduledTask = async (task) => {
   // ✅ 记录总执行开始时间
   const totalStartTime = Date.now();
 
-  // ✅ 清空上次的任务执行记录
-  taskExecutionRecords.value = [];
+  // ✅ 保留上次的任务执行记录（不覆盖，追加新记录）
+  // taskExecutionRecords.value = [];  //  删除：不再清空
   
-  // ✅ 清除本地存储（新一天开始）
-  localStorage.removeItem('taskExecutionRecords');
+  // ✅ 保留本地存储（不清除，新记录会追加）
+  // localStorage.removeItem('taskExecutionRecords');  // ❌ 删除：不再清除
 
   addLog({
     time: new Date().toLocaleTimeString(),
@@ -10466,6 +10745,44 @@ const executeScheduledTask = async (task) => {
         scheduledTime: null,
       }) - 1;
 
+      // ✅ 添加实时进度更新定时器（每 500ms 更新一次）
+      const scheduledProgressTimer = setInterval(() => {
+        let successCount = 0;
+        let failCount = 0;
+        let runningCount = 0;
+        const failedAccounts = [];
+        
+        availableTokens.forEach(tokenId => {
+          const status = tokenStatus.value[tokenId];
+          if (status === 'completed') {
+            successCount++;
+          } else if (status === 'failed') {
+            failCount++;
+            const token = tokens.value.find(t => t.id === tokenId);
+            failedAccounts.push({
+              name: token?.name || '未知账号',
+              error: tokenFailReasons.value[tokenId] || '未知错误',
+              time: new Date().toLocaleTimeString(),
+            });
+          } else if (status === 'running' || status === 'waiting' || status === 'waiting_retry') {
+            runningCount++;
+          }
+        });
+        
+        // 更新任务记录
+        if (taskExecutionRecords.value[taskRecordIndex]) {
+          taskExecutionRecords.value[taskRecordIndex].successCount = successCount;
+          taskExecutionRecords.value[taskRecordIndex].failCount = failCount;
+          taskExecutionRecords.value[taskRecordIndex].runningCount = runningCount;
+          taskExecutionRecords.value[taskRecordIndex].failedAccounts = failedAccounts;
+          
+          // 更新进度百分比
+          const completed = successCount + failCount;
+          const total = taskExecutionRecords.value[taskRecordIndex].totalAccounts;
+          taskExecutionRecords.value[taskRecordIndex].progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+        }
+      }, 500);
+
       // Call the task function dynamically
       // 处理函数名映射（下划线格式 -> 驼峰格式）
       let functionName = taskName;
@@ -10756,13 +11073,10 @@ const executeScheduledTask = async (task) => {
               }, BATCH_TASK_TIMEOUT))
             ]);
           
-            // ✅ 任务执行成功，更新成功统计
+            // ✅ 任务执行成功，更新成功统计（由实时进度定时器负责计算，这里不再累加）
             if (taskExecutionRecords.value[taskRecordIndex]) {
-              taskExecutionRecords.value[taskRecordIndex].successCount += batchStartCount;
-              console.log(`[定时任务] ${taskName} 执行成功，设置 successCount = ${taskExecutionRecords.value[taskRecordIndex].successCount}`);
-              taskExecutionRecords.value[taskRecordIndex].runningCount = Math.max(0, 
-                taskExecutionRecords.value[taskRecordIndex].runningCount - batchStartCount);
-              // 更新进度
+              console.log(`[定时任务] ${taskName} 执行成功，当前 successCount = ${taskExecutionRecords.value[taskRecordIndex].successCount}`);
+              // 更新进度（由实时定时器负责，这里确保最终状态正确）
               const total = taskExecutionRecords.value[taskRecordIndex].totalAccounts;
               const completed = taskExecutionRecords.value[taskRecordIndex].successCount + taskExecutionRecords.value[taskRecordIndex].failCount;
               taskExecutionRecords.value[taskRecordIndex].progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -10774,6 +11088,9 @@ const executeScheduledTask = async (task) => {
               message: `❌ 执行失败：${error.message}`,
               type: "error",
             });
+            
+            // ✅ 清除实时进度更新定时器
+            clearInterval(scheduledProgressTimer);
           
             // ✅ 检查是否为真正的超时错误（区分误报和真实超时）
             const isTimeoutError = error.message && error.message.includes('批量任务执行超时');
@@ -10804,6 +11121,9 @@ const executeScheduledTask = async (task) => {
               // ✅ 如果是超时错误，但实际所有账号都已成功完成，可能是超时误报，需要进一步确认
               if (isTimeoutError && isAllCompleted && currentSuccessCount === batchStartCount) {
                 console.warn(`[定时任务] 检测到超时，但所有 ${currentSuccessCount} 个账号均已成功完成，可能为误报，保留已完成的记录`);
+                
+                // ✅ 清除实时进度更新定时器
+                clearInterval(scheduledProgressTimer);
                 
                 // ✅ 关键修复：虽然是误报，但仍需正常结束任务
                 // 防止因为超时误报导致任务状态不正确
@@ -10857,7 +11177,7 @@ const executeScheduledTask = async (task) => {
                   if (!alreadyFailed && hasNotSucceeded) {
                     taskExecutionRecords.value[taskRecordIndex].failedAccounts.push({
                       name: token?.name || '未知账号',
-                      error: error.message || '执行失败',
+                      error: tokenFailReasons.value[tokenId] || error.message || '执行失败',
                       time: new Date().toLocaleTimeString(),
                     });
                   }
@@ -10908,13 +11228,48 @@ const executeScheduledTask = async (task) => {
             type: "success",
           });
           
+          // ✅ 清除实时进度更新定时器
+          clearInterval(scheduledProgressTimer);
+          
           // ✅ 更新子任务执行记录
           if (taskExecutionRecords.value[taskRecordIndex]) {
             taskExecutionRecords.value[taskRecordIndex].endTime = Date.now();
             taskExecutionRecords.value[taskRecordIndex].elapsedStr = taskElapsedStr;
-            // 更新最终状态统计
+            
+            // ✅ 任务完成后重新计算统计（确保所有账号都被正确统计）
+            let finalSuccessCount = 0;
+            let finalFailCount = 0;
+            const finalFailedAccounts = [];
+            
+            availableTokens.forEach(tokenId => {
+              const status = tokenStatus.value[tokenId];
+              if (status === 'completed') {
+                finalSuccessCount++;
+              } else if (status === 'failed') {
+                finalFailCount++;
+                const token = tokens.value.find(t => t.id === tokenId);
+                finalFailedAccounts.push({
+                  name: token?.name || '未知账号',
+                  error: tokenFailReasons.value[tokenId] || '未知错误',
+                  time: new Date().toLocaleTimeString(),
+                });
+              }
+            });
+            
+            taskExecutionRecords.value[taskRecordIndex].successCount = finalSuccessCount;
+            taskExecutionRecords.value[taskRecordIndex].failCount = finalFailCount;
             taskExecutionRecords.value[taskRecordIndex].runningCount = 0;
-            taskExecutionRecords.value[taskRecordIndex].progressPercent = 100;
+            taskExecutionRecords.value[taskRecordIndex].failedAccounts = finalFailedAccounts;
+            
+            // ✅ 如果所有账号都已完成，设置进度为 100%
+            const totalCompleted = finalSuccessCount + finalFailCount;
+            const totalAccounts = taskExecutionRecords.value[taskRecordIndex].totalAccounts;
+            if (totalCompleted >= totalAccounts) {
+              taskExecutionRecords.value[taskRecordIndex].progressPercent = 100;
+            } else {
+              // 否则根据实际完成情况计算进度
+              taskExecutionRecords.value[taskRecordIndex].progressPercent = totalAccounts > 0 ? Math.round((totalCompleted / totalAccounts) * 100) : 0;
+            }
                         
             // 🔍 DEBUG: 输出最终的统计信息
             console.log(`[定时任务] ${taskName} 最终结果:`, {
@@ -10925,7 +11280,15 @@ const executeScheduledTask = async (task) => {
               failedAccountsLength: taskExecutionRecords.value[taskRecordIndex].failedAccounts.length,
             });
                         
-            taskExecutionRecords.value[taskRecordIndex].status = taskExecutionRecords.value[taskRecordIndex].status === 'fail' ? 'partial' : 'success';
+            // ✅ 根据实际完成情况设置状态（修复：之前只看之前的状态，现在根据 successCount 和 failCount 判断）
+            const record = taskExecutionRecords.value[taskRecordIndex];
+            if (record.failCount === 0) {
+              record.status = 'success'; // 全部成功
+            } else if (record.successCount > 0 && record.failCount > 0) {
+              record.status = 'partial'; // 部分完成
+            } else {
+              record.status = 'fail'; // 全部失败
+            }
             // 保存任务完成情况到本地存储
             saveTaskExecutionRecordsToStorage();
           }
@@ -10947,9 +11310,11 @@ const executeScheduledTask = async (task) => {
         } else {
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `任务函数不存在: ${taskName}`,
+            message: `任务函数不存在：${taskName}`,
             type: "error",
           });
+          // ✅ 清除实时进度更新定时器
+          clearInterval(scheduledProgressTimer);
           // ✅ 更新子任务执行记录为失败
           if (taskExecutionRecords.value[taskRecordIndex]) {
             taskExecutionRecords.value[taskRecordIndex].status = 'fail';
@@ -13393,6 +13758,7 @@ const createTaskDeps = () => ({
   selectedTokens,
   tokens,
   tokenStatus,
+  tokenFailReasons,
   isRunning,
   shouldStop,
   ensureConnection,
@@ -13401,7 +13767,32 @@ const createTaskDeps = () => ({
   connectionQueue,
   batchSettings,
   tokenStore,
-  addLog,
+  addLog: (log) => {
+    addLog(log);
+    // 自动捕获失败原因：从日志消息中提取失败信息
+    if (log.type === 'error' && log.message) {
+      const msg = log.message;
+      const failIdx = msg.indexOf('失败');
+      if (failIdx !== -1) {
+        for (const tokenId of selectedTokens.value) {
+          const token = tokens.value.find(t => t.id === tokenId);
+          if (token && msg.includes(token.name)) {
+            const afterFail = msg.substring(failIdx);
+            const colonMatch = afterFail.match(/失败[：:]\s*/);
+            if (colonMatch) {
+              const reason = afterFail.substring(colonMatch.index + colonMatch[0].length).trim();
+              if (reason) {
+                tokenFailReasons.value[tokenId] = reason.substring(0, 100);
+              }
+            } else if (!tokenFailReasons.value[tokenId]) {
+              tokenFailReasons.value[tokenId] = afterFail.substring(2).trim().substring(0, 100) || '执行失败';
+            }
+            break;
+          }
+        }
+      }
+    }
+  },
   message,
   currentRunningTokenId,
   // 延迟配置
@@ -16025,7 +16416,7 @@ html[data-theme="dark"] .tr-empty {
 
 .tr-item:hover {
   background: rgba(128, 128, 128, 0.1);
-  transform: translateX(2px);
+  /* ✅ 移除 transform: translateX(2px) 避免鼠标移动时触发抖动 */
 }
 
 .tr-item-success { border-left-color: #4CAF50; }
@@ -16461,6 +16852,13 @@ html[data-theme="dark"] .tr-failed-name { color: #ddd; }
   gap: 10px;
   flex: 1;
   min-width: 0;
+}
+
+.task-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .task-status-dot {
