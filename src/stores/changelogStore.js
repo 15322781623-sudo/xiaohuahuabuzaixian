@@ -10,10 +10,42 @@ export const useChangelogStore = defineStore("changelog", () => {
 
   const changelogs = ref([
     {
+      version: "v2.19.1",
+      date: "2026-07-05",
+      type: "patch",
+      title: "任务完成情况修复 & 爬塔重试机制优化 & UI 抖动修复",
+      features: [
+        "任务完成情况支持重复执行显示：移除去重逻辑，每次执行都生成独立记录",
+        "任务完成情况 Modal 数据加载优化：合并内存和 localStorage 数据，确保正在执行的任务也能显示",
+        "任务完成情况状态判断修复：retry 状态正确计入 runningCount，避免误判为失败",
+        "任务完成情况保存逻辑修复：finally 块中添加保存调用，确保定时任务记录不丢失",
+        "领取挂机无挂机数据处理优化：无挂机数据时跳过并标记为成功，不再标记为失败",
+        "领取挂机重试机制优化：超时错误加入重试队列，不再直接标记为失败账号",
+        "挂机 API 超时时间延长：从 5000ms 增加到 15000ms，减少超时失败",
+        "任务记录 CSS 抖动修复：移除 hover 时的 translateX 效果，避免鼠标移动时触发抖动",
+      ],
+      fixes: [
+        "修复任务完成情况重复执行只显示一条记录的问题（移除 startTime+name 去重逻辑）",
+        "修复任务完成情况 Modal 打开时数据覆盖问题（改为合并内存和 localStorage 数据）",
+        "修复任务完成情况状态判断错误（retry 状态未计入 runningCount 导致误判为失败）",
+        "修复任务完成情况 finally 块缺少 saveTaskExecutionRecordsToStorage 调用",
+        "修复领取挂机无挂机数据导致加钟失败的问题（返回 true 而非 undefined）",
+        "修复领取挂机重试机制将超时账号错误标记为失败的问题（超时加入重试队列）",
+        "修复 CSS hover translateX(2px) 导致任务记录鼠标移动时抖动的问题",
+        "修复一键爬塔执行时重试机制未被识别，直接标记为失败账号的问题",
+      ],
+      improvements: [
+        "任务完成情况保存逻辑优化：使用 startTime+name 去重，避免重复保存但允许重复执行",
+        "任务完成情况 Modal 打开逻辑优化：保留内存中的记录，追加 localStorage 中的新记录",
+        "挂机相关 API 超时配置优化：system_mysharecallback 和 system_claimhangupreward 超时延长到 15000ms",
+        "任务记录 hover 效果优化：只保留背景色变化，移除水平位移避免抖动",
+      ],
+    },
+    {
       version: "v2.19.0",
       date: "2026-07-04",
       type: "minor",
-      title: "洗练助手UI优化 & BIN账号一键添加 & 战力过滤 & 任务完成情况优化",
+      title: "洗练助手 UI 优化 & BIN 账号一键添加 & 战力过滤 & 任务完成情况优化",
       features: [
         "洗练助手UI全面重构：武将、装备、孔位改为宝箱式一行排列布局，自动平分空间",
         "新增孔位解锁进度显示：实时显示剩余多少次解锁下一孔（1孔0次/2孔10次/3孔100次/4孔1000次/5孔10000次）",
