@@ -6496,6 +6496,8 @@ const batchSettings = reactive({
   connectionTimeout: 30000,
   reconnectDelay: 5000,
   maxLogEntries: 1000,
+  // 批量任务超时时间配置（单位：分钟）
+  batchTaskTimeout: 240, // 默认 4 小时，可在此调整
   // 页面刷新配置
   enableRefresh: true,
   refreshInterval: 360, // 分钟
@@ -9310,7 +9312,16 @@ const clearTaskExecutionRecords = () => {
  * @returns {Promise<void>}
  */
 const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) => {
-  if (selectedTokens.value.length === 0) {
+  // ✅ 十殿阎罗挑战预设自带账号（队长 + 队员），无需额外选择账号
+  const isNightmareChallenge = taskName === 'batchNightmareChallenge';
+  
+  // 十殿阎罗挑战：如果没有选择账号，直接打开弹窗（不创建任务记录）
+  if (isNightmareChallenge && selectedTokens.value.length === 0) {
+    await taskFunction();
+    return;
+  }
+  
+  if (!isNightmareChallenge && selectedTokens.value.length === 0) {
     message.warning('请先选择账号');
     return;
   }
@@ -9582,10 +9593,10 @@ const healthCheck = () => {
   // 检查定时任务执行状态是否卡住
   if (isScheduledTaskRunning.value && currentScheduledTask) {
     const now = Date.now();
-    // 十殿挑战任务超时阈值为160分钟（>内部150分钟超时），其他任务保持1小时
+    // 十殿挑战任务超时阈值为 160 分钟（>内部 150 分钟超时），其他任务保持 260 分钟（>批量任务 240 分钟超时）
     const isNightmareHealthTask = currentScheduledTask?.taskName === 'batchNightmareChallengePresets' 
       || currentScheduledTask?.name?.includes('十殿');
-    const taskTimeoutMs = isNightmareHealthTask ? (160 * 60 * 1000) : (60 * 60 * 1000);
+    const taskTimeoutMs = isNightmareHealthTask ? (160 * 60 * 1000) : (260 * 60 * 1000);
     const taskTimeoutAgo = now - taskTimeoutMs;
     if (scheduledTaskStartTime && scheduledTaskStartTime < taskTimeoutAgo) {
       const timeoutMinutes = Math.round(taskTimeoutMs / 60000);
@@ -10718,10 +10729,15 @@ const executeScheduledTask = async (task) => {
 
       addLog({
         time: new Date().toLocaleTimeString(),
-        message: `执行任务: ${availableTasks.find((t) => t.value === taskName)?.label || taskName}`,
+        message: `执行任务：${availableTasks.find((t) => t.value === taskName)?.label || taskName}`,
         type: "info",
       });
-      
+            
+      // ✅ 重置所有账号的状态（防止前一个任务的状态影响当前任务）
+      availableTokens.forEach(tokenId => {
+        tokenStatus.value[tokenId] = "waiting";
+      });
+            
       // ✅ 记录单个功能模块开始时间
       const taskStartTime = Date.now();
       const taskLabel = availableTasks.find((t) => t.value === taskName)?.label || taskName;
@@ -10818,11 +10834,11 @@ const executeScheduledTask = async (task) => {
         selectedTokens.value = [...availableTokens];
         
         // 执行任务函数（带超时保护，防止单个任务卡死导致整个定时任务挂起）
-        // ✅ BUG修复：十殿挑战内部有2小时超时保护，外层超时需适配
+        // ✅ BUG 修复：十殿挑战内部有 2 小时超时保护，外层超时需适配
         const isNightmareTask = taskName === 'batchNightmareChallengePresets';
         const BATCH_TASK_TIMEOUT = isNightmareTask
-          ? (150 * 60 * 1000) // 十殿挑战：150分钟（>内部2小时超时+重试余量）
-          : ((batchSettings.batchTaskTimeout || 15) * 60 * 1000);
+          ? (150 * 60 * 1000) // 十殿挑战：150 分钟（>内部 2 小时超时 + 重试余量）
+          : ((batchSettings.batchTaskTimeout || 240) * 60 * 1000); // 批量任务：默认为 4 小时（240 分钟）
         
         // ✅ 记录当前批次的账号数量（用于统计）
         const batchStartCount = availableTokens.length;
@@ -15303,8 +15319,8 @@ const startBatch = async () => {
   const MAX_400340_RETRIES = batchSettings.defaultRetryCount || 2;
   const RETRY_WAIT_TIME = batchSettings.retryDelay || 60000;
 
-  // 单账号执行超时保护（默认10分钟）
-  const TOKEN_EXECUTION_TIMEOUT = (batchSettings.taskTimeout || 10) * 60 * 1000;
+  // 单账号执行超时保护（默认 30 分钟）
+  const TOKEN_EXECUTION_TIMEOUT = (batchSettings.taskTimeout || 30) * 60 * 1000;
 
   // ========== 连接池滚动执行 ==========
   // 同步连接池大小与当前设置

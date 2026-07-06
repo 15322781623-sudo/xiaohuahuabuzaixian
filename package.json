@@ -1,8 +1,8 @@
 {
   "name": "xyzw-token-manager",
-  "version": "2.19.0",
+  "version": "2.20.0",
   "type": "module",
-  "description": "XYZW游戏Token管理器 - 支持Base64导入和WebSocket连接管理",
+  "description": "XYZW 游戏 Token 管理器 - 支持 Base64 导入和 WebSocket 连接管理",
   "main": "src/main.js",
   "scripts": {
     "testr": "node ./test/roleToken.js",

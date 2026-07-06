@@ -149,7 +149,6 @@ export function createTasksBottle(deps) {
         await ensureConnection(tokenId);
         if (shouldStop.value)
           return;
-        
         await tokenStore.sendMessageWithPromise(
           tokenId,
           "bottlehelper_claim",
@@ -166,13 +165,10 @@ export function createTasksBottle(deps) {
       } catch (error) {
         console.error(error);
         tokenStatus.value[tokenId] = "failed";
-        const errorMsg = error.message || "未知错误";
-        // 错误码2000150表示没有可领取的盐罐
-        const displayMsg = errorMsg.includes("2000150") ? "当前没有可领取的罐子" : errorMsg;
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} 领取盐罐失败: ${displayMsg}`,
-          type: errorMsg.includes("2000150") ? "warning" : "error",
+          message: `${token.name} 领取盐罐失败: ${error.message || "未知错误"}`,
+          type: "error",
         });
       } finally {
         tokenStore.closeWebSocketConnection(tokenId);

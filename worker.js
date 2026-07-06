@@ -12,13 +12,13 @@ const GITHUB_PROXY_LIST = [
 
 // 静态兜底配置（R2 和 GitHub 都失败时使用）
 const FALLBACK_CONFIG = {
-  latestVersion: "2.18.0",
-  versionCode: 21800,
+  latestVersion: "2.20.0",
+  versionCode: 22000,
   // R2 直连下载（最快最稳）
   downloadUrl: `https://xyzw-apk-updater.15322781623.workers.dev/api/apk/download`,
   // GitHub 原始链接作为备选
   downloadUrlOriginal: `https://github.com/${GITHUB_REPO}/releases/latest/download/肝王之王.apk`,
-  changelog: "v2.18.0: 竞技场战斗结果反馈修复 & 战败判定 fallback & 任务执行状态修复 & 批量任务时序修复 & Token 页面自动跳转解除 & APK 更新检测修复",
+  changelog: "v2.20.0: 十殿阎罗挑战优化 & 成员出战显示 & UI 美化",
   minVersionCode: 21500,
   forceUpdate: false,
 };

@@ -33,7 +33,6 @@ export function createTasksItem(deps) {
     helperSettings,
     delayConfig,
     moduleDelays,
-    safeDelay,
   } = deps;
 
   // 获取模块延迟的辅助函数
@@ -320,7 +319,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       // 重试也分批执行
       for (let i = 0; i < cur.length; i += maxConcurrent) {
@@ -633,7 +632,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processBookUpgrade);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -800,7 +799,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       for (let i = 0; i < cur.length; i += maxConcurrent) {
         if (shouldStop.value) break;
@@ -908,7 +907,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processClaimStar);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -996,7 +995,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processClaimBoxPoint);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -1134,7 +1133,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processClaimWeekly);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -1175,8 +1174,12 @@ export function createTasksItem(deps) {
 
         await ensureConnection(tokenId);
 
-        // 使用专用轻量级刷新函数获取桃园任务信息
-        const res = await tokenStore.refreshForBatchPeach(tokenId);
+        const res = await tokenStore.sendMessageWithPromise(
+          tokenId,
+          "legion_getpayloadtask",
+          {},
+          5000,
+        );
 
         const payloadTask = res?.payloadTask || res?.data?.payloadTask;
 
@@ -1349,7 +1352,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processPeachTasks);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -1534,7 +1537,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processGenieSweep);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -1724,7 +1727,7 @@ export function createTasksItem(deps) {
       for (let r = 0; r < retryMax && failed.length > 0; r++) {
         if (shouldStop.value) break;
         addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-        if (!(await safeDelay(retryWait))) break;
+        await new Promise(r2 => setTimeout(r2, retryWait));
         const cur = [...failed]; failed = [];
         await runStreaming(cur, processFragmentPacks);
         cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -1846,7 +1849,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processOpenBox);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -2000,7 +2003,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processOpenDiamondBox);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -2259,7 +2262,7 @@ export function createTasksItem(deps) {
       });
 
       const retryWaitTime = batchSettings.retryDelay || 60000;
-      if (await safeDelay(retryWaitTime)) {
+      await new Promise((r) => setTimeout(r, retryWaitTime));
 
       for (let retryCount = 1; retryCount <= MAX_RETRIES && retryTokens.length > 0 && !shouldStop.value; retryCount++) {
         addLog({
@@ -2270,10 +2273,9 @@ export function createTasksItem(deps) {
 
         const stillFailed = [];
 
-        await runStreaming(retryTokens.map(r => r.tokenId), async (tokenId) => {
-          if (shouldStop.value) return;
-          const retryTask = retryTokens.find(r => r.tokenId === tokenId);
-          if (!retryTask) return;
+        for (const retryTask of retryTokens) {
+          if (shouldStop.value)
+            break;
 
           try {
             addLog({
@@ -2282,7 +2284,7 @@ export function createTasksItem(deps) {
               type: "info",
             });
 
-            await ensureConnection(tokenId);
+            await ensureConnection(retryTask.tokenId);
 
             const availableCount = totalCount;
             const batches = Math.floor(availableCount / 10);
@@ -2290,7 +2292,7 @@ export function createTasksItem(deps) {
 
             for (let i = 0; i < batches && !shouldStop.value; i++) {
               await tokenStore.sendMessageWithPromise(
-                tokenId,
+                retryTask.tokenId,
                 "artifact_lottery",
                 { type: fishType, lotteryNumber: 10, newFree: true },
                 5000,
@@ -2300,14 +2302,14 @@ export function createTasksItem(deps) {
 
             if (remainder > 0 && !shouldStop.value) {
               await tokenStore.sendMessageWithPromise(
-                tokenId,
+                retryTask.tokenId,
                 "artifact_lottery",
                 { type: fishType, lotteryNumber: remainder, newFree: true },
                 5000,
               );
             }
 
-            tokenStatus.value[tokenId] = "completed";
+            tokenStatus.value[retryTask.tokenId] = "completed";
             addLog({
               time: new Date().toLocaleTimeString(),
               message: `${retryTask.tokenName} 重试成功`,
@@ -2317,9 +2319,9 @@ export function createTasksItem(deps) {
             const errMsg = error.message || "";
             if (errMsg.includes("400340") || errMsg.includes("200750") || errMsg.includes("11800010")) {
               stillFailed.push(retryTask);
-              tokenStatus.value[tokenId] = "waiting_retry";
+              tokenStatus.value[retryTask.tokenId] = "waiting_retry";
             } else {
-              tokenStatus.value[tokenId] = "failed";
+              tokenStatus.value[retryTask.tokenId] = "failed";
             }
             addLog({
               time: new Date().toLocaleTimeString(),
@@ -2327,10 +2329,10 @@ export function createTasksItem(deps) {
               type: "error",
             });
           } finally {
-            tokenStore.closeWebSocketConnection(tokenId);
+            tokenStore.closeWebSocketConnection(retryTask.tokenId);
             releaseConnectionSlot();
           }
-        });
+        }
 
         retryTokens.length = 0;
         retryTokens.push(...stillFailed);
@@ -2341,11 +2343,9 @@ export function createTasksItem(deps) {
             message: `${stillFailed.length} 个账号重试失败，等待${retryWaitTime / 1000}秒后进行下一轮重试`,
             type: "warning",
           });
-          if (!(await safeDelay(retryWaitTime))) break;
+          await new Promise((r) => setTimeout(r, retryWaitTime));
         }
       }
-
-      } // end if safeDelay
 
       // 最终结果
       const successCount = selectedTokens.value.length - retryTokens.length;
@@ -2478,7 +2478,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processRecruit);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -2929,7 +2929,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processOpenBoxByPoints);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -3306,7 +3306,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processFourSaints);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -3852,7 +3852,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processToken);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -4019,7 +4019,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processToken);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -4134,7 +4134,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       for (const tokenId of cur) {
         if (shouldStop.value) break;
@@ -4235,7 +4235,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processToken);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -4460,7 +4460,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processToken);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -4658,7 +4658,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       for (const tokenId of cur) {
         if (shouldStop.value) break;
@@ -4766,7 +4766,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       for (const tokenId of cur) {
         if (shouldStop.value) break;
@@ -4968,7 +4968,7 @@ export function createTasksItem(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processActivate);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });

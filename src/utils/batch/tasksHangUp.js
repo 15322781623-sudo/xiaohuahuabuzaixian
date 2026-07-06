@@ -49,7 +49,7 @@ export function createTasksHangUp(deps) {
   };
 
   /**
-   * 获取挂机状态（使用活跃度缓存，30秒有效期）
+   * 获取挂机状态
    * @param {string} tokenId Token ID
    * @param {object} options 配置选项
    * @param {boolean} options.checkAddTime 是否检查是否需要加钟（默认false）
@@ -61,9 +61,11 @@ export function createTasksHangUp(deps) {
     const { checkAddTime = false, thresholdSeconds = 3600, maxHangUpTime = 43200 } = options;
 
     try {
-      // 使用专用轻量级刷新函数获取活跃度数据（带30秒缓存）
-      const activityData = await tokenStore.refreshForBatchActivity(tokenId);
-      const hangUpData = activityData?.hangUp;
+      // 获取角色信息
+      const roleInfo = await callWithRetry(tokenId, "role_getroleinfo", {}, {
+        noRetryErrors: ["400000", "200020", "3100080", "3100030", "400340"], // 400340由外层重试机制处理
+      });
+      const hangUpData = roleInfo?.role?.hangUp;
 
       if (!hangUpData) {
         return {
@@ -258,13 +260,8 @@ export function createTasksHangUp(deps) {
       if (shouldStop.value) { addLog({ time: new Date().toLocaleTimeString(), message: `已停止，取消重试`, type: "warning" }); break; }
 
       const nextRetryTokens = [];
-      // ✅ 并发重试，通过runStreaming控制并发
-      await runStreaming(currentRetryTokens.map(r => r.tokenId), async (tokenId) => {
+      const retryPromises = currentRetryTokens.map(async ({ tokenId, tokenName }) => {
         if (shouldStop.value) return;
-        const info = currentRetryTokens.find(r => r.tokenId === tokenId);
-        if (!info) return;
-        const { tokenName } = info;
-
         tokenStatus.value[tokenId] = "running";
         const token = tokens.value.find((t) => t.id === tokenId);
         let conn = false;
@@ -403,6 +400,7 @@ export function createTasksHangUp(deps) {
   const performAddTime = async (tokenId, tokenName) => {
     return performAddTimeWithCount(tokenId, tokenName, 4);
   };
+
   /**
    * 领取挂机奖励 + 加钟（支持400340/200750/11800010错误最多3次重试）
    * 逻辑：判断elapsedTime>=配置阈值 → 领取奖励 → 加钟4次
@@ -541,7 +539,7 @@ export function createTasksHangUp(deps) {
           const { isInCurrentWeek } = await import("@/utils/base.ts");
           const isCompleted = maxCorrectNum >= 10 && isInCurrentWeek(beginTime * 1000);
           if (isCompleted) {
-            addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${tokenName} 本周答题已完成 (${maxCorrectNum}/10)`, type: "success" });
+            addLog({ time: new Date().toLocaleTimeString(), message: `🟢 ${tokenName} 已跳过（本周答题已完成：${maxCorrectNum}/10）`, type: "info" });
             tokenStatus.value[tokenId] = "completed";
             return true;
           }
@@ -564,16 +562,34 @@ export function createTasksHangUp(deps) {
               const answered = status.answeredCount || 0;
               if (answered !== lastAnswered) {
                 lastAnswered = answered;
-                addLog({ time: new Date().toLocaleTimeString(), message: `📝 ${tokenName} 答题进度: ${answered}/${status.questionCount || 10}`, type: "info" });
+                addLog({ time: new Date().toLocaleTimeString(), message: `📝 ${tokenName} 答题进度：${answered}/${status.questionCount || 10}`, type: "info" });
               }
+              // ✅ 检查答题完成状态
+              // 必须同时满足：status === "completed" 且 (answeredCount >= 10 或 maxCorrectNum >= 10)
               if (status.status === "completed") {
-                completed = true;
-                addLog({ time: new Date().toLocaleTimeString(), message: `🎉 ${tokenName} 答题完成，奖励已领取`, type: "success" });
-                break;
+                const maxCorrectNum = status.maxCorrectNum || 0;
+                if (answered >= 10 || maxCorrectNum >= 10) {
+                  completed = true;
+                  addLog({ time: new Date().toLocaleTimeString(), message: `🎉 ${tokenName} 答题完成，奖励已领取`, type: "success" });
+                  break;
+                } else {
+                  // ⚠️ 答题未完成，继续轮询等待真正的完成状态
+                  // 不要立即返回，因为 WebSocket 推送可能有延迟
+                  addLog({ time: new Date().toLocaleTimeString(), message: `⚠️ ${tokenName} 答题进度异常（${answered}/10，正确：${maxCorrectNum}/10），继续等待...`, type: "warning" });
+                  // 继续轮询，不 break，让循环继续
+                }
               }
               if (status.status === "failed_need_retry") {
-                addLog({ time: new Date().toLocaleTimeString(), message: `⚠️ ${tokenName} 答题未完成，需要重试`, type: "warning" });
-                return false;
+                const maxCorrectNum = status.maxCorrectNum || 0;
+                // 如果服务器记录的正确数已经 >= 10，认为完成
+                if (maxCorrectNum >= 10) {
+                  completed = true;
+                  addLog({ time: new Date().toLocaleTimeString(), message: `🎉 ${tokenName} 答题完成（服务器验证：${maxCorrectNum}/10）`, type: "success" });
+                  break;
+                } else {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `⚠️ ${tokenName} 答题未完成（正确：${maxCorrectNum}/10），需要重试`, type: "warning" });
+                  return false;
+                }
               }
             }
             await safeDelay(1000);
@@ -590,7 +606,7 @@ export function createTasksHangUp(deps) {
         } catch (error) {
           const errMsg = error.message || "";
           if (errMsg.includes("3100080")) {
-            addLog({ time: new Date().toLocaleTimeString(), message: `⚠️ ${tokenName} 答题次数已用完或未开启 (3100080)`, type: "warning" });
+            addLog({ time: new Date().toLocaleTimeString(), message: `🟢 ${tokenName} 已跳过（答题次数已用完或未开启）`, type: "info" });
             tokenStatus.value[tokenId] = "completed";
             return true;
           }
@@ -619,7 +635,7 @@ export function createTasksHangUp(deps) {
           }
         } catch (err) {
           tokenStatus.value[tokenId] = "failed";
-          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 答题失败: ${err.message}`, type: "error" });
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 答题失败：${err.message}`, type: "error" });
         }
       });
 
@@ -632,11 +648,9 @@ export function createTasksHangUp(deps) {
         await safeDelay(batchSettings.retryDelay || 60000); // 等待重试
 
         const failedThisRound = [];
-        await runStreaming(retryTokens.map(r => r.tokenId), async (tokenId) => {
-          if (shouldStop.value) return;
-          const info = retryTokens.find(r => r.tokenId === tokenId);
-          if (!info) return;
-          const { name } = info;
+        for (const { tokenId, name } of retryTokens) {
+          if (shouldStop.value)
+            break;
           tokenStatus.value[tokenId] = "running";
           try {
             const success = await studyForToken(tokenId, name, true);
@@ -651,7 +665,9 @@ export function createTasksHangUp(deps) {
             tokenStatus.value[tokenId] = "failed";
             addLog({ time: new Date().toLocaleTimeString(), message: `${name} 重试答题失败: ${err.message}`, type: "error" });
           }
-        });
+          // 账号间间隔
+          await safeDelay(_getModuleDelay('hangup'));
+        }
         retryTokens.length = 0;
         retryTokens.push(...failedThisRound);
       }
@@ -685,10 +701,6 @@ export function createTasksHangUp(deps) {
 
       const clubSignForToken = async (tokenId, token) => {
         addLog({ time: new Date().toLocaleTimeString(), message: `=== 俱乐部签到: ${token.name} ===`, type: "info" });
-        
-        // 使用专用轻量级刷新函数获取俱乐部信息
-        await tokenStore.refreshForBatchClub(tokenId);
-        
         await callWithRetry(tokenId, "legion_signin", {});
         await safeDelay(_getModuleDelay('hangup'));
         addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${token.name} 签到成功`, type: "success" });

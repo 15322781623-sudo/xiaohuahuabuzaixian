@@ -1,4 +1,3 @@
-import PQueue from "p-queue";
 import { useLocalStorage } from "@vueuse/core";
 import { defineStore } from "pinia";
 import { computed, onUnmounted, ref } from "vue";
@@ -12,14 +11,10 @@ import { XyzwWebSocketClient } from "@/utils/xyzwWebSocket";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { generateRandomSeed } from "@/utils/randomSeed";
 import { transformToken } from "@/utils/token";
-import { getBinBackupWithFallback, deleteBinBackup } from "@/utils/binBackup";
 import { emitPlus } from "./events/index.js";
 import router from "@/router";
 
 const { getArrayBuffer, storeArrayBuffer, deleteArrayBuffer, clearAll } = useIndexedDB();
-
-// BIN Token刷新专用队列：串行执行，每个间隔2秒，防止并发请求authuser触发服务器限流
-const binRefreshQueue = new PQueue({ concurrency: 1, interval: 2000 });
 
 declare interface TokenData {
   id: string;
@@ -86,9 +81,6 @@ const activeConnections = useLocalStorage("activeConnections", {});
 // Token分组管理
 export const tokenGroups = useLocalStorage<TokenGroup[]>("tokenGroups", []);
 
-// 推图保活防重连锁：记录正在重连中的 tokenId，避免 onDisconnect 重复调度 createWebSocketConnection
-const pushReconnecting = new Set<string>();
-
 /**
  * 重构后的Token管理存储
  * 以名称-token列表形式管理多个游戏角色
@@ -128,9 +120,6 @@ export const useTokenStore = defineStore("tokens", () => {
 
   // 每个token的游戏数据存储（用于批量显示）
   const tokenGameDataMap = ref<Record<string, any>>({});
-  
-  // 活跃度数据缓存（30秒有效期，用于批量活跃度检查）
-  const activityCache = ref<Record<string, { data: any; timestamp: number }>>({});
 
   // 每个token的活跃度存储（用于批量排序）
   const tokenActivityMap = ref<Record<string, number>>({});
@@ -327,12 +316,9 @@ export const useTokenStore = defineStore("tokens", () => {
       selectedTokenId.value = null;
     }
 
-    // 同时删除 IndexedDB 中的数据
+    // 同时删除IndexedDB中的数据
     await deleteArrayBuffer(tokenId);
-    
-    // 同时删除 localStorage 备份
-    deleteBinBackup(tokenId);
-    
+
     return true;
   };
 
@@ -499,6 +485,37 @@ export const useTokenStore = defineStore("tokens", () => {
       wsLogger.info(`游戏数据刷新计划已安排 [${tokenId}]`);
     } catch (error) {
       wsLogger.error(`刷新游戏数据失败 [${tokenId}]:`, error);
+    }
+  };
+
+  // ✅ 轻量级刷新角色信息（仅用于批量任务获取活跃度）
+  const refreshForBatchRoleOnly = async (tokenId: string) => {
+    try {
+      const connection = wsConnections.value[tokenId];
+
+      // 如果未连接，返回 null
+      if (!connection || connection.status !== "connected") {
+        wsLogger.warn(`刷新角色信息失败：连接未建立 [${tokenId}]`);
+        return null;
+      }
+
+      // 发送获取角色信息请求
+      const roleInfo = await sendMessageWithPromise(
+        tokenId,
+        "role_getroleinfo",
+        {},
+        10000,
+      );
+
+      // 更新 tokenGameDataMap 中的 roleInfo
+      if (roleInfo) {
+        updateTokenGameData(tokenId, { roleInfo });
+      }
+
+      return roleInfo;
+    } catch (error) {
+      wsLogger.error(`批量刷新角色信息失败 [${tokenId}]:`, error);
+      return null;
     }
   };
 
@@ -728,8 +745,7 @@ export const useTokenStore = defineStore("tokens", () => {
 
         if (userToken) {
           try {
-            // 通过队列串行执行transformToken，避免多账号并发刷新触发服务器限流
-            const token = await binRefreshQueue.add(() => transformToken(userToken));
+            const token = await transformToken(userToken);
             updateToken(tokenId, {
               ...gameToken,
               token,
@@ -1463,36 +1479,6 @@ export const useTokenStore = defineStore("tokens", () => {
           }
         }
         updateCrossTabConnectionState(tokenId, "disconnected");
-
-        // 推图保活：如果该 token 正在推图，自动触发重连
-        if (window._pt && window._pt[tokenId] && window._pt[tokenId].running) {
-          // 防止重连锁：如果正在重连中，跳过
-          if (pushReconnecting.has(tokenId)) {
-            return;
-          }
-
-          // 清除主动断开标记，确保重连不被阻断
-          intentionallyDisconnected.delete(tokenId);
-          pushReconnecting.add(tokenId);
-
-          // 延迟 2 秒后重连，避免与正常断开逻辑冲突
-          setTimeout(async () => {
-            try {
-              // 再次确认仍在推图
-              if (window._pt && window._pt[tokenId] && window._pt[tokenId].running) {
-                const gameToken = gameTokens.value.find((t) => t.id === tokenId);
-                if (gameToken) {
-                  await createWebSocketConnection(tokenId, gameToken.token, gameToken.wsUrl);
-                  console.log(`[推图保活] Token ${tokenId} 断连后自动重连成功`);
-                }
-              }
-            } catch (e) {
-              console.warn(`[推图保活] Token ${tokenId} 自动重连失败:`, (e as Error).message);
-            } finally {
-              pushReconnecting.delete(tokenId);
-            }
-          }, 2000);
-        }
       };
 
       wsClient.onError = (error) => {
@@ -1595,11 +1581,6 @@ export const useTokenStore = defineStore("tokens", () => {
     intentionallyDisconnected.add(tokenId);
   };
 
-  // 清除主动断开标记（供推图重连使用）
-  const clearIntentionalDisconnect = (tokenId: string) => {
-    intentionallyDisconnected.delete(tokenId);
-  };
-
   // 获取WebSocket客户端
   const getWebSocketClient = (tokenId: string) => {
     return wsConnections.value[tokenId]?.client || null;
@@ -1655,341 +1636,6 @@ export const useTokenStore = defineStore("tokens", () => {
     }
   };
 
-  /**
-   * 轻量级刷新：仅获取角色信息（用于批量竞技场等只需要角色数据的任务）
-   * @param tokenId - Token ID
-   * @returns 角色信息响应
-   */
-  const refreshForBatchRoleOnly = async (tokenId: string) => {
-    try {
-      const connection = wsConnections.value[tokenId];
-      if (!connection || connection.status !== "connected") {
-        wsLogger.warn(`批量刷新角色信息时发现未连接 [${tokenId}]`);
-        return null;
-      }
-
-      wsLogger.info(`[批量] 开始刷新角色信息 [${tokenId}]`);
-      const roleInfo = await sendMessageWithPromise(
-        tokenId,
-        "role_getroleinfo",
-        {},
-        10000,
-      );
-      
-      // 更新到本地存储
-      if (roleInfo) {
-        updateTokenGameData(tokenId, { roleInfo });
-      }
-      
-      wsLogger.info(`[批量] 角色信息刷新完成 [${tokenId}]`);
-      return roleInfo;
-    } catch (error) {
-      wsLogger.error(`[批量] 刷新角色信息失败 [${tokenId}]:`, error);
-      return null;
-    }
-  };
-
-  /**
-   * 轻量级刷新：获取竞技场战斗所需的 battleVersion（用于批量竞技场）
-   * @param tokenId - Token ID
-   * @returns fight_startlevel 响应
-   */
-  const refreshForBatchArena = async (tokenId: string) => {
-    try {
-      const connection = wsConnections.value[tokenId];
-      if (!connection || connection.status !== "connected") {
-        wsLogger.warn(`批量刷新竞技场数据时发现未连接 [${tokenId}]`);
-        return null;
-      }
-
-      wsLogger.info(`[批量] 开始刷新竞技场战斗版本 [${tokenId}]`);
-      const fightLevelResult = await sendMessageWithPromise(
-        tokenId,
-        "fight_startlevel",
-        {},
-        8000,
-      );
-      
-      // 提取并缓存 battleVersion
-      const battleVersion = fightLevelResult?.battleData?.version 
-        || fightLevelResult?.battleVersion;
-      
-      if (battleVersion !== undefined) {
-        // 更新到全局 gameData，供后续战斗命令使用
-        gameData.value.battleVersion = battleVersion;
-        wsLogger.info(`[批量] 竞技场战斗版本已缓存：${battleVersion} [${tokenId}]`);
-      }
-      
-      return fightLevelResult;
-    } catch (error) {
-      wsLogger.error(`[批量] 刷新竞技场数据失败 [${tokenId}]:`, error);
-      return null;
-    }
-  };
-
-  /**
-   * 轻量级刷新：获取爬塔任务所需的塔信息（用于批量爬塔）
-   * @param tokenId - Token ID
-   * @returns evotower_getinfo 响应
-   */
-  const refreshForBatchTower = async (tokenId: string) => {
-    try {
-      const connection = wsConnections.value[tokenId];
-      if (!connection || connection.status !== "connected") {
-        wsLogger.warn(`批量刷新爬塔数据时发现未连接 [${tokenId}]`);
-        return null;
-      }
-
-      wsLogger.info(`[批量] 开始刷新爬塔信息 [${tokenId}]`);
-      const towerInfo = await sendMessageWithPromise(
-        tokenId,
-        "evotower_getinfo",
-        {},
-        10000,
-      );
-      
-      // 更新到本地存储
-      if (towerInfo) {
-        updateTokenGameData(tokenId, { evoTowerInfo: towerInfo });
-      }
-      
-      wsLogger.info(`[批量] 爬塔信息刷新完成 [${tokenId}]`);
-      return towerInfo;
-    } catch (error) {
-      wsLogger.error(`[批量] 刷新爬塔数据失败 [${tokenId}]:`, error);
-      return null;
-    }
-  };
-
-  /**
-   * 轻量级刷新：获取赛车任务所需的车辆信息（用于批量赛车）
-   * @param tokenId - Token ID
-   * @returns car_getrolecar 响应
-   */
-  const refreshForBatchCar = async (tokenId: string) => {
-    try {
-      const connection = wsConnections.value[tokenId];
-      if (!connection || connection.status !== "connected") {
-        wsLogger.warn(`批量刷新赛车数据时发现未连接 [${tokenId}]`);
-        return null;
-      }
-
-      wsLogger.info(`[批量] 开始刷新车辆信息 [${tokenId}]`);
-      const carInfo = await sendMessageWithPromise(
-        tokenId,
-        "car_getrolecar",
-        {},
-        10000,
-      );
-      
-      // 更新到本地存储
-      if (carInfo) {
-        updateTokenGameData(tokenId, { carInfo });
-      }
-      
-      wsLogger.info(`[批量] 车辆信息刷新完成 [${tokenId}]`);
-      return carInfo;
-    } catch (error) {
-      wsLogger.error(`[批量] 刷新赛车数据失败 [${tokenId}]:`, error);
-      return null;
-    }
-  };
-
-  /**
-   * 轻量级刷新：获取俱乐部签到所需信息（用于批量俱乐部签到）
-   * @param tokenId - Token ID
-   * @returns legion_getinfo 响应
-   */
-  const refreshForBatchClub = async (tokenId: string) => {
-    try {
-      const connection = wsConnections.value[tokenId];
-      if (!connection || connection.status !== "connected") {
-        wsLogger.warn(`批量刷新俱乐部数据时发现未连接 [${tokenId}]`);
-        return null;
-      }
-
-      wsLogger.info(`[批量] 开始刷新俱乐部信息 [${tokenId}]`);
-      const clubInfo = await sendMessageWithPromise(
-        tokenId,
-        "legion_getinfo",
-        {},
-        10000,
-      );
-      
-      // 更新到本地存储
-      if (clubInfo) {
-        updateTokenGameData(tokenId, { legionInfo: clubInfo });
-      }
-      
-      wsLogger.info(`[批量] 俱乐部信息刷新完成 [${tokenId}]`);
-      return clubInfo;
-    } catch (error) {
-      wsLogger.error(`[批量] 刷新俱乐部数据失败 [${tokenId}]:`, error);
-      return null;
-    }
-  };
-
-  /**
-   * 轻量级刷新：获取活跃度信息（用于批量活跃度检查，带30秒缓存）
-   * @param tokenId - Token ID
-   * @param forceRefresh - 是否强制刷新（忽略缓存）
-   * @returns 活跃度数据
-   */
-  const refreshForBatchActivity = async (tokenId: string, forceRefresh = false) => {
-    try {
-      // 检查缓存（30秒有效期）
-      if (!forceRefresh) {
-        const cached = activityCache.value[tokenId];
-        if (cached && Date.now() - cached.timestamp < 30000) {
-          wsLogger.debug(`[批量] 使用缓存的活跃度数据 [${tokenId}]`);
-          return cached.data;
-        }
-      }
-
-      const connection = wsConnections.value[tokenId];
-      if (!connection || connection.status !== "connected") {
-        wsLogger.warn(`批量刷新活跃度数据时发现未连接 [${tokenId}]`);
-        return null;
-      }
-
-      wsLogger.info(`[批量] 开始刷新活跃度信息 [${tokenId}]`);
-      const roleInfo = await sendMessageWithPromise(
-        tokenId,
-        "role_getroleinfo",
-        {},
-        10000,
-      );
-      
-      if (roleInfo) {
-        // 提取活跃度相关数据
-        const activityData = {
-          hangUp: roleInfo?.role?.hangUp,
-          items: roleInfo?.role?.items,
-          dailyTask: roleInfo?.role?.dailyTask,
-        };
-        
-        // 更新缓存
-        activityCache.value[tokenId] = {
-          data: activityData,
-          timestamp: Date.now(),
-        };
-        
-        // 更新到本地存储
-        updateTokenGameData(tokenId, { roleInfo });
-        
-        wsLogger.info(`[批量] 活跃度信息刷新完成并缓存30秒 [${tokenId}]`);
-        return activityData;
-      }
-      
-      return null;
-    } catch (error) {
-      wsLogger.error(`[批量] 刷新活跃度数据失败 [${tokenId}]:`, error);
-      return null;
-    }
-  };
-
-  /**
-   * 轻量级刷新：获取宝库信息（用于批量宝库任务）
-   * @param tokenId - Token ID
-   * @returns bosstower_getinfo 响应
-   */
-  const refreshForBatchBossTower = async (tokenId: string) => {
-    try {
-      const connection = wsConnections.value[tokenId];
-      if (!connection || connection.status !== "connected") {
-        wsLogger.warn(`批量刷新宝库数据时发现未连接 [${tokenId}]`);
-        return null;
-      }
-
-      wsLogger.info(`[批量] 开始刷新宝库信息 [${tokenId}]`);
-      const bossTowerInfo = await sendMessageWithPromise(
-        tokenId,
-        "bosstower_getinfo",
-        {},
-        10000,
-      );
-      
-      // 更新到本地存储
-      if (bossTowerInfo) {
-        updateTokenGameData(tokenId, { bossTowerInfo });
-      }
-      
-      wsLogger.info(`[批量] 宝库信息刷新完成 [${tokenId}]`);
-      return bossTowerInfo;
-    } catch (error) {
-      wsLogger.error(`[批量] 刷新宝库数据失败 [${tokenId}]:`, error);
-      return null;
-    }
-  };
-
-  /**
-   * 轻量级刷新：获取换皮闯关/寻宝信息（用于批量换皮任务）
-   * @param tokenId - Token ID
-   * @returns actegame_getinfo 响应
-   */
-  const refreshForBatchSkinChallenge = async (tokenId: string) => {
-    try {
-      const connection = wsConnections.value[tokenId];
-      if (!connection || connection.status !== "connected") {
-        wsLogger.warn(`批量刷新换皮闯关数据时发现未连接 [${tokenId}]`);
-        return null;
-      }
-
-      wsLogger.info(`[批量] 开始刷新换皮闯关信息 [${tokenId}]`);
-      const skinInfo = await sendMessageWithPromise(
-        tokenId,
-        "actegame_getinfo",
-        {},
-        10000,
-      );
-      
-      // 更新到本地存储
-      if (skinInfo) {
-        updateTokenGameData(tokenId, { actEGameInfo: skinInfo });
-      }
-      
-      wsLogger.info(`[批量] 换皮闯关信息刷新完成 [${tokenId}]`);
-      return skinInfo;
-    } catch (error) {
-      wsLogger.error(`[批量] 刷新换皮闯关数据失败 [${tokenId}]:`, error);
-      return null;
-    }
-  };
-
-  /**
-   * 轻量级刷新：获取桃园任务信息（用于批量领取桃园任务）
-   * @param tokenId - Token ID
-   * @returns peach_getinfo 响应
-   */
-  const refreshForBatchPeach = async (tokenId: string) => {
-    try {
-      const connection = wsConnections.value[tokenId];
-      if (!connection || connection.status !== "connected") {
-        wsLogger.warn(`批量刷新桃园数据时发现未连接 [${tokenId}]`);
-        return null;
-      }
-
-      wsLogger.info(`[批量] 开始刷新桃园信息 [${tokenId}]`);
-      const peachInfo = await sendMessageWithPromise(
-        tokenId,
-        "peach_getinfo",
-        {},
-        10000,
-      );
-      
-      // 更新到本地存储
-      if (peachInfo) {
-        updateTokenGameData(tokenId, { peachInfo });
-      }
-      
-      wsLogger.info(`[批量] 桃园信息刷新完成 [${tokenId}]`);
-      return peachInfo;
-    } catch (error) {
-      wsLogger.error(`[批量] 刷新桃园数据失败 [${tokenId}]:`, error);
-      return null;
-    }
-  };
-
   // Promise版发送消息
   const sendMessageWithPromise = async (
     tokenId: string,
@@ -2015,8 +1661,6 @@ export const useTokenStore = defineStore("tokens", () => {
       "fight_startboss",
       "fight_startlegionboss",
       "fight_startdungeon",
-      "fight_calcleveltime",
-      "fight_level",
     ];
     if (battleCommands.includes(cmd)) {
       const battleVersion = gameData.value.battleVersion;
@@ -2813,7 +2457,6 @@ export const useTokenStore = defineStore("tokens", () => {
     createWebSocketConnection,
     closeWebSocketConnection,
     markIntentionalDisconnect,
-    clearIntentionalDisconnect,
     getWebSocketStatus,
     getWebSocketClient,
     sendMessage,
@@ -2842,18 +2485,7 @@ export const useTokenStore = defineStore("tokens", () => {
     isTokenRunning,
     attemptTokenRefresh,
     refreshGameData,
-
-    // 批量任务专用轻量级刷新函数
-    refreshForBatchRoleOnly,
-    refreshForBatchArena,
-    refreshForBatchTower,
-    refreshForBatchCar,
-    refreshForBatchClub,
-    refreshForBatchActivity,
-    refreshForBatchBossTower, // 宝库信息
-    refreshForBatchSkinChallenge, // 换皮闯关/寻宝信息
-    refreshForBatchPeach, // 桃园任务信息
-    activityCache, // 导出活跃度缓存供外部访问
+    refreshForBatchRoleOnly, // ✅ 轻量级刷新角色信息
 
     // 游戏内发送消息方法
     sendMessageToLegion,
@@ -2883,9 +2515,6 @@ export const useTokenStore = defineStore("tokens", () => {
       }
       return parseResult;
     },
-
-    // 推图保活重连状态检查
-    isReconnecting: (tokenId: string): boolean => pushReconnecting.has(tokenId),
 
     // 连接管理增强功能
     validateConnectionUniqueness,

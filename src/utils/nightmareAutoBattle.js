@@ -59,14 +59,12 @@ export class NightmareAutoBattleService {
     this._attackRecords = {}; // { [level]: [roleId1, roleId2] }
     this._isCompleted = false;
     this._startTime = Date.now();
-    this._MAX_BATTLE_TIME = 2 * 60 * 60 * 1000; // 2小时超时（不含等待）
+    this._MAX_BATTLE_TIME = 2 * 60 * 60 * 1000; // 2 小时超时（不含等待）
     this._waitStartTime = null;
-    this._level8FirstEntry = false; // 卡点第8关标记
-    this._consecutiveFightFails = 0; // 连续出战失败计数
-    this._lastFailRoleId = null;     // 上次出战失败的成员 roleId
+    this._level8FirstEntry = false; // 卡点第 8 关标记
     this._cleanupDone = false;       // 清理标记，防止重复遣散
-    this._preMidnightReconnectDone = false; // 23:59重连标记，防止分钟内重复执行
-    this._reopenRetryCount = 0;      // 房间重建重试次数，最多1次
+    this._preMidnightReconnectDone = false; // 23:59 重连标记，防止分钟内重复执行
+    this._reopenRetryCount = 0;      // 房间重建重试次数，最多 1 次
 
     // 解析预设队伍成员 roleId 列表（用于队长变更检测）
     this._presetMemberRoleIds = [];
@@ -91,6 +89,21 @@ export class NightmareAutoBattleService {
     const boss = this._monsters.find(m => m.isBoss);
     if (!boss || !boss.maxHp) return null;
     return { curHp: boss.curHp, maxHp: boss.maxHp, name: boss.name };
+  }
+  
+  // ✅ 获取成员信息（用于 UI 显示）
+  getMembers() {
+    return this._members.map(m => ({
+      name: m.name,
+      roleId: m.roleId,
+      isAllHeroesDead: m.isAllHeroesDead,
+      isCaptain: m.isCaptain,
+    }));
+  }
+  
+  // ✅ 获取当前关卡的出战记录
+  getAttackRecords() {
+    return this._attackRecords[this._currentLevel] || [];
   }
 
   /** 重绑定回调（组件 remount 后调用） */
@@ -219,61 +232,42 @@ export class NightmareAutoBattleService {
       // 自动选择出战成员
       const result = this._getAutoAttacker();
       if (!result) {
-        // 第1-7关全员出战但未通关：仅遣散战斗房间，保留队伍，重建重试（最多1次）
+        // ✅ 详细诊断：为什么返回 null
+        const totalMembers = this._members.length;
+        const deadMembers = this._members.filter(m => m.isAllHeroesDead).length;
+        const aliveMembers = totalMembers - deadMembers;
+        const foughtCount = this._attackRecords[this._currentLevel]?.length || 0;
+              
+        this._onLog(`️ 无可用出战成员诊断：总成员${totalMembers}人，阵亡${deadMembers}人，存活${aliveMembers}人，已出战${foughtCount}人`, 'warning');
+              
+        // 第 1-7 关全员出战但未通关：直接结束挑战（不重试，避免消耗枕头）
         if (this._currentLevel > 0 && this._currentLevel < 8) {
-          const prevLevel = this._currentLevel;
-          if (this._reopenRetryCount >= 1) {
-            this._onLog(`第${this._currentLevel}关已重试1次仍未通关，结束挑战`, 'error');
-            this._status = 'failed';
-            this._onStatusChange({ status: 'failed', presetName: this._presetData?.name, reason: 'retry_limit_reached' });
-            this._onError({ message: `第${this._currentLevel}关重试次数已达上限`, reason: 'retry_limit_reached' });
-            return;
-          }
-          this._onLog(`第${this._currentLevel}关全员出战均未通过，遣散战斗房间重建重试...`, 'warning');
-          // 防御性刷新：确认关卡确实未推进（防止服务器延迟导致误判）
-          try {
-            await this._fetchRoomInfo();
-            if (this._currentLevel > prevLevel) {
-              this._onLog(`关卡已推进到第${this._currentLevel}关，跳过重建`, 'info');
-              continue;
+          // ✅ 检查是否真的有成员出战过
+          if (foughtCount === 0 && aliveMembers > 0) {
+            // 没有任何成员出战过，但还有活人 → 可能是预设配置问题或匹配问题
+            this._onLog(`第${this._currentLevel}关无成员出战但有${aliveMembers}个存活成员，检查预设配置...`, 'error');
+                  
+            // 检查预设出战顺序
+            const priority = this._presetData?.levelConfig?.[this._currentLevel]?.priority || [];
+            if (priority.length === 0) {
+              this._onLog(`第${this._currentLevel}关预设出战顺序为空，请检查配置！`, 'error');
+            } else {
+              this._onLog(`第${this._currentLevel}关预设顺序${priority.length}人，但都未匹配到成员`, 'error');
             }
-          } catch (e) {
-            // 刷新失败，继续原有重建逻辑
+                  
+            // 等待 10 秒后重试，不要立即解散
+            this._onLog(`等待 10 秒后重新检查...`, 'warning');
+            await sleep(10000);
+            await this._fetchRoomInfo();
+            continue;
           }
-          // 仅遣散战斗房间（不解散队伍）
-          try {
-            await this._tokenStore.sendMessageWithPromise(
-              this._captainTokenId, 'nightmare_dismiss',
-              { roomId: Number(this._roomId) }, 10000
-            );
-            this._onLog('战斗房间已遣散（队伍保留）', 'success');
-          } catch (err) {
-            this._onLog(`遣散战斗房间失败: ${err.message || err}`, 'warning');
-          }
-          // 清空当前关卡出战记录，允许成员重新出战
-          this._attackRecords[this._currentLevel] = [];
-          // 重置成员阵亡状态
-          this._members.forEach(m => { m.isAllHeroesDead = false; });
-          await sleep(3000);
-          if (this._stopped) return;
-          // 重新开启战斗房间
-          const newRoomId = await this._reopenRoom();
-          if (!newRoomId) {
-            this._onLog('重建房间失败，无法继续重试', 'error');
-            this._status = 'failed';
-            this._onStatusChange({ status: 'failed', presetName: this._presetData?.name, reason: 'reopen_failed' });
-            this._onError({ message: '重建房间失败', reason: 'reopen_failed' });
-            return;
-          }
-          this._roomId = newRoomId;
-          this._reopenRetryCount++;
-          this._onLog(`重建房间成功，新 RoomId: ${newRoomId}`, 'success');
-          await sleep(3000);
-          if (this._stopped) return;
-          await this._fetchRoomInfo();
-          continue;
+                
+          this._onLog(`第${this._currentLevel}关全员出战均未通过（已出战${foughtCount}人），结束挑战`, 'error');
+          this._status = 'failed';
+          this._onStatusChange({ status: 'failed', presetName: this._presetData?.name, reason: 'all_members_fought' });
+          this._onError({ message: `第${this._currentLevel}关全员出战均未通过`, reason: 'all_members_fought' });
+          return;
         }
-
         // 第8关：区分"全员阵亡"和"全员已出战但BOSS存活"
         if (this._currentLevel === 8) {
           if (this._isAllMembersDead()) {
@@ -325,6 +319,17 @@ export class NightmareAutoBattleService {
         }
 
         // currentLevel 为 0 或 > 8（异常情况）
+        // ✅ 使用前面已声明的变量进行诊断
+        this._onLog(`️ 异常情况无可用出战成员：currentLevel=${this._currentLevel}，总成员${totalMembers}人，阵亡${deadMembers}人，存活${aliveMembers}人，已出战${foughtCount}人`, 'warning');
+        
+        if (foughtCount === 0 && aliveMembers > 0) {
+          // 没有任何成员出战过，但还有活人 → 可能是配置问题
+          this._onLog(`存活${aliveMembers}人但未出战，等待 10 秒后重试...`, 'warning');
+          await sleep(10000);
+          await this._fetchRoomInfo();
+          continue;
+        }
+        
         this._onLog('无可用出战成员，结束战斗并解散队伍', 'warning');
         await this._dismissRoom(this._activeBattles);
         this._status = 'completed';
@@ -352,30 +357,11 @@ export class NightmareAutoBattleService {
       const fightOk = await this._fight(attacker);
       if (fightOk === 'already_fought') {
         // 6100070: 已出战，直接换下一个成员
-        this._consecutiveFightFails = 0;
-        this._lastFailRoleId = null;
         continue;
       }
       if (!fightOk) {
-        // 追踪连续失败：同一成员连续失败2次则标记为已出战并跳过
-        const failRoleId = String(attacker.roleId);
-        if (this._lastFailRoleId === failRoleId) {
-          this._consecutiveFightFails++;
-        } else {
-          this._consecutiveFightFails = 1;
-          this._lastFailRoleId = failRoleId;
-        }
-        if (this._consecutiveFightFails >= 2) {
-          this._onLog(`${attacker.name} 连续出战失败${this._consecutiveFightFails}次，标记为已出战并跳过`, 'warning');
-          if (!this._attackRecords[this._currentLevel]) this._attackRecords[this._currentLevel] = [];
-          if (!this._attackRecords[this._currentLevel].includes(failRoleId)) {
-            this._attackRecords[this._currentLevel].push(failRoleId);
-          }
-          this._consecutiveFightFails = 0;
-          this._lastFailRoleId = null;
-          continue;
-        }
-        this._onLog(`${attacker.name} 出战失败，等待5秒后重试`, 'error');
+        // ✅ 出战失败：不再强制标记为已出战，避免误判
+        this._onLog(`${attacker.name} 出战失败，等待 5 秒后重试`, 'error');
         await sleep(5000);
         // 先验证房间是否仍然有效
         const roomOk = await this._fetchRoomInfo();
@@ -398,12 +384,10 @@ export class NightmareAutoBattleService {
         continue;
       }
 
-      // 出战成功，重置连续失败计数
-      this._consecutiveFightFails = 0;
-      this._lastFailRoleId = null;
-
-      // 10秒战斗倒计时
-      this._onLog(`⏱ 战斗进行中 10秒...`, 'info');
+      // 出战成功
+      
+      // 10 秒战斗倒计时
+      this._onLog(`⏱ 战斗进行中 10 秒...`, 'info');
       await sleep(10000);
       if (this._stopped) return;
 
@@ -610,6 +594,20 @@ export class NightmareAutoBattleService {
     // 关卡推进时重置重建重试计数
     if (this._currentLevel !== prevLevel && this._currentLevel > 0) {
       this._reopenRetryCount = 0;
+      
+      // ✅ 关键修复：关卡推进时清理上一关的出战记录
+      if (prevLevel > 0 && this._attackRecords[prevLevel]) {
+        this._onLog(`清理第${prevLevel}关出战记录: ${this._attackRecords[prevLevel].join(', ')}`, 'info');
+        // 注意：不清理 _attackRecords[prevLevel]，因为可能需要查看历史记录
+        // 但确保当前关卡的记录是干净的
+      }
+      
+      // ✅ 确保当前关卡的出战记录是干净的
+      if (!this._attackRecords[this._currentLevel]) {
+        this._attackRecords[this._currentLevel] = [];
+        this._onLog(`初始化第${this._currentLevel}关出战记录为空`, 'info');
+      }
+      
       if (prevLevel > 0) {
         this._onLog(`关卡推进: 第${prevLevel}关 → 第${this._currentLevel}关，重置重试计数`, 'info');
       }
@@ -696,11 +694,17 @@ export class NightmareAutoBattleService {
   _getAutoAttacker() {
     const priority = this._presetData?.levelConfig?.[this._currentLevel]?.priority || [];
     const foughtList = this._attackRecords[this._currentLevel] || [];
-  
+    
     // 调试日志：显示预设出战顺序和当前成员
     const memberNames = this._members.map(m => `${m.name}${m.isAllHeroesDead ? '(亡)' : ''}`).join(', ');
-    this._onLog(`第${this._currentLevel}关 预设顺序${priority.length}人, 已出战${foughtList.length}人, 成员[${memberNames}]`, 'info');
-  
+    this._onLog(`第${this._currentLevel}关 预设顺序${priority.length}人，已出战${foughtList.length}人，成员[${memberNames}]`, 'info');
+      
+    // ✅ 详细调试：显示每个成员的状态
+    this._members.forEach(m => {
+      const isFought = foughtList.includes(String(m.roleId));
+      this._onLog(`  成员：${m.name} (roleId: ${m.roleId}) - 阵亡:${m.isAllHeroesDead ? '是' : '否'}, 已出战:${isFought ? '是' : '否'}`, 'info');
+    });
+    
     for (const entry of priority) {
       let roleId = this._resolveRoleId(entry);
       let member = this._members.find(m => String(m.roleId) === roleId);
@@ -723,17 +727,23 @@ export class NightmareAutoBattleService {
         this._onLog(`${member.name} 全部阵亡，跳过`, 'warning');
         continue;
       }
-      this._onLog(`选中出战: ${member.name} (roleId: ${roleId})`, 'success');
+      this._onLog(`选中出战：${member.name} (roleId: ${roleId})`, 'success');
       return { member, entry };
     }
-  
+    
     // 兆底：找任何未出战的活人
     for (const member of this._members) {
       if (!member.isAllHeroesDead && !foughtList.includes(String(member.roleId))) {
-        this._onLog(`使用兆底出战: ${member.name}`, 'info');
+        this._onLog(`使用兆底出战：${member.name}`, 'info');
         return { member, entry: null };
       }
     }
+        
+    // ✅ 详细日志：为什么返回 null
+    const deadMembers = this._members.filter(m => m.isAllHeroesDead).map(m => m.name).join(', ');
+    const foughtMembers = this._members.filter(m => foughtList.includes(String(m.roleId))).map(m => m.name).join(', ');
+    this._onLog(`️ 无可用出战成员：阵亡[${deadMembers || '无'}]，已出战[${foughtMembers || '无'}]`, 'warning');
+        
     return null;
   }
 
@@ -877,24 +887,10 @@ export class NightmareAutoBattleService {
       );
       let roomId = openResp?.roomId || openResp?.roomid || openResp?.roomInfo?.roomId || null;
       if (roomId) return String(roomId);
-      this._onLog(`[debug] _reopenRoom: 无法从响应中提取 roomId，原始响应: ${JSON.stringify(openResp || null)}`, 'warning');
-
-      // 轮询 nightmare_getroleinfo 获取新 roomId
-      for (let attempt = 1; attempt <= 5; attempt++) {
-        await sleep(3000);
-        try {
-          const resp = await this._tokenStore.sendMessageWithPromise(
-            this._captainTokenId, 'nightmare_getroleinfo',
-            { roleId: Number(this._captainRoleId) }, 10000
-          );
-          roomId = resp?.nightMareData?.roomId
-            || resp?.nightmareData?.roomId
-            || resp?.roomId || null;
-          if (roomId) return String(roomId);
-          this._onLog(`[debug] _reopenRoom: nightmare_getroleinfo 响应中无 roomId，原始: ${JSON.stringify(resp || null).substring(0, 200)}`, 'warning');
-          this._onLog(`新 RoomId 尚未生成，重试 (${attempt}/5)...`, 'warning');
-        } catch { /* ignore */ }
-      }
+      this._onLog(`[debug] _reopenRoom: 无法从响应中提取 roomId，原始响应：${JSON.stringify(openResp || null)}`, 'warning');
+        
+      // ✅ 不再轮询重试，直接返回 null
+      this._onLog('新 RoomId 尚未生成，结束挑战', 'error');
       return null;
     } catch (err) {
       const errMsg = err.message || String(err);

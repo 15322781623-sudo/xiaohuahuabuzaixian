@@ -27,7 +27,6 @@ export function createTasksDungeon(deps) {
     message,
     currentRunningTokenId,
     getModuleDelay,
-    safeDelay,
   } = deps;
 
   // 模块延迟辅助函数
@@ -62,11 +61,12 @@ export function createTasksDungeon(deps) {
           type: "info",
         });
         await ensureConnection(tokenId);
-        
-        // 使用专用轻量级刷新函数获取宝库信息
-        const bosstowerinfo = await tokenStore.refreshForBatchBossTower(tokenId);
-        const towerId = bosstowerinfo?.bossTower?.towerId || bosstowerinfo?.towerId;
-        
+        const bosstowerinfo = await tokenStore.sendMessageWithPromise(
+          tokenId,
+          "bosstower_getinfo",
+          {},
+        );
+        const towerId = bosstowerinfo.bossTower.towerId;
         if (towerId >= 1 && towerId <= 3) {
           for (let i = 0; i < 2; i++) {
             if (shouldStop.value)
@@ -123,7 +123,7 @@ export function createTasksDungeon(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processBaoku13);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -211,7 +211,7 @@ export function createTasksDungeon(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processBaoku45);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -364,9 +364,7 @@ export function createTasksDungeon(deps) {
         let winCount = 0;
         let loseCount = 0;
         let fightCount = 0;
-        let consecutiveLosses = 0; // 连续失败计数（防华佗/董卓回血死循环）
         const maxFights = 200; // 安全上限，防止无限循环
-        const maxConsecutiveLosses = 5; // 连续失败上限，疑似遇到回血型武将
 
         while (fightCount < maxFights) {
           if (shouldStop.value) break;
@@ -387,27 +385,15 @@ export function createTasksDungeon(deps) {
 
             if (isWin) {
               winCount++;
-              consecutiveLosses = 0; // 胜利重置连续失败计数
             } else {
               loseCount++;
-              consecutiveLosses++;
             }
 
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 第${fightCount}场${isWin ? "胜利" : "失败"}${star ? `（${star}星）` : ""}${!isWin && consecutiveLosses >= maxConsecutiveLosses ? "【连续失败达上限，停止挑战】" : ""}`,
+              message: `${token.name} 第${fightCount}场${isWin ? "胜利" : "失败"}${star ? `（${star}星）` : ""}`,
               type: isWin ? "success" : "warning",
             });
-
-            // 连续失败达到上限，疑似遇到华佗/董卓等回血型武将，停止当前账号
-            if (!isWin && consecutiveLosses >= maxConsecutiveLosses) {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 连续${consecutiveLosses}次战斗失败，疑似遇到华佗/董卓等回血型武将，跳过当前账号`,
-                type: "warning",
-              });
-              break;
-            }
 
             await new Promise((r) => setTimeout(r, _getModuleDelay('treasure')));
 
@@ -513,7 +499,7 @@ export function createTasksDungeon(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processMengjing);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
@@ -681,7 +667,7 @@ export function createTasksDungeon(deps) {
     for (let r = 0; r < retryMax && failed.length > 0; r++) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
-      if (!(await safeDelay(retryWait))) break;
+      await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
       await runStreaming(cur, processBuyDream);
       cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });

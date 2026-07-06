@@ -255,29 +255,48 @@
         <n-button size="tiny" type="error" @click="stopAllBattles">全部停止</n-button>
       </div>
       <div v-for="b in activeBattles" :key="b.preset.id" class="battle-status-item">
-        <span class="battle-preset-name">{{ b.preset.name }}</span>
-        <n-tag size="small" :type="b.currentLevel > 0 ? 'success' : 'default'" :bordered="false" style="margin: 0 4px;">第{{ b.currentLevel || '?' }}关</n-tag>
-        <span v-if="b.bossHp" class="boss-hp-tag" :class="{ 'boss-low': b.bossHp.curHp / b.bossHp.maxHp < 0.3, 'boss-mid': b.bossHp.curHp / b.bossHp.maxHp >= 0.3 && b.bossHp.curHp / b.bossHp.maxHp < 0.7 }">🔥{{ formatHp(b.bossHp.curHp) }}/{{ formatHp(b.bossHp.maxHp) }}</span>
-        <span class="battle-time">{{ b.startedAt }}</span>
-        <n-tag v-if="b.status === 'waiting_midnight'" size="small" type="warning">等待00:00</n-tag>
-        <n-tag v-else-if="b.status === 'cooling'" size="small" type="info">冷却中</n-tag>
-        <n-tag v-else-if="b.status === 'completed'" size="small" type="success">✅完成</n-tag>
-        <n-tag v-else-if="b.status === 'failed'" size="small" type="error">❌失败</n-tag>
-        <n-tag v-else-if="b.status === 'stopped'" size="small" type="warning">⛔已停止</n-tag>
-        <n-tag v-else size="small" type="info">战斗中</n-tag>
-        <n-tag v-if="b.preset.waitLevel8" size="tiny" type="warning">卡点</n-tag>
-        <n-button
-          v-if="b.status === 'running' || b.status === 'waiting_midnight' || b.status === 'cooling'"
-          size="tiny" type="error" @click="b.battle.stop()"
-        >停止</n-button>
-        <n-button
-          v-if="b.status === 'stopped' || b.status === 'failed'"
-          size="tiny" type="warning" @click="reconnectAndContinue(b)"
-        >重连继续</n-button>
-        <n-button
-          v-if="b.roomId || b.battle?.getRoomId?.()"
-          size="tiny" type="primary" @click="enterFrontendBattle(b)"
-        >进入战斗</n-button>
+        <div class="battle-main-row">
+          <span class="battle-preset-name">{{ b.preset.name }}</span>
+          <n-tag size="small" :type="b.currentLevel > 0 ? 'success' : 'default'" :bordered="false" style="margin: 0 4px;">第{{ b.currentLevel || '?' }}关</n-tag>
+          <span v-if="b.bossHp" class="boss-hp-tag" :class="{ 'boss-low': b.bossHp.curHp / b.bossHp.maxHp < 0.3, 'boss-mid': b.bossHp.curHp / b.bossHp.maxHp >= 0.3 && b.bossHp.curHp / b.bossHp.maxHp < 0.7 }">{{ formatHp(b.bossHp.curHp) }}/{{ formatHp(b.bossHp.maxHp) }}</span>
+          <span class="battle-time">{{ b.startedAt }}</span>
+          <n-tag v-if="b.status === 'waiting_midnight'" size="small" type="warning">等待 00:00</n-tag>
+          <n-tag v-else-if="b.status === 'cooling'" size="small" type="info">冷却中</n-tag>
+          <n-tag v-else-if="b.status === 'completed'" size="small" type="success">✅完成</n-tag>
+          <n-tag v-else-if="b.status === 'failed'" size="small" type="error">❌失败</n-tag>
+          <n-tag v-else-if="b.status === 'stopped'" size="small" type="warning">已停止</n-tag>
+          <n-tag v-else size="small" type="info">战斗中</n-tag>
+          <n-tag v-if="b.preset.waitLevel8" size="tiny" type="warning">卡点</n-tag>
+          <div class="battle-actions">
+            <n-button
+              v-if="b.status === 'running' || b.status === 'waiting_midnight' || b.status === 'cooling'"
+              size="tiny" type="error" @click="b.battle.stop()"
+            >停止</n-button>
+            <n-button
+              v-if="b.status === 'stopped' || b.status === 'failed'"
+              size="tiny" type="warning" @click="reconnectAndContinue(b)"
+            >重连继续</n-button>
+            <n-button
+              v-if="b.roomId || b.battle?.getRoomId?.()"
+              size="tiny" type="primary" @click="enterFrontendBattle(b)"
+            >进入战斗</n-button>
+          </div>
+        </div>
+              
+        <!-- ✅ 优化：成员出战情况（独立一行，整齐排列） -->
+        <div v-if="b.members && b.members.length > 0" class="members-status-row">
+          <n-tag 
+            v-for="(m, idx) in b.members" 
+            :key="idx" 
+            size="small"
+            :type="m.isAllHeroesDead ? 'error' : 'success'" 
+            :bordered="false"
+            class="member-tag"
+            :class="{ 'member-fought': b.attackRecords?.includes(m.roleId) }"
+          >
+            {{ m.name }}{{ m.isAllHeroesDead ? '(亡)' : '' }}{{ b.attackRecords?.includes(m.roleId) ? '(已战)' : '' }}
+          </n-tag>
+        </div>
       </div>
     </div>
 
@@ -381,6 +400,9 @@ const restoreActiveBattles = () => {
       currentLevel: item.battle?.getCurrentLevel?.() || item.currentLevel,
       bossHp: item.battle?.getBossHp?.() || item.bossHp || null,
       teamId: item.battle?.getTeamId?.() || item.teamId || null,
+      // ✅ 新增：成员信息和出战记录
+      members: item.battle?.getMembers?.() || item.members || [],
+      attackRecords: item.battle?.getAttackRecords?.() || item.attackRecords || [],
     }));
     // 重绑定回调到当前组件实例
     activeBattles.value.forEach(b => {
@@ -1979,6 +2001,11 @@ const handleBattleStatusChange = (preset, info) => {
     if (info.bossHp) {
       activeBattles.value[idx].bossHp = info.bossHp;
     }
+    // ✅ 同步成员信息和出战记录
+    if (activeBattles.value[idx].battle) {
+      activeBattles.value[idx].members = activeBattles.value[idx].battle.getMembers?.() || [];
+      activeBattles.value[idx].attackRecords = activeBattles.value[idx].battle.getAttackRecords?.() || [];
+    }
   }
   // 心跳更新：战斗运行或卡点等待期间，持续刷新跨标签页时间戳，防止其他标签页误判过期
   if (info.status === 'running' || info.status === 'waiting_midnight') {
@@ -3101,12 +3128,19 @@ const getTokenName = (tokenId) => {
 
   .battle-status-item {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 6px;
-    padding: 4px 0;
+    padding: 8px 0;
     border-bottom: 1px dashed var(--border-color, #e8e8e8);
 
     &:last-child { border-bottom: none; }
+
+    .battle-main-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
 
     .battle-preset-name {
       font-weight: 500;
@@ -3124,6 +3158,13 @@ const getTokenName = (tokenId) => {
       flex-shrink: 0;
     }
 
+    .battle-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+      margin-left: auto;
+    }
+
     .boss-hp-tag {
       font-size: 10px;
       padding: 1px 5px;
@@ -3139,6 +3180,27 @@ const getTokenName = (tokenId) => {
       &.boss-low {
         background: #ffebee;
         color: #c62828;
+      }
+    }
+    
+    // ✅ 成员状态行样式
+    .members-status-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding-left: 4px;
+      
+      .member-tag {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+        
+        // 已出战成员样式
+        &.member-fought {
+          opacity: 0.5;
+          filter: grayscale(30%);
+        }
       }
     }
   }

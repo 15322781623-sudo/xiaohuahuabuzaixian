@@ -27,7 +27,7 @@ export const StudyPlugin = ({
     if (!questionList || !Array.isArray(questionList) || questionList.length === 0) {
       gameLogger.info("未找到题目列表，可能本周已完成");
 
-      // 更新状态为完成
+      // 更新状态为完成（只更新 token 独立的 studyStatus）
       const completedStatus = {
         isAnswering: false,
         questionCount: 0,
@@ -39,7 +39,7 @@ export const StudyPlugin = ({
         maxCorrectNum: body.role?.study?.maxCorrectNum || 0,
       };
 
-      gameData.value.studyStatus = completedStatus;
+      // ✅ 只更新 token 独立的 studyStatus，避免多账号数据混乱
       tokenStore.updateTokenGameData(tokenId, { studyStatus: completedStatus });
 
       // ✅ 同步更新 roleInfo 中的 study 数据，避免缓存延迟导致状态不一致
@@ -68,7 +68,7 @@ export const StudyPlugin = ({
     }
     gameLogger.info(`找到 ${questionList.length} 道题目，学习ID: ${studyId}`);
 
-    // 更新答题状态（同时更新全局和token特定的游戏数据）
+    // 更新答题状态（只更新 token 特定的游戏数据，不更新全局）
     const updatedStatus = {
       isAnswering: true,
       questionCount: questionList.length,
@@ -76,8 +76,8 @@ export const StudyPlugin = ({
       status: "answering",
       timestamp: Date.now(),
     };
-
-    gameData.value.studyStatus = updatedStatus;
+    
+    // ✅ 只更新 token 独立的 studyStatus，避免多账号数据混乱
     tokenStore.updateTokenGameData(tokenId, { studyStatus: updatedStatus });
 
     try {
@@ -123,11 +123,11 @@ export const StudyPlugin = ({
           }
         }
 
-        // 更新已回答题目数量
-        gameData.value.studyStatus.answeredCount = i + 1;
+        // 更新已回答题目数量（只更新 token 独立的 studyStatus）
+        const currentStatus = tokenStore.getTokenGameData(tokenId)?.studyStatus || {};
         tokenStore.updateTokenGameData(tokenId, {
           studyStatus: {
-            ...gameData.value.studyStatus,
+            ...currentStatus,
             answeredCount: i + 1,
           },
         });
@@ -168,21 +168,21 @@ export const StudyPlugin = ({
 
         // 如果答题未完成（maxCorrectNum < 10），标记为需要重试
         if (serverMaxCorrectNum < 10) {
-          gameLogger.warn(`答题未完成！服务器进度: ${serverMaxCorrectNum}/10，标记为需要重试`);
-
+          gameLogger.warn(`答题未完成！服务器进度：${serverMaxCorrectNum}/10，标记为需要重试`);
+        
           const failedStatus = {
             isAnswering: false,
             questionCount: questionList.length,
             answeredCount: serverMaxCorrectNum,
             status: "failed_need_retry",
             timestamp: Date.now(),
-            error: `答题未完成，服务器进度: ${serverMaxCorrectNum}/10`,
+            error: `答题未完成，服务器进度：${serverMaxCorrectNum}/10`,
             maxCorrectNum: serverMaxCorrectNum,
           };
-
-          gameData.value.studyStatus = failedStatus;
+        
+          // ✅ 只更新 token 独立的 studyStatus
           tokenStore.updateTokenGameData(tokenId, { studyStatus: failedStatus });
-
+        
           // 不触发领取奖励，直接返回
           return;
         }
@@ -198,18 +198,19 @@ export const StudyPlugin = ({
           // 检查连接状态
           const wsStatus = tokenStore.getWebSocketStatus(tokenId);
           if (wsStatus !== "connected") {
-            gameLogger.warn("WebSocket未连接，无法验证答题进度");
-
+            gameLogger.warn("WebSocket 未连接，无法验证答题进度");
+          
+            const currentStatus = tokenStore.getTokenGameData(tokenId)?.studyStatus || {};
             const failedStatus = {
               isAnswering: false,
               questionCount: questionList.length,
-              answeredCount: gameData.value.studyStatus.answeredCount,
+              answeredCount: currentStatus.answeredCount,
               status: "failed_need_retry",
               timestamp: Date.now(),
-              error: "WebSocket未连接，无法验证答题进度",
+              error: "WebSocket 未连接，无法验证答题进度",
             };
-
-            gameData.value.studyStatus = failedStatus;
+          
+            // ✅ 只更新 token 独立的 studyStatus
             tokenStore.updateTokenGameData(tokenId, { studyStatus: failedStatus });
             return;
           }
@@ -235,19 +236,19 @@ export const StudyPlugin = ({
           const serverMaxCorrectNum = studyData?.maxCorrectNum ?? 0;
 
           if (serverMaxCorrectNum < 10) {
-            gameLogger.warn(`刷新数据后答题仍未完成！服务器进度: ${serverMaxCorrectNum}/10`);
-
+            gameLogger.warn(`刷新数据后答题仍未完成！服务器进度：${serverMaxCorrectNum}/10`);
+          
             const failedStatus = {
               isAnswering: false,
               questionCount: questionList.length,
               answeredCount: serverMaxCorrectNum,
               status: "failed_need_retry",
               timestamp: Date.now(),
-              error: `答题未完成，服务器进度: ${serverMaxCorrectNum}/10`,
+              error: `答题未完成，服务器进度：${serverMaxCorrectNum}/10`,
               maxCorrectNum: serverMaxCorrectNum,
             };
-
-            gameData.value.studyStatus = failedStatus;
+          
+            // ✅ 只更新 token 独立的 studyStatus
             tokenStore.updateTokenGameData(tokenId, { studyStatus: failedStatus });
             return;
           }
@@ -256,16 +257,17 @@ export const StudyPlugin = ({
         } catch (retryError: any) {
           gameLogger.error("刷新数据后验证仍然失败:", retryError);
           // 重试失败，标记为需要重试
+          const currentStatus = tokenStore.getTokenGameData(tokenId)?.studyStatus || {};
           const failedStatus = {
             isAnswering: false,
             questionCount: questionList.length,
-            answeredCount: gameData.value.studyStatus.answeredCount,
+            answeredCount: currentStatus.answeredCount,
             status: "failed_need_retry",
             timestamp: Date.now(),
-            error: `验证答题进度失败: ${retryError?.message || String(retryError)}`,
+            error: `验证答题进度失败：${retryError?.message || String(retryError)}`,
           };
-
-          gameData.value.studyStatus = failedStatus;
+        
+          // ✅ 只更新 token 独立的 studyStatus
           tokenStore.updateTokenGameData(tokenId, { studyStatus: failedStatus });
           return;
         }
@@ -276,47 +278,40 @@ export const StudyPlugin = ({
     } catch (error) {
       gameLogger.error("处理学习答题响应失败:", error);
 
-      // 发生错误时也要更新状态
+      // 发生错误时也要更新状态（只更新 token 独立的 studyStatus）
+      const currentStatus = tokenStore.getTokenGameData(tokenId)?.studyStatus || {};
       const errorStatus = {
         isAnswering: false,
         questionCount: questionList.length,
-        answeredCount: gameData.value.studyStatus.answeredCount,
+        answeredCount: currentStatus.answeredCount,
         status: "failed",
         timestamp: Date.now(),
         error: (error as Error)?.message || String(error),
       };
 
-      gameData.value.studyStatus = errorStatus;
+      // ✅ 只更新 token 独立的 studyStatus
       tokenStore.updateTokenGameData(tokenId, { studyStatus: errorStatus });
     }
   });
   //
   onSome(["I-study"], (data: XyzwSession) => {
-    const { body, gameData, tokenId } = data;
-
+    const { body, tokenId } = data;
+  
     // 安全获取数据
     const maxCorrectNum = body?.role?.study?.maxCorrectNum ?? 0;
     const beginTime = body?.role?.study?.beginTime ?? 0;
-
+  
     // 更严格的判断：必须 maxCorrectNum >= 10 且 beginTime 有效
     const isStudyCompleted = maxCorrectNum >= 10 && beginTime > 0 && isInCurrentWeek(beginTime * 1000);
-
-    // 更新答题完成状态
-    if (!gameData.value.studyStatus) {
-      gameData.value.studyStatus = {};
-    }
-
-    gameData.value.studyStatus.thisWeek = isStudyCompleted;
-    gameData.value.studyStatus.isCompleted = isStudyCompleted;
-    gameData.value.studyStatus.maxCorrectNum = maxCorrectNum;
-    gameData.value.studyStatus.beginTime = beginTime;
-
+  
     gameLogger.info(`答题状态更新: maxCorrectNum=${maxCorrectNum}, beginTime=${beginTime}, 完成状态=${isStudyCompleted}`);
-
-    // 同步更新到token特定的游戏数据
+  
+    // ✅ 只更新 token 独立的 studyStatus，避免多账号数据混乱
     const tokenStore = useTokenStore();
+    const currentStatus = tokenStore.getTokenGameData(tokenId)?.studyStatus || {};
     tokenStore.updateTokenGameData(tokenId, {
       studyStatus: {
+        ...currentStatus,
         thisWeek: isStudyCompleted,
         isCompleted: isStudyCompleted,
         maxCorrectNum,
@@ -330,10 +325,12 @@ export const StudyPlugin = ({
     const { gameData, client, tokenId } = data;
     // 获取tokenStore实例
     const tokenStore = useTokenStore();
+    // ✅ 只更新 token 独立的 studyStatus，避免多账号数据混乱
+    const currentStatus = tokenStore.getTokenGameData(tokenId)?.studyStatus || {};
+    
     // 更新状态为正在领取奖励
-    gameData.value.studyStatus.status = "claiming_rewards";
     tokenStore.updateTokenGameData(tokenId, {
-      studyStatus: { ...gameData.value.studyStatus },
+      studyStatus: { ...currentStatus, status: "claiming_rewards" },
     });
     // 领取所有等级的奖励 (1-10)
     for (let rewardId = 1; rewardId <= 10; rewardId++) {
@@ -374,8 +371,8 @@ export const StudyPlugin = ({
       // 更新状态为完成，并保存最新的 maxCorrectNum
       const completedStatus = {
         isAnswering: false,
-        questionCount: gameData.value.studyStatus.questionCount || 10,
-        answeredCount: gameData.value.studyStatus.answeredCount || 10,
+        questionCount: currentStatus.questionCount || 10,
+        answeredCount: currentStatus.answeredCount || 10,
         status: "completed",
         timestamp: Date.now(),
         thisWeek: true,
@@ -384,7 +381,7 @@ export const StudyPlugin = ({
         beginTime,
       };
 
-      gameData.value.studyStatus = completedStatus;
+      // ✅ 只更新 token 独立的 studyStatus
       tokenStore.updateTokenGameData(tokenId, { studyStatus: completedStatus });
 
       // ✅ 同步更新 roleInfo 中的 study 数据，确保 TokenCard 显示状态与实际一致
@@ -407,18 +404,20 @@ export const StudyPlugin = ({
     } catch (error) {
       gameLogger.error("获取最新角色信息失败:", error);
       // 即使获取失败，也标记为完成
-      gameData.value.studyStatus.status = "completed";
-      gameData.value.studyStatus.thisWeek = true;
-      gameData.value.studyStatus.isCompleted = true;
       tokenStore.updateTokenGameData(tokenId, {
-        studyStatus: { ...gameData.value.studyStatus },
+        studyStatus: { 
+          ...currentStatus,
+          status: "completed",
+          thisWeek: true,
+          isCompleted: true,
+        },
       });
     }
 
     // 保留完成状态3秒,让界面有足够时间更新显示
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    // ✅ 重置状态时保留关键完成信息,确保账号卡片显示正确
+    // ✅ 重置状态时保留关键完成信息，确保账号卡片显示正确
     const resetStatus = {
       isAnswering: false,
       questionCount: 0,
@@ -427,11 +426,11 @@ export const StudyPlugin = ({
       timestamp: null,
       // 保留完成状态信息
       isCompleted: true,
-      maxCorrectNum: gameData.value.studyStatus.maxCorrectNum || 10,
+      maxCorrectNum: currentStatus.maxCorrectNum || 10,
       thisWeek: true,
     };
-
-    gameData.value.studyStatus = resetStatus;
+    
+    // ✅ 只更新 token 独立的 studyStatus
     tokenStore.updateTokenGameData(tokenId, { studyStatus: resetStatus });
 
     // 1秒后更新游戏数据
