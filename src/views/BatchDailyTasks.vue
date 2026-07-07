@@ -864,13 +864,36 @@
                 >
                   一键英雄升星
                 </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('batchBookUpgrade', '一键图鉴升星', batchBookUpgrade)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  一键图鉴升星
-                </n-button>
+                <n-popover trigger="click" placement="bottom">
+                  <template #trigger>
+                    <n-button
+                      size="small"
+                      :disabled="isRunning || selectedTokens.length === 0"
+                    >
+                      一键图鉴升星 ▾
+                    </n-button>
+                  </template>
+                  <div style="padding: 4px; min-width: 140px;">
+                    <div style="margin-bottom: 8px; font-weight: 500;">选择升星类型：</div>
+                    <n-checkbox-group v-model:value="bookUpgradeTypes">
+                      <n-space vertical :size="4">
+                        <n-checkbox value="hero">英雄升星</n-checkbox>
+                        <n-checkbox value="fish">鱼灵升星</n-checkbox>
+                        <n-checkbox value="skin">皮肤升星</n-checkbox>
+                      </n-space>
+                    </n-checkbox-group>
+                    <n-button
+                      type="primary"
+                      size="small"
+                      block
+                      style="margin-top: 8px;"
+                      :disabled="bookUpgradeTypes.length === 0"
+                      @click="executeBookUpgrade"
+                    >
+                      执行
+                    </n-button>
+                  </div>
+                </n-popover>
                 <n-button
                   size="small"
                   @click="executeManualTaskWithRecord('batchFishUpgrade', '一键鱼灵升星', batchFishUpgrade)"
@@ -12600,6 +12623,24 @@ const currentProgress = ref(0);
 const logs = ref([]);
 const logContainer = ref(null);
 const autoScrollLog = ref(true);
+
+// 图鉴升星类型选择
+const bookUpgradeTypes = ref(['hero', 'fish', 'skin']);
+const bookUpgradeOptions = [
+  { label: '英雄升星', value: 'hero' },
+  { label: '鱼灵升星', value: 'fish' },
+  { label: '皮肤升星', value: 'skin' },
+];
+
+const executeBookUpgrade = () => {
+  if (bookUpgradeTypes.value.length === 0) {
+    message.warning('请至少选择一种升星类型');
+    return;
+  }
+  const typeLabels = { hero: '英雄', fish: '鱼灵', skin: '皮肤' };
+  const selectedLabels = bookUpgradeTypes.value.map(t => typeLabels[t]).join('+');
+  executeManualTaskWithRecord('batchBookUpgrade', `图鉴升星(${selectedLabels})`, () => batchBookUpgrade(bookUpgradeTypes.value));
+};
 const userManuallyDisabledScroll = ref(false); // 记录用户是否手动关闭了自动滚动
 const filterErrorsOnly = ref(false);
 const errorCount = computed(() => {
@@ -13780,19 +13821,8 @@ const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
         return true;
       }
 
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `🔄 连接WebSocket: ${latestToken.name} (尝试 ${retryCount + 1}/${maxRetries})`,
-        type: "info",
-      });
-
       // 先关闭可能存在的旧连接
       if (connection) {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `🔌 关闭旧连接: ${latestToken.name}`,
-          type: "info",
-        });
         tokenStore.closeWebSocketConnection(tokenId);
         // 等待一小段时间确保连接完全关闭
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -13813,19 +13843,8 @@ const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
       const connected = await waitForConnection(tokenId);
 
       if (connected) {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `✅ WebSocket连接成功: ${latestToken.name}`,
-          type: "info",
-        });
-
         // 连接成功后延迟3-5秒，确保连接稳定
         const connectionDelay = 3000 + Math.random() * 2000; // 3-5秒随机延迟
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `⏱️ 等待连接稳定 (${(connectionDelay / 1000).toFixed(1)}秒)...`,
-          type: "info",
-        });
         await new Promise(resolve => setTimeout(resolve, connectionDelay));
 
         // Initialize Game Data (Critical for Battle Version and Session)

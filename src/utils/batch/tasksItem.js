@@ -336,10 +336,11 @@ export function createTasksItem(deps) {
   };
 
   /**
-   * 批量图鉴升星（英雄 book_upgrade + 鱼灵 book_upgradeartifact）
+   * 批量图鉴升星（英雄 book_upgrade + 鱼灵 book_upgradeartifact + 皮肤 collection_activate）
+   * @param {string[]} types - 要执行的升星类型：'hero'(英雄)、'fish'(鱼灵)、'skin'(皮肤)
    * 与单账号版本 runBookUpgrade 逻辑对齐
    */
-  const batchBookUpgrade = async () => {
+  const batchBookUpgrade = async (types = ['hero', 'fish', 'skin']) => {
     if (selectedTokens.value.length === 0)
       return;
 
@@ -359,248 +360,280 @@ export function createTasksItem(deps) {
       const token = tokens.value.find((t) => t.id === tokenId);
 
       try {
+        const typeLabels = { hero: '英雄', fish: '鱼灵', skin: '皮肤' };
+        const selectedLabels = types.map(t => typeLabels[t] || t).join('+');
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `=== 开始图鉴升星: ${token.name} ===`,
+          message: `=== 开始图鉴升星(${selectedLabels}): ${token.name} ===`,
           type: "info",
         });
 
         await ensureConnection(tokenId);
 
-        // === 英雄图鉴升星（双轮尝试）===
-        // 核心：检查响应码 _code，与油猴脚本 res._code !== 0 判断一致
-        let heroSuccessCount = 0;
         let heroTotalStars = 0;
-        let heroSkippedCount = 0;
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token.name} 开始英雄图鉴升星，共${heroIds.length}个英雄`,
-          type: "info",
-        });
+        let fishTotalStars = 0;
+        let skinSuccessCount = 0;
 
-        // 第一轮：尝试所有英雄
-        const firstPassFailed = [];
-        for (const heroId of heroIds) {
-          if (shouldStop.value) break;
+        // === 英雄图鉴升星（双轮尝试）===
+        if (types.includes('hero')) {
+          // 核心：检查响应码 _code，与油猴脚本 res._code !== 0 判断一致
+          let heroSuccessCount = 0;
+          let heroSkippedCount = 0;
 
-          let heroStars = 0;
-          for (let i = 1; i <= 10; i++) {
-            if (shouldStop.value) break;
+          // 预检查：获取英雄碎片数据，跳过碎片不足的英雄（可能已满星）
+          let eligibleHeroIds = heroIds;
+          try {
+            const roleRes = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, batchSettings.defaultCommandTimeout || 8000);
+            const heroes = roleRes?.role?.heroes || {};
+            const items = roleRes?.role?.items || {};
+            // 升星消耗表（按星级索引，0-based）
+            const STAR_COST = [8,8,8,8,8,40,40,40,40,40,80,80,80,80,80,200,200,200,200,200,400,400,400,400,400,400,400,400,400,400];
 
-            try {
-              const res = await tokenStore.sendMessageWithPromise(
-                tokenId, "book_upgrade", { heroId }, batchSettings.defaultCommandTimeout || 8000,
-              );
-              // 检查响应码：与油猴脚本 res._code !== 0 判断一致
-              if (res && res._code !== undefined && res._code !== 0) {
-                break;
+            eligibleHeroIds = [];
+            const skippedHeroes = [];
+            for (const heroId of heroIds) {
+              const heroData = heroes[heroId];
+              if (!heroData) {
+                skippedHeroes.push(`${HERO_DICT[heroId]?.name || heroId}:未拥有`);
+                continue;
               }
-              heroStars++;
-              heroTotalStars++;
-            } catch (err) {
-              break;
+              const currentStar = Number(heroData.star || 0);
+              if (currentStar >= 30) {
+                skippedHeroes.push(`${HERO_DICT[heroId]?.name || heroId}:已满星(${currentStar})`);
+                continue;
+              }
+              // 检查碎片是否足够升1星
+              const fragmentCost = STAR_COST[currentStar] || 999;
+              const fragmentCount = Number(items[heroId]?.quantity || items[heroId]?.num || 0);
+              if (fragmentCount < fragmentCost) {
+                skippedHeroes.push(`${HERO_DICT[heroId]?.name || heroId}:碎片不足(${fragmentCount}/${fragmentCost})`);
+                continue;
+              }
+              eligibleHeroIds.push(heroId);
             }
-            await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
-          }
-          if (heroStars > 0) {
-            heroSuccessCount++;
+
+            if (skippedHeroes.length > 0) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 英雄图鉴预检查: ${eligibleHeroIds.length}个可升星，${skippedHeroes.length}个跳过`,
+                type: "info",
+              });
+              if (skippedHeroes.length <= 10) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 跳过: ${skippedHeroes.join(", ")}`,
+                  type: "info",
+                });
+              }
+            }
+          } catch (e) {
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 英雄:${HERO_DICT[heroId]?.name || heroId} 图鉴升星成功 ×${heroStars}`,
-              type: "success",
+              message: `${token.name} 获取英雄碎片数据失败，将尝试全部英雄: ${e.message}`,
+              type: "warning",
+            });
+          }
+
+          if (eligibleHeroIds.length === 0) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 无满足条件的英雄可图鉴升星`,
+              type: "warning",
             });
           } else {
-            firstPassFailed.push(heroId);
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 开始英雄图鉴升星，共${eligibleHeroIds.length}个英雄`,
+              type: "info",
+            });
+
+            // 尝试筛选后的英雄
+            for (const heroId of eligibleHeroIds) {
+              if (shouldStop.value) break;
+
+              let heroStars = 0;
+              for (let i = 1; i <= 10; i++) {
+                if (shouldStop.value) break;
+
+                try {
+                  const res = await tokenStore.sendMessageWithPromise(
+                    tokenId, "book_upgrade", { heroId }, batchSettings.defaultCommandTimeout || 8000,
+                  );
+                  // 检查响应码：与油猴脚本 res._code !== 0 判断一致
+                  if (res && res._code !== undefined && res._code !== 0) {
+                    break;
+                  }
+                  heroStars++;
+                  heroTotalStars++;
+                } catch (err) {
+                  break;
+                }
+                await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
+              }
+              if (heroStars > 0) {
+                heroSuccessCount++;
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 英雄:${HERO_DICT[heroId]?.name || heroId} 图鉴升星成功 ×${heroStars}`,
+                  type: "success",
+                });
+              } else {
+                heroSkippedCount++;
+              }
+            }
+
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 英雄图鉴升星完成：${heroSuccessCount}个英雄升星，共${heroTotalStars}星，${heroSkippedCount}个已满星跳过`,
+              type: "success",
+            });
           }
         }
 
-        // 第二轮：重试第一轮失败的英雄
-        if (firstPassFailed.length > 0 && !shouldStop.value) {
-          await new Promise((r) => setTimeout(r, _getModuleDelay('hero')));
+        // === 鱼灵图鉴升星 ===
+        if (types.includes('fish')) {
+          const maxFishStar = 5;
+          let fishSuccessCount = 0;
+          let fishSkippedCount = 0;
+
+          let fishStarMap = {};
+          try {
+            const roleInfo = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, batchSettings.defaultCommandTimeout || 8000);
+            const role = roleInfo?.role || roleInfo;
+            const books = role?.artifactBooks || {};
+            for (const [fishId, book] of Object.entries(books)) {
+              fishStarMap[Number(fishId)] = book.claimedStar || 0;
+            }
+          } catch (e) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 查询鱼灵星级数据失败，将尝试全部鱼灵: ${e.message}`,
+              type: "warning",
+            });
+          }
+
+          const fishToUpgrade = fishArtifactIds.filter(id => {
+            const currentStar = fishStarMap[id];
+            if (currentStar !== undefined && currentStar >= maxFishStar) {
+              fishSkippedCount++;
+              return false;
+            }
+            return true;
+          });
+
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `${token.name} 第二轮重试 ${firstPassFailed.length} 个未成功英雄`,
+            message: `${token.name} 开始鱼灵图鉴升星：${fishToUpgrade.length}个需升星，${fishSkippedCount}个已满星跳过`,
             type: "info",
           });
-          let retrySuccessCount = 0;
-          for (const heroId of firstPassFailed) {
-            if (shouldStop.value) break;
 
-            let heroStars = 0;
-            for (let i = 1; i <= 10; i++) {
-              if (shouldStop.value) break;
+          for (const artifactId of fishToUpgrade) {
+            if (shouldStop.value)
+              break;
+
+            const startStar = fishStarMap[artifactId] || 0;
+            const isUnowned = fishStarMap[artifactId] === undefined;
+            let fishStars = 0;
+
+            for (let star = startStar + 1; star <= maxFishStar; star++) {
+              if (shouldStop.value)
+                break;
 
               try {
                 const res = await tokenStore.sendMessageWithPromise(
-                  tokenId, "book_upgrade", { heroId }, batchSettings.defaultCommandTimeout || 8000,
+                  tokenId,
+                  "book_upgradeartifact",
+                  { artifactId },
+                  batchSettings.defaultCommandTimeout || 8000,
                 );
+                // 检查响应码：与油猴脚本 res._code !== 0 判断一致
                 if (res && res._code !== undefined && res._code !== 0) {
+                  if (isUnowned && star === 1) break;
                   break;
                 }
-                heroStars++;
-                heroTotalStars++;
+                fishStars++;
+                fishTotalStars++;
               } catch (err) {
-                break;
+                if (isUnowned && star === 1) break;
               }
-              await new Promise((r) => setTimeout(r, _getModuleDelay('hero')));
+              await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
             }
-            if (heroStars > 0) {
-              retrySuccessCount++;
-              heroSuccessCount++;
+            if (fishStars > 0) {
+              fishSuccessCount++;
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `${token.name} 英雄:${HERO_DICT[heroId]?.name || heroId} 重试升星成功 ×${heroStars}`,
+                message: `${token.name} 鱼灵:${FishMap[artifactId]?.name || artifactId} ${startStar}→${startStar + fishStars}星`,
                 type: "success",
               });
             }
           }
-          heroSkippedCount = firstPassFailed.length - retrySuccessCount;
-        }
 
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token.name} 英雄图鉴升星完成：${heroSuccessCount}个英雄升星，共${heroTotalStars}星，${heroSkippedCount}个已满星跳过`,
-          type: "success",
-        });
-
-        // === 鱼灵图鉴升星 ===
-        const maxFishStar = 5;
-        let fishSuccessCount = 0;
-        let fishTotalStars = 0;
-        let fishSkippedCount = 0;
-
-        let fishStarMap = {};
-        try {
-          const roleInfo = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, batchSettings.defaultCommandTimeout || 8000);
-          const role = roleInfo?.role || roleInfo;
-          const books = role?.artifactBooks || {};
-          for (const [fishId, book] of Object.entries(books)) {
-            fishStarMap[Number(fishId)] = book.claimedStar || 0;
-          }
-        } catch (e) {
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `${token.name} 查询鱼灵星级数据失败，将尝试全部鱼灵: ${e.message}`,
-            type: "warning",
-          });
-        }
-
-        const fishToUpgrade = fishArtifactIds.filter(id => {
-          const currentStar = fishStarMap[id];
-          if (currentStar !== undefined && currentStar >= maxFishStar) {
-            fishSkippedCount++;
-            return false;
-          }
-          return true;
-        });
-
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token.name} 开始鱼灵图鉴升星：${fishToUpgrade.length}个需升星，${fishSkippedCount}个已满星跳过`,
-          type: "info",
-        });
-
-        for (const artifactId of fishToUpgrade) {
-          if (shouldStop.value)
-            break;
-
-          const startStar = fishStarMap[artifactId] || 0;
-          const isUnowned = fishStarMap[artifactId] === undefined;
-          let fishStars = 0;
-
-          for (let star = startStar + 1; star <= maxFishStar; star++) {
-            if (shouldStop.value)
-              break;
-
-            try {
-              const res = await tokenStore.sendMessageWithPromise(
-                tokenId,
-                "book_upgradeartifact",
-                { artifactId },
-                batchSettings.defaultCommandTimeout || 8000,
-              );
-              // 检查响应码：与油猴脚本 res._code !== 0 判断一致
-              if (res && res._code !== undefined && res._code !== 0) {
-                if (isUnowned && star === 1) break;
-                break;
-              }
-              fishStars++;
-              fishTotalStars++;
-            } catch (err) {
-              if (isUnowned && star === 1) break;
-            }
-            await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
-          }
-          if (fishStars > 0) {
-            fishSuccessCount++;
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 鱼灵:${FishMap[artifactId]?.name || artifactId} ${startStar}→${startStar + fishStars}星`,
-              type: "success",
-            });
-          }
-        }
-
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token.name} 鱼灵图鉴升星完成：${fishSuccessCount}个升星，共${fishTotalStars}星，${fishSkippedCount}个跳过`,
-          type: "success",
-        });
-
-        // === 皮肤图鉴激活 ===
-        const skinEntries = Object.entries(SKIN_DICT);
-        let skinSuccessCount = 0;
-        let skinSkipCount = 0;
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token.name} 开始皮肤图鉴激活，共${skinEntries.length}个皮肤`,
-          type: "info",
-        });
-
-        for (const [skinId, info] of skinEntries) {
-          if (shouldStop.value) break;
-          try {
-            await tokenStore.sendMessageWithPromise(
-              tokenId, "collection_activate",
-              { poolType: 2, id: Number(skinId), isAll: false, seriesId: info.heroId },
-              batchSettings.defaultCommandTimeout || 8000,
-            );
-            skinSuccessCount++;
-          } catch (err) {
-            skinSkipCount++;
-          }
-          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
-        }
-
-        // 皮肤激活完成后循环领取图鉴积分
-        let claimTotalCount = 0;
-        while (!shouldStop.value) {
-          try {
-            await tokenStore.sendMessageWithPromise(tokenId, "collection_claimtotal", {}, batchSettings.defaultCommandTimeout || 8000);
-            claimTotalCount++;
-          } catch (err) {
-            break;
-          }
-          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
-        }
-        if (claimTotalCount > 0) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 图鉴积分领取成功 ×${claimTotalCount}次`,
+            message: `${token.name} 鱼灵图鉴升星完成：${fishSuccessCount}个升星，共${fishTotalStars}星，${fishSkippedCount}个跳过`,
             type: "success",
           });
         }
 
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token.name} 皮肤图鉴激活完成：${skinSuccessCount}个成功，${skinSkipCount}个跳过`,
-          type: "success",
-        });
+        // === 皮肤图鉴激活 ===
+        if (types.includes('skin')) {
+          const skinEntries = Object.entries(SKIN_DICT);
+          let skinSkipCount = 0;
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 开始皮肤图鉴激活，共${skinEntries.length}个皮肤`,
+            type: "info",
+          });
+
+          for (const [skinId, info] of skinEntries) {
+            if (shouldStop.value) break;
+            try {
+              await tokenStore.sendMessageWithPromise(
+                tokenId, "collection_activate",
+                { poolType: 2, id: Number(skinId), isAll: false, seriesId: info.heroId },
+                batchSettings.defaultCommandTimeout || 8000,
+              );
+              skinSuccessCount++;
+            } catch (err) {
+              skinSkipCount++;
+            }
+            await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
+          }
+
+          // 皮肤激活完成后循环领取图鉴积分
+          let claimTotalCount = 0;
+          while (!shouldStop.value) {
+            try {
+              await tokenStore.sendMessageWithPromise(tokenId, "collection_claimtotal", {}, batchSettings.defaultCommandTimeout || 8000);
+              claimTotalCount++;
+            } catch (err) {
+              break;
+            }
+            await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
+          }
+          if (claimTotalCount > 0) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 图鉴积分领取成功 ×${claimTotalCount}次`,
+              type: "success",
+            });
+          }
+
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 皮肤图鉴激活完成：${skinSuccessCount}个成功，${skinSkipCount}个跳过`,
+            type: "success",
+          });
+        }
 
         tokenStatus.value[tokenId] = "completed";
+        const summaryParts = [];
+        if (types.includes('hero')) summaryParts.push(`英雄${heroTotalStars}星`);
+        if (types.includes('fish')) summaryParts.push(`鱼灵${fishTotalStars}星`);
+        if (types.includes('skin')) summaryParts.push(`皮肤${skinSuccessCount}个`);
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} === 图鉴升星全部完成（英雄${heroTotalStars}星 + 鱼灵${fishTotalStars}星 + 皮肤${skinSuccessCount}个）===`,
+          message: `${token.name} === 图鉴升星全部完成（${summaryParts.join(' + ')}）===`,
           type: "success",
         });
       } catch (error) {

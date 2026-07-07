@@ -184,6 +184,39 @@ const main = async () => {
     log(`文件大小: ${fileSizeMB} MB`, 'success');
     log(`构建耗时: ${elapsed}s`, 'success');
 
+    // 步骤 6.5: APK 签名（jarsigner）
+    logStep(6.5, 'APK 签名');
+    const keystorePropsPath = path.join(ANDROID_DIR, 'keystore.properties');
+    // 简单解析 properties 文件
+    const keystoreProps = {};
+    if (fs.existsSync(keystorePropsPath)) {
+      fs.readFileSync(keystorePropsPath, 'utf-8').split('\n').forEach(line => {
+        const eq = line.indexOf('=');
+        if (eq > 0) keystoreProps[line.substring(0, eq).trim()] = line.substring(eq + 1).trim();
+      });
+    }
+
+    if (keystoreProps.storeFile && keystoreProps.keyAlias) {
+      const keystoreFile = path.join(ANDROID_DIR, 'app', keystoreProps.storeFile);
+      const signedApkPath = apkFile.replace('.apk', '_signed.apk');
+      const javaHome = process.env.JAVA_HOME || 'C:\\jdk21\\jdk-21.0.8+9';
+      const signEnv = { ...process.env, JAVA_HOME: javaHome, PATH: `${javaHome}\\bin;${process.env.PATH}` };
+
+      try {
+        execSync(
+          `jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 -keystore "${keystoreFile}" -storepass "${keystoreProps.storePassword}" -keypass "${keystoreProps.keyPassword}" -signedjar "${signedApkPath}" "${apkFile}" "${keystoreProps.keyAlias}"`,
+          { stdio: 'pipe', env: signEnv }
+        );
+        fs.copyFileSync(signedApkPath, apkFile);
+        fs.unlinkSync(signedApkPath);
+        log('APK 签名成功 (SHA256withRSA)', 'success');
+      } catch (signError) {
+        log(`APK 签名失败: ${signError.message}`, 'warn');
+      }
+    } else {
+      log('keystore.properties 未找到，跳过签名', 'warn');
+    }
+
     // 步骤 7: 复制 APK 到项目根目录
     logStep(7, '复制 APK 到项目根目录');
     const apkName = `肝王之王_${version}.apk`;

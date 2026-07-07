@@ -66,6 +66,7 @@ export function createTasksHangUp(deps) {
         noRetryErrors: ["400000", "200020", "3100080", "3100030", "400340"], // 400340由外层重试机制处理
       });
       const hangUpData = roleInfo?.role?.hangUp;
+      const hangUpInfo = roleInfo?.role?.hangUpInfo;
 
       if (!hangUpData) {
         return {
@@ -79,6 +80,7 @@ export function createTasksHangUp(deps) {
       const now = Date.now() / 1000;
       const lastTime = hangUpData.lastTime || 0;
       const hangUpTime = hangUpData.hangUpTime || 0;
+      const totalTime = hangUpInfo?.totalTime || 0;
       const elapsed = now - lastTime;
 
       // 计算状态
@@ -92,14 +94,20 @@ export function createTasksHangUp(deps) {
         isActive,
         lastTime,
         hangUpTime,
+        totalTime,
         elapsedTime,
         remainingTime,
         progress,
         needAddTime: false,
         addTimeMessage: "",
-        message: isActive ? `挂机中：${formatTime(elapsedTime)}/${formatTime(hangUpTime)}` : `挂机已完成`,
+        message: isActive ? `挂机中：${formatTime(elapsedTime)}/${formatTime(hangUpTime)}（总${formatTime(totalTime)}）` : `挂机已完成（总${formatTime(totalTime)}）`,
       };
     } catch (error) {
+      // ✅ 400340/200750/11800010 必须向上抛出，由外层 batchWithRetry 重试机制处理
+      const errMsg = error.message || '';
+      if (errMsg.includes('400340') || errMsg.includes('200750') || errMsg.includes('11800010')) {
+        throw error;
+      }
       return {
         hasData: false,
         message: `获取失败: ${error.message}`,
@@ -200,11 +208,6 @@ export function createTasksHangUp(deps) {
     try {
       tokenStore.closeWebSocketConnection(tokenId);
       releaseConnectionSlot();
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `${tokenName} 连接已关闭 (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
-        type: "info",
-      });
     } catch (err) {
       // 忽略关闭失败
     }
@@ -223,34 +226,48 @@ export function createTasksHangUp(deps) {
     const getMatchedCode = (msg) => RETRYABLE_CODES.find(code => msg?.includes(code)) || '';
 
     const retryTokens = [];
+    const maxConcurrent = batchSettings.maxActive || 5;
 
-    // 首次执行
-    await runStreaming(tokenIds, async (tokenId) => {
-      if (shouldStop.value) return;
-      tokenStatus.value[tokenId] = "running";
-      const token = tokens.value.find((t) => t.id === tokenId);
-      let conn = false;
-      try {
-        await ensureConnection(tokenId);
-        conn = true;
-        await operation(tokenId, token);
-        tokenStatus.value[tokenId] = "completed";
-        tokenStore.sendMessage(tokenId, "role_getroleinfo");
-      } catch (error) {
-        const errMsg = error.message || '';
-        if (isRetryableError(errMsg)) {
-          const code = getMatchedCode(errMsg);
-          addLog({ time: new Date().toLocaleTimeString(), message: `⚠️ ${token.name} 遇到${code}错误，加入重试队列`, type: "warning" });
-          retryTokens.push({ tokenId, tokenName: token.name });
-          tokenStatus.value[tokenId] = "retry";
-        } else {
-          tokenStatus.value[tokenId] = "failed";
-          addLog({ time: new Date().toLocaleTimeString(), message: `❌ ${token.name} ${operationName}失败: ${errMsg}`, type: "error" });
+    // 按并发数分批执行：每批 maxActive 个账号并发，等本批全部完成后再执行下一批
+    const executeBatch = async (batchTokenIds, batchLabel) => {
+      if (batchTokenIds.length === 0 || shouldStop.value) return;
+      addLog({ time: new Date().toLocaleTimeString(), message: `📦 ${batchLabel} 开始执行 ${batchTokenIds.length} 个账号...`, type: "info" });
+
+      await Promise.all(batchTokenIds.map(async (tokenId) => {
+        if (shouldStop.value) return;
+        tokenStatus.value[tokenId] = "running";
+        const token = tokens.value.find((t) => t.id === tokenId);
+        let conn = false;
+        try {
+          await ensureConnection(tokenId);
+          conn = true;
+          await operation(tokenId, token);
+          tokenStatus.value[tokenId] = "completed";
+        } catch (error) {
+          const errMsg = error.message || '';
+          if (isRetryableError(errMsg)) {
+            const code = getMatchedCode(errMsg);
+            addLog({ time: new Date().toLocaleTimeString(), message: `⚠️ ${token.name} 遇到${code}错误，加入重试队列`, type: "warning" });
+            retryTokens.push({ tokenId, tokenName: token.name });
+            tokenStatus.value[tokenId] = "retry";
+          } else {
+            tokenStatus.value[tokenId] = "failed";
+            addLog({ time: new Date().toLocaleTimeString(), message: `❌ ${token.name} ${operationName}失败: ${errMsg}`, type: "error" });
+          }
+        } finally {
+          if (conn) await safeCloseConnection(tokenId, token.name);
         }
-      } finally {
-        if (conn) await safeCloseConnection(tokenId, token.name);
-      }
-    });
+      }));
+    };
+
+    // 分批执行首次任务
+    const totalBatches = Math.ceil(tokenIds.length / maxConcurrent);
+    for (let i = 0; i < tokenIds.length; i += maxConcurrent) {
+      if (shouldStop.value) break;
+      const batch = tokenIds.slice(i, i + maxConcurrent);
+      const batchNum = Math.floor(i / maxConcurrent) + 1;
+      await executeBatch(batch, `批次 ${batchNum}/${totalBatches}`);
+    }
 
     // 重试循环
     let currentRetryTokens = retryTokens;
@@ -260,36 +277,44 @@ export function createTasksHangUp(deps) {
       if (shouldStop.value) { addLog({ time: new Date().toLocaleTimeString(), message: `已停止，取消重试`, type: "warning" }); break; }
 
       const nextRetryTokens = [];
-      // ✅ 使用 runStreaming 并发控制执行重试
-      await runStreaming(currentRetryTokens.map(t => t.tokenId), async (tokenId) => {
-        if (shouldStop.value) return;
-        const tokenInfo = currentRetryTokens.find(t => t.tokenId === tokenId);
-        if (!tokenInfo) return;
-        const { tokenName } = tokenInfo;
-        
-        tokenStatus.value[tokenId] = "running";
-        const token = tokens.value.find((t) => t.id === tokenId);
-        let conn = false;
-        try {
-          await ensureConnection(tokenId);
-          conn = true;
-          await operation(tokenId, token);
-          tokenStatus.value[tokenId] = "completed";
-          addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${token.name} 第${retryCount}次重试成功`, type: "success" });
-          tokenStore.sendMessage(tokenId, "role_getroleinfo");
-        } catch (err) {
-          const errMsg = err.message || "";
-          if (isRetryableError(errMsg) && retryCount < MAX_RETRIES) {
-            nextRetryTokens.push({ tokenId, tokenName: token.name });
-            tokenStatus.value[tokenId] = "retry";
-          } else {
-            tokenStatus.value[tokenId] = "failed";
-            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${retryCount >= MAX_RETRIES ? `重试${MAX_RETRIES}次后仍然失败` : "重试失败"}: ${errMsg}`, type: "error" });
+      // 分批并发重试
+      const retryIds = currentRetryTokens.map(t => t.tokenId);
+      const retryBatches = Math.ceil(retryIds.length / maxConcurrent);
+      for (let i = 0; i < retryIds.length; i += maxConcurrent) {
+        if (shouldStop.value) break;
+        const batch = retryIds.slice(i, i + maxConcurrent);
+        const batchNum = Math.floor(i / maxConcurrent) + 1;
+        addLog({ time: new Date().toLocaleTimeString(), message: `📦 重试批次 ${batchNum}/${retryBatches} (${batch.length}个账号)...`, type: "info" });
+
+        await Promise.all(batch.map(async (tokenId) => {
+          if (shouldStop.value) return;
+          const tokenInfo = currentRetryTokens.find(t => t.tokenId === tokenId);
+          if (!tokenInfo) return;
+          const { tokenName } = tokenInfo;
+          
+          tokenStatus.value[tokenId] = "running";
+          const token = tokens.value.find((t) => t.id === tokenId);
+          let conn = false;
+          try {
+            await ensureConnection(tokenId);
+            conn = true;
+            await operation(tokenId, token, true);
+            tokenStatus.value[tokenId] = "completed";
+            addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${token.name} 第${retryCount}次重试成功`, type: "success" });
+          } catch (err) {
+            const errMsg = err.message || "";
+            if (isRetryableError(errMsg) && retryCount < MAX_RETRIES) {
+              nextRetryTokens.push({ tokenId, tokenName: token.name });
+              tokenStatus.value[tokenId] = "retry";
+            } else {
+              tokenStatus.value[tokenId] = "failed";
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${retryCount >= MAX_RETRIES ? `重试${MAX_RETRIES}次后仍然失败` : "重试失败"}: ${errMsg}`, type: "error" });
+            }
+          } finally {
+            if (conn) await safeCloseConnection(tokenId, token.name);
           }
-        } finally {
-          if (conn) await safeCloseConnection(tokenId, token.name);
-        }
-      });
+        }));
+      }
       currentRetryTokens = nextRetryTokens;
     }
 
@@ -410,6 +435,9 @@ export function createTasksHangUp(deps) {
    * 领取挂机奖励 + 加钟（支持400340/200750/11800010错误最多3次重试）
    * 逻辑：判断elapsedTime>=配置阈值 → 领取奖励 → 加钟4次
    */
+  // 加钟判断阈值：8小时（28800秒），总挂机时间(hangUpTime)超过此值则无需加钟
+  const ADD_TIME_THRESHOLD = 8 * 3600;
+
   const claimHangUpRewards = async () => {
     if (selectedTokens.value.length === 0) return;
 
@@ -421,34 +449,11 @@ export function createTasksHangUp(deps) {
         tokenStatus.value[id] = "waiting";
       });
 
-      const claimAndAddTime = async (tokenId, token) => {
+      const claimAndAddTime = async (tokenId, token, isRetry = false) => {
         addLog({ time: new Date().toLocaleTimeString(), message: `=== 开始领取挂机: ${token.name} ===`, type: "info" });
 
-        // 1. 检查挂机状态
-        const hangUpStatus = await getHangUpStatus(tokenId, {
-          checkAddTime: false,
-          thresholdSeconds: 7200,
-          maxHangUpTime: 43200,
-        });
-
-        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${hangUpStatus.message}`, type: "info" });
-
-        // 2. 判断是否满足领取条件
-        const canClaim = batchSettings.hangUpTimeControlEnabled
-          ? (hangUpStatus.hasData && hangUpStatus.elapsedTime >= ((batchSettings.hangUpMinTime || 9) * 3600))
-          : hangUpStatus.hasData;
-
-        if (!canClaim) {
-          if (batchSettings.hangUpTimeControlEnabled) {
-            const elapsedTime = hangUpStatus.elapsedTime || 0;
-            const minTime = batchSettings.hangUpMinTime || 9;
-            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 挂机时间${formatTime(elapsedTime)}，未达到${formatTime(minTime * 3600)}（${minTime}小时），跳过`, type: "info" });
-          }
-          return;
-        }
-
-        // 3. 领取奖励
-        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 挂机时间${formatTime(hangUpStatus.elapsedTime)}，满足领取条件，开始领取...`, type: "info" });
+        // 1. 领取挂机奖励（无条件执行）
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 开始领取挂机奖励...`, type: "info" });
 
         await callWithRetry(tokenId, "system_mysharecallback", {});
         await safeDelay(200);
@@ -458,9 +463,29 @@ export function createTasksHangUp(deps) {
 
         addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领取成功`, type: "success" });
 
-        // 4. 加钟4次
-        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 开始加钟...`, type: "info" });
-        await performAddTime(tokenId, token.name);
+        // 2. 重试时跳过挂机时长判断，直接加钟
+        if (isRetry) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 重试账号，直接执行加钟...`, type: "info" });
+          await performAddTime(tokenId, token.name);
+        } else {
+          // 领取后重新获取挂机状态，用更新后的 hangUpTime 判断是否加钟
+          await safeDelay(500);
+          const afterClaimStatus = await getHangUpStatus(tokenId);
+
+          if (!afterClaimStatus.hasData) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 获取挂机状态失败，跳过加钟判断`, type: "warning" });
+          } else {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领取后当前挂机时长: ${formatTime(afterClaimStatus.hangUpTime)}`, type: "info" });
+
+            if (afterClaimStatus.hangUpTime >= ADD_TIME_THRESHOLD) {
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 当前挂机时长已超过8小时，无需加钟，跳过`, type: "info" });
+            } else {
+              // 3. 当前挂机时长不足8小时，加钟4次
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 当前挂机时长不足8小时，开始加钟...`, type: "info" });
+              await performAddTime(tokenId, token.name);
+            }
+          }
+        }
 
         addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${token.name} 领取挂机完成`, type: "success" });
       };
@@ -489,7 +514,6 @@ export function createTasksHangUp(deps) {
 
       const addTimeOp = async (tokenId, token) => {
         addLog({ time: new Date().toLocaleTimeString(), message: `=== 一键加钟: ${token.name} ===`, type: "info" });
-        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 开始加钟 4 次`, type: "info" });
         await performAddTimeWithCount(tokenId, token.name, 4);
         addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${token.name} 加钟完成`, type: "success" });
       };

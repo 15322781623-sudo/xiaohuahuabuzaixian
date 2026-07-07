@@ -1444,13 +1444,15 @@ const doSyncGameData = () => {
   if (roleInfo.hangUp) {
     const serverLastTime = roleInfo.hangUp.lastTime;
     const serverHangUpTime = roleInfo.hangUp.hangUpTime;
+    const serverElapsed = now - serverLastTime;
 
-    // ✅ 关键修复：只在 lastTime 或 hangUpTime 变化时才重新计算
+    // ✅ 修复：lastTime/hangUpTime 变化，或本地 elapsedTime 与服务器偏差超过5秒时，重新同步
     const hasChanged = hangUp.value.lastTime !== serverLastTime
       || hangUp.value.hangUpTime !== serverHangUpTime;
+    const hasDrift = Math.abs((hangUp.value.elapsedTime || 0) - Math.floor(serverElapsed)) > 5;
 
-    if (hasChanged) {
-      // 服务器数据有变化，重新同步
+    if (hasChanged || hasDrift) {
+      // 服务器数据有变化或本地计时偏差，重新同步
       hangUp.value.lastTime = serverLastTime;
       hangUp.value.hangUpTime = serverHangUpTime;
 
@@ -1466,18 +1468,14 @@ const doSyncGameData = () => {
         hangUp.value.endTime = null;
       }
 
-      // ✅ 关键修复：elapsedTime 直接基于 elapsed 计算，不依赖 remainingTime
       hangUp.value.elapsedTime = Math.floor(elapsed);
     } else {
       // 服务器数据无变化，继续使用定时器更新的值
-      // ✅ 关键修复：验证 elapsedTime 是否异常，如果是则重新同步
       const hangUpTime = hangUp.value.hangUpTime || 0;
       if (hangUp.value.elapsedTime > hangUpTime && hangUpTime > 0) {
-        // elapsedTime 异常，重新从服务器同步
         const elapsed = now - hangUp.value.lastTime;
         hangUp.value.elapsedTime = Math.floor(elapsed);
       }
-      // 不做其他操作，保持定时器计算的准确性
     }
   }
 
