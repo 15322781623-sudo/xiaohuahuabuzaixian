@@ -344,10 +344,10 @@ onMounted(() => {
   // 初始化认证状态
   authStore.initAuth();
 
-  // 2 分钟后自动跳转到批量日常页面
+  // 15 秒后自动跳转到批量日常页面
   autoRedirectTimer = setTimeout(() => {
     router.push("/admin/batch-daily-tasks");
-  }, 120000); // 120 秒 = 2 分钟
+  }, 15000); // 15 秒
 });
 
 onUnmounted(() => {

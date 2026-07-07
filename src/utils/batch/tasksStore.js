@@ -5382,7 +5382,7 @@ export function createTasksStore(deps) {
             if (usedCount >= 5) {
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `关卡 ${level} 次数已满，跳过`,
+                message: `[${token.name}] 关卡 ${level} 次数已满，跳过`,
                 type: "info",
               });
               continue;
@@ -5435,7 +5435,7 @@ export function createTasksStore(deps) {
               const attemptNum = challengeAttempts + 1;
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `== 关卡 ${level} 挑战开始（第${attemptNum}次尝试，预设阵容） ==`,
+                message: `[${token.name}] == 关卡 ${level} 挑战开始（第${attemptNum}次尝试，预设阵容） ==`,
                 type: "info",
               });
 
@@ -5449,12 +5449,16 @@ export function createTasksStore(deps) {
               if (hasNoTeam) {
                 addLog({
                   time: new Date().toLocaleTimeString(),
-                  message: `第${level}关挑战失败，请游戏内检查阵容后重试。`,
+                  message: `[${token.name}] 第${level}关挑战失败，请游戏内检查阵容后重试。`,
                   type: "error",
                 });
                 challengeAttempts++;
                 if (challengeAttempts >= MAX_ATTEMPTS) {
-                  addLog({ message: `关卡 ${level} 连续${MAX_ATTEMPTS}次挑战失败，终止挑战流程`, type: "error" });
+                  addLog({ 
+                    time: new Date().toLocaleTimeString(),
+                    message: `关卡 ${level} 连续${MAX_ATTEMPTS}次挑战失败，终止挑战流程`, 
+                    type: "error" 
+                  });
                   break;
                 }
                 await sleep(CMD_DELAY);
@@ -5521,7 +5525,7 @@ export function createTasksStore(deps) {
               if (!bossRes) {
                 addLog({
                   time: new Date().toLocaleTimeString(),
-                  message: `== 关卡 ${level} 无法挑战，该账号没有挑战十殿，请先通过十殿8之后再运行 ==`,
+                  message: `[${token.name}] == 关卡 ${level} 无法挑战，该账号没有挑战十殿，请先通过十殿 8 之后再运行 ==`,
                   type: "warning",
                 });
                 // 直接跳过该账号，不再重试
@@ -5542,11 +5546,15 @@ export function createTasksStore(deps) {
               // 挑战失败
                 addLog({
                   time: new Date().toLocaleTimeString(),
-                  message: `== 关卡 ${level} 挑战失败 ==`,
+                  message: `[${token.name}] == 关卡 ${level} 挑战失败 ==`,
                   type: "error",
                 });
                 if (challengeAttempts >= MAX_ATTEMPTS) {
-                  addLog({ message: `关卡 ${level} 连续${MAX_ATTEMPTS}次挑战失败，终止挑战流程`, type: "error" });
+                  addLog({ 
+                    time: new Date().toLocaleTimeString(),
+                    message: `关卡 ${level} 连续${MAX_ATTEMPTS}次挑战失败，终止挑战流程`, 
+                    type: "error" 
+                  });
                   break;
                 }
                 await sleep(CMD_DELAY);
@@ -5569,10 +5577,10 @@ export function createTasksStore(deps) {
               }
 
               if (starCount >= 1 && starCount <= 3) {
-              // 成功获得1-3星，关卡完成
+              // 成功获得 1-3 星，关卡完成
                 addLog({
                   time: new Date().toLocaleTimeString(),
-                  message: `== 关卡 ${level} 挑战成功，获得${starCount}星 ==`,
+                  message: `[${token.name}] == 关卡 ${level} 挑战成功，获得${starCount}星 ==`,
                   type: "success",
                 });
 
@@ -5586,10 +5594,10 @@ export function createTasksStore(deps) {
 
                 levelCompleted = true; // 标记关卡完成
               } else {
-              // 成功但0星，继续重试
+              // 成功但 0 星，继续重试
                 addLog({
                   time: new Date().toLocaleTimeString(),
-                  message: `== 关卡 ${level} 挑战成功，获得0星，继续重试 ==`,
+                  message: `[${token.name}] == 关卡 ${level} 挑战成功，获得 0 星，继续重试 ==`,
                   type: "warning",
                 });
                 if (challengeAttempts >= MAX_ATTEMPTS) {
@@ -5605,11 +5613,11 @@ export function createTasksStore(deps) {
               break;
             }
 
-            // 第8关完成
+            // 第 8 关完成
             if (level === 8) {
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `星级挑战，一键挑战完成。`,
+                message: `[${token.name}] 星级挑战，一键挑战完成。`,
                 type: "success",
               });
             }

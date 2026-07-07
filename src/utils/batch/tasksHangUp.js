@@ -260,8 +260,13 @@ export function createTasksHangUp(deps) {
       if (shouldStop.value) { addLog({ time: new Date().toLocaleTimeString(), message: `已停止，取消重试`, type: "warning" }); break; }
 
       const nextRetryTokens = [];
-      const retryPromises = currentRetryTokens.map(async ({ tokenId, tokenName }) => {
+      // ✅ 使用 runStreaming 并发控制执行重试
+      await runStreaming(currentRetryTokens.map(t => t.tokenId), async (tokenId) => {
         if (shouldStop.value) return;
+        const tokenInfo = currentRetryTokens.find(t => t.tokenId === tokenId);
+        if (!tokenInfo) return;
+        const { tokenName } = tokenInfo;
+        
         tokenStatus.value[tokenId] = "running";
         const token = tokens.value.find((t) => t.id === tokenId);
         let conn = false;

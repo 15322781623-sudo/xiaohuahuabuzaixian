@@ -690,11 +690,8 @@ export class XyzwWebSocketClient {
                 // 收到Blob消息
               }
 
-              // 心跳响应更新
-              const blobCmd = packet?.cmd || packet?._raw?.cmd;
-              if (blobCmd === "_sys/ack") {
-                this.lastHeartbeatAck = Date.now();
-              }
+              // 心跳响应更新：任意服务端消息都视为连接存活信号
+              this.lastHeartbeatAck = Date.now();
 
               // 检查系统级致命/错误消息
               if (this._handleSystemMessage(packet)) return;
@@ -720,11 +717,8 @@ export class XyzwWebSocketClient {
           gameLogger.verbose("收到消息:", packet);
         }
 
-        // 心跳响应更新
-        const msgCmd = packet?.cmd || packet?._raw?.cmd;
-        if (msgCmd === "_sys/ack") {
-          this.lastHeartbeatAck = Date.now();
-        }
+        // 心跳响应更新：任意服务端消息都视为连接存活信号
+        this.lastHeartbeatAck = Date.now();
 
         // 处理消息体解码（ProtoMsg会自动解码）
         if (packet instanceof Object && packet.rawData !== undefined) {
@@ -1230,13 +1224,13 @@ export class XyzwWebSocketClient {
     // 设置定期心跳
     this.heartbeatTimer = setInterval(() => {
       if (this.connected && this.socket?.readyState === WebSocket.OPEN) {
-        // 检查上一次心跳是否有响应（超过 15 秒无响应算丢失）
+        // 检查上一次心跳是否有响应（超过 30 秒无任何消息算丢失）
         const timeSinceLastAck = Date.now() - this.lastHeartbeatAck;
-        if (timeSinceLastAck > 15000) {
+        if (timeSinceLastAck > 30000) {
           this.heartbeatMissCount++;
-          wsLogger.warn(`心跳超时: ${timeSinceLastAck}ms 未收到响应, 连续丢失 ${this.heartbeatMissCount} 次`);
+          wsLogger.warn(`心跳超时: ${timeSinceLastAck}ms 未收到任何消息, 连续丢失 ${this.heartbeatMissCount} 次`);
 
-          if (this.heartbeatMissCount >= 3) {
+          if (this.heartbeatMissCount >= 6) {
             wsLogger.error(`连续 ${this.heartbeatMissCount} 次心跳无响应，判定连接已死，主动断开`);
             this.heartbeatMissCount = 0;
             this.disconnect();

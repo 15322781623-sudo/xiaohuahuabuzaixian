@@ -6,9 +6,10 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
-// ✅ 从 versionName 自动计算 versionCode，与 Worker GitHub 同步逻辑一致
-// 公式：major*10000 + minor*100 + patch (例：1.2.1 → 10201)
-def verName = "2.20.0"
+// ✅ 从 package.json 自动读取版本号，保持单一数据源
+def packageJsonFile = rootProject.file("../package.json")
+def packageJson = new groovy.json.JsonSlurper().parseText(packageJsonFile.text)
+def verName = packageJson.version
 def verParts = verName.tokenize('.')
 def autoVersionCode = (verParts[0].toInteger() * 10000) + (verParts[1].toInteger() * 100) + (verParts[2].toInteger())
 

@@ -173,6 +173,21 @@ export function createTasksCar(deps) {
         // 3. 获取护卫数据
         const { sortedHelpers, helperUsageMap, updateHelperUsage } = await fetchHelperData(tokenId, token.name, currentRoleId);
 
+        // 3.5 读取该账号单独设置的预设护卫成员
+        let tokenHelperPresets = [];
+        try {
+          const accountSettingsRaw = localStorage.getItem(`daily-settings:${tokenId}`);
+          if (accountSettingsRaw) {
+            const accountSettings = JSON.parse(accountSettingsRaw);
+            if (accountSettings.helperPresets && Array.isArray(accountSettings.helperPresets)) {
+              tokenHelperPresets = accountSettings.helperPresets;
+            }
+          }
+        } catch (_) { /* 读取失败则不使用预设 */ }
+        if (tokenHelperPresets.length > 0) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 已配置预设护卫成员(${tokenHelperPresets.length}人)，智能发车将优先使用`, type: "info" });
+        }
+
         // 4. 构建发车条件（使用任务级或全局配置）
         const customConditions = effectiveConditions;
 
@@ -186,7 +201,7 @@ export function createTasksCar(deps) {
 
           try {
             // processCarForSmartSend 返回处理后的刷新券数量，用于后续车辆判断
-            refreshTickets = await processCarForSmartSend(tokenId, token.name, car, refreshTickets, customConditions, effectiveCarMinColor, effectiveRefreshDelay, effectiveRequireMinColor, effectiveUseGoldRefresh, sortedHelpers, helperUsageMap, updateHelperUsage);
+            refreshTickets = await processCarForSmartSend(tokenId, token.name, car, refreshTickets, customConditions, effectiveCarMinColor, effectiveRefreshDelay, effectiveRequireMinColor, effectiveUseGoldRefresh, sortedHelpers, helperUsageMap, updateHelperUsage, tokenHelperPresets);
           } catch (carError) {
             const errorMsg = carError.message || "未知错误";
             // 12000030限流错误向上抛出，由批次重试逻辑统一处理
@@ -398,7 +413,7 @@ export function createTasksCar(deps) {
   };
 
   /** 分配护卫 */
-  const assignHelper = async (tokenId, tokenName, car, sortedHelpers, helperUsageMap, updateHelperUsage) => {
+  const assignHelper = async (tokenId, tokenName, car, sortedHelpers, helperUsageMap, updateHelperUsage, helperPresets = []) => {
     if (Number(car.color || 0) < 5 || car.helperId) return;
     await updateHelperUsage();
     await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
@@ -408,6 +423,22 @@ export function createTasksCar(deps) {
       return;
     }
 
+    // 预设护卫优先：如果配置了预设成员，优先按预设顺序分配
+    if (helperPresets && helperPresets.length > 0) {
+      const presetHelper = sortedHelpers.find((h) => {
+        return helperPresets.includes(h.id) && Number(helperUsageMap[h.id] || 0) < 4;
+      });
+      if (presetHelper) {
+        car.helperId = presetHelper.id;
+        helperUsageMap[presetHelper.id] = Number(helperUsageMap[presetHelper.id] || 0) + 1;
+        addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 车辆[${gradeLabel(car.color)}]使用预设护卫: ${presetHelper.name} (已助战: ${helperUsageMap[presetHelper.id]}/4)`, type: "success" });
+        return;
+      }
+      // 预设成员次数已满，回退到自动分配
+      addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 预设护卫次数已满，回退到自动分配`, type: "info" });
+    }
+
+    // 原有自动分配逻辑
     const bestHelper = sortedHelpers.find((h) => Number(helperUsageMap[h.id] || 0) < 4);
     if (bestHelper) {
       car.helperId = bestHelper.id;
@@ -419,9 +450,9 @@ export function createTasksCar(deps) {
   };
 
   /** 处理单辆车的智能发车逻辑，返回处理后的最新刷新券数量 */
-  const processCarForSmartSend = async (tokenId, tokenName, car, refreshTickets, customConditions, carMinColor, refreshDelay, requireMinColorWithConditions, useGoldRefresh, sortedHelpers, helperUsageMap, updateHelperUsage) => {
+  const processCarForSmartSend = async (tokenId, tokenName, car, refreshTickets, customConditions, carMinColor, refreshDelay, requireMinColorWithConditions, useGoldRefresh, sortedHelpers, helperUsageMap, updateHelperUsage, helperPresets = []) => {
     const effectiveTickets = useGoldRefresh ? 999 : refreshTickets;
-    const assignHelperFn = async () => assignHelper(tokenId, tokenName, car, sortedHelpers, helperUsageMap, updateHelperUsage);
+    const assignHelperFn = async () => assignHelper(tokenId, tokenName, car, sortedHelpers, helperUsageMap, updateHelperUsage, helperPresets);
 
     // 检查是否直接满足发车条件
     if (shouldSendCar(car, effectiveTickets, carMinColor, customConditions, useGoldRefresh, requireMinColorWithConditions)) {

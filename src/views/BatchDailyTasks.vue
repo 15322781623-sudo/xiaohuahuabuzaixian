@@ -1329,6 +1329,17 @@
                       收起怪塔
                     </n-button>
                   </div>
+                  <n-divider vertical />
+                  <div class="button-group">
+                    <n-tooltip :show-arrow="true">
+                      <template #trigger>
+                        <n-button size="small" :type="showCardSections ? 'primary' : 'default'" @click="toggleCardSections">
+                          {{ showCardSections ? '隐藏卡片详情' : '显示卡片详情' }}
+                        </n-button>
+                      </template>
+                      隐藏卡片详情可减少页面渲染压力，提升流畅度
+                    </n-tooltip>
+                  </div>
                 </div>
               </div>
               <n-grid
@@ -1344,6 +1355,10 @@
                     :is-car-expanded="isCarExpandedForAll"
                     :is-climb-tower-expanded="isClimbTowerExpandedForAll"
                     :is-weird-tower-expanded="isWeirdTowerExpandedForAll"
+                    :show-status-tags="showStatusTags"
+                    :show-module-grid="showModuleGrid"
+                    :show-daily-progress="showDailyProgress"
+                    :show-monthly-progress="showMonthlyProgress"
                     :is-drop-target="targetTokenId === token.id"
                     @select="handleTokenSelect"
                     @settings="openSettings"
@@ -1693,6 +1708,34 @@
               show-password-on="click"
               size="small"
             />
+          </div>
+          <!-- 智能发车预设护卫成员 -->
+          <div class="setting-item" style="grid-column: 1 / -1;">
+            <label class="setting-label">智能发车预设护卫成员</label>
+            <div style="margin-bottom: 8px;">
+              <n-button size="small" :loading="settingsHelperLoading" @click="loadSettingsHelperMembers">
+                {{ settingsHelperMembers.length > 0 ? '刷新成员列表' : '加载俱乐部成员' }}
+              </n-button>
+              <span v-if="settingsHelperMembers.length > 0" style="margin-left: 8px; font-size: 12px; color: #86909c;">
+                已选 {{ (currentSettings.helperPresets || []).length }} / {{ settingsHelperMembers.length }} 人
+              </span>
+            </div>
+            <div v-if="settingsHelperMembers.length > 0" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 150px; overflow-y: auto; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fafafa;">
+              <n-tag
+                v-for="member in settingsHelperMembers"
+                :key="member.id"
+                :type="(currentSettings.helperPresets || []).includes(member.id) ? 'success' : 'default'"
+                :bordered="false"
+                size="small"
+                style="cursor: pointer;"
+                @click="toggleSettingsHelper(member.id)"
+              >
+                {{ member.name }}
+              </n-tag>
+            </div>
+            <div v-else style="font-size: 12px; color: #86909c;">
+              点击"加载俱乐部成员"后勾选预设护卫，智能发车时优先使用预设成员，未设定时回退自动分配
+            </div>
           </div>
         </div>
         <div class="modal-actions" style="margin-top: 20px; text-align: right">
@@ -6020,6 +6063,10 @@ const handleWarGuessCheer = async () => {
     
 };
 
+// 预设护卫成员状态（账号单独设置弹窗）
+const settingsHelperLoading = ref(false);
+const settingsHelperMembers = ref([]);
+
 // Settings Modal State
 const showSettingsModal = ref(false);
 const currentSettingsTokenId = ref(null);
@@ -6042,6 +6089,7 @@ const currentSettings = reactive({
   purchaseDiscounts: {},
   purchaseCnt: 15,
   legacyGiftPassword: '', // 功法赠送验证密码
+  helperPresets: [], // 智能发车预设护卫成员
 });
 
 // Task Template State
@@ -7944,7 +7992,6 @@ const exportScheduledTasksConfig = async () => {
       exportTime: new Date().toISOString(),
       configType: "scheduled-tasks",
       scheduledTasks: filteredScheduledTasks,
-      batchSettings: getFullBatchSettings(),
     };
 
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
@@ -8054,17 +8101,8 @@ const importScheduledTasksConfig = async ({ file }) => {
       if (importedTasks > 0) saveScheduledTasks();
     }
 
-    if (importData.batchSettings && typeof importData.batchSettings === 'object') {
-      if (importData.batchSettings.moduleDelays && batchSettings.moduleDelays) {
-        Object.assign(batchSettings.moduleDelays, importData.batchSettings.moduleDelays);
-      }
-      Object.assign(batchSettings, importData.batchSettings);
-      try { localStorage.setItem("batchSettings", JSON.stringify(batchSettings)); } catch (e) { /* ignore */ }
-    }
-
     const parts = [];
     if (importedTasks > 0) parts.push(`${importedTasks} 个新定时任务`);
-    if (importData.batchSettings) parts.push('批量设置已恢复');
     if (invalidTokenCount > 0) parts.push(`已过滤 ${invalidTokenCount} 个无效账号`);
     if (parts.length === 0) parts.push('无新增数据（已存在）');
 
@@ -8242,13 +8280,15 @@ const collectTokenSettings = (tokenList) => {
 };
 
 // 导入token设置到localStorage
-const importTokenSettings = (tokenSettings) => {
+const importTokenSettings = (tokenSettings, tokenIdMapping = {}) => {
   if (!Array.isArray(tokenSettings)) return 0;
   let count = 0;
   tokenSettings.forEach((item) => {
     if (item.tokenId && item.settings) {
+      // 使用 tokenIdMapping 映射到新设备的 token ID
+      const newTokenId = tokenIdMapping[item.tokenId] || item.tokenId;
       localStorage.setItem(
-        `daily-settings:${item.tokenId}`,
+        `daily-settings:${newTokenId}`,
         JSON.stringify(item.settings)
       );
       count++;
@@ -8400,6 +8440,12 @@ const getFullBatchSettings = () => ({
   petMergeMaxLevelEnabled: batchSettings.petMergeMaxLevelEnabled,
   petMergeMaxLevel: batchSettings.petMergeMaxLevel,
   dreamPurchaseList: batchSettings.dreamPurchaseList,
+  moduleDelays: { ...batchSettings.moduleDelays },
+  manualBuyItems: batchSettings.manualBuyItems || [],
+  collectionExchangeItems: batchSettings.collectionExchangeItems || [],
+  batchTaskTimeout: batchSettings.batchTaskTimeout,
+  cdkCode: batchSettings.cdkCode || '',
+  skinChallengeMaxFail: batchSettings.skinChallengeMaxFail,
 });
 
 // 加密配置数据
@@ -8749,7 +8795,7 @@ const importAccountConfig = async ({ file }) => {
     }
 
     // 导入token设置
-    const settingsCount = importTokenSettings(importData.tokenSettings);
+    const settingsCount = importTokenSettings(importData.tokenSettings, tokenIdMapping);
 
     // 构建成功消息
     const parts = [];
@@ -8806,8 +8852,22 @@ const exportConfig = async () => {
       if (saved) nightmarePresetsData = JSON.parse(saved);
     } catch (e) { /* ignore */ }
 
+    // 阵容助手保存数据（按 token.id 收集）
+    const lineupDataMap = {};
+    tokens.value.forEach((token) => {
+      try {
+        const saved = localStorage.getItem(`saved_lineups_${token.id}`);
+        if (saved) {
+          const lineups = JSON.parse(saved);
+          if (Array.isArray(lineups) && lineups.length > 0) {
+            lineupDataMap[token.id] = lineups;
+          }
+        }
+      } catch (e) { /* ignore */ }
+    });
+
     const exportData = {
-      version: "2.3",
+      version: "2.4",
       exportTime: new Date().toISOString(),
       configType: "full",
       tokens: mapTokensForExport(tokens.value),
@@ -8819,6 +8879,7 @@ const exportConfig = async () => {
       tokenGroups: filteredGroups,
       taskTemplates: taskTemplates.value || [],
       nightmarePresets: nightmarePresetsData || [],
+      lineups: lineupDataMap,
     };
 
     const filename = `xyzw_full_config_${new Date().toISOString().slice(0, 10)}.json`;
@@ -8830,8 +8891,10 @@ const exportConfig = async () => {
       const groupMsg = filteredGroups.length > 0 ? `, ${filteredGroups.length} 个分组` : '';
       const templateMsg = (taskTemplates.value || []).length > 0 ? `, ${(taskTemplates.value || []).length} 个任务模板` : '';
       const nmMsg = (nightmarePresetsData || []).length > 0 ? `, ${(nightmarePresetsData || []).length} 个十殿预设` : '';
+      const lineupCount = Object.values(lineupDataMap).reduce((sum, arr) => sum + arr.length, 0);
+      const lineupMsg = lineupCount > 0 ? `, ${lineupCount} 个阵容` : '';
       message.success(
-        `全量导出成功: ${tokens.value.length} 个账号, ${filteredScheduledTasks.length} 个定时任务${groupMsg}${templateMsg}${nmMsg}${binMsg}`,
+        `全量导出成功: ${tokens.value.length} 个账号, ${filteredScheduledTasks.length} 个定时任务${groupMsg}${templateMsg}${nmMsg}${lineupMsg}${binMsg}`,
         { duration: 4000 }
       );
     } else {
@@ -8863,7 +8926,7 @@ const importConfig = async ({ file }) => {
       return;
     }
 
-    const stats = { tokens: 0, tasks: 0, bin: 0, settings: 0, groups: 0, templates: 0, nightmare: 0 };
+    const stats = { tokens: 0, tasks: 0, bin: 0, settings: 0, groups: 0, templates: 0, nightmare: 0, lineups: 0 };
     const tokenIdMapping = {};
 
     // 导入tokens
@@ -8943,9 +9006,9 @@ const importConfig = async ({ file }) => {
       try { localStorage.setItem("batchSettings", JSON.stringify(batchSettings)); } catch (e) { /* ignore */ }
     }
 
-    // 导入token设置
+    // 导入token设置（含 helperPresets 等全部账号任务设置）
     if (importData.tokenSettings) {
-      stats.settings = importTokenSettings(importData.tokenSettings);
+      stats.settings = importTokenSettings(importData.tokenSettings, tokenIdMapping);
     }
 
     // 导入排序配置
@@ -9033,6 +9096,18 @@ const importConfig = async ({ file }) => {
       } catch (e) { /* ignore */ }
     }
 
+    // 导入阵容数据
+    if (importData.lineups && typeof importData.lineups === 'object') {
+      for (const [oldTokenId, lineups] of Object.entries(importData.lineups)) {
+        if (!Array.isArray(lineups) || lineups.length === 0) continue;
+        const newTokenId = tokenIdMapping[oldTokenId] || oldTokenId;
+        try {
+          localStorage.setItem(`saved_lineups_${newTokenId}`, JSON.stringify(lineups));
+          stats.lineups += lineups.length;
+        } catch (e) { /* ignore */ }
+      }
+    }
+
     // 构建消息
     const parts = [];
     if (stats.tokens > 0) parts.push(`${stats.tokens} 个新账号`);
@@ -9040,6 +9115,7 @@ const importConfig = async ({ file }) => {
     if (stats.groups > 0) parts.push(`${stats.groups} 个分组`);
     if (stats.templates > 0) parts.push(`${stats.templates} 个任务模板`);
     if (stats.nightmare > 0) parts.push(`${stats.nightmare} 个十殿预设`);
+    if (stats.lineups > 0) parts.push(`${stats.lineups} 个阵容`);
     if (stats.bin > 0) parts.push(`${stats.bin} 个BIN数据`);
     if (stats.settings > 0) parts.push(`${stats.settings} 个任务配置`);
     if (parts.length === 0) parts.push('无新增数据（已存在）');
@@ -11844,6 +11920,7 @@ const loadSettings = (tokenId) => {
   purchaseCnt: 15,
       blackMarketStandalonePurchase: false,
       legacyGiftPassword: '', // 新增
+      helperPresets: [], // 智能发车预设护卫成员
     };
     return raw ? { ...defaultSettings, ...JSON.parse(raw) } : defaultSettings;
   } catch (error) {
@@ -11857,7 +11934,12 @@ const openSettings = (token) => {
   currentSettingsTokenName.value = token.name;
   const saved = loadSettings(token.id);
   Object.assign(currentSettings, saved);
+  // 兼容旧设置：如果没有helperPresets字段，默认为空数组
+  if (!currentSettings.helperPresets) {
+    currentSettings.helperPresets = [];
+  }
   currentSettings.purchaseDiscounts = initPurchaseDiscounts(currentSettings.purchaseDiscounts);
+  settingsHelperMembers.value = []; // 重置护卫成员列表
   showSettingsModal.value = true;
 
   // 自动获取黑市采购清单（需WebSocket已连接）
@@ -12129,6 +12211,45 @@ const resetTemplateForm = () => {
   purchaseCnt: 15,
     blackMarketStandalonePurchase: false, // 黑市单独购买，默认不启用
   });
+};
+
+// ========== 预设护卫成员功能 ==========
+
+/** 加载俱乐部成员列表（账号单独设置弹窗用） */
+const loadSettingsHelperMembers = async () => {
+  settingsHelperLoading.value = true;
+  try {
+    const tokenId = currentSettingsTokenId.value;
+    if (!tokenId) {
+      message.warning("请先选择账号");
+      settingsHelperLoading.value = false;
+      return;
+    }
+    const legionRes = await tokenStore.sendMessageWithPromise(tokenId, "legion_getinfo", {}, 10000);
+    const membersMap = legionRes?.body?.info?.members || legionRes?.info?.members || {};
+    const members = Object.values(membersMap).map((m) => ({
+      id: String(m.roleId),
+      name: m.name || m.nickname || String(m.roleId),
+    }));
+    settingsHelperMembers.value = members;
+  } catch (e) {
+    message.error(`获取俱乐部成员失败: ${e.message || "未知错误"}`);
+  } finally {
+    settingsHelperLoading.value = false;
+  }
+};
+
+/** 切换账号设置预设护卫成员 */
+const toggleSettingsHelper = (memberId) => {
+  if (!currentSettings.helperPresets) {
+    currentSettings.helperPresets = [];
+  }
+  const idx = currentSettings.helperPresets.indexOf(memberId);
+  if (idx >= 0) {
+    currentSettings.helperPresets.splice(idx, 1);
+  } else {
+    currentSettings.helperPresets.push(memberId);
+  }
 };
 
 const openAccountTemplateModal = () => {
@@ -12583,6 +12704,19 @@ const isTowerExpandedForAll = ref(false);
 const isCarExpandedForAll = ref(false);
 const isClimbTowerExpandedForAll = ref(false);
 const isWeirdTowerExpandedForAll = ref(false);
+
+// 卡片区域显隐控制（默认全部显示，合并为一个开关）
+const showCardSections = ref(true);
+const showStatusTags = computed(() => showCardSections.value);
+const showModuleGrid = computed(() => showCardSections.value);
+const showDailyProgress = computed(() => showCardSections.value);
+const showMonthlyProgress = computed(() => showCardSections.value);
+const toggleCardSections = () => {
+  showCardSections.value = !showCardSections.value;
+  if (!showCardSections.value) {
+    message.info('已隐藏卡片详情，可减少渲染压力');
+  }
+};
 
 // 防休眠状态
 // ✅ 防休眠状态持久化
@@ -15854,7 +15988,7 @@ const stopBatch = () => {
 
 /**
  * 日常任务执行完成后，根据活跃度自动排序账号
- * 低活跃度（<100）的账号排到前面，高活跃度（>=100）的账号排到后面
+ * 低活跃度（<90）的账号排到前面，高活跃度（>=90）的账号排到后面
  * 注意：只对本次执行的selectedTokens排序，不影响未执行的token顺序
  */
 const sortByActivityAfterDailyTask = async () => {
@@ -15876,8 +16010,8 @@ const sortByActivityAfterDailyTask = async () => {
       type: "info",
     });
 
-    // 活跃度阈值：100为分界线（满值110，>=105跳过任务）
-    const ACTIVITY_THRESHOLD = 100;
+    // 活跃度阈值：90为分界线（满值110，>=105跳过任务）
+    const ACTIVITY_THRESHOLD = 90;
 
     // 获取本次执行的token的活跃度
     const activityMap = new Map();
@@ -15905,7 +16039,7 @@ const sortByActivityAfterDailyTask = async () => {
       const activityA = activityMap.get(a) || 0;
       const activityB = activityMap.get(b) || 0;
       
-      // 低活跃度(<100)排前面，高活跃度(>=100)排后面
+      // 低活跃度(<90)排前面，高活跃度(>=90)排后面
       const isLowA = activityA < ACTIVITY_THRESHOLD;
       const isLowB = activityB < ACTIVITY_THRESHOLD;
       
@@ -15942,12 +16076,12 @@ const sortByActivityAfterDailyTask = async () => {
     });
     addLog({
       time: new Date().toLocaleTimeString(),
-      message: `📊 低活跃度(0-99): ${lowActivityTokens.length}个账号 → 排到前面`,
+      message: `📊 低活跃度(0-89): ${lowActivityTokens.length}个账号 → 排到前面`,
       type: "info",
     });
     addLog({
       time: new Date().toLocaleTimeString(),
-      message: `📊 高活跃度(100-110): ${highActivityTokens.length}个账号 → 排到后面`,
+      message: `📊 高活跃度(90-110): ${highActivityTokens.length}个账号 → 排到后面`,
       type: "info",
     });
     addLog({

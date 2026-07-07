@@ -125,26 +125,17 @@ export default defineConfig(async () => {
     },
   ].filter(Boolean);
 
-  // ✅ 从 build.gradle 自动提取 APK 版本号，构建时注入到全局变量
+  // ✅ 从 package.json 自动读取 APK 版本号（单一数据源），构建时注入到全局变量
   let apkVersionName = '1.0.0';
   let apkVersionCode = 1;
   try {
-    const gradleContent = fs.readFileSync(path.resolve(__dirname, 'android/app/build.gradle'), 'utf-8');
-    // 匹配 def verName = "1.1.2" 格式（新版 build.gradle）
-    const verNameMatch = gradleContent.match(/def\s+verName\s*=\s*"([^"]+)"/);
-    if (verNameMatch) {
-      apkVersionName = verNameMatch[1];
-    } else {
-      // 兜底：匹配旧格式 versionName "x.x.x"
-      const oldNameMatch = gradleContent.match(/versionName\s+"([^"]+)"/);
-      if (oldNameMatch) apkVersionName = oldNameMatch[1];
-    }
-    // 用与 build.gradle / Worker 一致的公式自动计算 versionCode
+    const pkgJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'));
+    apkVersionName = pkgJson.version || '1.0.0';
     const parts = apkVersionName.split('.').map(Number);
     apkVersionCode = (parts[0] || 0) * 10000 + (parts[1] || 0) * 100 + (parts[2] || 0);
     console.log(`[vite] APK版本: ${apkVersionName} (code: ${apkVersionCode})`);
   } catch (e) {
-    console.warn('[vite] 无法读取 build.gradle，使用默认版本号');
+    console.warn('[vite] 无法读取 package.json，使用默认版本号');
   }
 
   return {

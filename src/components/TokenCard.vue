@@ -109,7 +109,7 @@
     </div>
 
     <!-- 状态标签行 -->
-    <div class="status-tags">
+    <div v-if="showStatusTags" class="status-tags">
       <!-- 盐罐时间 -->
       <div class="status-tag salt-tag" style="cursor: pointer;" title="点击重置盐罐" :class="{ 'is-active': saltJar.isRunning }" @click.stop="resetSaltJar">
         <img class="tag-icon tag-icon-img" src="/icons/saltJar.png" alt="盐罐">
@@ -268,8 +268,10 @@
           ⚔️ {{ pushStatusText }}
         </span>
       </div>
-      <!-- 换皮闯关状态 -->
-      <div class="module-grid">
+    </div>
+
+    <!-- 模块网格区域（闯关/爬塔/怪塔/赛车） -->
+    <div v-if="showModuleGrid" class="module-grid">
         <div class="tower-status-container">
           <div class="tower-status-header" :title="isTowerExpanded ? '点击最小化' : '点击展开'" @click.stop="isTowerExpanded = !isTowerExpanded">
             <img class="tag-icon tag-icon-img" src="/icons/闯关.png" alt="闯关">
@@ -446,10 +448,9 @@
           </div>
         </div>
       </div>
-    </div>
 
     <!-- 每日任务进度 -->
-    <div class="task-progress">
+    <div v-if="showDailyProgress" class="task-progress">
       <div class="progress-header">
         <span class="progress-label"><img class="progress-icon-img" src="/icons/每日.png" alt="每日任务"> 每日任务</span>
         <span class="progress-value">{{ dailyTask.progress }}/110</span>
@@ -460,7 +461,7 @@
     </div>
 
     <!-- 月度任务进度 -->
-    <div class="task-progress">
+    <div v-if="showMonthlyProgress" class="task-progress">
       <div class="progress-header">
         <span class="progress-label"><img class="progress-icon-img" src="/icons/月度.png" alt="月度任务"> 月度任务</span>
         <span class="progress-value">{{ monthlyTask.fish }}/{{ monthlyTask.fishTarget }} 钓鱼 | {{ monthlyTask.arena }}/{{ monthlyTask.arenaTarget }} 竞技场</span>
@@ -548,6 +549,23 @@ const props = defineProps({
   isDropTarget: {
     type: Boolean,
     default: false,
+  },
+  // 卡片区域显隐控制
+  showStatusTags: {
+    type: Boolean,
+    default: true,
+  },
+  showModuleGrid: {
+    type: Boolean,
+    default: true,
+  },
+  showDailyProgress: {
+    type: Boolean,
+    default: true,
+  },
+  showMonthlyProgress: {
+    type: Boolean,
+    default: true,
   },
 });
 

@@ -676,8 +676,29 @@ export class DailyTaskRunner {
     // 开启宝箱
     if (!isDone(7) && this.settings.openBox) {
       tasks.push(async () => {
-        const opened = await this.tryOpenBox(BOX_TYPES.DIAMOND.id, BOX_TYPES.DIAMOND.name);
-        if (!opened) {
+        // 从全局批量设置读取宝箱类型（与批量功能共享配置）
+        let boxTypeId = 2001; // 默认木质宝箱
+        try {
+          const batchSettingsRaw = localStorage.getItem('batchSettings');
+          if (batchSettingsRaw) {
+            const batchSettings = JSON.parse(batchSettingsRaw);
+            if (batchSettings.defaultBoxType) {
+              boxTypeId = batchSettings.defaultBoxType;
+            }
+          }
+        } catch (_) { /* 读取失败使用默认值 */ }
+        // 宝箱类型映射
+        const boxTypeMap = {
+          2001: { id: 2001, name: '木质宝箱' },
+          2002: { id: 2002, name: '青铜宝箱' },
+          2003: { id: 2003, name: '黄金宝箱' },
+          2004: { id: 2004, name: '铂金宝箱' },
+          2005: { id: 2005, name: '钻石宝箱' },
+        };
+        const selectedBox = boxTypeMap[boxTypeId] || boxTypeMap[2001];
+        const opened = await this.tryOpenBox(selectedBox.id, selectedBox.name);
+        // 如果配置的宝箱开启失败，且不是木质宝箱，则尝试木质宝箱作为兜底
+        if (!opened && selectedBox.id !== 2001) {
           await this.tryOpenBox(BOX_TYPES.WOODEN.id, BOX_TYPES.WOODEN.name);
         }
       });
@@ -918,7 +939,7 @@ export class DailyTaskRunner {
   }
 
   /**
-   * 免费扫荡卷任务（独立方法，用于活跃度100时的精简模式）
+   * 免费扫荡卷任务（独立方法，用于活跃度>=90时的精简模式）
    */
   buildFreeSweepTickets() {
     const tasks = [];
@@ -932,6 +953,23 @@ export class DailyTaskRunner {
           await delay(3000 + Math.random() * 2000);
         }
       });
+    }
+    
+    return tasks;
+  }
+
+  /**
+   * 免费点金任务（独立方法，用于活跃度>=90时的精简模式）
+   */
+  buildGoldTask(statisticsTime) {
+    const tasks = [];
+    
+    // 免费点金（检查是否已完成、是否可用）
+    if (isToday(statisticsTime['buy:gold'])) {
+      for (let i = 0; i < GOLD_BUY_COUNT; i++) {
+        tasks.push(() => this.sendCommandSafe('system_buygold', { buyNum: 1 }, 
+          { description: `免费点金 ${i + 1}/${GOLD_BUY_COUNT}` }));
+      }
     }
     
     return tasks;
@@ -1274,9 +1312,9 @@ export class DailyTaskRunner {
       return { shouldSkip: true, activityPoints: activity, isFullActivity: false };
     }
     
-    // ✅ 活跃度 >= 100 时，标记为满活跃度状态（精简模式，只执行特定任务）
-    if (activity >= 100) {
-      this.info(`活跃度已达${activity}，将只执行：竞技场战斗、灯神扫荡、免费扫荡卷、任务奖励领取`);
+    // ✅ 活跃度 >= 90 时，标记为满活跃度状态（精简模式，只执行特定任务）
+    if (activity >= 90) {
+      this.info(`活跃度已达${activity}，将只执行：竞技场战斗、灯神扫荡、免费扫荡卷、免费点金、任务奖励领取`);
       return { shouldSkip: false, activityPoints: activity, isFullActivity: true };
     }
     
@@ -1335,13 +1373,14 @@ export class DailyTaskRunner {
     };
 
     if (activityResult.isFullActivity) {
-      // 活跃度为100时，只执行4个特定任务
-      this.info('🎯 活跃度为100，执行精简任务模式');
+      // 活跃度>=90时，只执行5个特定任务
+      this.info('🎯 活跃度>=90，执行精简任务模式');
       
       const limitedTaskBuilders = [
         { build: () => this.buildArenaTask(), module: 'arena' },
         { build: () => this.buildDeepSeaLampTask(statisticsTime), module: 'treasure' },
         { build: () => this.buildFreeSweepTickets(), module: 'activity' },
+        { build: () => this.buildGoldTask(statisticsTime), module: 'daily' },
         { build: () => this.buildRewardTasks(), module: 'daily' },
       ];
       
@@ -1350,7 +1389,7 @@ export class DailyTaskRunner {
       );
       this.info(`精简模式：共 ${allTasks.length} 个任务待执行`);
     } else {
-      // 活跃度小于100时，执行完整任务列表
+      // 活跃度小于90时，执行完整任务列表
       const taskBuilders = [
         { build: () => this.buildBasicTasks(completedTasks, statistics, statisticsTime, roleData), module: 'daily' },
         { build: () => this.buildSaltBottleTasks(completedTasks), module: 'daily' },
