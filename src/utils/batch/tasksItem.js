@@ -380,114 +380,51 @@ export function createTasksItem(deps) {
           let heroSuccessCount = 0;
           let heroSkippedCount = 0;
 
-          // 预检查：获取英雄碎片数据，跳过碎片不足的英雄（可能已满星）
-          let eligibleHeroIds = heroIds;
-          try {
-            const roleRes = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, batchSettings.defaultCommandTimeout || 8000);
-            const heroes = roleRes?.role?.heroes || {};
-            const items = roleRes?.role?.items || {};
-            // 升星消耗表（按星级索引，0-based）
-            const STAR_COST = [8,8,8,8,8,40,40,40,40,40,80,80,80,80,80,200,200,200,200,200,400,400,400,400,400,400,400,400,400,400];
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 开始英雄图鉴升星，共${heroIds.length}个英雄`,
+            type: "info",
+          });
 
-            eligibleHeroIds = [];
-            const skippedHeroes = [];
-            for (const heroId of heroIds) {
-              const heroData = heroes[heroId];
-              if (!heroData) {
-                skippedHeroes.push(`${HERO_DICT[heroId]?.name || heroId}:未拥有`);
-                continue;
-              }
-              const currentStar = Number(heroData.star || 0);
-              if (currentStar >= 30) {
-                skippedHeroes.push(`${HERO_DICT[heroId]?.name || heroId}:已满星(${currentStar})`);
-                continue;
-              }
-              // 检查碎片是否足够升1星
-              const fragmentCost = STAR_COST[currentStar] || 999;
-              const fragmentCount = Number(items[heroId]?.quantity || items[heroId]?.num || 0);
-              if (fragmentCount < fragmentCost) {
-                skippedHeroes.push(`${HERO_DICT[heroId]?.name || heroId}:碎片不足(${fragmentCount}/${fragmentCost})`);
-                continue;
-              }
-              eligibleHeroIds.push(heroId);
-            }
+          for (const heroId of heroIds) {
+            if (shouldStop.value) break;
 
-            if (skippedHeroes.length > 0) {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 英雄图鉴预检查: ${eligibleHeroIds.length}个可升星，${skippedHeroes.length}个跳过`,
-                type: "info",
-              });
-              if (skippedHeroes.length <= 10) {
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `${token.name} 跳过: ${skippedHeroes.join(", ")}`,
-                  type: "info",
-                });
-              }
-            }
-          } catch (e) {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 获取英雄碎片数据失败，将尝试全部英雄: ${e.message}`,
-              type: "warning",
-            });
-          }
-
-          if (eligibleHeroIds.length === 0) {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 无满足条件的英雄可图鉴升星`,
-              type: "warning",
-            });
-          } else {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 开始英雄图鉴升星，共${eligibleHeroIds.length}个英雄`,
-              type: "info",
-            });
-
-            // 尝试筛选后的英雄
-            for (const heroId of eligibleHeroIds) {
+            let heroStars = 0;
+            for (let i = 1; i <= 10; i++) {
               if (shouldStop.value) break;
 
-              let heroStars = 0;
-              for (let i = 1; i <= 10; i++) {
-                if (shouldStop.value) break;
-
-                try {
-                  const res = await tokenStore.sendMessageWithPromise(
-                    tokenId, "book_upgrade", { heroId }, batchSettings.defaultCommandTimeout || 8000,
-                  );
-                  // 检查响应码：与油猴脚本 res._code !== 0 判断一致
-                  if (res && res._code !== undefined && res._code !== 0) {
-                    break;
-                  }
-                  heroStars++;
-                  heroTotalStars++;
-                } catch (err) {
+              try {
+                const res = await tokenStore.sendMessageWithPromise(
+                  tokenId, "book_upgrade", { heroId }, batchSettings.defaultCommandTimeout || 8000,
+                );
+                // 检查响应码：与油猴脚本 res._code !== 0 判断一致
+                if (res && res._code !== undefined && res._code !== 0) {
                   break;
                 }
-                await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
+                heroStars++;
+                heroTotalStars++;
+              } catch (err) {
+                break;
               }
-              if (heroStars > 0) {
-                heroSuccessCount++;
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `${token.name} 英雄:${HERO_DICT[heroId]?.name || heroId} 图鉴升星成功 ×${heroStars}`,
-                  type: "success",
-                });
-              } else {
-                heroSkippedCount++;
-              }
+              await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
             }
-
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 英雄图鉴升星完成：${heroSuccessCount}个英雄升星，共${heroTotalStars}星，${heroSkippedCount}个已满星跳过`,
-              type: "success",
-            });
+            if (heroStars > 0) {
+              heroSuccessCount++;
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 英雄:${HERO_DICT[heroId]?.name || heroId} 图鉴升星成功 ×${heroStars}`,
+                type: "success",
+              });
+            } else {
+              heroSkippedCount++;
+            }
           }
+
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 英雄图鉴升星完成：${heroSuccessCount}个英雄升星，共${heroTotalStars}星，${heroSkippedCount}个已满星跳过`,
+            type: "success",
+          });
         }
 
         // === 鱼灵图鉴升星 ===

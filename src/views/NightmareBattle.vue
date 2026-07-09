@@ -375,8 +375,8 @@ const startAttack = async (member) => {
     return;
   }
 
-  // 10秒战斗倒计时
-  battleCountdown.value = 10;
+  // 1秒战斗倒计时
+  battleCountdown.value = 1;
   startCountdown(async () => {
     // 战斗结束 → leadercomplete
     let completeOk = false;
@@ -501,7 +501,7 @@ const memberFullRage = async (member) => {
 // ====== 冷却 ======
 const startCooling = () => {
   battlePhase.value = 'cooling';
-  battleCountdown.value = 18;
+  battleCountdown.value = 15;
   startCountdown(() => {
     battlePhase.value = 'idle';
     addBattleLog('冷却结束，可以再次出战', 'info');

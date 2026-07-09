@@ -1,7 +1,6 @@
 import { isInCurrentWeek, sleep } from "@/utils/base";
 import { gameLogger } from "@/utils/logger";
 import { findAnswer } from "@/utils/studyQuestionsFromJSON";
-import { useTokenStore } from "../tokenStore";
 import type { EVM, XyzwSession } from ".";
 
 export const StudyPlugin = ({
@@ -20,8 +19,9 @@ export const StudyPlugin = ({
     const questionList = body.questionList;
     const studyId = body.role?.study?.id;
 
-    // 获取tokenStore实例
-    const tokenStore = useTokenStore();
+    // 获取tokenStore实例（延迟导入，避免循环依赖）
+    const { useTokenStore: uts0 } = await import("../tokenStore");
+    const tokenStore = uts0();
 
     // 如果没有题目列表，说明本周已完成或答题未开启
     if (!questionList || !Array.isArray(questionList) || questionList.length === 0) {
@@ -148,7 +148,8 @@ export const StudyPlugin = ({
       // 验证答题进度：从服务器获取实际的答题进度
       try {
         gameLogger.info("正在验证答题进度...");
-        const tokenStore = useTokenStore();
+        const { useTokenStore: uts1 } = await import("../tokenStore");
+        const tokenStore = uts1();
         const roleInfo = await tokenStore.sendMessageWithPromise(
           tokenId,
           "role_getroleinfo",
@@ -193,7 +194,8 @@ export const StudyPlugin = ({
         // 验证失败时，尝试刷新游戏数据后再次验证
         try {
           gameLogger.info("尝试刷新游戏数据后再次验证...");
-          const tokenStore = useTokenStore();
+          const { useTokenStore: uts2 } = await import("../tokenStore");
+          const tokenStore = uts2();
 
           // 检查连接状态
           const wsStatus = tokenStore.getWebSocketStatus(tokenId);
@@ -294,7 +296,7 @@ export const StudyPlugin = ({
     }
   });
   //
-  onSome(["I-study"], (data: XyzwSession) => {
+  onSome(["I-study"], async (data: XyzwSession) => {
     const { body, tokenId } = data;
   
     // 安全获取数据
@@ -306,8 +308,9 @@ export const StudyPlugin = ({
   
     gameLogger.info(`答题状态更新: maxCorrectNum=${maxCorrectNum}, beginTime=${beginTime}, 完成状态=${isStudyCompleted}`);
   
-    // ✅ 只更新 token 独立的 studyStatus，避免多账号数据混乱
-    const tokenStore = useTokenStore();
+    // ✅ 只更新 token 独立的 studyStatus，避免多账号数据混乱（延迟导入，避免循环依赖）
+    const { useTokenStore: uts3 } = await import("../tokenStore");
+    const tokenStore = uts3();
     const currentStatus = tokenStore.getTokenGameData(tokenId)?.studyStatus || {};
     tokenStore.updateTokenGameData(tokenId, {
       studyStatus: {
@@ -323,8 +326,9 @@ export const StudyPlugin = ({
   onSome(["I-study-week-forward"], async (data: XyzwSession) => {
     gameLogger.info("开始领取答题奖励");
     const { gameData, client, tokenId } = data;
-    // 获取tokenStore实例
-    const tokenStore = useTokenStore();
+    // 获取tokenStore实例（延迟导入，避免循环依赖）
+    const { useTokenStore: uts4 } = await import("../tokenStore");
+    const tokenStore = uts4();
     // ✅ 只更新 token 独立的 studyStatus，避免多账号数据混乱
     const currentStatus = tokenStore.getTokenGameData(tokenId)?.studyStatus || {};
     

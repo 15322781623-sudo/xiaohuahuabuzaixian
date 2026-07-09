@@ -689,27 +689,6 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="executeManualTaskWithRecord('buy_top_rod_package', '购买顶级鱼竿包', buy_top_rod_package)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  购买顶级鱼竿包
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('buy_super_spirit_shell', '购买超级灵魂壳', buy_super_spirit_shell)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  购买特级灵贝包
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('store_buy_jade', '一键购买彩玉', store_buy_jade)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  一键购买彩玉
-                </n-button>
-                <n-button
-                  size="small"
                   @click="openManualBuyModal"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
@@ -759,35 +738,6 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="showConsumeModal = true"
-                  :disabled="isRunning"
-                  type="warning"
-                >
-                  消耗活动
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('batchClaimConsumeRewards', '领取消耗活动道具', batchClaimConsumeRewards)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  领取消耗活动道具
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="openHelperModal('cheer')"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  挥鼓助威消耗
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('batchUseActivityItem', '使用消耗活动道具', batchUseActivityItem)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  使用消耗活动道具
-                </n-button>
-                <n-button
-                  size="small"
                   @click="openHelperModal('cdk')"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
@@ -795,17 +745,17 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="openActivityExchangeModal"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  消耗活动兑换购买
-                </n-button>
-                <n-button
-                  size="small"
                   @click="executeManualTaskWithRecord('batchClaimApexRewards', '领取竞技大厅道具', batchClaimApexRewards)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   领取竞技大厅道具
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('switchSaltFieldPeachFormation', '盐场蟠桃阵容', handleSwitchSaltFieldPeachFormation)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  盐场蟠桃阵容
                 </n-button>
               </n-space>
             </n-tab-pane>
@@ -1026,6 +976,13 @@
                 </n-button>
                 <n-button
                   size="small"
+                  @click="openApexCheerModal"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  竞技大厅助威
+                </n-button>
+                <n-button
+                  size="small"
                   @click="executeManualTaskWithRecord('claim_guess_coin', '领取助威币', claim_guess_coin)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
@@ -1037,6 +994,46 @@
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   助威商店多选购买
+                </n-button>
+              </n-space>
+            </n-tab-pane>
+            <n-tab-pane name="consumeActivity" tab="消耗活动">
+              <n-space>
+                <n-button
+                  size="small"
+                  @click="showConsumeModal = true"
+                  :disabled="isRunning"
+                  type="warning"
+                >
+                  消耗活动
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('batchClaimConsumeRewards', '领取消耗活动道具', batchClaimConsumeRewards)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  领取消耗活动道具
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="openHelperModal('cheer')"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  挥鼓助威消耗
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('batchUseActivityItem', '使用消耗活动道具', batchUseActivityItem)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  使用消耗活动道具
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="openActivityExchangeModal"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  消耗活动兑换购买
                 </n-button>
               </n-space>
             </n-tab-pane>
@@ -1320,49 +1317,27 @@
                   全选
                 </n-checkbox>
                 <div class="expand-collapse-buttons">
-                  <div class="button-group">
-                    <n-button size="small" @click="isTowerExpandedForAll = true">
-                      展开闯关
-                    </n-button>
-                    <n-button size="small" @click="isTowerExpandedForAll = false">
-                      收起闯关
-                    </n-button>
-                  </div>
-                  <div class="button-group">
-                    <n-button size="small" @click="isCarExpandedForAll = true">
-                      展开赛车
-                    </n-button>
-                    <n-button size="small" @click="isCarExpandedForAll = false">
-                      收起赛车
-                    </n-button>
-                  </div>
-                  <div class="button-group">
-                    <n-button size="small" @click="isClimbTowerExpandedForAll = true">
-                      展开爬塔
-                    </n-button>
-                    <n-button size="small" @click="isClimbTowerExpandedForAll = false">
-                      收起爬塔
-                    </n-button>
-                  </div>
-                  <div class="button-group">
-                    <n-button size="small" @click="isWeirdTowerExpandedForAll = true">
-                      展开怪塔
-                    </n-button>
-                    <n-button size="small" @click="isWeirdTowerExpandedForAll = false">
-                      收起怪塔
-                    </n-button>
-                  </div>
+                  <n-button size="small" quaternary :type="isTowerExpandedForAll ? 'primary' : 'default'" @click="isTowerExpandedForAll = !isTowerExpandedForAll">
+                    {{ isTowerExpandedForAll ? '收起闯关' : '展开闯关' }}
+                  </n-button>
+                  <n-button size="small" quaternary :type="isCarExpandedForAll ? 'primary' : 'default'" @click="isCarExpandedForAll = !isCarExpandedForAll">
+                    {{ isCarExpandedForAll ? '收起赛车' : '展开赛车' }}
+                  </n-button>
+                  <n-button size="small" quaternary :type="isClimbTowerExpandedForAll ? 'primary' : 'default'" @click="isClimbTowerExpandedForAll = !isClimbTowerExpandedForAll">
+                    {{ isClimbTowerExpandedForAll ? '收起爬塔' : '展开爬塔' }}
+                  </n-button>
+                  <n-button size="small" quaternary :type="isWeirdTowerExpandedForAll ? 'primary' : 'default'" @click="isWeirdTowerExpandedForAll = !isWeirdTowerExpandedForAll">
+                    {{ isWeirdTowerExpandedForAll ? '收起怪塔' : '展开怪塔' }}
+                  </n-button>
                   <n-divider vertical />
-                  <div class="button-group">
-                    <n-tooltip :show-arrow="true">
-                      <template #trigger>
-                        <n-button size="small" :type="showCardSections ? 'primary' : 'default'" @click="toggleCardSections">
-                          {{ showCardSections ? '隐藏卡片详情' : '显示卡片详情' }}
-                        </n-button>
-                      </template>
-                      隐藏卡片详情可减少页面渲染压力，提升流畅度
-                    </n-tooltip>
-                  </div>
+                  <n-tooltip :show-arrow="true">
+                    <template #trigger>
+                      <n-button size="small" :type="showCardSections ? 'primary' : 'default'" @click="toggleCardSections">
+                        {{ showCardSections ? '隐藏卡片详情' : '显示卡片详情' }}
+                      </n-button>
+                    </template>
+                    隐藏卡片详情可减少页面渲染压力，提升流畅度
+                  </n-tooltip>
                 </div>
               </div>
               <n-grid
@@ -1637,6 +1612,14 @@
             />
           </div>
           <div class="setting-item">
+            <label class="setting-label">盐场蟠桃阵容</label>
+            <n-select
+              v-model:value="currentSettings.saltFieldPeachFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
             <label class="setting-label">俱乐部BOSS次数</label>
             <n-select
               v-model:value="currentSettings.bossTimes"
@@ -1812,6 +1795,14 @@
             <label class="setting-label">十殿阵容</label>
             <n-select
               v-model:value="currentTemplate.nightmareFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">盐场蟠桃阵容</label>
+            <n-select
+              v-model:value="currentTemplate.saltFieldPeachFormation"
               :options="formationOptions"
               size="small"
             />
@@ -4284,6 +4275,84 @@
       </div>
     </n-modal>
 
+    <!-- Apex Cheer Modal (竞技大厅助威) -->
+    <n-modal
+      v-model:show="showApexCheerModal"
+      preset="card"
+      title="竞技大厅助威"
+      style="width: 90%; max-width: 900px"
+    >
+      <div class="settings-content">
+        <div class="settings-grid" style="display: block;">
+          <!-- 获取列表区域 -->
+          <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+            <n-button type="primary" @click="fetchApexVoteList" :loading="apexCheerLoading" style="width: 200px; margin-bottom: 0;">
+              {{ apexCheerLoading ? '加载中...' : '获取可助威俱乐部列表' }}
+            </n-button>
+            <span style="font-size: 16px;">期次：</span>
+            <n-select
+              v-model:value="selectedApexRound"
+              :options="[{ label: '第一期', value: 1 }, { label: '第二期', value: 2 }, { label: '第三期', value: 3 }, { label: '第四期', value: 4 }, { label: '第五期', value: 5 }, { label: '第六期', value: 6 }, { label: '第七期', value: 7 }]"
+              style="width: 120px"
+              size="small"
+            />
+            <span style="font-size: 16px;">分组：</span>
+            <n-select
+              v-model:value="selectedApexGroupId"
+              :options="[{ label: '第1组', value: 1 }, { label: '第2组', value: 2 }, { label: '第3组', value: 3 }, { label: '第4组', value: 4 }, { label: '第5组', value: 5 }, { label: '第6组', value: 6 }, { label: '第7组', value: 7 }, { label: '第8组', value: 8 }, { label: '第9组', value: 9 }, { label: '第10组', value: 10 }, { label: '第11组', value: 11 }, { label: '第12组', value: 12 }, { label: '第13组', value: 13 }, { label: '第14组', value: 14 }, { label: '第15组', value: 15 }, { label: '第16组', value: 16 }, { label: '第17组', value: 17 }, { label: '第18组', value: 18 }, { label: '第19组', value: 19 }, { label: '第20组', value: 20 }, { label: '第21组', value: 21 }, { label: '第22组', value: 22 }, { label: '第23组', value: 23 }, { label: '第24组', value: 24 }, { label: '第25组', value: 25 }, { label: '第26组', value: 26 }, { label: '第27组', value: 27 }, { label: '第28组', value: 28 }, { label: '第29组', value: 29 }, { label: '第30组', value: 30 }, { label: '第31组', value: 31 }, { label: '第32组', value: 32 }]"
+              style="width: 120px"
+              size="small"
+            />
+          </div>
+
+          <!-- 投票数量设置 -->
+          <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 16px;">赠送数量：</span>
+            <n-input-number 
+              v-model:value="apexVoteCount" 
+              placeholder="0=全部赠送" 
+              :min="0" 
+              :max="maxApexVoteCount > 0 ? maxApexVoteCount : 999999" 
+              style="width: 200px"
+            />
+            <n-text type="info" style="font-size: 14px;">
+              {{ apexVoteCount === 0 ? '全部赠送' : `赠送 ${apexVoteCount} 次` }} | 当前助威币：{{ maxApexVoteCount }}
+            </n-text>
+          </div>
+
+          <!-- 俱乐部搜索 -->
+          <div style="margin-bottom: 12px;">
+            <n-input
+              v-model:value="apexClubSearch"
+              placeholder="搜索俱乐部名称或ID..."
+              clearable
+              style="width: 300px"
+              size="small"
+            />
+          </div>
+
+          <!-- 俱乐部列表 -->
+          <n-data-table
+            :columns="apexVoteColumns"
+            :data="filteredApexVoteList"
+            :loading="apexCheerLoading"
+            :row-key="row => row.teamId"
+            :checked-row-keys="selectedApexTeamId ? [selectedApexTeamId] : []"
+            @update:checked-row-keys="(keys) => selectedApexTeamId = keys[0]"
+            :row-props="apexVoteRowProps"
+            style="height: 500px; flex: 1;"
+            flex-height
+          />
+        </div>
+        <div class="modal-actions" style="margin-top: 20px; text-align: right">
+          <n-button @click="applyApexVote" type="primary" :disabled="!selectedApexTeamId || isRunning">
+            {{ selectedApexTeamId ? `对队伍"${getSelectedTeamName()}"${apexVoteCount === 0 ? '全部赠送' : `赠送 ${apexVoteCount} 次`}` : '请先选择一个俱乐部' }}
+          </n-button>
+          <n-button @click="closeApexCheerModal">关闭</n-button>
+        </div>
+      </div>
+    </n-modal>
+
     <!-- 助威商店多选购买弹窗 -->
     <n-modal
       v-model:show="showLegionStoreModal"
@@ -4527,9 +4596,16 @@
           
           <!-- 选择包含的账号 -->
           <div style="background: #f9f9f9; padding: 12px; border-radius: 8px; border: 1px solid #eee;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
               <span style="font-size: 13px; font-weight: bold;">包含账号 ({{ newGroupSelectedTokens.length }})</span>
-              <n-space size="small">
+              <n-space size="small" align="center">
+                <n-input
+                  v-model:value="groupTokenSearch"
+                  placeholder="搜索账号(支持多关键词)"
+                  size="tiny"
+                  clearable
+                  style="width: 160px"
+                />
                 <n-button size="tiny" @click="selectAllNewGroup">全选</n-button>
                 <n-button size="tiny" @click="deselectAllNewGroup">全不选</n-button>
               </n-space>
@@ -4537,7 +4613,7 @@
             <div style="max-height: 150px; overflow-y: auto;">
               <n-checkbox-group v-model:value="newGroupSelectedTokens">
                 <n-grid :cols="3" :x-gap="12" :y-gap="8">
-                  <n-grid-item v-for="token in sortedTokens" :key="token.id">
+                  <n-grid-item v-for="token in filteredGroupTokens" :key="token.id">
                     <n-checkbox :value="token.id">{{ token.name }}</n-checkbox>
                   </n-grid-item>
                 </n-grid>
@@ -5561,6 +5637,27 @@ const sortedTokens = computed(() => {
   return tokens;
 });
 
+// 分组管理弹窗中账号搜索过滤
+const filteredGroupTokens = computed(() => {
+  if (!groupTokenSearch.value.trim()) return sortedTokens.value;
+  // 支持多关键词搜索（空格或逗号分隔），精准匹配（完整名称或完整片段匹配）
+  const keywords = groupTokenSearch.value.trim().split(/[,，\s]+/).filter(k => k.length > 0).map(k => k.toLowerCase());
+  if (keywords.length === 0) return sortedTokens.value;
+  return sortedTokens.value.filter(token => {
+    const name = token.name?.toLowerCase() || '';
+    const server = token.server?.toLowerCase() || '';
+    const id = token.id?.toLowerCase() || '';
+    return keywords.some(kw => {
+      // 精准匹配：完整名称相等，或按分隔符拆分后某一段完全匹配
+      if (name === kw || server === kw || id === kw) return true;
+      // 按常见分隔符拆分后精准匹配每一段
+      const nameParts = name.split(/[_\-\s、,，]+/);
+      const serverParts = server.split(/[_\-\s、,，]+/);
+      return nameParts.some(p => p === kw) || serverParts.some(p => p === kw);
+    });
+  });
+});
+
 // 切换排序
 const toggleSort = (field) => {
   if (sortConfig.value.field === field) {
@@ -5797,6 +5894,7 @@ const selectedGroups = ref([]); // 选中的分组ID列表
 const newGroupName = ref("");
 const newGroupColor = ref("#1677ff");
 const newGroupSelectedTokens = ref([]); // 新建分组时选中的Token ID列表
+const groupTokenSearch = ref(""); // 分组管理账号搜索关键词
 const editingGroupId = ref(null);
 const editingGroupName = ref("");
 const editingGroupColor = ref("");
@@ -5822,6 +5920,81 @@ const warGuessLoading = ref(false);
 const warGuessCoin = ref(20);
 const selectedWarGuessLegionId = ref(null);
 const currentGuessCount = ref(0);
+
+// ======================
+// Apex Cheering Feature (竞技大厅助威)
+// ======================
+const showApexCheerModal = ref(false);
+const apexVoteList = ref([]);
+const apexCheerLoading = ref(false);
+const apexVoteCount = ref(0); // 0 = 全部赠送
+const maxApexVoteCount = ref(0); // 当前助威币数量（从 apex_getroleinfo 获取）
+const selectedApexTeamId = ref(null);
+const selectedApexRound = ref(1); // 场次选择（1-7）
+const selectedApexGroupId = ref(1); // 分组选择（1-32）
+const apexClubSearch = ref(''); // 俱乐部搜索关键词
+
+// 分组切换时自动刷新俱乐部列表
+watch(selectedApexGroupId, () => {
+  if (showApexCheerModal.value && !apexClubSearch.value.trim()) {
+    fetchApexVoteList();
+  }
+});
+
+// 搜索关键词变化时，跨所有分组搜索
+let apexSearchTimer = null;
+watch(apexClubSearch, (newVal) => {
+  if (!showApexCheerModal.value) return;
+  clearTimeout(apexSearchTimer);
+  if (newVal.trim()) {
+    // 有搜索关键词时，跨所有分组搜索
+    apexSearchTimer = setTimeout(() => {
+      fetchApexVoteList(true);
+    }, 500);
+  } else {
+    // 清空搜索时，恢复当前分组数据
+    apexSearchTimer = setTimeout(() => {
+      fetchApexVoteList(false);
+    }, 300);
+  }
+});
+
+// 弹窗关闭时释放连接槽（处理点击X按钮关闭的情况）
+watch(showApexCheerModal, (newVal) => {
+  if (!newVal) {
+    for (const tokenId of selectedTokens.value) {
+      tokenStore.closeWebSocketConnection(tokenId);
+    }
+  }
+});
+
+// 搜索过滤后的俱乐部列表
+const filteredApexVoteList = computed(() => {
+  const keyword = apexClubSearch.value.trim().toLowerCase();
+  if (!keyword) return apexVoteList.value;
+  return apexVoteList.value.filter(item => 
+    item.name.toLowerCase().includes(keyword) || item.teamId.toLowerCase().includes(keyword)
+  );
+});
+
+// 列定义
+const apexVoteColumns = [
+  {
+    type: 'selection',
+    multiple: false,
+  },
+  { title: 'ID', key: 'teamId', width: 150 },
+  { title: '头像', key: 'logo', render(row) {
+      return h('img', { src: row.logo, style: { width: '36px', height: '36px', borderRadius: '4px' } });
+  }, width: 80 },
+  { title: '队伍名称', key: 'name', width: 150 },
+  { title: '战力', key: 'power', width: 140, render(row) {
+      return h('div', null, [formatPower(row.power)]);
+    }},
+  { title: '已获助力', key: 'cheerCnt', width: 120, render(row) {
+      return h('div', null, [(row.cheerCnt || 0).toLocaleString()]);
+    }},
+];
 
 // 助威商店
 const showLegionStoreModal = ref(false);
@@ -5922,6 +6095,346 @@ const warGuessRowProps = (row) => {
       selectedWarGuessLegionId.value = row.id;
     },
   };
+};
+
+// Apex Cheer 相关函数
+const apexVoteRowProps = (row) => {
+  return {
+    style: "cursor: pointer",
+    onClick: () => {
+      selectedApexTeamId.value = row.teamId;
+    },
+  };
+};
+
+const openApexCheerModal = async () => {
+  showApexCheerModal.value = true;
+  // 先获取列表，再获取助威币数量（避免同时创建连接导致锁冲突）
+  await fetchApexVoteList();
+  await getMaxApexVoteCount();
+};
+
+const closeApexCheerModal = () => {
+  // 关闭弹窗时释放所有账号的连接槽
+  for (const tokenId of selectedTokens.value) {
+    tokenStore.closeWebSocketConnection(tokenId);
+  }
+  showApexCheerModal.value = false;
+};
+
+const fetchApexVoteList = async (fetchAllGroups = false) => {
+  if (selectedTokens.value.length === 0) {
+    message.warning("请先选择一个账号用于获取竞技大厅列表");
+    return;
+  }
+
+  const tokenId = selectedTokens.value[0];
+  const token = tokens.value.find(t => t.id === tokenId);
+
+  apexCheerLoading.value = true;
+  try {
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: fetchAllGroups
+        ? `正在使用 ${token.name} 跨所有分组搜索竞技大厅...`
+        : `正在使用 ${token.name} 获取竞技大厅助威列表...`,
+      type: "info",
+    });
+
+    // Ensure connection
+    const status = tokenStore.getWebSocketStatus(tokenId);
+    if (status === "connecting") {
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `${token.name} 正在连接中，请稍候...`,
+        type: "info",
+      });
+      let retries = 0;
+      while (tokenStore.getWebSocketStatus(tokenId) !== "connected" && retries < 20) {
+        await new Promise(r => setTimeout(r, 1000));
+        retries++;
+      }
+      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+        throw new Error(`连接 ${token.name} 超时`);
+      }
+    } else if (status !== "connected") {
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `正在连接 ${token.name}...`,
+        type: "info",
+      });
+      const result = await tokenStore.createWebSocketConnection(tokenId, token.token, token.wsUrl);
+      if (!result) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接由其他进程处理，等待...`,
+          type: "info",
+        });
+      }
+      let retries = 0;
+      while (tokenStore.getWebSocketStatus(tokenId) !== "connected" && retries < 20) {
+        await new Promise(r => setTimeout(r, 1000));
+        retries++;
+      }
+      
+      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+        throw new Error(`连接 ${token.name} 失败，请检查Token是否有效`);
+      }
+    }
+
+    let allResults = [];
+
+    if (fetchAllGroups) {
+      // 跨所有32个分组搜索
+      for (let gid = 1; gid <= 32; gid++) {
+        try {
+          const response = await tokenStore.sendMessageWithPromise(tokenId, "apex_getvotelist", { groupId: gid, idx: 0, round: selectedApexRound.value }, 10000);
+          if (response && response.apexVoteList) {
+            allResults = allResults.concat(response.apexVoteList);
+          }
+        } catch (e) {
+          console.warn(`获取第${gid}组数据失败:`, e.message);
+        }
+      }
+    } else {
+      // 只获取当前分组
+      const response = await tokenStore.sendMessageWithPromise(tokenId, "apex_getvotelist", { groupId: selectedApexGroupId.value, idx: 0, round: selectedApexRound.value }, 10000);
+      if (response && response.apexVoteList) {
+        allResults = response.apexVoteList;
+      }
+    }
+    
+    if (allResults.length > 0) {
+      apexVoteList.value = allResults
+        .filter(item => !item.isOut)
+        .sort((a, b) => (b.cheerCnt || 0) - (a.cheerCnt || 0));
+      
+      if (fetchAllGroups && apexVoteList.value.length === 0) {
+        message.info("所有分组中均未找到可助威队伍");
+      }
+    } else {
+      message.warning("获取竞技大厅列表为空");
+      apexVoteList.value = [];
+    }
+  } catch (error) {
+    console.error("Fetch apex vote list error:", error);
+    message.error("获取竞技大厅列表失败：" + error.message);
+  } finally {
+    apexCheerLoading.value = false;
+  }
+};
+
+// 获取助威币数量（通过 apex_getroleinfo）
+const getMaxApexVoteCount = async () => {
+  if (selectedTokens.value.length === 0) return;
+
+  const tokenId = selectedTokens.value[0];
+  const token = tokens.value.find(t => t.id === tokenId);
+
+  try {
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `正在获取 ${token.name} 的助威币数量...`,
+      type: "info",
+    });
+
+    // Ensure connection
+    const status = tokenStore.getWebSocketStatus(tokenId);
+    if (status === "connecting") {
+      let retries = 0;
+      while (tokenStore.getWebSocketStatus(tokenId) !== "connected" && retries < 20) {
+        await new Promise(r => setTimeout(r, 1000));
+        retries++;
+      }
+      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+        throw new Error(`连接 ${token.name} 超时`);
+      }
+    } else if (status !== "connected") {
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `正在连接 ${token.name}...`,
+        type: "info",
+      });
+      const result = await tokenStore.createWebSocketConnection(tokenId, token.token, token.wsUrl);
+      if (!result) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接由其他进程处理，等待...`,
+          type: "info",
+        });
+      }
+      let retries = 0;
+      while (tokenStore.getWebSocketStatus(tokenId) !== "connected" && retries < 20) {
+        await new Promise(r => setTimeout(r, 1000));
+        retries++;
+      }
+      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+        throw new Error(`连接 ${token.name} 失败，请检查Token是否有效`);
+      }
+    }
+
+    // 发送请求获取角色信息
+    const response = await tokenStore.sendMessageWithPromise(tokenId, "apex_getroleinfo", {}, 10000);
+    
+    if (response && response.apexRoleInfo) {
+      maxApexVoteCount.value = response.apexRoleInfo.voteItemCnt || 0;
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `当前助威币数量：${maxApexVoteCount.value}`,
+        type: "info",
+      });
+    } else {
+      maxApexVoteCount.value = 0;
+    }
+  } catch (error) {
+    console.error("Get max vote count error:", error);
+    maxApexVoteCount.value = 0;
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `获取助威币数量失败：${error.message}`,
+      type: "error",
+    });
+  }
+};
+
+const applyApexVote = async () => {
+  if (!selectedApexTeamId.value) {
+    message.warning("请先选择一个队伍");
+    return;
+  }
+
+  const isAllVote = apexVoteCount.value === 0;
+
+  for (const tokenId of selectedTokens.value) {
+    const token = tokens.value.find(t => t.id === tokenId);
+    
+    // Ensure connection
+    const status = tokenStore.getWebSocketStatus(tokenId);
+    if (status === "connecting") {
+      let retries = 0;
+      while (tokenStore.getWebSocketStatus(tokenId) !== "connected" && retries < 20) {
+        await new Promise(r => setTimeout(r, 1000));
+        retries++;
+      }
+      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `[${token.name}] ❌ 连接超时，跳过`,
+          type: "error",
+        });
+        continue;
+      }
+    } else if (status !== "connected") {
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `正在连接 ${token.name}...`,
+        type: "info",
+      });
+      const result = await tokenStore.createWebSocketConnection(tokenId, token.token, token.wsUrl);
+      if (!result) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `[${token.name}] 连接由其他进程处理，等待...`,
+          type: "info",
+        });
+      }
+      let retries = 0;
+      while (tokenStore.getWebSocketStatus(tokenId) !== "connected" && retries < 20) {
+        await new Promise(r => setTimeout(r, 1000));
+        retries++;
+      }
+      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `[${token.name}] ❌ 连接失败，跳过`,
+          type: "error",
+        });
+        continue;
+      }
+    }
+
+    try {
+      let voteCnt = apexVoteCount.value;
+
+      // 全部赠送：先获取该账号的助威币数量
+      if (isAllVote) {
+        const roleInfo = await tokenStore.sendMessageWithPromise(tokenId, "apex_getroleinfo", {}, 10000);
+        if (roleInfo && roleInfo.apexRoleInfo) {
+          voteCnt = roleInfo.apexRoleInfo.voteItemCnt || 0;
+        }
+        if (voteCnt <= 0) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `[${token.name}] 助威币不足，跳过`,
+            type: "warning",
+          });
+          continue;
+        }
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `[${token.name}] 助威币：${voteCnt}，全部赠送`,
+          type: "info",
+        });
+      } else {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `[${token.name}] 对队伍 ${selectedApexTeamId.value} 赠送 ${voteCnt} 次...`,
+          type: "info",
+        });
+      }
+
+      // 发送助威请求
+      await tokenStore.sendMessageWithPromise(
+        tokenId,
+        "apex_vote",
+        {
+          teamId: selectedApexTeamId.value,
+          groupId: selectedApexGroupId.value,
+          round: selectedApexRound.value,
+          voteCnt: voteCnt,
+        },
+        10000
+      );
+
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `[${token.name}] ✅ 助威成功！赠送 ${voteCnt} 次`,
+        type: "success",
+      });
+
+      await new Promise(r => setTimeout(r, 500)); // 防止限流
+    } catch (error) {
+      let errMsg = error.message || '';
+      if (errMsg.includes('物品数量不足')) {
+        errMsg = errMsg.replace('物品数量不足', '棒槌道具数量不足');
+      }
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `[${token.name}] ❌ 助威失败：${errMsg}`,
+        type: "error",
+      });
+    }
+  }
+
+  // 关闭所有账号的连接，释放连接槽
+  for (const tokenId of selectedTokens.value) {
+    tokenStore.closeWebSocketConnection(tokenId);
+  }
+
+  // 关闭弹窗
+  showApexCheerModal.value = false;
+  message.success(`所有账号助威完成`);
+};
+
+const getRemainingTimeText = () => {
+  // 剩余时间文本（月度任务类似的逻辑）
+  // 这里可以计算距离月底/月底的具体时间
+  return "-";
+};
+
+const getSelectedTeamName = () => {
+  const team = apexVoteList.value.find(item => item.teamId === selectedApexTeamId.value);
+  return team ? `${team.name} (战力：${formatPower(team.power)})` : '未知';
 };
 
 
@@ -6099,6 +6612,7 @@ const currentSettings = reactive({
   towerFormation: 1,
   bossFormation: 1,
   nightmareFormation: 1, // 十殿阵容
+  saltFieldPeachFormation: 1, // 盐场蟠桃阵容
   bossTimes: 2,
   dailyBossTimes: 3,
   claimBottle: true,
@@ -6130,6 +6644,7 @@ const currentTemplate = reactive({
   towerFormation: 1,
   bossFormation: 1,
   nightmareFormation: 1, // 十殿阵容
+  saltFieldPeachFormation: 1, // 盐场蟠桃阵容
   bossTimes: 2,
   dailyBossTimes: 3,
   claimBottle: true,
@@ -6940,9 +7455,10 @@ const taskGroupDefinitions = [
   { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
   { name: 'pet', label: '宠物', tasks: ['legion_buy_spotted_egg', 'use_spotted_egg', 'claim_pet_book', 'batch_pet_merge', 'batch_pet_upgrade'] },
   { name: 'nightmare', label: '十殿', tasks: ['batchNightmareChallengePresets', 'nightmare_draw_lottery', 'nightmare_claim_book_reward', 'star_drawturntable', 'batch_star_challenge'] },
-  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'buy_top_rod_package', 'buy_super_spirit_shell', 'store_buy_jade', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchConsumeActivity', 'batchClaimConsumeRewards', 'batchAutumnUseItem', 'batchUseActivityItem', 'batchActivityExchange', 'batchClaimCdkReward', 'batchClaimApexRewards'] },
+  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchAutumnUseItem', 'batchClaimCdkReward', 'batchClaimApexRewards'] },
   { name: 'legacy', label: '功法', tasks: ['batchLegacyHangup', 'batchLegacyClaim', 'batchLegacyGiftSendEnhanced', 'batchLegacyClaimGiftTask'] },
-  { name: 'monthly', label: '月度', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items'] }
+  { name: 'monthly', label: '月度', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items'] },
+  { name: 'consumeActivity', label: '消耗活动', tasks: ['batchConsumeActivity', 'batchClaimConsumeRewards', 'batchApexCheer', 'batchUseActivityItem', 'batchActivityExchange'] }
 ];
 
 // 计算属性，根据 taskGroupDefinitions 将 availableTasks 分组
@@ -11929,6 +12445,7 @@ const loadSettings = (tokenId) => {
       towerFormation: 1,
       bossFormation: 1,
       nightmareFormation: 1, // 十殿阵容
+      saltFieldPeachFormation: 1, // 盐场蟠桃阵容
       bossTimes: 2,
       dailyBossTimes: 3,
       claimBottle: true,
@@ -11957,7 +12474,10 @@ const openSettings = (token) => {
   currentSettingsTokenName.value = token.name;
   const saved = loadSettings(token.id);
   Object.assign(currentSettings, saved);
-  // 兼容旧设置：如果没有helperPresets字段，默认为空数组
+  // 兼容旧设置：缺失字段使用默认值
+  if (currentSettings.saltFieldPeachFormation == null) {
+    currentSettings.saltFieldPeachFormation = 1;
+  }
   if (!currentSettings.helperPresets) {
     currentSettings.helperPresets = [];
   }
@@ -12016,6 +12536,8 @@ const openTaskTemplateModal = () => {
     arenaFormation: 1,
     towerFormation: 1,
     bossFormation: 1,
+    nightmareFormation: 1,
+    saltFieldPeachFormation: 1,
     bossTimes: 2,
     dailyBossTimes: 3,
     claimBottle: true,
@@ -12220,6 +12742,8 @@ const resetTemplateForm = () => {
     arenaFormation: 1,
     towerFormation: 1,
     bossFormation: 1,
+    nightmareFormation: 1,
+    saltFieldPeachFormation: 1,
     bossTimes: 2,
     dailyBossTimes: 3,
     claimBottle: true,
@@ -12625,7 +13149,7 @@ const logContainer = ref(null);
 const autoScrollLog = ref(true);
 
 // 图鉴升星类型选择
-const bookUpgradeTypes = ref(['hero', 'fish', 'skin']);
+const bookUpgradeTypes = ref(['hero']);
 const bookUpgradeOptions = [
   { label: '英雄升星', value: 'hero' },
   { label: '鱼灵升星', value: 'fish' },
@@ -12640,6 +13164,125 @@ const executeBookUpgrade = () => {
   const typeLabels = { hero: '英雄', fish: '鱼灵', skin: '皮肤' };
   const selectedLabels = bookUpgradeTypes.value.map(t => typeLabels[t]).join('+');
   executeManualTaskWithRecord('batchBookUpgrade', `图鉴升星(${selectedLabels})`, () => batchBookUpgrade(bookUpgradeTypes.value));
+};
+
+// 盐场桃阵容切换
+const handleSwitchSaltFieldPeachFormation = async () => {
+  if (selectedTokens.value.length === 0) {
+    message.warning('请先选择账号');
+    return;
+  }
+
+  isRunning.value = true;
+  shouldStop.value = false;
+
+  selectedTokens.value.forEach((id) => {
+    tokenStatus.value[id] = "waiting";
+  });
+
+  addLog({ time: new Date().toLocaleTimeString(), message: `=== 开始批量切换盐场蟠桃阵容，共${selectedTokens.value.length}个账号（并发数${batchSettings.maxActive || 5}） ===`, type: "info" });
+
+  const moduleDelay = batchSettings.moduleDelays?.default || batchSettings.taskDelay || 1000;
+
+  const processFormation = async (tokenId) => {
+    if (shouldStop.value) return;
+
+    const token = tokens.value.find((t) => t.id === tokenId);
+    if (!token) return;
+
+    let connected = false;
+    try {
+      // 读取账号设置
+      const settingsRaw = localStorage.getItem(`daily-settings:${tokenId}`);
+      if (!settingsRaw) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 未找到账号设置，跳过`, type: "warning" });
+        tokenStatus.value[tokenId] = "failed";
+        return;
+      }
+      const settings = JSON.parse(settingsRaw);
+      // 兼容旧设置：缺失字段默认使用阵容1
+      if (settings.saltFieldPeachFormation == null) {
+        settings.saltFieldPeachFormation = 1;
+        localStorage.setItem(`daily-settings:${tokenId}`, JSON.stringify(settings));
+      }
+      const formation = settings.saltFieldPeachFormation;
+      if (formation < 1 || formation > 6) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 盐场蟠桃阵容配置无效(${formation})，跳过`, type: "warning" });
+        tokenStatus.value[tokenId] = "failed";
+        return;
+      }
+
+      tokenStatus.value[tokenId] = "running";
+
+      // 连接（skipSlot=true，由runStreaming控制并发）
+      await ensureConnection(tokenId, 3, true);
+      connected = true;
+      await new Promise((r) => setTimeout(r, moduleDelay));
+
+      // 获取当前阵容
+      let currentFormation = null;
+      try {
+        const teamInfo = await tokenStore.sendMessageWithPromise(tokenId, 'presetteam_getinfo', {}, 8000);
+        currentFormation = teamInfo?.presetTeamInfo?.useTeamId;
+      } catch (e) {
+        // 获取失败不阻塞
+      }
+
+      // 如果当前阵容已是目标阵容，跳过
+      if (currentFormation === formation) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 当前已是目标阵容${formation}，无需切换`, type: "success" });
+        tokenStatus.value[tokenId] = "completed";
+        return;
+      }
+
+      addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 当前: ${currentFormation ?? '未知'} → 目标: ${formation}，切换中...`, type: "info" });
+
+      // 切换阵容（带重试）
+      let switched = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await tokenStore.sendMessageWithPromise(
+            tokenId, 'presetteam_saveteam',
+            { teamId: formation }, 8000);
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 切换成功: ${currentFormation ?? '?'} → ${formation}`, type: "success" });
+          switched = true;
+          break;
+        } catch (err) {
+          const errMsg = err.message || String(err);
+          // 200020表示阵容槽未解锁，无需重试
+          if (errMsg.includes('200020')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 切换失败，当前账号未解锁对应阵容槽`, type: "error" });
+            break;
+          }
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 切换失败(第${attempt}次): ${errMsg}`, type: "warning" });
+        }
+        if (attempt < 3) await new Promise((r) => setTimeout(r, moduleDelay));
+      }
+
+      if (switched) {
+        tokenStatus.value[tokenId] = "completed";
+      } else {
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 阵容切换失败(已重试3次)`, type: "error" });
+        tokenStatus.value[tokenId] = "failed";
+      }
+    } catch (error) {
+      tokenStatus.value[tokenId] = "failed";
+      addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 切换阵容失败: ${error.message}`, type: "error" });
+    } finally {
+      if (connected) {
+        tokenStore.closeWebSocketConnection(tokenId);
+      }
+    }
+  };
+
+  await runStreaming(selectedTokens.value, processFormation);
+
+  const successCount = selectedTokens.value.filter(id => tokenStatus.value[id] === "completed").length;
+  const failCount = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed").length;
+  const summary = `盐场蟠桃阵容切换完成：${successCount}成功，${failCount}失败`;
+  addLog({ time: new Date().toLocaleTimeString(), message: `=== ${summary} ===`, type: "info" });
+  message.success(summary);
+  isRunning.value = false;
 };
 const userManuallyDisabledScroll = ref(false); // 记录用户是否手动关闭了自动滚动
 const filterErrorsOnly = ref(false);
@@ -12750,6 +13393,22 @@ const isWeirdTowerExpandedForAll = ref(false);
 const showCardSections = ref(true);
 const showStatusTags = computed(() => showCardSections.value);
 const showModuleGrid = computed(() => showCardSections.value);
+
+// 卡片区域显隐状态持久化
+const STORAGE_KEY_SHOW_CARD_SECTIONS = 'showCardSections';
+if (typeof localStorage !== 'undefined') {
+  const savedState = localStorage.getItem(STORAGE_KEY_SHOW_CARD_SECTIONS);
+  if (savedState !== null) {
+    showCardSections.value = JSON.parse(savedState);
+  }
+}
+
+// 监听变化并保存到 localStorage
+watch(showCardSections, (newValue) => {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY_SHOW_CARD_SECTIONS, JSON.stringify(newValue));
+  }
+});
 const showDailyProgress = computed(() => showCardSections.value);
 const showMonthlyProgress = computed(() => showCardSections.value);
 const toggleCardSections = () => {
@@ -13378,7 +14037,7 @@ const createNewGroup = () => {
 };
 
 const selectAllNewGroup = () => {
-  newGroupSelectedTokens.value = sortedTokens.value.map(t => t.id);
+  newGroupSelectedTokens.value = filteredGroupTokens.value.map(t => t.id);
 };
 
 const deselectAllNewGroup = () => {
@@ -14462,7 +15121,7 @@ const tasksArena = wrapTaskFunctions(createTasksArena(createTaskDeps()));
 const { batcharenafight, batchTopUpFish, batchTopUpArena } = tasksArena;
 
 const tasksStore = wrapTaskFunctions(createTasksStore(createTaskDeps()));
-const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_bronze, store_buy_platinum, store_buy_gold_rod, store_buy_jade, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, buy_top_rod_package, buy_super_spirit_shell, batch_mail_claim_and_cleanup } = tasksStore;
+const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, batch_mail_claim_and_cleanup } = tasksStore;
 
 // ====== 采购清单配置 ======
 // 采购清单可选项（用于任务模板中多选）

@@ -221,7 +221,7 @@ export function createTasksHangUp(deps) {
    */
   const batchWithRetry = async (tokenIds, operationName, operation) => {
     const MAX_RETRIES = batchSettings.defaultRetryCount !== undefined ? batchSettings.defaultRetryCount : 2;
-    const RETRYABLE_CODES = ["400340", "200750", "11800010"];
+    const RETRYABLE_CODES = ["400340", "200750", "11800010", "200020"];
     const isRetryableError = (msg) => RETRYABLE_CODES.some(code => msg?.includes(code));
     const getMatchedCode = (msg) => RETRYABLE_CODES.find(code => msg?.includes(code)) || '';
 
@@ -371,12 +371,69 @@ export function createTasksHangUp(deps) {
 
         successCount++;
 
-        // 间隔，避免200020错误
+        // 间隔1秒，避免连续请求被服务端拒绝
         if (i < addCount - 1) {
           await safeDelay(1000);
         }
       } catch (error) {
         const errorMsg = error.message || "";
+
+        // ✅ 检测200020错误（战斗未结算），等待1秒后重试一次
+        if (errorMsg.includes("200020")) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${tokenName} 加钟 ${i + 1}/${addCount} 服务器处理中(200020)，等待1秒后重试...`,
+            type: "warning",
+          });
+          await safeDelay(1000);
+          try {
+            await callWithRetry(tokenId, "system_mysharecallback", { isSkipShareCard: true, type: 2 }, {
+              retries: 0,
+              noRetryErrors: ["400000", "200020", "3100030", "400340"],
+            });
+            successCount++;
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${tokenName} 加钟 ${i + 1}/${addCount} 重试成功`,
+              type: "success",
+            });
+            // 间隔1秒，避免连续请求被服务端拒绝
+            if (i < addCount - 1) {
+              await safeDelay(1000);
+            }
+            continue;
+          } catch (retryError) {
+            const retryErrMsg = retryError.message || "";
+            // 重试遇到3100030（次数上限），立即停止
+            if (retryErrMsg.includes("3100030")) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${tokenName} 加钟 ${i + 1}/${addCount} 失败: 已达每日加钟次数上限`,
+                type: "warning",
+              });
+              break;
+            }
+            // 重试遇到400340/200750/11800010，抛出让外层重试
+            if (retryErrMsg.includes("400340") || retryErrMsg.includes("200750") || retryErrMsg.includes("11800010")) {
+              const code = retryErrMsg.includes("400340") ? "400340" : retryErrMsg.includes("200750") ? "200750" : "11800010";
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${tokenName} 加钟 ${i + 1}/${addCount} 重试失败: ${code}错误，等待外层重试`,
+                type: "warning",
+              });
+              throw retryError;
+            }
+            // 重试仍返回200020或其他错误，记录失败后继续下一次加钟
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${tokenName} 加钟 ${i + 1}/${addCount} 重试仍失败: ${retryErrMsg.substring(0, 50)}`,
+              type: "error",
+            });
+            if (i === addCount - 1) {
+              return successCount > 0;
+            }
+          }
+        }
 
         // 检测加钟次数上限错误
         if (errorMsg.includes("3100030")) {
@@ -452,13 +509,35 @@ export function createTasksHangUp(deps) {
       const claimAndAddTime = async (tokenId, token, isRetry = false) => {
         addLog({ time: new Date().toLocaleTimeString(), message: `=== 开始领取挂机: ${token.name} ===`, type: "info" });
 
-        // 1. 领取挂机奖励（无条件执行）
+        // 1. 领取挂机奖励（无条件执行，支持200020重试）
         addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 开始领取挂机奖励...`, type: "info" });
 
-        await callWithRetry(tokenId, "system_mysharecallback", {});
+        // system_mysharecallback 支持200020重试
+        try {
+          await callWithRetry(tokenId, "system_mysharecallback", {});
+        } catch (e) {
+          if (e.message?.includes("200020")) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领取挂机服务器处理中(200020)，等待1秒后重试...`, type: "warning" });
+            await safeDelay(1000);
+            await callWithRetry(tokenId, "system_mysharecallback", {}, { retries: 0 });
+          } else {
+            throw e;
+          }
+        }
         await safeDelay(200);
 
-        await callWithRetry(tokenId, "system_claimhangupreward", {});
+        // system_claimhangupreward 支持200020重试
+        try {
+          await callWithRetry(tokenId, "system_claimhangupreward", {});
+        } catch (e) {
+          if (e.message?.includes("200020")) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领取挂机奖励服务器处理中(200020)，等待1秒后重试...`, type: "warning" });
+            await safeDelay(1000);
+            await callWithRetry(tokenId, "system_claimhangupreward", {}, { retries: 0 });
+          } else {
+            throw e;
+          }
+        }
         await safeDelay(200);
 
         addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领取成功`, type: "success" });

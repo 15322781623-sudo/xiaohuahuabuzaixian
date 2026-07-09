@@ -123,7 +123,7 @@
                 <div class="slot-icon">
                   <n-checkbox
                     v-model:checked="slot.isLocked"
-                    @change="handleSlotLock(slot.id, slot.isLocked)"
+                    @update:checked="(val) => handleSlotLock(slot.id, val)"
                     size="small"
                   ></n-checkbox>
                 </div>
@@ -196,6 +196,15 @@
               >
                 <template #icon><n-icon><PlayCircleOutline /></n-icon></template>
                 连续淬炼
+              </n-button>
+              <n-button
+                size="small"
+                type="info"
+                :disabled="state.isRunning"
+                @click="flipQuench"
+              >
+                <template #icon><n-icon><RefreshOutline /></n-icon></template>
+                翻转
               </n-button>
               <div class="quench-count-wrapper">
                 <span class="count-label">次数</span>
@@ -961,60 +970,13 @@ const executeQuench = async () => {
       return null;
     }
 
-    // 检查是否有孔位的attrNum值超过50且未被锁定
-    const highAttrSlots = Object.values(currentEquip.quenches).filter((slot) =>
-      slot.attrNum > 50 && !slot.isLocked,
-    );
-    const hasHighAttrSlot = highAttrSlots.length > 0;
-
-    // 如果有高属性孔位且未锁定，先发送equipment_confirm命令
-    let seedFromConfirm = 0;
-    if (hasHighAttrSlot) {
-      // 构建确认请求参数
-      const confirmParams = {
-        heroId: selectedHeroId.value,
-        part: selectedPart.value,
-        quenchId: 0,
-        quenches: currentEquip.quenches,
-      };
-
-      // 发送确认请求并获取响应
-      const confirmResult = await tokenStore.sendMessageWithPromise(
-        tokenId,
-        "equipment_confirm",
-        confirmParams,
-        15000,
-      );
-
-      // 从确认响应中提取seed值 - WebSocket客户端已返回body部分
-      if (confirmResult?.role?.heroes) {
-        // 处理响应格式1: role.heroes[heroId].equipment[part].seed
-        const hero = confirmResult.role.heroes[String(selectedHeroId.value)];
-        if (hero?.equipment?.[selectedPart.value]?.seed) {
-          seedFromConfirm = hero.equipment[selectedPart.value].seed;
-          console.log("✅ 从Equipment_ConfirmResp中提取seed:", seedFromConfirm);
-        }
-      } else if (confirmResult?.seed) {
-        // 处理响应格式2: seed直接在body中
-        seedFromConfirm = confirmResult.seed;
-        console.log("✅ 从Equipment_ConfirmResp的body中提取seed:", seedFromConfirm);
-      } else if (confirmResult?.equipment?.seed) {
-        // 处理响应格式3: equipment.seed
-        seedFromConfirm = confirmResult.equipment.seed;
-        console.log("✅ 从Equipment_ConfirmResp的equipment中提取seed:", seedFromConfirm);
-      } else {
-        // 所有格式都未匹配，记录完整响应以便调试
-        console.log("❌ 未能从Equipment_ConfirmResp中提取seed，响应内容:", JSON.stringify(confirmResult));
-      }
-    }
-
     // 构建淬炼制请求参数
     const quenchParams = {
       heroId: selectedHeroId.value,
       part: selectedPart.value,
       quenchId: 0,
       quenches: currentEquip.quenches,
-      seed: seedFromConfirm,
+      seed: 0,
       skipOrange: false,
     };
 
@@ -1152,6 +1114,64 @@ const checkTargetAttr = (result) => {
       return slot.attrId === condition.attrId && slot.attrNum >= condition.attrValue;
     });
   });
+};
+
+// 翻转洗练（反面洗练）：在quenches和quenches2之间切换
+const flipQuench = async () => {
+  const token = tokenStore.selectedToken;
+  if (!token || !selectedHeroId.value || !selectedPart.value) {
+    message.warning("请先选择武将和装备部位");
+    return;
+  }
+
+  const tokenId = token.id;
+  const status = tokenStore.getWebSocketStatus(tokenId);
+  if (status !== "connected") {
+    message.error("WebSocket未连接，无法翻转洗练");
+    return;
+  }
+
+  try {
+    // equipment_changequench 是 SyncResp（ack=0），必须用 fire-and-forget
+    tokenStore.sendMessage(tokenId, "equipment_changequench", {
+      heroId: selectedHeroId.value,
+      part: selectedPart.value,
+    });
+
+    // 等待500ms后刷新装备数据
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const roleInfo = await tokenStore.sendMessageWithPromise(
+      tokenId,
+      "role_getroleinfo",
+      {},
+      15000,
+    );
+
+    // 更新装备信息
+    const heroData = roleInfo?.role?.heroes?.[String(selectedHeroId.value)];
+    if (heroData?.equipment?.[selectedPart.value]) {
+      const updatedEquip = heroData.equipment[selectedPart.value];
+      heroEquipment.value[selectedPart.value] = updatedEquip;
+      quenchTimes.value = updatedEquip.quenchTimes || 0;
+
+      const bonusType
+        = selectedPart.value === 1
+          ? "quenchAttackExt"
+          : selectedPart.value === 3
+            ? "quenchDefenseExt"
+            : "quenchHpExt";
+      equipBonusValue.value = updatedEquip[bonusType] || 0;
+
+      if (updatedEquip.quenches) {
+        updateSlots(updatedEquip.quenches);
+      }
+    }
+
+    message.success("翻转洗练成功");
+  } catch (error) {
+    message.error(`翻转洗练失败: ${error.message}`);
+  }
 };
 
 // 停止淬炼

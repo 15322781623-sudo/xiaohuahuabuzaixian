@@ -634,11 +634,20 @@ const runDailyFix = async () => {
   try {
     log("=== 开始执行一键补差任务 ===");
 
+    // 加载全局batchSettings延迟配置
+    let batchSettings;
+    try {
+      const batchSettingsRaw = localStorage.getItem("batchSettings");
+      batchSettings = batchSettingsRaw ? JSON.parse(batchSettingsRaw) : {};
+    } catch (e) {
+      batchSettings = {};
+    }
+
     // 使用 DailyTaskRunner 执行任务
     const runner = new DailyTaskRunner(tokenStore, {
       commandDelay: settings.commandDelay,
       taskDelay: settings.taskDelay,
-    });
+    }, batchSettings);
 
     await runner.run(
       tokenStore.selectedToken.id,

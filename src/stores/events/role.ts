@@ -1,13 +1,12 @@
 import type { EVM, XyzwSession } from ".";
 import { gameLogger } from "@/utils/logger";
-import { useTokenStore } from "../tokenStore";
 
 // 处理加钟/时钟相关事件，触发获取角色信息以更新状态
 export const RolePlugin = ({
   onSome,
   $emit,
 }: EVM) => {
-  onSome(["role_getroleinforesp", "role_getroleinfo"], (data: XyzwSession) => {
+  onSome(["role_getroleinforesp", "role_getroleinfo"], async (data: XyzwSession) => {
     gameLogger.verbose(`收到角色信息事件: ${data.tokenId}`, data);
     const { body, tokenId } = data;
     gameLogger.debug("role_getroleinforesp body结构:", JSON.stringify(body, null, 2).substring(0, 500));
@@ -41,6 +40,8 @@ export const RolePlugin = ({
     }
 
     // 从角色信息中提取游戏名称和服务器信息，并更新到token列表
+    // 延迟导入useTokenStore，避免循环依赖: index.ts -> role.ts -> tokenStore.ts -> index.ts
+    const { useTokenStore } = await import("../tokenStore");
     const tokenStore = useTokenStore();
     const token = tokenStore.gameTokens.find((t) => t.id === tokenId);
     if (token) {

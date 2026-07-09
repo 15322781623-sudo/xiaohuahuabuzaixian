@@ -386,9 +386,9 @@ export class NightmareAutoBattleService {
 
       // 出战成功
       
-      // 10 秒战斗倒计时
-      this._onLog(`⏱ 战斗进行中 10 秒...`, 'info');
-      await sleep(10000);
+      // 1 秒战斗倒计时
+      this._onLog(`⏱ 战斗进行中 1 秒...`, 'info');
+      await sleep(1000);
       if (this._stopped) return;
 
       // leadercomplete 结算
@@ -461,11 +461,11 @@ export class NightmareAutoBattleService {
         continue;
       }
 
-      // 18秒冷却
+      // 15秒冷却
       this._status = 'cooling';
       this._onStatusChange({ status: 'cooling', currentLevel: this._currentLevel });
-      this._onLog(`⏱ 冷却 18秒...`, 'info');
-      await sleep(18000);
+      this._onLog(`⏱ 冷却 15秒...`, 'info');
+      await sleep(15000);
       if (this._stopped) return;
 
       this._status = 'running';

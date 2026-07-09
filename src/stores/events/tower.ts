@@ -1,5 +1,4 @@
 import { gameLogger } from "@/utils/logger";
-import { useTokenStore } from "../tokenStore";
 import type { EVM, XyzwSession } from ".";
 
 export const TowerPlugin = ({
@@ -21,7 +20,7 @@ export const TowerPlugin = ({
 
   onSome(
     ["evotowerinforesp", "evotower_getinforesp", "evotower_getinfo"],
-    (data: XyzwSession) => {
+    async (data: XyzwSession) => {
       gameLogger.verbose(`收到怪异塔信息事件: ${data.tokenId}`, data);
       const { body, tokenId } = data;
       gameLogger.debug("怪异塔body:", body);
@@ -33,7 +32,8 @@ export const TowerPlugin = ({
       data.gameData.value.evoTowerInfo = body;
       data.gameData.value.lastUpdated = new Date().toISOString();
 
-      // 同时更新到tokenGameDataMap（用于批量显示）
+      // 同时更新到tokenGameDataMap（用于批量显示，延迟导入避免循环依赖）
+      const { useTokenStore } = await import("../tokenStore");
       const tokenStore = useTokenStore();
       tokenStore.updateTokenGameData(tokenId, { evoTowerInfo: body });
     },

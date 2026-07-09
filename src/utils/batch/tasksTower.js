@@ -29,11 +29,11 @@ export function createTasksTower(deps) {
     getModuleDelay,
   } = deps;
 
-  // 模块延迟辅助函数
+  // 模块延迟辅助函数（确保至少1000ms，避免连续请求被服务端拒绝）
   const _getModuleDelay = getModuleDelay || ((moduleName) => {
     const md = batchSettings.moduleDelays;
-    if (md) return md[moduleName] || md.default || batchSettings.taskDelay || 1000;
-    return batchSettings.taskDelay || 1000;
+    const delay = md ? (md[moduleName] || md.default || batchSettings.taskDelay || 1000) : (batchSettings.taskDelay || 1000);
+    return Math.max(delay, 1000);
   });
 
   // 默认配置
@@ -386,6 +386,7 @@ export function createTasksTower(deps) {
               });
             }
 
+            // 间隔至少1秒，避免连续请求被服务端拒绝
             await safeDelay(_getModuleDelay('tower'));
 
             // 每5次刷新体力
@@ -413,14 +414,71 @@ export function createTasksTower(deps) {
               break;
             }
             
-            // Bin文件错误 - 不可恢复
+            // 200020错误：战斗未结算，重试一次
             if (errorMsg.includes("200020")) {
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `${token.name} Bin文件错误，无法继续`,
-                type: "error",
+                message: `${token.name} 战斗未结算(200020)，等待2秒后重试...`,
+                type: "warning",
               });
-              break;
+              await safeDelay(2000);
+              try {
+                const retryResult = await callWithRetry(tokenId, "fight_starttower", {}, { retries: 0 });
+                const retryBattleData = retryResult?.battleData;
+                const retrySuccess = retryBattleData && retryBattleData.result?.sponsor?.ext?.curHP > 0;
+                count++;
+                if (retrySuccess) {
+                  successCount++;
+                  consecutiveFailures = 0;
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `✅ ${token.name} 爬塔第 ${count} 次(重试) - 胜利`,
+                    type: "success",
+                  });
+                } else {
+                  failCount++;
+                  consecutiveFailures++;
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `❌ ${token.name} 爬塔第 ${count} 次(重试) - 失败`,
+                    type: "warning",
+                  });
+                }
+                await safeDelay(_getModuleDelay('tower'));
+                if (count % 5 === 0) {
+                  try {
+                    roleInfo = await callWithRetry(tokenId, "role_getroleinfo", {}, { retries: 1 });
+                    energy = roleInfo?.role?.tower?.energy || 0;
+                  } catch (e) {
+                    energy = Math.max(0, energy - 1);
+                  }
+                } else {
+                  energy = Math.max(0, energy - 1);
+                }
+                continue;
+              } catch (retryErr) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 重试仍失败: ${retryErr.message?.substring(0, 50)}`,
+                  type: "error",
+                });
+                failCount++;
+                consecutiveFailures++;
+                if (consecutiveFailures >= 3) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 连续失败3次，停止爬塔`,
+                    type: "error",
+                  });
+                  break;
+                }
+                await safeDelay(2000);
+                try {
+                  roleInfo = await callWithRetry(tokenId, "role_getroleinfo", {}, { retries: 1 });
+                  energy = roleInfo?.role?.tower?.energy || 0;
+                } catch (e) {}
+                continue;
+              }
             }
             
             // 操作过快 - 有重试上限
@@ -919,14 +977,48 @@ export function createTasksTower(deps) {
                 break;
               }
               
-              // ✅ 200020：Bin文件错误或状态异常
+              // ✅ 200020：战斗未结算，重试一次
               if (errorMsg.includes("200020")) {
                 addLog({
                   time: new Date().toLocaleTimeString(),
-                  message: `${token.name} Bin文件错误/状态异常 (200020)，无法继续`,
-                  type: "error",
+                  message: `${token.name} 战斗未结算(200020)，等待2秒后重试...`,
+                  type: "warning",
                 });
-                break;
+                await safeDelay(2000);
+                try {
+                  const retryFightResult = await callWithRetry(tokenId, "evotower_fight", { battleNum: 1, winNum: 1 }, { retries: 0 });
+                  count++;
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 爬怪异塔第 ${count} 次(重试) ${retryFightResult?.winList?.[0] ? '✅胜利' : '❌失败'}`,
+                    type: retryFightResult?.winList?.[0] ? "success" : "warning",
+                  });
+                  await safeDelay(_getModuleDelay('tower'));
+                  const retryInfo = await callWithRetry(tokenId, "evotower_getinfo", {});
+                  currentEnergy = retryInfo?.evoTower?.energy || 0;
+                  continue;
+                } catch (retryErr) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 重试仍失败: ${retryErr.message?.substring(0, 50)}`,
+                    type: "error",
+                  });
+                  consecutiveFailures++;
+                  if (consecutiveFailures >= 3) {
+                    addLog({
+                      time: new Date().toLocaleTimeString(),
+                      message: `${token.name} 连续失败3次，停止爬塔`,
+                      type: "error",
+                    });
+                    break;
+                  }
+                  await safeDelay(_getModuleDelay('tower'));
+                  try {
+                    const refreshInfo = await callWithRetry(tokenId, "evotower_getinfo", {});
+                    currentEnergy = refreshInfo?.evoTower?.energy || 0;
+                  } catch (e) {}
+                  continue;
+                }
               }
               
               // ✅ 200330：无效ID（可能是重复调用导致）

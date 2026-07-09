@@ -71,21 +71,49 @@ export function createTasksDungeon(deps) {
           for (let i = 0; i < 2; i++) {
             if (shouldStop.value)
               break;
-            await tokenStore.sendMessageWithPromise(
-              tokenId,
-              "bosstower_startboss",
-              {},
-            );
+            try {
+              await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "bosstower_startboss",
+                {},
+              );
+            } catch (bossErr) {
+              if (bossErr.message?.includes("200020")) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 宝库BOSS服务器处理中(200020)，等待1秒后重试...`,
+                  type: "warning",
+                });
+                await new Promise(r => setTimeout(r, 1000));
+                await tokenStore.sendMessageWithPromise(tokenId, "bosstower_startboss", {});
+              } else {
+                throw bossErr;
+              }
+            }
             await new Promise((r) => setTimeout(r, _getModuleDelay('treasure')));
           }
           for (let i = 0; i < 9; i++) {
             if (shouldStop.value)
               break;
-            await tokenStore.sendMessageWithPromise(
-              tokenId,
-              "bosstower_startbox",
-              {},
-            );
+            try {
+              await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "bosstower_startbox",
+                {},
+              );
+            } catch (boxErr) {
+              if (boxErr.message?.includes("200020")) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 宝库宝箱服务器处理中(200020)，等待1秒后重试...`,
+                  type: "warning",
+                });
+                await new Promise(r => setTimeout(r, 1000));
+                await tokenStore.sendMessageWithPromise(tokenId, "bosstower_startbox", {});
+              } else {
+                throw boxErr;
+              }
+            }
             await new Promise((r) => setTimeout(r, _getModuleDelay('treasure')));
           }
         }
@@ -169,11 +197,25 @@ export function createTasksDungeon(deps) {
           for (let i = 0; i < 2; i++) {
             if (shouldStop.value)
               break;
-            await tokenStore.sendMessageWithPromise(
-              tokenId,
-              "bosstower_startboss",
-              {},
-            );
+            try {
+              await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "bosstower_startboss",
+                {},
+              );
+            } catch (bossErr) {
+              if (bossErr.message?.includes("200020")) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 宝库BOSS服务器处理中(200020)，等待1秒后重试...`,
+                  type: "warning",
+                });
+                await new Promise(r => setTimeout(r, 1000));
+                await tokenStore.sendMessageWithPromise(tokenId, "bosstower_startboss", {});
+              } else {
+                throw bossErr;
+              }
+            }
             await new Promise((r) => setTimeout(r, _getModuleDelay('treasure')));
           }
         }
@@ -370,13 +412,34 @@ export function createTasksDungeon(deps) {
           if (shouldStop.value) break;
 
           try {
-            // 6a. 发起梦境战斗
-            const fightResult = await tokenStore.sendMessageWithPromise(
-              tokenId,
-              "fight_startdungeon",
-              { heroId },
-              15000,
-            );
+            // 6a. 发起梦境战斗（支持200020重试）
+            let fightResult;
+            try {
+              fightResult = await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "fight_startdungeon",
+                { heroId },
+                15000,
+              );
+            } catch (fightErr) {
+              // 200020：战斗未结算，等待1秒后重试一次
+              if (fightErr.message?.includes("200020")) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 梦境战斗服务器处理中(200020)，等待1秒后重试...`,
+                  type: "warning",
+                });
+                await new Promise(r => setTimeout(r, 1000));
+                fightResult = await tokenStore.sendMessageWithPromise(
+                  tokenId,
+                  "fight_startdungeon",
+                  { heroId },
+                  15000,
+                );
+              } else {
+                throw fightErr;
+              }
+            }
 
             fightCount++;
             const isWin = fightResult?.isWin;

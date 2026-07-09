@@ -210,6 +210,11 @@ export function registerDefaultCommands(reg) {
     .register("activity_claimrolluppack")
     .register("activity_claimredquenchreward")
     .register("activity_claimtaskreward") // 领取消耗活动任务奖励
+    // Apex 竞技大厅助威
+    .register("apex_getroleinfo") // 获取竞技大厅角色信息（助威币数量）
+    .register("apex_getvotelist", {}) // 获取可助威的俱乐部列表
+    .register("apex_vote", { teamId: "A00000000", groupId: 1, round: 1, voteCnt: 1 }) // 对指定队伍进行助威
+    .register("activity_claimtaskreward")
     .register("activity_commonbuygoods", { goodsId: 26061941, num: 1 }) // 领取消耗活动免费道具
     .register("activity_claimweekactreward") // 宝箱周任务达标奖励
     .register("activity_claimweekactreward", { typ: 2, selectRewardsMap: { "0": 1 } }) // 万能红将碎片
@@ -1539,6 +1544,10 @@ export class XyzwWebSocketClient {
       role_gettargetteamresp: "role_gettargetteam",
       activity_warorderclaimresp: "activity_recyclewarorderrewardclaim",
       activity_claimtaskrewardresp: "activity_claimtaskreward",
+      // Apex 竞技大厅助威相关响应
+      apex_getroleinforesp: "apex_getroleinfo",
+      apex_getvotelistresp: "apex_getvotelist",
+      apex_voteresp: "apex_vote",
       activity_commonbuygoodsresp: "activity_commonbuygoods",
       activity_notify: "activity_commonbuygoods",
       autumn_useitemresp: "autumn_useitem",
