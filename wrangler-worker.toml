@@ -10,4 +10,4 @@ id = "219f0da6a5494c14a87b44fc3992dcc4"
 # R2 绑定（APK 存储）
 [[r2_buckets]]
 binding = "APK_BUCKET"
-bucket_name = "xyzw-apk"
+bucket_name = "apk-bucket"

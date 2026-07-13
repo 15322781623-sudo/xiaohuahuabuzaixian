@@ -4652,6 +4652,7 @@ export function createTasksItem(deps) {
     { confId: 4, name: '周活跃度达到50 助威鼓槌x5' },
     { confId: 5, name: '周活跃度达到100 助威鼓槌x10' },
     { confId: 6, name: '参与1次盐场 助威鼓槌x15' },
+    { confId: 7, name: '本周助威1次 助威奖励' },
   ];
 
   const batchClaimApexRewards = async (isScheduledTask = false) => {

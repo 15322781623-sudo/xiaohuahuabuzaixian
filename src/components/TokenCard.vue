@@ -3933,12 +3933,12 @@ const climbWeirdTower = async () => {
     let count = 0;
     let currentEnergyLeft = currentEnergy;
     const MAX_CLIMB = 50; // 默认最大爬塔次数
-
+    
     addLog({
-      message: `🚀 ${props.token.name} 开始爬怪异塔，能量: ${currentEnergyLeft}...`,
+      message: `🚀 ${props.token.name} 开始爬怪异塔，能量：${currentEnergyLeft}...`,
       type: "info",
     });
-
+    
     while (currentEnergyLeft > 0 && count < MAX_CLIMB) {
       try {
         // 领取通关奖励
@@ -3952,7 +3952,7 @@ const climbWeirdTower = async () => {
         } catch (e) {
           // 忽略错误
         }
-
+    
         // 准备战斗
         try {
           await tokenStore.sendMessageWithPromise(
@@ -3963,7 +3963,7 @@ const climbWeirdTower = async () => {
           );
         } catch (readyErr) {
           const readyErrorMsg = readyErr.message || "";
-
+    
           // 1500010：已通关
           if (readyErrorMsg.includes("1500010")) {
             addLog({
@@ -3972,7 +3972,7 @@ const climbWeirdTower = async () => {
             });
             break;
           }
-
+    
           // 200020：状态异常
           if (readyErrorMsg.includes("200020")) {
             addLog({
@@ -3988,7 +3988,7 @@ const climbWeirdTower = async () => {
             currentEnergyLeft = refreshInfo?.evoTower?.energy || 0;
             continue;
           }
-
+    
           // 7800008：战斗准备失败
           if (readyErrorMsg.includes("7800008")) {
             addLog({
@@ -4006,7 +4006,7 @@ const climbWeirdTower = async () => {
             continue;
           }
         }
-
+    
         // 战斗
         const fightResult = await tokenStore.sendMessageWithPromise(
           tokenId,
@@ -4014,25 +4014,44 @@ const climbWeirdTower = async () => {
           { battleNum: 1, winNum: 1 },
           15000,
         );
-
+    
         count++;
-
+    
         addLog({
           message: `⚔️ ${props.token.name} 爬怪异塔第 ${count} 次 ${fightResult?.winList?.[0] ? "✅胜利" : "❌失败"}`,
           type: fightResult?.winList?.[0] ? "success" : "warning",
         });
-
-        // 延迟1秒
+    
+        // 延迟 1 秒
         await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        // 获取最新信息
-        const newInfo = await tokenStore.sendMessageWithPromise(
-          tokenId,
-          "evotower_getinfo",
-          {},
-          5000,
-        );
-        currentEnergyLeft = newInfo?.evoTower?.energy || 0;
+    
+        // ✅ 参考爬塔逻辑：每 5 次才刷新一次信息，避免频繁请求导致状态异常
+        if (count % 5 === 0) {
+          try {
+            const newInfo = await tokenStore.sendMessageWithPromise(
+              tokenId,
+              "evotower_getinfo",
+              {},
+              5000,
+            );
+            currentEnergyLeft = newInfo?.evoTower?.energy || 0;
+                
+            addLog({
+              message: `💡 第${count}次后刷新 - 剩余能量：${currentEnergyLeft}, 总次数：${count}`,
+              type: "info",
+            });
+          } catch (refreshError) {
+            // 刷新失败时减少能量估算
+            currentEnergyLeft = Math.max(0, currentEnergyLeft - 1);
+            addLog({
+              message: `⚠️ 刷新能量信息失败，按减少能量估算：${currentEnergyLeft}`,
+              type: "warning",
+            });
+          }
+        } else {
+          // 非刷新周期，按正常消耗估算
+          currentEnergyLeft = Math.max(0, currentEnergyLeft - 1);
+        }
       } catch (error) {
         addLog({
           message: `❌ ${props.token.name} 爬塔失败: ${error.message?.substring(0, 100) || "未知错误"}`,

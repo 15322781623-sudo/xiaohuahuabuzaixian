@@ -221,7 +221,7 @@ export function createTasksHangUp(deps) {
    */
   const batchWithRetry = async (tokenIds, operationName, operation) => {
     const MAX_RETRIES = batchSettings.defaultRetryCount !== undefined ? batchSettings.defaultRetryCount : 2;
-    const RETRYABLE_CODES = ["400340", "200750", "11800010", "200020"];
+    const RETRYABLE_CODES = ["400340", "200750", "11800010", "200020", "2000150"];
     const isRetryableError = (msg) => RETRYABLE_CODES.some(code => msg?.includes(code));
     const getMatchedCode = (msg) => RETRYABLE_CODES.find(code => msg?.includes(code)) || '';
 
@@ -512,21 +512,7 @@ export function createTasksHangUp(deps) {
         // 1. 领取挂机奖励（无条件执行，支持200020重试）
         addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 开始领取挂机奖励...`, type: "info" });
 
-        // system_mysharecallback 支持200020重试
-        try {
-          await callWithRetry(tokenId, "system_mysharecallback", {});
-        } catch (e) {
-          if (e.message?.includes("200020")) {
-            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领取挂机服务器处理中(200020)，等待1秒后重试...`, type: "warning" });
-            await safeDelay(1000);
-            await callWithRetry(tokenId, "system_mysharecallback", {}, { retries: 0 });
-          } else {
-            throw e;
-          }
-        }
-        await safeDelay(200);
-
-        // system_claimhangupreward 支持200020重试
+        // system_claimhangupreward 先领取挂机收益（body: {}）
         try {
           await callWithRetry(tokenId, "system_claimhangupreward", {});
         } catch (e) {
@@ -534,6 +520,20 @@ export function createTasksHangUp(deps) {
             addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领取挂机奖励服务器处理中(200020)，等待1秒后重试...`, type: "warning" });
             await safeDelay(1000);
             await callWithRetry(tokenId, "system_claimhangupreward", {}, { retries: 0 });
+          } else {
+            throw e;
+          }
+        }
+        await safeDelay(200);
+
+        // system_mysharecallback 分享回调
+        try {
+          await callWithRetry(tokenId, "system_mysharecallback", {});
+        } catch (e) {
+          if (e.message?.includes("200020")) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领取挂机服务器处理中(200020)，等待1秒后重试...`, type: "warning" });
+            await safeDelay(1000);
+            await callWithRetry(tokenId, "system_mysharecallback", {}, { retries: 0 });
           } else {
             throw e;
           }
@@ -794,6 +794,48 @@ export function createTasksHangUp(deps) {
   };
 
   /**
+   * 一键挂机升级（循环发送 system_hangupupgrade 直到报错停止）
+   */
+  const batchHangUpUpgrade = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+    try {
+      isRunning.value = true;
+      shouldStop.value = false;
+
+      selectedTokens.value.forEach((id) => {
+        tokenStatus.value[id] = "waiting";
+      });
+
+      const upgradeForToken = async (tokenId, token) => {
+        addLog({ time: new Date().toLocaleTimeString(), message: `=== 开始挂机升级: ${token.name} ===`, type: "info" });
+        let upgradeCount = 0;
+        while (!shouldStop.value) {
+          try {
+            await callWithRetry(tokenId, "system_hangupupgrade", { upgradeNum: 1 });
+            upgradeCount++;
+            if (upgradeCount % 10 === 0) {
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 已升级 ${upgradeCount} 次...`, type: "info" });
+            }
+            await safeDelay(_getModuleDelay('hangup'));
+          } catch (e) {
+            const errMsg = e.message || '';
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 挂机升级停止 (已升级 ${upgradeCount} 次): ${errMsg}`, type: "warning" });
+            break;
+          }
+        }
+        addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${token.name} 挂机升级完毕，共升级 ${upgradeCount} 次`, type: "success" });
+      };
+
+      await batchWithRetry(selectedTokens.value, "挂机升级", upgradeForToken);
+    } finally {
+      isRunning.value = false;
+      currentRunningTokenId.value = null;
+      message.success("批量挂机升级结束");
+    }
+  };
+
+  /**
    * 一键俱乐部签到
    */
   const batchclubsign = async () => {
@@ -819,6 +861,91 @@ export function createTasksHangUp(deps) {
       isRunning.value = false;
       currentRunningTokenId.value = null;
       message.success("批量俱乐部签到结束");
+    }
+  };
+
+  /**
+   * 盐场报名
+   */
+  const batchLegionSignup = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+    try {
+      isRunning.value = true;
+      shouldStop.value = false;
+
+      selectedTokens.value.forEach((id) => {
+        tokenStatus.value[id] = "waiting";
+      });
+
+      const signupForToken = async (tokenId, token) => {
+        addLog({ time: new Date().toLocaleTimeString(), message: `=== 盐场报名: ${token.name} ===`, type: "info" });
+        try {
+          await callWithRetry(tokenId, "legion_signup", {});
+          await safeDelay(_getModuleDelay('hangup'));
+          addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${token.name} 盐场报名成功`, type: "success" });
+        } catch (e) {
+          if (e.message && e.message.includes('2300280')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `ℹ️ ${token.name} 已报名，无需重复报名`, type: "info" });
+          } else {
+            throw e;
+          }
+        }
+      };
+
+      await batchWithRetry(selectedTokens.value, "盐场报名", signupForToken);
+    } finally {
+      isRunning.value = false;
+      currentRunningTokenId.value = null;
+      message.success("批量盐场报名结束");
+    }
+  };
+
+  /**
+   * 蟠桃报名（提交铃铛 + 报名）
+   */
+  const batchPayloadSignup = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+    try {
+      isRunning.value = true;
+      shouldStop.value = false;
+
+      selectedTokens.value.forEach((id) => {
+        tokenStatus.value[id] = "waiting";
+      });
+
+      const payloadSignupForToken = async (tokenId, token) => {
+        addLog({ time: new Date().toLocaleTimeString(), message: `=== 蟠桃报名: ${token.name} ===`, type: "info" });
+        
+        // 1. 提交铃铛（即使失败也继续报名）
+        try {
+          await callWithRetry(tokenId, "legion_buypayloaditem", { num: 60 });
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 提交铃铛成功`, type: "success" });
+        } catch (e) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 提交铃铛失败: ${e.message?.substring(0, 50) || e}，继续报名`, type: "warning" });
+        }
+        
+        await safeDelay(_getModuleDelay('hangup'));
+        
+        // 2. 蟠桃报名（即使提交铃铛失败也执行）
+        try {
+          await callWithRetry(tokenId, "legion_payloadsignup", {});
+          addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${token.name} 蟠桃报名成功`, type: "success" });
+        } catch (e) {
+          if (e.message && e.message.includes('2300280')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `️ ${token.name} 已报名，无需重复报名`, type: "info" });
+          } else {
+            throw e;
+          }
+        }
+      };
+
+      await batchWithRetry(selectedTokens.value, "蟠桃报名", payloadSignupForToken);
+    } finally {
+      isRunning.value = false;
+      currentRunningTokenId.value = null;
+      message.success("批量蟠桃报名结束");
     }
   };
 
@@ -898,6 +1025,9 @@ export function createTasksHangUp(deps) {
     batchAddHangUpTime,
     batchStudy,
     batchclubsign,
+    batchLegionSignup,
+    batchPayloadSignup,
     batchWarGuessCheer,
+    batchHangUpUpgrade,
   };
 }

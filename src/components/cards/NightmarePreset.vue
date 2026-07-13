@@ -86,7 +86,7 @@
   <!-- 编辑弹窗 -->
   <n-modal v-model:show="showEditor" preset="card" :title="editingPreset ? `编辑预设: ${editingPreset.name}` : '新建预设'"
     style="width: 90%; max-width: 760px" :bordered="true" :closable="true" :mask-closable="false">
-    <div class="preset-editor" v-if="form">
+    <div class="preset-editor" v-if="form" :key="form.id">
       <!-- 名称 -->
       <div class="editor-row">
         <span class="editor-label">预设名称：</span>
@@ -492,9 +492,9 @@ const createNewPreset = () => {
   editingPreset.value = null;
   form.value = {
     id: 'nm_preset_' + Date.now(),
-    name: props.captainTokenId ? `${getTokenName(props.captainTokenId)}` : '新预设',
-    captainTokenId: props.captainTokenId,
-    memberTokenIds: [...(props.memberTokenIds || [])],
+    name: '新预设',
+    captainTokenId: '',
+    memberTokenIds: [],
     teamSlots: {},
     levelConfig: {},
     waitLevel8: false,

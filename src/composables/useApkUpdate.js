@@ -8,7 +8,7 @@ import { CapacitorHttp } from '@capacitor/core';
  */
 
 // Worker 地址（Cloudflare Worker 部署地址）
-const WORKER_BASE = 'https://xyzw-apk-updater.15322781623.workers.dev';
+const WORKER_BASE = 'https://apk.xiaohuaxyzw.top';
 
 // 本地存储的当前APK版本
 const APK_VERSION_KEY = 'apk_current_version';
@@ -95,12 +95,19 @@ export function useApkUpdate() {
         : response.data;
 
       const localVersion = getLocalVersion();
-      const skipVersion = localStorage.getItem(SKIP_VERSION_KEY);
+      const permanentSkip = localStorage.getItem(SKIP_VERSION_KEY);
+      const sessionSkip = sessionStorage.getItem(SKIP_VERSION_KEY);
 
-      // 如果用户已跳过此版本，不提示（除非强制更新）
-      if (skipVersion === serverInfo.latestVersion && !serverInfo.forceUpdate) {
+      // 只有用户明确勾选"不再提示"才永久跳过（localStorage）
+      if (permanentSkip === serverInfo.latestVersion && !serverInfo.forceUpdate) {
         isChecking.value = false;
-        return { hasUpdate: false, reason: '用户已跳过此版本' };
+        return { hasUpdate: false, reason: '用户已永久跳过此版本' };
+      }
+
+      // 本次会话已跳过（sessionStorage），不提示
+      if (sessionSkip === serverInfo.latestVersion && !serverInfo.forceUpdate) {
+        isChecking.value = false;
+        return { hasUpdate: false, reason: '本次会话已跳过此版本' };
       }
 
       // 版本比较
@@ -108,6 +115,10 @@ export function useApkUpdate() {
       const localCode = localVersion.versionCode;
       const isBelowMinVersion = serverCode > 0 && localCode < (serverInfo.minVersionCode || 0);
       const hasNewerVersion = serverCode > localCode;
+
+      console.log(`[APK更新] 版本比较: local=${localCode} (${localVersion.versionName}), server=${serverCode} (${serverInfo.latestVersion})`);
+      console.log(`[APK更新] hasNewerVersion=${hasNewerVersion}, isBelowMinVersion=${isBelowMinVersion}`);
+      console.log(`[APK更新] serverInfo 完整数据:`, JSON.stringify(serverInfo));
 
       if (hasNewerVersion || isBelowMinVersion) {
         updateInfo.value = {
@@ -336,9 +347,19 @@ export function useApkUpdate() {
   };
 
   /**
-   * 跳过当前版本（不再提示）
+   * 跳过当前版本（仅本次会话不提示，下次打开APP仍会提示）
    */
   const skipUpdate = () => {
+    if (updateInfo.value) {
+      sessionStorage.setItem(SKIP_VERSION_KEY, updateInfo.value.latestVersion);
+      updateInfo.value = null;
+    }
+  };
+
+  /**
+   * 永久跳过当前版本（勾选"不再提示"后调用，写入localStorage）
+   */
+  const permanentSkipUpdate = () => {
     if (updateInfo.value) {
       localStorage.setItem(SKIP_VERSION_KEY, updateInfo.value.latestVersion);
       updateInfo.value = null;
@@ -391,6 +412,7 @@ export function useApkUpdate() {
     checkUpdate,
     downloadAndInstall,
     skipUpdate,
+    permanentSkipUpdate,
     dismissUpdate,
     canShowUpdate,
     setLocalVersion,

@@ -4,7 +4,10 @@ import { useDialog } from 'naive-ui';
 import { useApkUpdate } from '@/composables/useApkUpdate';
 
 const dialog = useDialog();
-const { checkUpdate, downloadAndInstall, skipUpdate, dismissUpdate, canShowUpdate, isDownloading, downloadProgress, downloadError } = useApkUpdate();
+const { checkUpdate, downloadAndInstall, skipUpdate, permanentSkipUpdate, isDownloading, downloadProgress, downloadError } = useApkUpdate();
+
+// 不再提示勾选状态
+const noPromptRef = { value: false };
 
 /**
  * 显示APK更新对话框
@@ -21,15 +24,27 @@ const showUpdateDialog = (info) => {
       isForce
         ? h('p', { style: 'color: #e74c3c; font-weight: bold;' }, ' 此版本为强制更新，必须升级后才能继续使用')
         : null,
+      // 不再提示勾选框（非强制更新时显示）
+      !isForce
+        ? h('label', { style: 'display: flex; align-items: center; gap: 6px; margin-top: 12px; cursor: pointer; font-size: 13px; color: #888;' }, [
+            h('input', {
+              type: 'checkbox',
+              checked: noPromptRef.value,
+              onChange: (e) => { noPromptRef.value = e.target.checked; },
+              style: 'cursor: pointer;',
+            }),
+            h('span', '不再提示此版本'),
+          ])
+        : null,
     ].filter(Boolean)),
     positiveText: isForce ? '立即更新' : '更新',
     negativeText: isForce ? undefined : '跳过此版本',
     closable: !isForce,
     maskClosable: !isForce,
-    // 关闭按钮或遮罩点击时调用 dismissUpdate（非"跳过版本"）
+    // 关闭按钮或遮罩点击时，本次会话跳过此版本
     onClose: () => {
       if (!isForce) {
-        dismissUpdate();
+        skipUpdate();
       }
     },
     onPositiveClick: () => {
@@ -82,7 +97,14 @@ const showUpdateDialog = (info) => {
         });
     },
     onNegativeClick: () => {
-      skipUpdate();
+      // 勾选了"不再提示"则永久跳过，否则仅本次会话跳过
+      if (noPromptRef.value) {
+        permanentSkipUpdate();
+      } else {
+        skipUpdate();
+      }
+      // 重置勾选状态
+      noPromptRef.value = false;
     },
   });
 };
@@ -91,19 +113,11 @@ onMounted(() => {
   // APK自动更新检查（延迟3秒，避免影响启动速度）
   setTimeout(async () => {
     try {
-      // 先检查本次会话是否已关闭过对话框
-      if (!canShowUpdate()) {
-        console.log('[APK更新] 本次会话已关闭过对话框，跳过检查');
-        return;
-      }
       console.log('[APK更新] 开始检查更新...');
       const result = await checkUpdate(true);
       console.log('[APK更新] 检查结果:', JSON.stringify(result));
       if (result.hasUpdate && result.info) {
-        // 再次确认（检查更新期间状态可能变化）
-        if (canShowUpdate()) {
-          showUpdateDialog(result.info);
-        }
+        showUpdateDialog(result.info);
       }
     } catch (e) {
       console.error('[APK更新] 检查更新异常:', e);

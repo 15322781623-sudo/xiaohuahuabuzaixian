@@ -366,18 +366,12 @@ export function createPushMapRunner(deps) {
     st.battles++;
     if (win) {
       st.wins++;
-      st.retries = 0;
       st.level = nl;
       log(`[${nm}] ✅ 胜利! 关卡 ${nl}`, "success");
     } else {
       st.losses++;
-      st.retries = (st.retries || 0) + 1;
       const failReason = bd.errorCode || bd.reason || '';
-      log(`[${nm}] ❌ 失败 (连续${st.retries}次)${failReason ? ': ' + failReason : ''}`, "error");
-      // 详细日志便于排查
-      if (st.retries >= 3) {
-        log(`[${nm}] 战斗响应详情: ${JSON.stringify(bd).substring(0, 300)}`, "warning");
-      }
+      log(`[${nm}] ❌ 失败${failReason ? ': ' + failReason : ''}`, "error");
     }
     return win;
   };
@@ -402,7 +396,9 @@ export function createPushMapRunner(deps) {
     try {
       const cr = await safeSend(tokenId, "fight_calcleveltime", { levelId: st.level }, 15000, nm, st);
       if (cr && !cr.code) {
-        const bt = cr.battleTime || (cr.body && cr.body.battleTime);
+        const bt = cr.battleTime 
+          || (cr.body && cr.body.battleTime) 
+          || (cr.battleData && cr.battleData.battleTime);
         if (bt != null) {
           battleTime = Number(bt);
           // 安全校验
@@ -441,7 +437,7 @@ export function createPushMapRunner(deps) {
     log(`[${nm}] 获取战斗结果...`);
     let fightResultRetrieved = false;
     
-    for (let fightRetry = 0; fightRetry < 3 && !fightResultRetrieved; fightRetry++) {
+    for (let fightRetry = 0; fightRetry < 5 && !fightResultRetrieved; fightRetry++) {
       try {
         const fr = await safeSend(tokenId, "fight_level", {}, 15000, nm, st);
         const win = parseFightResult(fr, st, nm);
@@ -449,12 +445,7 @@ export function createPushMapRunner(deps) {
         
         // 失败后等待
         if (!win) {
-          if (st.retries >= 5) {
-            log(`[${nm}] 连续失败${st.retries}次，暂停30秒`, "warning");
-            await sleep(30000);
-          } else {
-            await sleep(10000);
-          }
+          await sleep(10000);
         }
         
         // 刷新角色数据
@@ -464,12 +455,15 @@ export function createPushMapRunner(deps) {
         
       } catch (e) {
         const errMsg = e.message || '';
-        if (fightRetry < 2) {
-          log(`[${nm}] 获取结果失败(${errMsg})，重试中(${fightRetry + 1}/2)...`, "warning");
-          await sleep(3000);
+        const isServerError = errMsg.includes('200020');
+        
+        if (fightRetry < 4) {
+          // 200020 服务器错误：战斗可能尚未结算，延长等待时间
+          const waitTime = isServerError ? 8000 : 3000;
+          log(`[${nm}] 获取结果失败(${errMsg})，${isServerError ? '服务器处理中，' : ''}重试中(${fightRetry + 1}/4)...`, "warning");
+          await sleep(waitTime);
         } else {
           st.losses++;
-          st.retries = (st.retries || 0) + 1;
           log(`[${nm}] 获取结果最终失败: ${errMsg}`, "error");
           await sleep(10000);
           fightResultRetrieved = true;

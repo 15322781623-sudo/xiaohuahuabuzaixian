@@ -129,6 +129,10 @@ MD说明文件夹/
 android/app/build2/
 *.apk
 
+# Tauri EXE build artifacts
+src-tauri/target/
+*.exe
+
 # Screenshots
 screenshot_*.png
 

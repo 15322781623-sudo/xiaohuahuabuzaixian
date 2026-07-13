@@ -1,6 +1,6 @@
 {
   "name": "xyzw-token-manager",
-  "version": "2.25.0",
+  "version": "2.31.0",
   "type": "module",
   "description": "XYZW 游戏 Token 管理器 - 支持 Base64 导入和 WebSocket 连接管理",
   "main": "src/main.js",
@@ -15,6 +15,10 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "build:exe": "node build-exe.cjs",
+    "build:exe:debug": "node build-exe.cjs --debug",
+    "build:exe:clean": "node build-exe.cjs --clean",
+    "build:exe:skip": "node build-exe.cjs --skip-build",
     "build:apk": "node build-apk.cjs",
     "build:apk:debug": "node build-apk.cjs --debug",
     "build:apk:clean": "node build-apk.cjs --clean",

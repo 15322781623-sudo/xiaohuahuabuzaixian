@@ -961,38 +961,6 @@ export function createTasksStore(deps) {
 
         await ensureConnection(tokenId);
 
-        // 读取账号设置的采购清单
-        try {
-          const rawSettings = localStorage.getItem(`daily-settings:${tokenId}`);
-          if (rawSettings) {
-            const accountSettings = JSON.parse(rawSettings);
-            const purchaseList = accountSettings.purchaseList || [];
-            if (purchaseList.length > 0) {
-              const discounts = accountSettings.purchaseDiscounts || {};
-              const purchaseItemList = purchaseList.map(id => ({ itemId: id, discount: discounts[id] ?? 10 }));
-              const purchaseCnt = accountSettings.purchaseCnt ?? 15;
-              await tokenStore.sendMessageWithPromise(
-                tokenId,
-                "store_setpurchase",
-                { purchaseItemList, purchaseCnt },
-                batchSettings.defaultCommandTimeout || 5000,
-              );
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 已设置采购清单 (${purchaseItemList.length}项, 次数${purchaseCnt})`,
-                type: "info",
-              });
-              await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
-            }
-          }
-        } catch (e) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 设置采购清单失败: ${e.message}，继续采购`,
-            type: "warning",
-          });
-        }
-
         addLog({
           time: new Date().toLocaleTimeString(),
           message: `${token.name} 发送黑市采购请求...`,
@@ -1100,13 +1068,12 @@ export function createTasksStore(deps) {
    * @param {Array<{goodsId: number, name: string, count: number}>} items - 商品列表
    */
   const store_buy_selectable = async (items) => {
-    console.log('[多选购买] 收到参数:', JSON.stringify(items));
+    // ✅ 移除冗余 debug 日志（2026-07-13 清理）
+    
     if (!items || items.length === 0) {
-      console.log('[多选购买] 商品列表为空');
       return;
     }
     if (selectedTokens.value.length === 0) {
-      console.log('[多选购买] 未选择账号');
       return;
     }
 
@@ -1126,16 +1093,11 @@ export function createTasksStore(deps) {
       try {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `=== 开始多选购买: ${token.name} ===`,
+          message: `=== 开始多选购买：${token.name} ===`,
           type: "info",
         });
-
-        console.log('[多选购买] 账号:', token.name, 'ID:', tokenId);
-        console.log('[多选购买] 连接状态:', tokenStore.getWebSocketStatus(tokenId));
-
+        
         await ensureConnection(tokenId);
-
-        console.log('[多选购买] 连接后状态:', tokenStore.getWebSocketStatus(tokenId));
 
         // 获取角色信息
         await tokenStore.sendGetRoleInfo(tokenId);
@@ -1148,8 +1110,6 @@ export function createTasksStore(deps) {
           count: item.count || 1,
           stopped: false,
         }));
-
-        console.log('[多选购买] 购买计划:', buyProgress.map(i => `${i.name}x${i.count}`));
 
         // 轮次优先模式：每轮遍历所有商品各买一次，买前刷新商店
         const maxRound = Math.max(...buyProgress.map(i => i.count));
@@ -1175,11 +1135,9 @@ export function createTasksStore(deps) {
                 batchSettings.defaultCommandTimeout || 5000,
               );
               await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
-              if (!listResult.error) {
-                console.log('[多选购买] 商品列表响应:', JSON.stringify(listResult).substring(0, 1000));
-              }
+              // ✅ 商品列表诊断信息已移除（2026-07-13 清理）
             } catch (e) {
-              console.log('[多选购买] 获取商品列表异常:', e.message);
+              // ✅ 获取商品列表异常已在 addLog 中处理
             }
           }
 
@@ -1209,8 +1167,6 @@ export function createTasksStore(deps) {
                 { goodsId: item.goodsId },
                 batchSettings.defaultCommandTimeout || 5000,
               );
-
-              console.log('[多选购买] 购买响应:', item.goodsId, JSON.stringify(result));
               await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
               if (result.error) {
@@ -1248,10 +1204,9 @@ export function createTasksStore(deps) {
                 { storeId: 1 },
                 batchSettings.defaultCommandTimeout || 5000,
               );
-              console.log('[多选购买] 商品刷新结果:', refreshResult);
               await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
+              // ✅ 商品刷新结果已在 addLog 中记录
             } catch (e) {
-              console.log('[多选购买] 商品刷新异常:', e.message);
               addLog({
                 time: new Date().toLocaleTimeString(),
                 message: `${token.name} 商店刷新失败(第${round + 1}轮): ${e.message}，继续下一轮`,
@@ -2313,6 +2268,142 @@ export function createTasksStore(deps) {
   };
 
   /**
+   * 咸鱼神杯使用卡包（循环使用直到报错）
+   * 使用咸鱼神杯的 starpack 功能，循环执行直到出现错误
+   */
+  const saltcup26_openstarpack_use = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    await runStreaming(selectedTokens.value, async (tokenId) => {
+      if (shouldStop.value)
+        return;
+
+      tokenStatus.value[tokenId] = "running";
+
+      const token = tokens.value.find((t) => t.id === tokenId);
+      const TASK_TIMEOUT = 900000; // 10分钟超时（循环使用需要更长时间）
+
+      const runTask = async () => {
+        try {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `=== 开始循环使用咸鱼神杯卡包: ${token.name} ===`,
+            type: "info",
+          });
+
+          await ensureConnection(tokenId);
+
+          let successCount = 0;
+          let lastError = null;
+
+          // 循环使用卡包直到报错
+          while (!shouldStop.value) {
+            try {
+              const result = await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "saltcup26_openstarpack",
+                { packId: 5501, starId: 0, cnt: 1 },
+                batchSettings.defaultCommandTimeout || 5000,
+              );
+
+              if (result && result.error) {
+                // 遇到错误，停止循环
+                lastError = result.error;
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 第 ${successCount + 1} 次使用卡包失败: ${lastError}，停止循环`,
+                  type: "warning",
+                });
+                break;
+              } else {
+                successCount++;
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 第 ${successCount} 次使用卡包成功`,
+                  type: "success",
+                });
+
+                // 间隔延迟，避免请求过快
+                await new Promise((r) => setTimeout(r, 1000));
+              }
+            } catch (error) {
+              // 捕获异常，停止循环
+              lastError = error.message || "";
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 第 ${successCount + 1} 次使用卡包出错: ${lastError}，停止循环`,
+                type: "warning",
+              });
+              break;
+            }
+          }
+
+          // 最终结果
+          if (successCount > 0) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 循环使用卡包结束，成功 ${successCount} 次`,
+              type: successCount > 0 ? "success" : "warning",
+            });
+            tokenStatus.value[tokenId] = "completed";
+          } else {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 当前卡包数量为0无法使用`,
+              type: "error",
+            });
+            tokenStatus.value[tokenId] = "failed";
+          }
+        } catch (error) {
+          const errorMsg = error.message || "";
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 使用卡包过程出错: ${errorMsg}`,
+            type: "error",
+          });
+          tokenStatus.value[tokenId] = "failed";
+        } finally {
+          tokenStore.closeWebSocketConnection(tokenId);
+          releaseConnectionSlot();
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+            type: "info",
+          });
+        }
+      };
+
+      try {
+        await Promise.race([
+          runTask(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("任务执行超时（10分钟）")), TASK_TIMEOUT)),
+        ]);
+      } catch (timeoutErr) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 使用卡包超时: ${timeoutErr.message}`,
+          type: "warning",
+        });
+        tokenStatus.value[tokenId] = "failed";
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+      }
+    });
+
+    currentRunningTokenId.value = null;
+    isRunning.value = false;
+    shouldStop.value = false;
+  };
+
+  /**
    * 领取助威币（每月只能领取一次）
    */
   const claim_guess_coin = async () => {
@@ -2373,15 +2464,7 @@ export function createTasksStore(deps) {
 
         await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
 
-        // 调试：打印完整返回数据
-        console.log("=== warguess_getguessinfo 返回数据 ===");
-        console.log("完整对象:", JSON.stringify(guessInfo, null, 2));
-        console.log("所有键名:", Object.keys(guessInfo || {}));
-        console.log("guessInfo.guessId:", guessInfo?.guessId);
-        console.log("guessInfo.body:", guessInfo?.body);
-        console.log("guessInfo.data:", guessInfo?.data);
-        console.log("guessInfo.result:", guessInfo?.result);
-        console.log("guessInfo._rawData:", guessInfo?._rawData);
+        // ✅ 移除冗余 debug 日志（2026-07-13 清理）
 
         // 尝试各种可能的路径
         if (guessInfo?._rawData) {
@@ -5504,5 +5587,6 @@ export function createTasksStore(deps) {
     legion_buy_store_items,
     weeklyMarketBuy,
     batch_mail_claim_and_cleanup,
+    saltcup26_openstarpack_use,
   };
 }

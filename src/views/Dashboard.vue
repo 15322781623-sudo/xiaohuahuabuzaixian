@@ -11,6 +11,14 @@
                 欢迎回来，{{ tokenStore.selectedToken?.name || "游戏玩家" }}！
               </h1>
               <p>今天是 {{ currentDate }}，继续您的游戏管理之旅吧</p>
+              <div v-if="countdown > 0" class="auto-redirect-tip">
+                <n-tag type="warning" :bordered="false" size="medium">
+                  ⏱ {{ countdown }}秒后自动跳转到批量日常页面
+                </n-tag>
+                <n-button size="small" quaternary type="warning" @click="cancelAutoRedirect" style="margin-left: 8px;">
+                  取消跳转
+                </n-button>
+              </div>
             </div>
             <div class="welcome-actions">
               <n-button
@@ -70,6 +78,9 @@ const tokenStore = useTokenStore();
 
 // 2分钟后自动跳转到批量日常页面
 let autoRedirectTimer = null;
+let countdownTimer = null;
+const countdown = ref(120); // 120秒 = 2分钟
+const AUTO_REDIRECT_DELAY = 2 * 60 * 1000; // 2分钟
 
 // 响应式数据
 // const recentActivities = ref([]);
@@ -186,6 +197,19 @@ const formatTime = (timestamp) => {
 };
 */
 
+const cancelAutoRedirect = () => {
+  if (autoRedirectTimer) {
+    clearTimeout(autoRedirectTimer);
+    autoRedirectTimer = null;
+  }
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+  countdown.value = 0;
+  message.info("已取消自动跳转");
+};
+
 // 生命周期
 onMounted(async () => {
   // 确保有Token
@@ -196,6 +220,20 @@ onMounted(async () => {
 
   // 初始化 Token 数据
   tokenStore.initTokenStore();
+
+  // 倒计时更新
+  countdownTimer = setInterval(() => {
+    countdown.value--;
+    if (countdown.value <= 0) {
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+    }
+  }, 1000);
+
+  // 2分钟后自动跳转到批量日常页面
+  autoRedirectTimer = setTimeout(() => {
+    router.push("/admin/batch-daily-tasks");
+  }, AUTO_REDIRECT_DELAY);
 });
 
 onUnmounted(() => {
@@ -203,6 +241,10 @@ onUnmounted(() => {
   if (autoRedirectTimer) {
     clearTimeout(autoRedirectTimer);
     autoRedirectTimer = null;
+  }
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
   }
 });
 </script>
@@ -254,6 +296,12 @@ onUnmounted(() => {
     font-size: var(--font-size-lg);
     opacity: 0.9;
     margin: 0;
+  }
+
+  .auto-redirect-tip {
+    display: flex;
+    align-items: center;
+    margin-top: var(--spacing-md);
   }
 }
 

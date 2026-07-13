@@ -23,6 +23,7 @@ const errorCodeMap = {
   7500100: "密码输入错误",
   7500120: "密码输入错误次数已达上限",
   200400: "操作太快，请稍后再试",
+  400340: "服务器内部错误，请稍后重试",
   200760: "您当前看到的界面已发生变化，请重新登录",
   2300190: "今天已经签到过了",
   2300370: "俱乐部商品购买数量超出上限",
@@ -40,6 +41,7 @@ const errorCodeMap = {
   700020: "已经领取过这个任务",
   12400000: "挂机奖励领取过于频繁",
   2300250: "俱乐部BOSS今日攻打次数已用完",
+  2300280: "已报名，无法重复报名",
   400010: "物品数量不足",
   7900023: "已达到使用次数上限",
   12300040: "没有空格子了",
@@ -168,6 +170,7 @@ export function registerDefaultCommands(reg) {
     .register("system_buygold", { buyNum: 1 })
     .register("system_buyitem", { itemId: 0, buyNum: 1 })
     .register("system_claimhangupreward")
+    .register("system_hangupupgrade", { upgradeNum: 1 })
     .register("system_signinreward")
     .register("system_mysharecallback", { isSkipShareCard: true, type: 2 })
     .register("system_custom", { key: "", value: 0 })
@@ -202,7 +205,7 @@ export function registerDefaultCommands(reg) {
     // 商店
     .register("store_goodslist", { storeId: 1 })
     .register("store_buy", { goodsId: 1 })
-    .register("store_purchase", { goodsId: 1 })
+    .register("store_purchase") // 一键黑市采购（无默认参数，执行采购清单）
     .register("store_getpurchase")
     .register("store_setpurchase")
     .register("store_refresh", { storeId: 1 })
@@ -327,6 +330,9 @@ export function registerDefaultCommands(reg) {
     // 军团匹配和签到
     .register("legionmatch_rolesignup")
     .register("legion_signin")
+    .register("legion_signup") // 盐场报名
+    .register("legion_buypayloaditem") // 蟠桃提交铃铛
+    .register("legion_payloadsignup") // 蟠桃报名
 
     // 钓鱼
     .register("artifact_lottery", { lotteryNumber: 1, newFree: true, type: 1 })
@@ -522,6 +528,9 @@ export function registerDefaultCommands(reg) {
 
     // 竞技大厅（逐鹿盐山）
     .register("apex_taskclaim", { confId: 1 })
+
+    // 咸鱼神杯
+    .register("saltcup26_openstarpack", { packId: 5501, starId: 0, cnt: 1 })
 
     // 发送游戏内消息
     .register("system_sendchatmessage");
@@ -1060,6 +1069,11 @@ export class XyzwWebSocketClient {
     return this.sendWithPromise("system_signinreward");
   }
 
+  /** 挂机收益升级 */
+  hangUpUpgrade(upgradeNum = 1) {
+    return this.sendWithPromise("system_hangupupgrade", { upgradeNum });
+  }
+
   /** 领取日常任务奖励 */
   claimDailyReward(rewardId = 0) {
     return this.sendWithPromise("task_claimdailyreward", { rewardId });
@@ -1414,6 +1428,7 @@ export class XyzwWebSocketClient {
       hero_recruitresp: "hero_recruit",
       friend_batchresp: "friend_batch",
       system_claimhanguprewardresp: "system_claimhangupreward",
+      system_hangupupgraderesp: "system_hangupupgrade",
       system_claimcdkrewardresp: "system_claimcdkreward",
       item_openboxresp: ["item_openbox", "item_batchclaimboxpointreward"],
       item_openpackresp: "item_openpack", // 砸金蛋响应
@@ -1422,6 +1437,9 @@ export class XyzwWebSocketClient {
       bottlehelper_startresp: "bottlehelper_start",
       bottlehelper_stopresp: "bottlehelper_stop",
       legion_signinresp: "legion_signin",
+      legion_signupresp: "legion_signup", // 盐场报名响应
+      legion_buypayloaditemresp: "legion_buypayloaditem", // 蟠桃提交铃铛响应
+      legion_payloadsignupresp: "legion_payloadsignup", // 蟠桃报名响应
       fight_startbossresp: "fight_startboss",
       fight_startlegionbossresp: "fight_startlegionboss",
       fight_startareaarenaresp: "fight_startareaarena",
@@ -1459,6 +1477,7 @@ export class XyzwWebSocketClient {
       store_refreshresp: "store_refresh",
       store_getpurchaseresp: "store_getpurchase",
       store_setpurchaseresp: "store_setpurchase",
+      store_purchaseresp: "store_purchase",
       discount_getdiscountinforesp: "discount_getdiscountinfo",
       system_getdatabundleverresp: "system_getdatabundlever",
       tower_claimrewardresp: "tower_claimreward",

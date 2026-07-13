@@ -504,9 +504,14 @@ const startTowerClimb = async () => {
       if (stopFlag)
         break;
 
-      // 检查当前能量
-      await getTowerInfo();
-      const currentEnergy = towerEnergy.value;
+      // 检查当前能量 - 直接从返回数据获取，避免依赖computed属性的异步更新
+      const towerInfoResult = await tokenStore.sendMessageWithPromise(
+        tokenId,
+        "evotower_getinfo",
+        {},
+        5000,
+      );
+      const currentEnergy = towerInfoResult?.evoTower?.energy || 0;
       if (currentEnergy <= 0)
         break;
 
@@ -538,10 +543,15 @@ const startTowerClimb = async () => {
       message.success(`第${climbCount}次爬塔命令已发送`);
 
       // 更新爬塔信息
-      await getTowerInfo();
+      const updatedTowerInfo = await tokenStore.sendMessageWithPromise(
+        tokenId,
+        "evotower_getinfo",
+        {},
+        5000,
+      );
 
       // 检查并领取每日任务奖励
-      const towerData = evoTowerInfo.value?.evoTower;
+      const towerData = updatedTowerInfo?.evoTower;
       if (towerData && towerData.taskClaimMap) {
         const now = new Date();
         const year = now.getFullYear().toString().slice(2);
@@ -592,7 +602,7 @@ const startTowerClimb = async () => {
         }
       }
 
-      await new Promise((res) => setTimeout(res, 40000)); // 每次间隔5秒
+      await new Promise((res) => setTimeout(res, 2000)); // 每次间隔2秒
     }
     // 获取免费道具数量
     const freeEnergyResult = await tokenStore.sendMessageWithPromise(

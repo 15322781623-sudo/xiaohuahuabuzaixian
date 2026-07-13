@@ -98,6 +98,7 @@ export class NightmareAutoBattleService {
       roleId: m.roleId,
       isAllHeroesDead: m.isAllHeroesDead,
       isCaptain: m.isCaptain,
+      heroes: m.heroes || [], // ✅ 新增：武将列表，用于显示恢复状态
     }));
   }
   
@@ -151,6 +152,25 @@ export class NightmareAutoBattleService {
       if (this._stopped) return;
       await sleep(2000);
       if (this._stopped) return;
+
+      // ✅ 修复：重连继续前也检查成员状态，自动恢复全部阵亡的成员
+      if (this._members.length > 0 && this._isAllMembersDead()) {
+        this._onLog('重连后检测到全员阵亡，自动恢复中...', 'warning');
+        for (const member of this._members) {
+          try {
+            await this._tokenStore.sendMessageWithPromise(
+              this._captainTokenId, 'nightmare_restore',
+              { roomId: Number(this._roomId), roleId: Number(member.roleId) }, 10000
+            );
+            this._onLog(`已恢复 ${member.name}`, 'success');
+          } catch (e) {
+            this._onLog(`恢复 ${member.name} 失败: ${e.message || e}`, 'warning');
+          }
+        }
+        await sleep(1000);
+        await this._fetchRoomInfo();
+      }
+
       // 继续战斗循环
       await this._battleLoop();
     } catch (err) {
@@ -177,6 +197,25 @@ export class NightmareAutoBattleService {
       // 首次获取房间信息
       await this._fetchRoomInfo();
       if (this._stopped) return;
+
+      // ✅ 修复：战斗开始前检查成员状态，自动恢复全部阵亡的成员
+      // 解决接管已有房间时成员武将死亡未恢复导致“无出战成员”的问题
+      if (this._members.length > 0 && this._isAllMembersDead()) {
+        this._onLog('战斗开始前检测到全员阵亡，自动恢复中...', 'warning');
+        for (const member of this._members) {
+          try {
+            await this._tokenStore.sendMessageWithPromise(
+              this._captainTokenId, 'nightmare_restore',
+              { roomId: Number(this._roomId), roleId: Number(member.roleId) }, 10000
+            );
+            this._onLog(`已恢复 ${member.name}`, 'success');
+          } catch (e) {
+            this._onLog(`恢复 ${member.name} 失败: ${e.message || e}`, 'warning');
+          }
+        }
+        await sleep(1000);
+        await this._fetchRoomInfo();
+      }
 
       // 等待3秒后首轮自动出战
       await sleep(3000);
@@ -209,6 +248,8 @@ export class NightmareAutoBattleService {
         this._status = 'failed';
         await this._dismissRoom(this._activeBattles);
         this._onStatusChange({ status: 'failed', presetName: this._presetData?.name, reason: 'timeout' });
+        // ✅ 修复：超时后必须触发 onError，否则 handleBattleError 不执行，UI 条目永远不清除
+        this._onError({ message: '后台战斗超时（2小时）', reason: 'timeout' });
         break;
       }
 
@@ -641,10 +682,6 @@ export class NightmareAutoBattleService {
       this._monsters = [];
     }
 
-    // 上报状态（含 BOSS 血量）
-    const bossHp = this.getBossHp();
-    this._onStatusChange({ status: this._status, currentLevel: this._currentLevel, bossHp });
-
     // 解析成员
     const fightRoleBase = roomInfo.fightRoleBase || {};
     const playerTeamInfo = roomInfo.playerTeamInfo || {};
@@ -688,6 +725,10 @@ export class NightmareAutoBattleService {
     } else if (this._members.length > 0) {
       this._onLog('房间信息中无成员数据，保留上次成员列表', 'warning');
     }
+
+    // ✅ 修复：在成员解析完成后再上报状态，确保 UI 获取到最新的成员和武将恢复数据
+    const bossHp = this.getBossHp();
+    this._onStatusChange({ status: this._status, currentLevel: this._currentLevel, bossHp });
   }
 
   // ====== 选人出战（对应 getAutoAttacker） ======
@@ -940,10 +981,13 @@ export class NightmareAutoBattleService {
     // 遣散房间后解散组队（matchteam）
     if (this._teamId) {
       // 检查是否有其他活跃战斗共享同一队伍
+      // ✅ 修复：activeBattles 数组元素是包装对象 { preset, battle, status, ... }
+      // 需要通过 b.battle 访问 NightmareAutoBattleService 实例
       let teamShared = false;
       if (activeBattles && Array.isArray(activeBattles)) {
         teamShared = activeBattles.some(b =>
-          b && b !== this && b.teamId === this._teamId &&
+          b && b.battle !== this &&
+          (b.battle?._teamId || b.battle?.getTeamId?.()) === this._teamId &&
           (b.status === 'running' || b.status === 'cooling' || b.status === 'waiting_midnight')
         );
       }
@@ -1034,6 +1078,8 @@ export class NightmareAutoBattleService {
       this._onLog(`已到周一00:01，开始第8关挑战！`, 'success');
       this._status = 'running';
       this._waitStartTime = null;
+      // ✅ 修复：重置超时计时器，避免等待时间计入2小时超时导致第8关立即超时
+      this._startTime = Date.now();
     }
   }
 }

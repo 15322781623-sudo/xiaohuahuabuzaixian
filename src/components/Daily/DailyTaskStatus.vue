@@ -191,46 +191,6 @@
               <span class="switch-label">黑市购买物品</span>
               <n-switch v-model:value="settings.blackMarketPurchase"></n-switch>
             </div>
-            <!-- 采购清单多选 -->
-            <div v-if="settings.blackMarketPurchase" class="purchase-config-area">
-              <div class="switch-row" style="margin-bottom: 6px;">
-                <span class="switch-label">采购次数</span>
-                <n-input-number
-                  v-model:value="settings.purchaseCnt"
-                  :min="1" :max="15" :step="1"
-                  size="tiny" style="width: 80px;"
-                />
-                <n-button
-                  size="tiny"
-                  :disabled="!isConnected || syncPurchaseBusy"
-                  @click="syncPurchaseToGame"
-                  style="margin-left: 8px;"
-                >
-                  {{ syncPurchaseBusy ? '同步中...' : '同步到游戏' }}
-                </n-button>
-              </div>
-              <div class="purchase-list-grid">
-                <label
-                  v-for="item in purchaseItemOptions"
-                  :key="item.itemId"
-                  class="purchase-item-label"
-                >
-                  <input
-                    type="checkbox"
-                    :checked="settings.purchaseList.includes(item.itemId)"
-                    @change="togglePurchaseItem(settings.purchaseList, settings.purchaseDiscounts, item.itemId)"
-                  />
-                  <span>{{ item.name }}</span>
-                  <input type="number" class="discount-input"
-                    :value="getDiscount(settings.purchaseDiscounts, item.itemId)"
-                    @input="(e) => setDiscount(settings.purchaseDiscounts, item.itemId, e.target.value)"
-                    min="1" max="10"
-                    :disabled="!settings.purchaseList.includes(item.itemId)"
-                  />
-                  <span class="discount-unit">折</span>
-                </label>
-              </div>
-            </div>
 
             <div class="switch-row">
               <span class="switch-label">付费招募</span>
@@ -763,8 +723,6 @@ watch(
             settings.purchaseDiscounts = initPurchaseDiscounts(discounts);
             const purchaseCnt = result?.purchaseCnt ?? result?.store?.purchaseCnt;
             if (purchaseCnt != null) settings.purchaseCnt = purchaseCnt;
-          } else {
-            console.warn('[采购清单] 响应为空或无purchaseItemList, keys:', result ? Object.keys(result).join(',') : 'null');
           }
         } catch (e) {
           console.warn('[采购清单] 获取失败:', e?.message || e);
@@ -813,8 +771,6 @@ onMounted(async () => {
         settings.purchaseDiscounts = initPurchaseDiscounts(discounts);
         const purchaseCnt = result?.purchaseCnt ?? result?.store?.purchaseCnt;
         if (purchaseCnt != null) settings.purchaseCnt = purchaseCnt;
-      } else {
-        console.warn('[采购清单] 初始化响应为空, keys:', result ? Object.keys(result).join(',') : 'null');
       }
     } catch (e) {
       console.warn('[采购清单] 初始化获取失败:', e?.message || e);

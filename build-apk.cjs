@@ -94,6 +94,9 @@ const main = async () => {
   const startTime = Date.now();
   const { version, versionCode } = getVersion();
 
+  // 设置正确的 JDK 路径
+  process.env.JAVA_HOME = 'C:\\jdk21\\jdk-21.0.8+9';
+
   console.log('');
   log('╔══════════════════════════════════════╗', 'info');
   log(`║  APK 一键构建  v${version} (${versionCode})`, 'info');
@@ -209,8 +212,8 @@ const main = async () => {
       process.env.PATH = `${node22Path};${originalPath}`;
 
       try {
-        // 8.1 上传 APK 文件到 R2
-        const r2ApkKey = `肝王之王_${version}.apk`;
+        // 8.1 上传 APK 文件到 R2（使用英文文件名避免编码问题）
+        const r2ApkKey = `xyzw_helper_${version}.apk`;
         log(`上传 APK 到 R2: ${r2ApkKey} ...`, 'info');
         execSync(`${wranglerCmd} r2 object put "${R2_BUCKET}/${r2ApkKey}" --file "${destPath}"`, {
           stdio: 'inherit',

@@ -821,10 +821,54 @@ export function createTasksTower(deps) {
           let serverErrorCount = 0; // ✅ 服务器错误计数
           let readyFailCount = 0; // ✅ 200020/7800008 准备战斗失败计数
           let rewardClaimFailCount = 0; // ✅ 1500030 领奖失败计数
-          let serverErrorBreak = false; // ✅ 400340/200750/11800010导致的中断标记
+          let serverErrorBreak = false; // ✅ 400340/200750/11800010 导致的中断标记
+          let energyZeroConfirmed = false; // ✅ 体力为 0 确认标记
           const MAX_CLIMB = tokenSettings.maxClimbCount || DEFAULT_CONFIG.maxClimbCount;
-
+          
           while (currentEnergy > 0 && count < MAX_CLIMB && !shouldStop.value) {
+            // ✅ 体力估算为 0 时，获取一次真实数据确认是否真的为 0
+            if (currentEnergy <= 0 && !energyZeroConfirmed) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 💡 体力估算为 0，正在获取真实数据确认...`,
+                type: "info",
+              });
+              try {
+                const checkInfo = await callWithRetry(tokenId, "evotower_getinfo", {}, { retries: 1 });
+                const realEnergy = checkInfo?.evoTower?.energy || 0;
+                          
+                if (realEnergy > 0) {
+                  // 还有体力，继续执行
+                  currentEnergy = realEnergy;
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} ✅ 真实体力为 ${realEnergy}，继续爬塔`,
+                    type: "success",
+                  });
+                  energyZeroConfirmed = false;
+                } else {
+                  // 确实没体力了，停止爬塔
+                  currentEnergy = 0;
+                  energyZeroConfirmed = true;
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 确认体力为 0，停止爬塔`,
+                    type: "info",
+                  });
+                  break;
+                }
+              } catch (checkErr) {
+                // 获取失败，按无体力处理
+                currentEnergy = 0;
+                energyZeroConfirmed = true;
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} ⚠️ 获取体力信息失败，按无体力处理`,
+                  type: "warning",
+                });
+                break;
+              }
+            }
             try {
               // 战斗前领取通关奖励（静默处理12200030错误）
               try {
@@ -925,45 +969,66 @@ export function createTasksTower(deps) {
 
               await safeDelay(_getModuleDelay('tower'));
 
-              // 获取最新信息
-              const newInfo = await callWithRetry(tokenId, "evotower_getinfo", {});
-              currentEnergy = newInfo?.evoTower?.energy || 0;
-              
-              // 检查并领取每日任务
-              const taskClaimMap = newInfo?.evoTower?.taskClaimMap;
-              if (taskClaimMap) {
-                const now = new Date();
-                const dateKey = `${now.getFullYear().toString().slice(2)}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}`;
-                const dailyTasks = taskClaimMap[dateKey] || {};
-                
-                for (const taskId of [1, 2, 3]) {
-                  if (!dailyTasks[taskId]) {
-                    try {
-                      await callWithRetry(tokenId, "evotower_claimtask", { taskId }, { retries: 1 });
-                      addLog({
-                        time: new Date().toLocaleTimeString(),
-                        message: `${token.name} 成功领取怪异塔每日宝箱 ${taskId} 奖励`,
-                        type: "success",
-                      });
-                    } catch (taskErr) {
-                      const taskErrorMsg = taskErr.message || '';
-                      
-                      // 12200040：任务奖励已领取或不存在（正常情况）
-                      if (taskErrorMsg.includes('12200040')) {
-                        // 静默处理，不输出日志
-                      } else {
-                        addLog({
-                          time: new Date().toLocaleTimeString(),
-                          message: `${token.name} 领取任务 ${taskId} 失败: ${taskErrorMsg.substring(0, 50)}`,
-                          type: "warning",
-                        });
+              // ✅ 每 10 次胜利后刷新能量（进入下一关卡体力恢复满）
+              if (count % 10 === 0) {
+                try {
+                  const newInfo = await callWithRetry(tokenId, "evotower_getinfo", {}, { retries: 1 });
+                  currentEnergy = newInfo?.evoTower?.energy || 0;
+                    
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} 💡 第${count}次后刷新 - 剩余能量：${currentEnergy}, 总次数：${count}`,
+                    type: "info",
+                  });
+                  
+                  // 检查并领取每日任务
+                  const taskClaimMap = newInfo?.evoTower?.taskClaimMap;
+                  if (taskClaimMap) {
+                    const now = new Date();
+                    const dateKey = `${now.getFullYear().toString().slice(2)}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}`;
+                    const dailyTasks = taskClaimMap[dateKey] || {};
+                    
+                    for (const taskId of [1, 2, 3]) {
+                      if (!dailyTasks[taskId]) {
+                        try {
+                          await callWithRetry(tokenId, "evotower_claimtask", { taskId }, { retries: 1 });
+                          addLog({
+                            time: new Date().toLocaleTimeString(),
+                            message: `${token.name} 成功领取怪异塔每日宝箱 ${taskId} 奖励`,
+                            type: "success",
+                          });
+                        } catch (taskErr) {
+                          const taskErrorMsg = taskErr.message || '';
+                          
+                          // 12200040：任务奖励已领取或不存在（正常情况）
+                          if (taskErrorMsg.includes('12200040')) {
+                            // 静默处理，不输出日志
+                          } else {
+                            addLog({
+                              time: new Date().toLocaleTimeString(),
+                              message: `${token.name} 领取任务 ${taskId} 失败：${taskErrorMsg.substring(0, 50)}`,
+                              type: "warning",
+                            });
+                          }
+                        }
+                        await safeDelay(200);
                       }
                     }
-                    await safeDelay(200);
                   }
+                } catch (refreshError) {
+                  // 刷新失败时减少能量估算
+                  currentEnergy = Math.max(0, currentEnergy - 1);
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} ⚠️ 刷新能量/任务信息失败，按减少能量估算：${currentEnergy}`,
+                    type: "warning",
+                  });
                 }
+              } else {
+                // 非刷新周期，按正常消耗估算（不再调用 API）
+                currentEnergy = Math.max(0, currentEnergy - 1);
               }
-              
+            
             } catch (err) {
               const errorMsg = err.message || '';
               
@@ -990,12 +1055,18 @@ export function createTasksTower(deps) {
                   count++;
                   addLog({
                     time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 爬怪异塔第 ${count} 次(重试) ${retryFightResult?.winList?.[0] ? '✅胜利' : '❌失败'}`,
+                    message: `${token.name} 爬怪异塔第 ${count} 次 (重试) ${retryFightResult?.winList?.[0] ? '✅胜利' : '❌失败'}`,
                     type: retryFightResult?.winList?.[0] ? "success" : "warning",
                   });
                   await safeDelay(_getModuleDelay('tower'));
-                  const retryInfo = await callWithRetry(tokenId, "evotower_getinfo", {});
-                  currentEnergy = retryInfo?.evoTower?.energy || 0;
+                                    
+                  // ✅ 重试成功后也按每 10 次刷新策略
+                  if (count % 10 === 0) {
+                    const retryInfo = await callWithRetry(tokenId, "evotower_getinfo", {}, { retries: 1 });
+                    currentEnergy = retryInfo?.evoTower?.energy || 0;
+                  } else {
+                    currentEnergy = Math.max(0, currentEnergy - 1);
+                  }
                   continue;
                 } catch (retryErr) {
                   addLog({
@@ -1014,9 +1085,16 @@ export function createTasksTower(deps) {
                   }
                   await safeDelay(_getModuleDelay('tower'));
                   try {
-                    const refreshInfo = await callWithRetry(tokenId, "evotower_getinfo", {});
-                    currentEnergy = refreshInfo?.evoTower?.energy || 0;
-                  } catch (e) {}
+                    // ✅ 错误处理时也遵循每 10 次刷新策略
+                    if (count % 10 === 0) {
+                      const refreshInfo = await callWithRetry(tokenId, "evotower_getinfo", {}, { retries: 1 });
+                      currentEnergy = refreshInfo?.evoTower?.energy || 0;
+                    } else {
+                      currentEnergy = Math.max(0, currentEnergy - 1);
+                    }
+                  } catch (e) {
+                    currentEnergy = Math.max(0, currentEnergy - 1);
+                  }
                   continue;
                 }
               }
@@ -1184,7 +1262,39 @@ export function createTasksTower(deps) {
       }
     };
 
-    await runStreaming(selectedTokens.value, processClimbWeirdTower);
+    // ✅ 分批并发执行：每批 maxActive 个账号，本批全部完成后才执行下一批
+    const maxActive = batchSettings.maxActive || 5;
+    const totalTokens = selectedTokens.value.length;
+    const totalBatches = Math.ceil(totalTokens / maxActive);
+    
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `📊 共 ${totalTokens} 个账号，分 ${totalBatches} 批执行，每批 ${maxActive} 个`,
+      type: "info",
+    });
+    
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+      if (shouldStop.value) break;
+      
+      const startIdx = batchIndex * maxActive;
+      const endIdx = Math.min(startIdx + maxActive, totalTokens);
+      const batchTokens = selectedTokens.value.slice(startIdx, endIdx);
+      
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `📦 批次 ${batchIndex + 1}/${totalBatches} 开始执行 ${batchTokens.length} 个账号`,
+        type: "info",
+      });
+      
+      // 使用 Promise.all 并发执行本批所有账号
+      await Promise.all(batchTokens.map(tokenId => processClimbWeirdTower(tokenId)));
+      
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `✅ 批次 ${batchIndex + 1}/${totalBatches} 执行完成`,
+        type: "success",
+      });
+    }
 
     // 批量重试失败账号
     const retryCount_max = batchSettings.defaultRetryCount || 2;
@@ -1195,10 +1305,26 @@ export function createTasksTower(deps) {
       if (shouldStop.value) break;
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWaitMs/1000}秒后重试 ${failedTokenIds.length} 个失败账号（第${retryRound+1}/${retryCount_max}轮）`, type: "info" });
       await safeDelay(retryWaitMs);
-      const currentRetry = [...failedTokenIds];
-      failedTokenIds = [];
-      await runStreaming(currentRetry, processClimbWeirdTower);
-      currentRetry.forEach(id => { if (tokenStatus.value[id] === "failed") failedTokenIds.push(id); });
+      
+      // ✅ 重试也采用分批并发模式
+      const retryBatches = Math.ceil(failedTokenIds.length / maxActive);
+      for (let batchIndex = 0; batchIndex < retryBatches; batchIndex++) {
+        if (shouldStop.value) break;
+        
+        const startIdx = batchIndex * maxActive;
+        const endIdx = Math.min(startIdx + maxActive, failedTokenIds.length);
+        const retryBatch = failedTokenIds.slice(startIdx, endIdx);
+        
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `📦 重试批次 ${batchIndex + 1}/${retryBatches} 开始执行 ${retryBatch.length} 个账号`,
+          type: "info",
+        });
+        
+        await Promise.all(retryBatch.map(tokenId => processClimbWeirdTower(tokenId)));
+      }
+      
+      failedTokenIds = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
     }
 
     isRunning.value = false;
@@ -1304,7 +1430,7 @@ export function createTasksTower(deps) {
   };
 
   /**
-  * 换皮闯关
+  * 换皮闯关（分批并发执行）
    */
   const skinChallenge = async () => {
     if (selectedTokens.value.length === 0) return;
@@ -1316,15 +1442,14 @@ export function createTasksTower(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
-    await runStreaming(selectedTokens.value, async (tokenId) => {
+    // ✅ 处理单个账号的换皮闯关逻辑
+    const processSkinChallenge = async (tokenId) => {
       if (shouldStop.value) return;
 
       tokenStatus.value[tokenId] = "running";
       const token = tokens.value.find((t) => t.id === tokenId);
       const tokenSettings = loadSettings ? (loadSettings(tokenId) || currentSettings) : currentSettings;
 
-      let originalFormation = null;
-      let isSwitched = false;
       let actId = null;
 
       try {
@@ -1336,34 +1461,12 @@ export function createTasksTower(deps) {
 
         await ensureConnection(tokenId);
 
-        // 获取并保存原始阵容
-        const teamInfo = await callWithRetry(tokenId, "presetteam_getinfo", {});
-        originalFormation = teamInfo?.presetTeamInfo?.useTeamId;
-        
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token.name} 原始阵容: ${originalFormation}`,
-          type: "info",
-        });
-
-        // 切换到爬塔阵容
-        if (originalFormation !== tokenSettings.towerFormation) {
-          await callWithRetry(tokenId, "presetteam_saveteam", { teamId: tokenSettings.towerFormation });
-          isSwitched = true;
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 成功切换到阵容${tokenSettings.towerFormation}`,
-            type: "info",
-          });
-        }
-
-        // 先获取活动信息，从 actEGameInfo.actId 获取换皮闯关活动ID
+        // 先获取活动信息，从 actEGameInfo.actId 获取换皮闯关活动 ID
         try {
           const activityRes = await callWithRetry(tokenId, "activity_get", {}, { retries: 1 });
-          console.log(`[${token.name}] activity_get 响应:`, JSON.stringify(activityRes).substring(0, 800));
-          
-          // 从 actEGameInfo 获取换皮闯关活动ID
-          // actEGameInfo.actId 为本周活动ID，减1即为 towers_getinfo 的 actId
+                    
+          // 从 actEGameInfo 获取换皮闯关活动 ID
+          // actEGameInfo.actId 为本周活动 ID，减 1 即为 towers_getinfo 的 actId
           const actEGameInfo = activityRes?.activity?.actEGameInfo || activityRes?.actEGameInfo;
           if (actEGameInfo?.actId) {
             actId = Number(actEGameInfo.actId) - 1;
@@ -1373,11 +1476,44 @@ export function createTasksTower(deps) {
               type: "info",
             });
             console.log(`[${token.name}] 从 actEGameInfo.actId=${actEGameInfo.actId} 推导 towers actId: ${actId}`);
+            // ✅ 缓存活动状态，供后续检测失败时回退使用
+            try {
+              localStorage.setItem('skinChallenge_activityCache', JSON.stringify({
+                actId: Number(actEGameInfo.actId),
+                timestamp: Date.now(),
+              }));
+            } catch {}
           } else {
             console.log(`[${token.name}] activity_get 中未找到 actEGameInfo.actId，换皮闯关活动未开启`);
+            // ✅ 回退：检查缓存，如果近期已成功检测过活动开启，则使用缓存的 actId
+            try {
+              const cache = JSON.parse(localStorage.getItem('skinChallenge_activityCache') || 'null');
+              if (cache?.actId && cache?.timestamp && (Date.now() - cache.timestamp) < 24 * 60 * 60 * 1000) {
+                actId = Number(cache.actId) - 1;
+                const hoursAgo = Math.round((Date.now() - cache.timestamp) / 3600000);
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 活动检测返回空，使用 ${hoursAgo}小时前的缓存 actId=${cache.actId} 推演活动已开启`,
+                  type: "warning",
+                });
+              }
+            } catch {}
           }
         } catch (e) {
           console.log(`[${token.name}] activity_get 失败:`, e.message);
+          // ✅ 回退：请求失败时也检查缓存
+          try {
+            const cache = JSON.parse(localStorage.getItem('skinChallenge_activityCache') || 'null');
+            if (cache?.actId && cache?.timestamp && (Date.now() - cache.timestamp) < 24 * 60 * 60 * 1000) {
+              actId = Number(cache.actId) - 1;
+              const hoursAgo = Math.round((Date.now() - cache.timestamp) / 3600000);
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} activity_get 失败，使用 ${hoursAgo}小时前的缓存 actId=${cache.actId} 推演活动已开启`,
+                type: "warning",
+              });
+            }
+          } catch {}
         }
 
         // 获取换皮闯关信息（传入 actId）
@@ -1386,7 +1522,11 @@ export function createTasksTower(deps) {
         if (actId) {
           try {
             res = await callWithRetry(tokenId, "towers_getinfo", { actId: Number(actId) });
-            console.log(`[${token.name}] towers_getinfo 响应:`, JSON.stringify(res).substring(0, 500));
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 成功获取闯关信息`,
+              type: "success",
+            });
           } catch (e) {
             const errMsg = e.message || '';
             // 7900021 或其他错误表示活动未开启
@@ -1564,7 +1704,7 @@ export function createTasksTower(deps) {
                   }
                 }
                 
-                await safeDelay(1500);  // ✅ 增加延迟到1.5秒，避免过快请求
+                await safeDelay(_getModuleDelay('tower'));  // ✅ 使用爬塔/怪塔延迟模块控制
               }
 
               const fightRes = await callWithRetry(tokenId, "towers_fight", { towerType: type, actId: Number(actId) });
@@ -1598,7 +1738,7 @@ export function createTasksTower(deps) {
                     type: "success",
                   });
                 } else {
-                  await safeDelay(1000);
+                  await safeDelay(_getModuleDelay('tower'));
                 }
               } else {
                 addLog({
@@ -1618,11 +1758,23 @@ export function createTasksTower(deps) {
                   });
                   loop = false;
                 } else {
-                  await safeDelay(2000);
+                  await safeDelay(_getModuleDelay('tower'));
                 }
               }
             } catch (err) {
               const errorMsg = err.message || '';
+
+              // ✅ 400340/200750/11800010 服务器错误 - 立即停止当前账号，交由外层批量重试处理
+              if (errorMsg.includes("400340") || errorMsg.includes("200750") || errorMsg.includes("11800010")) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} BOSS ${type} 服务器错误(${errorMsg.substring(0, 30)})，停止当前账号，等待批量重试`,
+                  type: "warning",
+                });
+                // 抛出错误，让外层 catch 标记为 failed，由重试队列拾起
+                throw err;
+              }
+
               addLog({
                 time: new Date().toLocaleTimeString(),
                 message: `${token.name} BOSS ${type} 战斗出错: ${errorMsg.substring(0, 80)}`,
@@ -1640,7 +1792,7 @@ export function createTasksTower(deps) {
                 });
                 loop = false;
               } else {
-                await safeDelay(2000);
+                await safeDelay(_getModuleDelay('tower'));
               }
             }
           }
@@ -1678,7 +1830,7 @@ export function createTasksTower(deps) {
           });
         }
       } finally {
-        // ✅ 换皮闯关结束前刷新闯关状态并同步到账号卡片
+        // 换皮闯关结束前刷新闯关状态并同步到账号卡片
         try {
           addLog({
             time: new Date().toLocaleTimeString(),
@@ -1729,27 +1881,69 @@ export function createTasksTower(deps) {
           });
         }
         
-        // 恢复原始阵容
-        if (isSwitched && originalFormation !== null) {
-          try {
-            await callWithRetry(tokenId, "presetteam_saveteam", { teamId: originalFormation });
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 已恢复原始阵容${originalFormation}`,
-              type: "info",
-            });
-          } catch (restoreErr) {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 恢复阵容失败: ${restoreErr.message}`,
-              type: "warning",
-            });
-          }
-        }
-        
         await safeCloseConnection(tokenId, token.name);
       }
+    };
+
+    // ✅ 分批并发执行：每批 maxActive 个账号，本批全部完成后才执行下一批
+    const maxActive = batchSettings.maxActive || 5;
+    const totalTokens = selectedTokens.value.length;
+    const totalBatches = Math.ceil(totalTokens / maxActive);
+    
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `📊 共 ${totalTokens} 个账号，分 ${totalBatches} 批执行，每批 ${maxActive} 个`,
+      type: "info",
     });
+    
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+      if (shouldStop.value) break;
+      
+      const startIdx = batchIndex * maxActive;
+      const endIdx = Math.min(startIdx + maxActive, totalTokens);
+      const batchTokens = selectedTokens.value.slice(startIdx, endIdx);
+      
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `📦 批次 ${batchIndex + 1}/${totalBatches} 开始执行 ${batchTokens.length} 个账号`,
+        type: "info",
+      });
+      
+      // 使用 Promise.all 并发执行本批所有账号
+      await Promise.all(batchTokens.map(tokenId => processSkinChallenge(tokenId)));
+      
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `✅ 批次 ${batchIndex + 1}/${totalBatches} 执行完成`,
+        type: "success",
+      });
+    }
+
+    // ✅ 批量重试失败账号（400340/200750/11800010 等服务器错误）
+    const retryCount_max = batchSettings.defaultRetryCount || 2;
+    const retryWaitMs = batchSettings.retryDelay || 60000;
+    let failedTokenIds = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+
+    for (let retryRound = 0; retryRound < retryCount_max && failedTokenIds.length > 0 && !shouldStop.value; retryRound++) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `⏱️ 等待${retryWaitMs/1000}秒后重试 ${failedTokenIds.length} 个失败账号（第${retryRound+1}/${retryCount_max}轮）`, type: "info" });
+      await safeDelay(retryWaitMs);
+      if (shouldStop.value) break;
+
+      const currentRetry = [...failedTokenIds];
+      failedTokenIds = [];
+
+      const retryBatches = Math.ceil(currentRetry.length / maxActive);
+      for (let batchIndex = 0; batchIndex < retryBatches; batchIndex++) {
+        if (shouldStop.value) break;
+        const startIdx = batchIndex * maxActive;
+        const endIdx = Math.min(startIdx + maxActive, currentRetry.length);
+        const batchTokens = currentRetry.slice(startIdx, endIdx);
+        addLog({ time: new Date().toLocaleTimeString(), message: `📦 重试批次 ${batchIndex + 1}/${retryBatches} 开始执行 ${batchTokens.length} 个账号`, type: "info" });
+        await Promise.all(batchTokens.map(tokenId => processSkinChallenge(tokenId)));
+      }
+
+      currentRetry.forEach(id => { if (tokenStatus.value[id] === "failed") failedTokenIds.push(id); });
+    }
     
     isRunning.value = false;
     currentRunningTokenId.value = null;
@@ -1791,33 +1985,42 @@ export function createTasksTower(deps) {
         let giftGoodsId = null;
         try {
           const activityRes = await callWithRetry(tokenId, "activity_get", {}, { retries: 1 });
-          console.log(`[${token.name}] 换皮寻宝 activity_get:`, JSON.stringify(activityRes).substring(0, 800));
+          // ✅ 移除冗余 debug 日志（2026-07-13 清理）
           
           // 从 actEGameInfo 获取寻宝活动ID
           const actEGameInfo = activityRes?.activity?.actEGameInfo || activityRes?.actEGameInfo;
           if (actEGameInfo?.actId) {
             treasureActId = Number(actEGameInfo.actId);
-            console.log(`[${token.name}] 换皮寻宝 寻宝活动ID: ${treasureActId} (来自 actEGameInfo.actId)`);
           } else {
-            console.log(`[${token.name}] 换皮寻宝 未找到 actEGameInfo.actId`);
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 未找到寻宝活动 ID`,
+              type: "warning",
+            });
           }
           
           // 从 commonActivityInfo 获取免费礼包 goodsId
+          // key 格式: \d{6,7}3，goodsId = key + "1" (如 key=2607103 → goodsId=26071031)
           const commonActivityInfo = activityRes?.commonActivityInfo || activityRes?.activity?.commonActivityInfo || {};
-          const now = new Date();
-          const yy = String(now.getFullYear() % 100).padStart(2, '0');
-          const mm = String(now.getMonth() + 1).padStart(2, '0');
-          const dd = String(now.getDate()).padStart(2, '0');
-          const giftKey = `${yy}${mm}${dd}3`;
-          
-          if (commonActivityInfo[giftKey] !== undefined) {
-            giftGoodsId = Number(`${giftKey}1`);
-            console.log(`[${token.name}] 换皮寻宝 免费礼包 goodsId: ${giftGoodsId} (key: ${giftKey})`);
+          const giftKeys = Object.keys(commonActivityInfo).filter(k => /\d{6,7}3$/.test(k));
+          if (giftKeys.length > 0) {
+            // 取数值最大的 key（即最新的）
+            giftKeys.sort((a, b) => Number(b) - Number(a));
+            const latestKey = giftKeys[0];
+            giftGoodsId = Number(`${latestKey}1`);
           } else {
-            console.log(`[${token.name}] 换皮寻宝 未找到今日免费礼包 key: ${giftKey}`);
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 未找到免费礼包`,
+              type: "info",
+            });
           }
         } catch (e) {
-          console.log(`[${token.name}] 换皮寻宝 activity_get 失败:`, e.message);
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 获取寻宝信息失败：${e.message}`,
+            type: "warning",
+          });
         }
 
         // 寻宝发射
@@ -1930,28 +2133,34 @@ export function createTasksTower(deps) {
         await safeDelay(1000);
 
         // 领取闯关免费礼包
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token.name} 开始领取闯关免费礼包...`,
-          type: "info",
-        });
-
-        try {
-          await tokenStore.sendMessageWithPromise(
-            tokenId,
-            "activity_commonbuygoods",
-            { goodsId: giftGoodsId, num: 1 },
-            10000
-          );
-          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 闯关免费礼包领取成功`, type: "success" });
-        } catch (giftErr) {
-          const giftErrorMsg = giftErr.message || '';
-          if (giftErrorMsg.includes('1100010')) {
-            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 闯关免费礼包已领取`, type: "info" });
-          } else if (giftErrorMsg.includes('已领取') || giftErrorMsg.includes('超出上限')) {
-            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 闯关免费礼包已领取过或已达上限`, type: "info" });
-          } else {
-            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 闯关免费礼包领取失败: ${giftErrorMsg.substring(0, 80)}`, type: "warning" });
+        if (!giftGoodsId) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 未找到今日免费礼包ID，跳过领取`, type: "info" });
+        } else {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 开始领取闯关免费礼包 (goodsId: ${giftGoodsId})...`,
+            type: "info",
+          });
+        
+          try {
+            await tokenStore.sendMessageWithPromise(
+              tokenId,
+              "activity_commonbuygoods",
+              { goodsId: giftGoodsId, num: 1 },
+              10000
+            );
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 闯关免费礼包领取成功`, type: "success" });
+          } catch (giftErr) {
+            const giftErrorMsg = giftErr.message || '';
+            if (giftErrorMsg.includes('1100010')) {
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 闯关免费礼包已领取`, type: "info" });
+            } else if (giftErrorMsg.includes('已领取') || giftErrorMsg.includes('超出上限')) {
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 闯关免费礼包已领取过或已达上限`, type: "info" });
+            } else if (giftErrorMsg.includes('-10006')) {
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 闯关免费礼包不满足领取条件 (-10006)`, type: "info" });
+            } else {
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 闯关免费礼包领取失败: ${giftErrorMsg.substring(0, 80)}`, type: "warning" });
+            }
           }
         }
 

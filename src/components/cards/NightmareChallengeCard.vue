@@ -255,10 +255,15 @@
         <n-button size="tiny" type="error" @click="stopAllBattles">全部停止</n-button>
       </div>
       <div v-for="b in activeBattles" :key="b.preset.id" class="battle-status-item">
-        <div class="battle-main-row">
+        <!-- 信息行：预设名 + 关卡 + Boss血量 -->
+        <div class="battle-info-row">
           <span class="battle-preset-name">{{ b.preset.name }}</span>
-          <n-tag size="small" :type="b.currentLevel > 0 ? 'success' : 'default'" :bordered="false" style="margin: 0 4px;">第{{ b.currentLevel || '?' }}关</n-tag>
+          <n-tag size="small" :type="b.currentLevel > 0 ? 'success' : 'default'" :bordered="false" class="battle-level-tag">第{{ b.currentLevel || '?' }}关</n-tag>
           <span v-if="b.bossHp" class="boss-hp-tag" :class="{ 'boss-low': b.bossHp.curHp / b.bossHp.maxHp < 0.3, 'boss-mid': b.bossHp.curHp / b.bossHp.maxHp >= 0.3 && b.bossHp.curHp / b.bossHp.maxHp < 0.7 }">{{ formatHp(b.bossHp.curHp) }}/{{ formatHp(b.bossHp.maxHp) }}</span>
+          <n-tag v-if="b.preset.waitLevel8" size="tiny" type="warning" class="battle-wait-tag">卡点</n-tag>
+        </div>
+        <!-- 控制行：时间 + 状态 + 操作按钮 -->
+        <div class="battle-control-row">
           <span class="battle-time">{{ b.startedAt }}</span>
           <n-tag v-if="b.status === 'waiting_midnight'" size="small" type="warning">等待 00:00</n-tag>
           <n-tag v-else-if="b.status === 'cooling'" size="small" type="info">冷却中</n-tag>
@@ -266,7 +271,6 @@
           <n-tag v-else-if="b.status === 'failed'" size="small" type="error">❌失败</n-tag>
           <n-tag v-else-if="b.status === 'stopped'" size="small" type="warning">已停止</n-tag>
           <n-tag v-else size="small" type="info">战斗中</n-tag>
-          <n-tag v-if="b.preset.waitLevel8" size="tiny" type="warning">卡点</n-tag>
           <div class="battle-actions">
             <n-button
               v-if="b.status === 'running' || b.status === 'waiting_midnight' || b.status === 'cooling'"
@@ -282,20 +286,35 @@
             >进入战斗</n-button>
           </div>
         </div>
-              
-        <!-- ✅ 优化：成员出战情况（独立一行，整齐排列） -->
-        <div v-if="b.members && b.members.length > 0" class="members-status-row">
-          <n-tag 
+        
+        <!-- 成员状态：grid布局 -->
+        <div v-if="b.members && b.members.length > 0" class="members-grid">
+          <div 
             v-for="(m, idx) in b.members" 
             :key="idx" 
-            size="small"
-            :type="m.isAllHeroesDead ? 'error' : 'success'" 
-            :bordered="false"
-            class="member-tag"
-            :class="{ 'member-fought': b.attackRecords?.includes(m.roleId) }"
+            class="member-card"
           >
-            {{ m.name }}{{ m.isAllHeroesDead ? '(亡)' : '' }}{{ b.attackRecords?.includes(m.roleId) ? '(已战)' : '' }}
-          </n-tag>
+            <n-tag 
+              size="small"
+              :type="m.isAllHeroesDead ? 'error' : 'success'" 
+              :bordered="false"
+              class="member-tag"
+              :class="{ 'member-fought': b.attackRecords?.includes(m.roleId) }"
+            >
+              {{ m.name }}{{ m.isAllHeroesDead ? '(亡)' : '' }}{{ b.attackRecords?.includes(m.roleId) ? '(已战)' : '' }}
+            </n-tag>
+            <div v-if="m.heroes && m.heroes.length > 0" class="member-heroes-row">
+              <span 
+                v-for="(hero, hIdx) in m.heroes" 
+                :key="hIdx"
+                class="hero-status-tag"
+                :class="{ 'hero-alive': hero.isAlive, 'hero-dead': !hero.isAlive }"
+                :title="`${hero.name}: ${hero.curHp}/${hero.curHp > 0 ? '存活' : '阵亡'}`"
+              >
+                {{ hero.name?.slice(0, 2) || '?' }}{{ hero.isAlive ? '' : '💀' }}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1319,7 +1338,11 @@ const checkAndExecuteNextPreset = async () => {
 };
 
 // ====== 监听队长切换 ======
+// ✅ 修复：程序化切换队长时跳过 watch 清空，避免多预设执行时清空正在战斗的队伍状态
+let _skipCaptainWatch = false;
+
 watch(captainTokenId, (newVal, oldVal) => {
+  if (_skipCaptainWatch) return;
   if (newVal && newVal !== oldVal) {
     teamId.value = "";
     teamMembers.value = [];
@@ -1863,6 +1886,8 @@ const MAX_PRESET_RETRY = 0;
 // 恢复预设组队到UI
 const restorePresetTeamToUI = (preset) => {
   if (!preset) return;
+  // ✅ 修复：跳过 watch 清空，避免战斗完成后恢复队伍时触发 watch 清空 teamId 等状态
+  _skipCaptainWatch = true;
   if (preset.captainTokenId) {
     captainTokenId.value = preset.captainTokenId;
     addLog(`已恢复队长: ${getTokenName(preset.captainTokenId)}`, 'info');
@@ -1874,12 +1899,25 @@ const restorePresetTeamToUI = (preset) => {
   if (preset.teamSlots) {
     activePresetTeamSlots.value = preset.teamSlots;
   }
+  nextTick(() => { _skipCaptainWatch = false; });
 };
 
 // ====== 后台战斗回调 ======
 const handleBattleComplete = async (preset, result) => {
   const idx = activeBattles.value.findIndex(b => b.preset.id === preset.id);
-  if (idx !== -1) activeBattles.value[idx].status = 'completed';
+  if (idx === -1) {
+    // 预设不在活跃列表中（可能已被移除），仅记录日志
+    addLog(`预设「${preset.name}」战斗完成 (第${result.level}关)，但已不在后台列表中`, 'info');
+    delete presetRetryCount[preset.id];
+    clearPresetRunning(preset.id);
+    updatePresetLastResult(preset.id, {
+      status: 'completed',
+      maxLevel: result.level || 8,
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+  activeBattles.value[idx].status = 'completed';
   addLog(`✅ 预设「${preset.name}」战斗完成 (第${result.level}关)`, 'success');
   // 重置重试计数
   delete presetRetryCount[preset.id];
@@ -1891,7 +1929,7 @@ const handleBattleComplete = async (preset, result) => {
     maxLevel: result.level || 8,
     timestamp: new Date().toISOString(),
   });
-  // 战斗完成 → 在清除队伍状态前查询服务端确认队长当前队伍状态
+  // 战斗完成 → 查询服务端确认队长当前队伍状态（仅用于日志记录）
   const completedPreset = activeBattles.value[idx]?.preset;
   if (completedPreset?.captainTokenId) {
     try {
@@ -1907,8 +1945,7 @@ const handleBattleComplete = async (preset, result) => {
         // 严格按 teamCfgId=1 提取十殿阎罗队伍，避免星级队伍数据污染
         let srvTeamId = findNightmareTeamId(roleTeamRes);
         if (srvTeamId) {
-          teamId.value = String(srvTeamId);
-          addLog(`预设「${completedPreset.name}」战斗完成，队长队伍已恢复 (teamId: ${srvTeamId})`, 'success');
+          addLog(`预设「${completedPreset.name}」战斗完成，服务端队伍 teamId: ${srvTeamId}`, 'success');
         }
       }
     } catch (e) {
@@ -1929,7 +1966,13 @@ const handleBattleComplete = async (preset, result) => {
 
 const handleBattleError = async (preset, err) => {
   const idx = activeBattles.value.findIndex(b => b.preset.id === preset.id);
-  if (idx !== -1) activeBattles.value[idx].status = 'failed';
+  if (idx === -1) {
+    // 预设不在活跃列表中，仅记录日志
+    addLog(`预设「${preset.name}」战斗失败: ${err.message || err}（已不在后台列表）`, 'error');
+    clearPresetRunning(preset.id);
+    return;
+  }
+  activeBattles.value[idx].status = 'failed';
   addLog(`❌ 预设「${preset.name}」战斗失败: ${err.message || err}`, 'error');
 
   // 回写预设战斗结果并持久化
@@ -1941,31 +1984,30 @@ const handleBattleError = async (preset, err) => {
   });
 
   // 在清除队伍状态前查询服务端确认队长当前队伍状态
-  const errorPreset = activeBattles.value[idx]?.preset;
-  if (errorPreset?.captainTokenId) {
-    try {
-      const captainToken = tokenStore.gameTokens.find(t => t.id === errorPreset.captainTokenId);
-      const capRoleId = captainToken?.roleId;
-      if (capRoleId) {
-        const roleTeamRes = await tokenStore.sendMessageWithPromise(
-          errorPreset.captainTokenId,
-          'matchteam_getroleteaminfo',
-          { roleID: Number(capRoleId) },
-          8000
-        );
-        let srvTeamId = findNightmareTeamId(roleTeamRes);
-        if (srvTeamId) {
-          teamId.value = String(srvTeamId);
-          addLog(`预设「${errorPreset.name}」战斗失败，队长队伍已恢复 (teamId: ${srvTeamId})`, 'success');
-        }
-      }
-    } catch (e) {
-      // 查询失败不影响清理流程
-    }
-  }
-
   // 第8关全员阵亡 → 自动重新执行预设
   if (err.reason === 'level8_all_dead') {
+    // 查询服务端队伍状态（仅用于日志记录，level8_all_dead 时服务端已解散队伍）
+    const errorPreset = activeBattles.value[idx]?.preset;
+    if (errorPreset?.captainTokenId) {
+      try {
+        const captainToken = tokenStore.gameTokens.find(t => t.id === errorPreset.captainTokenId);
+        const capRoleId = captainToken?.roleId;
+        if (capRoleId) {
+          const roleTeamRes = await tokenStore.sendMessageWithPromise(
+            errorPreset.captainTokenId,
+            'matchteam_getroleteaminfo',
+            { roleID: Number(capRoleId) },
+            8000
+          );
+          let srvTeamId = findNightmareTeamId(roleTeamRes);
+          if (srvTeamId) {
+            addLog(`预设「${errorPreset.name}」战斗失败，服务端残留队伍 teamId: ${srvTeamId}`, 'info');
+          }
+        }
+      } catch (e) {
+        // 查询失败不影响清理流程
+      }
+    }
     // 清除队伍状态（服务端已解散）
     teamId.value = '';
     teamMembers.value = [];
@@ -2626,6 +2668,13 @@ const onPresetExecute = async (preset) => {
       if (!roomId) {
         addLog('无法获取 RoomId，后台战斗启动失败', 'error');
         message.error('无法获取战斗房间 ID');
+        // ✅ 修复：失败时必须恢复状态，否则 UI 状态永久丢失
+        captainTokenId.value = savedCaptain;
+        selectedTeammates.value = savedTeammates;
+        selectedMemberRoleIds.value = savedSelectedMembers;
+        teamId.value = savedTeamId;
+        captainRoleId.value = savedCaptainRoleId;
+        _skipFormationSwitch.value = false;
         return;
       }
 
@@ -2643,6 +2692,9 @@ const onPresetExecute = async (preset) => {
         onComplete: (result) => handleBattleComplete(preset, result),
         onError: (err) => handleBattleError(preset, err),
       });
+
+      // ✅ 移除同一预设的旧条目（失败/完成等），防止重复显示
+      activeBattles.value = activeBattles.value.filter(b => b.preset.id !== preset.id);
 
       activeBattles.value.push({
         preset,
@@ -2669,12 +2721,15 @@ const onPresetExecute = async (preset) => {
       }));
 
       // 恢复状态，准备执行下一个预设
+      // ✅ 修复：跳过 watch 清空，避免程序化恢复状态时触发 watch 清空队伍状态
+      _skipCaptainWatch = true;
       captainTokenId.value = savedCaptain;
       selectedTeammates.value = savedTeammates;
       selectedMemberRoleIds.value = savedSelectedMembers;
       teamId.value = savedTeamId;
       captainRoleId.value = savedCaptainRoleId;
       _skipFormationSwitch.value = false;
+      nextTick(() => { _skipCaptainWatch = false; });
     } else {
       // === 前台模式：原有逻辑，跳转战斗页面 ===
       await startBattle(preset.id);
@@ -2682,12 +2737,14 @@ const onPresetExecute = async (preset) => {
   } catch (err) {
     addLog(`预设执行失败: ${err.message || err}`, "error");
     message.error(`预设执行失败: ${err.message || err}`);
+    _skipCaptainWatch = true;
     captainTokenId.value = savedCaptain;
     selectedTeammates.value = savedTeammates;
     selectedMemberRoleIds.value = savedSelectedMembers;
     teamId.value = savedTeamId;
     captainRoleId.value = savedCaptainRoleId;
     _skipFormationSwitch.value = false;
+    nextTick(() => { _skipCaptainWatch = false; });
   }
 };
 
@@ -3109,8 +3166,8 @@ const getTokenName = (tokenId) => {
 
 .active-battles-section {
   border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  padding: 8px 10px;
+  border-radius: 8px;
+  padding: 10px 12px;
   margin-bottom: 8px;
   background: var(--bg-secondary, #f9f9f9);
 
@@ -3118,7 +3175,7 @@ const getTokenName = (tokenId) => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
 
     .section-title {
       font-weight: 600;
@@ -3127,24 +3184,23 @@ const getTokenName = (tokenId) => {
   }
 
   .battle-status-item {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
     padding: 8px 0;
     border-bottom: 1px dashed var(--border-color, #e8e8e8);
 
     &:last-child { border-bottom: none; }
 
-    .battle-main-row {
+    // 信息行：预设名 + 关卡 + Boss血量
+    .battle-info-row {
       display: flex;
       align-items: center;
       gap: 6px;
       flex-wrap: wrap;
+      margin-bottom: 4px;
     }
 
     .battle-preset-name {
-      font-weight: 500;
-      font-size: 12px;
+      font-weight: 600;
+      font-size: 13px;
       flex: 1;
       min-width: 0;
       overflow: hidden;
@@ -3152,23 +3208,18 @@ const getTokenName = (tokenId) => {
       white-space: nowrap;
     }
 
-    .battle-time {
-      font-size: 10px;
-      color: var(--text-tertiary, #aaa);
+    .battle-level-tag {
       flex-shrink: 0;
     }
 
-    .battle-actions {
-      display: flex;
-      gap: 4px;
+    .battle-wait-tag {
       flex-shrink: 0;
-      margin-left: auto;
     }
 
     .boss-hp-tag {
-      font-size: 10px;
-      padding: 1px 5px;
-      border-radius: 3px;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
       background: #e8f5e9;
       color: #2e7d32;
       white-space: nowrap;
@@ -3182,25 +3233,111 @@ const getTokenName = (tokenId) => {
         color: #c62828;
       }
     }
-    
-    // ✅ 成员状态行样式
-    .members-status-row {
+
+    // 控制行：时间 + 状态 + 操作按钮
+    .battle-control-row {
       display: flex;
-      flex-wrap: wrap;
+      align-items: center;
       gap: 6px;
-      padding-left: 4px;
-      
-      .member-tag {
-        font-size: 11px;
-        padding: 2px 8px;
-        border-radius: 4px;
-        transition: all 0.2s ease;
-        
-        // 已出战成员样式
-        &.member-fought {
-          opacity: 0.5;
-          filter: grayscale(30%);
+      flex-wrap: wrap;
+    }
+
+    .battle-time {
+      font-size: 11px;
+      color: var(--text-tertiary, #aaa);
+      flex-shrink: 0;
+    }
+
+    .battle-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+      margin-left: auto;
+    }
+
+    // 成员grid布局
+    .members-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 8px;
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid var(--border-color, #f0f0f0);
+
+      .member-card {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+
+        .member-tag {
+          font-size: 11px;
+          padding: 2px 6px;
+          border-radius: 4px;
+          transition: all 0.2s ease;
+          align-self: flex-start;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+
+          &.member-fought {
+            opacity: 0.5;
+            filter: grayscale(30%);
+          }
         }
+
+        .member-heroes-row {
+          display: flex;
+          gap: 3px;
+          flex-wrap: wrap;
+
+          .hero-status-tag {
+            font-size: 10px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            background: #f0f0f0;
+            color: #666;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+
+            &.hero-alive {
+              background: #e8f5e9;
+              color: #2e7d32;
+            }
+
+            &.hero-dead {
+              background: #ffebee;
+              color: #c62828;
+              text-decoration: line-through;
+              opacity: 0.7;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 手机端适配
+  @media (max-width: 480px) {
+    padding: 8px;
+
+    .battle-status-item {
+      .battle-info-row {
+        gap: 4px;
+      }
+
+      .battle-preset-name {
+        font-size: 12px;
+      }
+
+      .battle-control-row {
+        gap: 4px;
+      }
+
+      .members-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px;
       }
     }
   }
