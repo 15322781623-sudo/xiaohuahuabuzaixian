@@ -4,6 +4,7 @@
  */
 
 import { getActivityStatus } from "./connectionManager.js";
+import { getModuleDelayCompat } from "@/utils/batch/delayManager";
 
 /**
  * 创建商店类任务执行器
@@ -26,15 +27,15 @@ export function createTasksStore(deps) {
     addLog,
     message,
     currentRunningTokenId,
-    delayConfig,
     getModuleDelay,
     safeDelay,
   } = deps;
 
-  // 模块延迟辅助函数（如果 deps 中没有 getModuleDelay）
-  const _getModuleDelay = getModuleDelay || ((moduleName) => {
-    return delayConfig?.action || 1500;
-  });
+  // 使用集中式延迟管理器（兼容新旧API）
+  const _getModuleDelay = (moduleName) => {
+    if (getModuleDelay) return getModuleDelay(moduleName);
+    return getModuleDelayCompat(moduleName, batchSettings);
+  };
 
   // 记录每个Token本月是否已领取助威币 { tokenId: { month: '2026-01', claimed: true } }
   // 从localStorage加载持久化数据
@@ -1844,7 +1845,7 @@ export function createTasksStore(deps) {
     shouldStop.value = false;
   };
 
-  /**
+   /**
    * 十殿抽奖 - 抽到不动为止
    */
   const nightmare_draw_lottery = async () => {
@@ -1870,18 +1871,9 @@ export function createTasksStore(deps) {
       let totalDraws = 0;
       let reachedLimit = false;
 
-      // 循环：抽到不能抽为止
+      // 循环：抽到不能抽为止（次数已在外部领取，这里只负责抽奖）
       while (!shouldStop.value && !reachedLimit) {
         try {
-          // 每次抽奖前先领次数
-          await tokenStore.sendMessageWithPromise(
-            tokenId,
-            "nightmare_claimturnrewardtimes",
-            {},
-            batchSettings.defaultCommandTimeout || 5000,
-          );
-          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
-
           // 执行抽奖
           const result = await tokenStore.sendMessageWithPromise(
             tokenId,
@@ -1889,7 +1881,7 @@ export function createTasksStore(deps) {
             {},
             batchSettings.defaultCommandTimeout || 5000,
           );
-          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
+          await new Promise((r) => setTimeout(r, _getModuleDelay('nightmare')));
 
           // 报错 = 次数用完
           if (result?.error) {
@@ -1899,7 +1891,7 @@ export function createTasksStore(deps) {
           }
 
           totalDraws++;
-          addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 第${totalDraws}次抽奖成功`, type: "info" });
+          addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 第${totalDraws}次抽奖成功`, type: "success" });
         } catch (err) {
           if (err.message.includes("200020") || err.message.includes("次数")) {
             addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 无抽奖次数`, type: "info" });
@@ -1933,7 +1925,7 @@ export function createTasksStore(deps) {
         } catch (e) {
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 周奖励已领取/无需领取`, type: "info" });
         }
-        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('nightmare')));
 
         // 2. 领取寻宝次数
         try {
@@ -1943,7 +1935,7 @@ export function createTasksStore(deps) {
         } catch (e) {
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 寻宝次数已领取`, type: "info" });
         }
-        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('nightmare')));
 
         // 3. 核心：循环抽奖抽到不动为止
         const { totalDraws } = await doDrawLoop(tokenId, token.name);
@@ -1980,55 +1972,91 @@ export function createTasksStore(deps) {
       }
     };
 
-    // 并发执行账号
-    await runStreaming(selectedTokens.value, processSingleToken);
+    // 分批并发执行：每批 maxActive 个账号，一批完成后再执行下一批
+    const maxConcurrent = batchSettings.maxActive || 5;
+    const allTokenIds = [...selectedTokens.value];
+    let batchIndex = 0;
+
+    for (let i = 0; i < allTokenIds.length; i += maxConcurrent) {
+      if (shouldStop.value) break;
+      batchIndex++;
+      const batch = allTokenIds.slice(i, i + maxConcurrent);
+      const totalBatches = Math.ceil(allTokenIds.length / maxConcurrent);
+      addLog({ time: new Date().toLocaleTimeString(), message: `\n=== 第 ${batchIndex}/${totalBatches} 批（${batch.length} 个账号）===`, type: "info" });
+
+      // 本批所有账号并发执行，等待全部完成
+      await Promise.all(batch.map(async (tokenId) => {
+        try {
+          await processSingleToken(tokenId);
+        } catch (e) {
+          const token = tokens.value.find((t) => t.id === tokenId);
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token?.name || tokenId} 批次内异常: ${e.message}`, type: "error" });
+          tokenStatus.value[tokenId] = "failed";
+        }
+      }));
+
+      addLog({ time: new Date().toLocaleTimeString(), message: `第 ${batchIndex} 批执行完毕`, type: "info" });
+
+      // 批次间等待（最后一批不等待）
+      if (i + maxConcurrent < allTokenIds.length && !shouldStop.value) {
+        const batchWait = _getModuleDelay('nightmare');
+        addLog({ time: new Date().toLocaleTimeString(), message: `等待 ${batchWait/1000}秒 后执行下一批...`, type: "info" });
+        await new Promise((r) => setTimeout(r, batchWait));
+      }
+    }
 
     // ==================== 400340/200750/11800010 重试逻辑 ====================
     if (retryableTokens.length > 0) {
       addLog({ time: new Date().toLocaleTimeString(), message: `\n=== ${retryableTokens.length} 个账号等待${retryWaitTime/1000}秒后重试 ===`, type: "info" });
-      if (!(await safeDelay(retryWaitTime))) { isRunning.value = false; return; }
+      await new Promise((resolve) => setTimeout(resolve, retryWaitTime));
 
       for (let retry = 0; retry < maxRetries && retryableTokens.length && !shouldStop.value; retry++) {
-        addLog({ time: new Date().toLocaleTimeString(), message: `\n--- 第 ${retry + 1} 轮重试 ---`, type: "info" });
+        addLog({ time: new Date().toLocaleTimeString(), message: `\n--- 第 ${retry + 1} 轮重试（${retryableTokens.length} 个账号）---`, type: "info" });
         const failedTokens = [];
 
-        await runStreaming(retryableTokens.map(info => info.tokenId), async (tokenId) => {
-          if (shouldStop.value) return;
-          const info = retryableTokens.find(i => i.tokenId === tokenId);
-          if (!info) return;
-          const { tokenName } = info;
+        // 分批执行重试
+        const retryIds = retryableTokens.map(info => info.tokenId);
+        for (let i = 0; i < retryIds.length; i += maxConcurrent) {
+          if (shouldStop.value) break;
+          const batch = retryIds.slice(i, i + maxConcurrent);
 
-          try {
-            addLog({ time: new Date().toLocaleTimeString(), message: `重试：${tokenName}`, type: "info" });
-            tokenStatus.value[tokenId] = "retrying";
-            await ensureConnection(tokenId);
+          await Promise.all(batch.map(async (tokenId) => {
+            const info = retryableTokens.find(x => x.tokenId === tokenId);
+            if (!info) return;
+            const { tokenName } = info;
 
-            const { totalDraws } = await doDrawLoop(tokenId, tokenName);
+            try {
+              addLog({ time: new Date().toLocaleTimeString(), message: `重试：${tokenName}`, type: "info" });
+              tokenStatus.value[tokenId] = "retrying";
+              await ensureConnection(tokenId);
 
-            addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 重试成功，抽了 ${totalDraws} 次`, type: "success" });
-            tokenStatus.value[tokenId] = "completed";
-          } catch (e) {
-            const eMsg = e.message || '';
-            if (isRetryable(eMsg)) {
-              const code = getErrorCode(eMsg);
-              addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 重试仍${code}`, type: "warning" });
-              failedTokens.push(info);
-            } else {
-              addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 重试失败: ${e.message}`, type: "error" });
-              tokenStatus.value[tokenId] = "failed";
+              const { totalDraws } = await doDrawLoop(tokenId, tokenName);
+
+              addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 重试成功，抽了 ${totalDraws} 次`, type: "success" });
+              tokenStatus.value[tokenId] = "completed";
+            } catch (e) {
+              const eMsg = e.message || '';
+              if (isRetryable(eMsg)) {
+                const code = getErrorCode(eMsg);
+                addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 重试仍${code}`, type: "warning" });
+                failedTokens.push(info);
+              } else {
+                addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 重试失败: ${e.message}`, type: "error" });
+                tokenStatus.value[tokenId] = "failed";
+              }
+            } finally {
+              tokenStore.closeWebSocketConnection(tokenId);
+              releaseConnectionSlot();
             }
-          } finally {
-            tokenStore.closeWebSocketConnection(tokenId);
-            releaseConnectionSlot();
-          }
-        });
+          }));
+        }
 
         retryableTokens.length = 0;
         retryableTokens.push(...failedTokens);
 
         if (failedTokens.length && retry < maxRetries - 1) {
           addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWaitTime/1000}秒后继续重试...`, type: "info" });
-          if (!(await safeDelay(retryWaitTime))) break;
+          await new Promise((r) => setTimeout(r, retryWaitTime));
         }
       }
 
@@ -2042,7 +2070,6 @@ export function createTasksStore(deps) {
     isRunning.value = false;
     shouldStop.value = false;
   };
-
   /**
    * 十殿抽奖达标奖励
    */
@@ -2087,7 +2114,7 @@ export function createTasksStore(deps) {
           batchSettings.defaultCommandTimeout || 5000,
         );
 
-        await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
+        await new Promise((r) => setTimeout(r, _getModuleDelay('nightmare')));
 
         if (result && result.error) {
           addLog({
@@ -2401,6 +2428,130 @@ export function createTasksStore(deps) {
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
+  };
+
+  /**
+   * 批量比赛竞猜
+   * @param {string|undefined} matchId - 比赛ID（不传则自动获取所有比赛并下注）
+   * @param {number} pick - 竞猜选项 (1=主胜, 2=平局, 3=客胜)
+   */
+  const batchSaltCupBet = async (matchId, pick) => {
+    if (selectedTokens.value.length === 0) {
+      message.warning("请先选择账号");
+      return;
+    }
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    const pickLabels = { 1: '主胜', 2: '平局', 3: '客胜' };
+    const pickVal = (pick !== undefined && pick !== null) ? pick : 1;
+    const pickLabel = pickLabels[pickVal] || `选项${pickVal}`;
+
+    await runStreaming(selectedTokens.value, async (tokenId) => {
+      if (shouldStop.value) return;
+
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({ time: new Date().toLocaleTimeString(), message: `=== 竞猜: ${token.name} ===`, type: "info" });
+
+        await ensureConnection(tokenId);
+
+        // 获取当前竞猜信息
+        const betInfo = await tokenStore.sendMessageWithPromise(tokenId, "SaltCup26_GetBetInfo", {}, 5000);
+
+        // 自动模式：获取所有比赛ID列表
+        let targetMatchIds = [];
+        if (matchId) {
+          targetMatchIds = [matchId];
+        } else {
+          const matchList = betInfo?.matchList;
+          if (Array.isArray(matchList)) {
+            targetMatchIds = matchList.map(m => m.matchId).filter(Boolean);
+          } else if (matchList && typeof matchList === 'object') {
+            targetMatchIds = Object.values(matchList).map(m => m.matchId).filter(Boolean);
+          }
+        }
+
+        if (targetMatchIds.length === 0) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 无可用比赛，跳过`, type: "warning" });
+          tokenStatus.value[tokenId] = "completed";
+          return;
+        }
+
+        // 解析已下注记录
+        const betRecord = betInfo?.roleData?.betRecord || {};
+        const betRecordMap = {};
+        for (const scheduleId of Object.keys(betRecord)) {
+          const scheduleMap = betRecord[scheduleId];
+          if (scheduleMap && typeof scheduleMap === 'object') {
+            for (const mid of Object.keys(scheduleMap)) {
+              if (scheduleMap[mid]?.betTime > 0) {
+                betRecordMap[mid] = true;
+              }
+            }
+          }
+        }
+
+        // 对每场比赛下注
+        let successCount = 0;
+        let skipCount = 0;
+        for (const mid of targetMatchIds) {
+          if (shouldStop.value) break;
+
+          if (betRecordMap[mid]) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 已对 ${mid} 下注，跳过`, type: "warning" });
+            skipCount++;
+            continue;
+          }
+
+          try {
+            const result = await tokenStore.sendMessageWithPromise(tokenId, "saltcup26_placebet", { matchId: mid, pick: pickVal }, 5000);
+            if (result?.error) {
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜失败(${mid}): ${result.error}`, type: "error" });
+            } else {
+              successCount++;
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜成功: ${mid} - ${pickLabel}`, type: "success" });
+            }
+          } catch (e) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜异常(${mid}): ${e.message}`, type: "error" });
+          }
+
+          await new Promise(r => setTimeout(r, 300));
+        }
+
+        if (successCount > 0 || skipCount === targetMatchIds.length) {
+          tokenStatus.value[tokenId] = "completed";
+        } else {
+          tokenStatus.value[tokenId] = "failed";
+        }
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜完成: 成功${successCount}场, 跳过${skipCount}场`, type: "info" });
+      } catch (error) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜异常: ${error.message}`, type: "error" });
+        tokenStatus.value[tokenId] = "failed";
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+      }
+    });
+
+    currentRunningTokenId.value = null;
+    isRunning.value = false;
+    shouldStop.value = false;
+    message.success("批量竞猜结束");
+  };
+
+  /**
+   * 获取比赛竞猜信息（用于UI显示）
+   */
+  const getSaltCupBetInfo = async (tokenId) => {
+    return await tokenStore.sendMessageWithPromise(tokenId, "SaltCup26_GetBetInfo", {}, 1000);
   };
 
   /**
@@ -5588,5 +5739,7 @@ export function createTasksStore(deps) {
     weeklyMarketBuy,
     batch_mail_claim_and_cleanup,
     saltcup26_openstarpack_use,
+    batchSaltCupBet,
+    getSaltCupBetInfo,
   };
 }

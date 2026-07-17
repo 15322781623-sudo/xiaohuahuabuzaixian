@@ -476,6 +476,21 @@ export default {
     }
 
     // 管理员：列出所有卡密（仅需管理员密码）
+    // 轻量级管理员密码验证（仅验证密码，不加载卡密列表）
+    if (url.pathname === '/api/card/admin-check' && request.method === 'POST') {
+      try {
+        const adminPassword = request.headers.get('X-Admin-Password');
+        if (!verifyAdminPassword(adminPassword, env)) {
+          return cardJson({ success: false, error: '管理员密码错误' }, 403);
+        }
+        return cardJson({ success: true });
+      } catch (e) {
+        console.error('[卡密/admin-check] 错误:', e.message);
+        return cardJson({ success: false, error: '服务器错误' }, 500);
+      }
+    }
+
+    // 获取卡密列表
     if (url.pathname === '/api/card/list' && request.method === 'GET') {
       try {
         const adminPassword = request.headers.get('X-Admin-Password');
@@ -485,13 +500,13 @@ export default {
         if (!cardKv) {
           return cardJson({ success: false, error: 'KV未绑定' }, 500);
         }
-        // 使用索引列表替代 kv.list() 避免子请求限制
+        // 使用索引列表
         const index = await getCardIndex(cardKv);
-        const cards = [];
-        for (const cardKey of index) {
+        // ✅ 优化：并行读取所有卡密，大幅提升响应速度
+        const cardPromises = index.map(async (cardKey) => {
           const data = await getCard(cardKv, cardKey);
-          if (!data) continue;
-          cards.push({
+          if (!data) return null;
+          return {
             cardKey,
             status: data.status || 'unused',
             createdAt: data.createdAt || null,
@@ -499,8 +514,10 @@ export default {
             activatedAt: data.activatedAt || null,
             resetCount: data.resetCount || 0,
             lastResetAt: data.lastResetAt || null,
-          });
-        }
+          };
+        });
+        const results = await Promise.all(cardPromises);
+        const cards = results.filter(Boolean);
         return cardJson({ success: true, cards });
       } catch (e) {
         console.error('[卡密/list] 错误:', e.message);

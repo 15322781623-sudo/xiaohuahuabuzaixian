@@ -3017,6 +3017,11 @@ const completeDailyTasks = async () => {
       batchSettings = {};
     }
 
+    // ✅ 卡片补齐始终为单账号操作，启用加速模式
+    if (batchSettings.singleAccountSpeedUp !== false) {
+      batchSettings.singleAccountMode = true;
+    }
+
     const runner = new DailyTaskRunner(tokenStore, {
       commandDelay: batchSettings.commandDelay || 500,
       taskDelay: batchSettings.taskDelay || 500,

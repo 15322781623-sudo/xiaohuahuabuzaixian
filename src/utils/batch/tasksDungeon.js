@@ -1,4 +1,5 @@
 import { isDungeonOpen, merchantConfig } from "@/utils/dreamConstants";
+import { getModuleDelayCompat } from "@/utils/batch/delayManager";
 
 /**
  * 宝库、梦境类任务
@@ -29,12 +30,11 @@ export function createTasksDungeon(deps) {
     getModuleDelay,
   } = deps;
 
-  // 模块延迟辅助函数
-  const _getModuleDelay = getModuleDelay || ((moduleName) => {
-    const md = batchSettings.moduleDelays;
-    if (md) return md[moduleName] || md.default || batchSettings.taskDelay || 1000;
-    return batchSettings.taskDelay || 1000;
-  });
+  // 使用集中式延迟管理器（兼容新旧API）
+  const _getModuleDelay = (moduleName) => {
+    if (getModuleDelay) return getModuleDelay(moduleName);
+    return getModuleDelayCompat(moduleName, batchSettings);
+  };
 
   /**
    * 一键宝库前3层

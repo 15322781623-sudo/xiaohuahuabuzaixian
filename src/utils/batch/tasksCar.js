@@ -3,6 +3,8 @@
  * 包含: batchSmartSendCar, batchClaimCars, batchCarResearchUpgrade
  */
 
+import { getModuleDelayCompat } from "@/utils/batch/delayManager";
+
 /**
  * 创建车辆类任务执行器
  * @param {object} deps - 依赖项
@@ -30,14 +32,14 @@ export function createTasksCar(deps) {
     canClaim,
     isBigPrize,
     countRacingRefreshTickets,
-    delayConfig,
     getModuleDelay,
   } = deps;
 
-  // 模块延迟辅助函数
-  const _getModuleDelay = getModuleDelay || ((moduleName) => {
-    return delayConfig?.action || 1500;
-  });
+  // 使用集中式延迟管理器（兼容新旧API）
+  const _getModuleDelay = (moduleName) => {
+    if (getModuleDelay) return getModuleDelay(moduleName);
+    return getModuleDelayCompat(moduleName, batchSettings);
+  };
 
   /** 获取命令超时时间 */
   const getTimeout = () => batchSettings.defaultCommandTimeout || 5000;
@@ -72,11 +74,6 @@ export function createTasksCar(deps) {
     } catch (_) {
       return { tickets: 0, roleId: null, researchLevel: 0 };
     }
-  };
-
-  /** 仅获取刷新券数量（轻量调用） */
-  const getTicketCount = async (tokenId) => {
-    return (await getRefreshTickets(tokenId)).tickets;
   };
 
   /** 关闭连接并记录日志 */
@@ -171,7 +168,7 @@ export function createTasksCar(deps) {
         await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
 
         // 3. 获取护卫数据
-        const { sortedHelpers, helperUsageMap, updateHelperUsage } = await fetchHelperData(tokenId, token.name, currentRoleId);
+        const { sortedHelpers, helperUsageMap } = await fetchHelperData(tokenId, token.name, currentRoleId);
 
         // 3.5 读取该账号单独设置的预设护卫成员
         let tokenHelperPresets = [];
@@ -201,7 +198,7 @@ export function createTasksCar(deps) {
 
           try {
             // processCarForSmartSend 返回处理后的刷新券数量，用于后续车辆判断
-            refreshTickets = await processCarForSmartSend(tokenId, token.name, car, refreshTickets, customConditions, effectiveCarMinColor, effectiveRefreshDelay, effectiveRequireMinColor, effectiveUseGoldRefresh, sortedHelpers, helperUsageMap, updateHelperUsage, tokenHelperPresets);
+            refreshTickets = await processCarForSmartSend(tokenId, token.name, car, refreshTickets, customConditions, effectiveCarMinColor, effectiveRefreshDelay, effectiveRequireMinColor, effectiveUseGoldRefresh, sortedHelpers, helperUsageMap, tokenHelperPresets);
           } catch (carError) {
             const errorMsg = carError.message || "未知错误";
             // 12000030限流错误向上抛出，由批次重试逻辑统一处理
@@ -228,35 +225,69 @@ export function createTasksCar(deps) {
         addLog({ time: new Date().toLocaleTimeString(), message: `=== ${token.name} 智能发车完成 ===`, type: "success" });
       };
 
-      // 第一批：并行执行所有账号
-      await runStreaming(selectedTokens.value, async (tokenId) => {
-        if (shouldStop.value) return;
-        const token = tokens.value.find((t) => t.id === tokenId);
+      // 严格分批执行：每批 maxActive 个账号，一批完成后再执行下一批
+      const maxConcurrent = batchSettings.maxActive || 5;
+      const allTokenIds = [...selectedTokens.value];
+      let batchIndex = 0;
 
-        try {
-          await executeSmartSendCarForToken(tokenId);
-          // 成功后关闭连接并释放槽位
-          closeConnection(tokenId, token.name);
-        } catch (error) {
-          const errorMsg = error.message || "";
-          if (errorMsg.includes("400340") || errorMsg.includes("200750") || errorMsg.includes("11800010") || errorMsg.includes("12000030")) {
-            // 服务器错误/限流，加入重试队列（关闭连接释放槽位，重试时重新连接）
+      for (let i = 0; i < allTokenIds.length; i += maxConcurrent) {
+        if (shouldStop.value) break;
+        batchIndex++;
+        const batch = allTokenIds.slice(i, i + maxConcurrent);
+        const totalBatches = Math.ceil(allTokenIds.length / maxConcurrent);
+
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `\n=== 第 ${batchIndex}/${totalBatches} 批（${batch.length} 个账号）===`,
+          type: "info",
+        });
+
+        await Promise.all(batch.map(async (tokenId) => {
+          if (shouldStop.value) return;
+          const token = tokens.value.find((t) => t.id === tokenId);
+
+          try {
+            await executeSmartSendCarForToken(tokenId);
+            // 成功后关闭连接并释放槽位
             closeConnection(tokenId, token.name);
-            retry400340Tokens.push(tokenId);
-            tokenStatus.value[tokenId] = "waiting_retry";
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `⚠️ ${token.name} 遇到${extractErrorCode(errorMsg)}错误，已加入重试队列（等待第一批完成后重试）`,
-              type: "warning",
-            });
-          } else {
-            console.error(error);
-            tokenStatus.value[tokenId] = "failed";
-            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 智能发车失败: ${error.message}`, type: "error" });
-            closeConnection(tokenId, token.name);
+          } catch (error) {
+            const errorMsg = error.message || "";
+            if (errorMsg.includes("400340") || errorMsg.includes("200750") || errorMsg.includes("11800010") || errorMsg.includes("12000030")) {
+              // 服务器错误/限流，加入重试队列（关闭连接释放槽位，重试时重新连接）
+              closeConnection(tokenId, token.name);
+              retry400340Tokens.push(tokenId);
+              tokenStatus.value[tokenId] = "waiting_retry";
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `⚠️ ${token.name} 遇到${extractErrorCode(errorMsg)}错误，已加入重试队列（等待本批完成后重试）`,
+                type: "warning",
+              });
+            } else {
+              console.error(error);
+              tokenStatus.value[tokenId] = "failed";
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 智能发车失败: ${error.message}`, type: "error" });
+              closeConnection(tokenId, token.name);
+            }
           }
+        }));
+
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `第 ${batchIndex} 批执行完毕`,
+          type: "info",
+        });
+
+        // 批次间延迟（非最后一批时）
+        if (i + maxConcurrent < allTokenIds.length && !shouldStop.value) {
+          const batchWait = _getModuleDelay('car');
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `等待 ${batchWait / 1000} 秒后执行下一批...`,
+            type: "info",
+          });
+          await new Promise((r) => setTimeout(r, batchWait));
         }
-      });
+      }
 
       // ==================== 400340 重试逻辑 ====================
       if (retry400340Tokens.length > 0 && !shouldStop.value) {
@@ -289,53 +320,46 @@ export function createTasksCar(deps) {
 
           const stillFailed = [];
 
-          for (let i = 0; i < retry400340Tokens.length; i++) {
+          // 重试也分批执行
+          for (let i = 0; i < retry400340Tokens.length; i += maxConcurrent) {
             if (shouldStop.value) break;
+            const batch = retry400340Tokens.slice(i, i + maxConcurrent);
 
-            const tokenId = retry400340Tokens[i];
-            const token = tokens.value.find((t) => t.id === tokenId);
-            if (!token) continue;
+            await Promise.all(batch.map(async (tokenId) => {
+              const token = tokens.value.find((t) => t.id === tokenId);
+              if (!token) return;
 
-            // 账号间延迟（非第一个账号时）
-            if (i > 0 && (batchSettings.accountRetryInterval || 0) > 0) {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⏳ 等待${batchSettings.accountRetryInterval / 1000}秒后处理下一个账号...`,
-                type: "info",
-              });
-              await new Promise((r) => setTimeout(r, batchSettings.accountRetryInterval || 3000));
-            }
-
-            try {
-              // 重试时先关闭旧连接再重新连接
-              closeConnection(tokenId, token.name);
-              await executeSmartSendCarForToken(tokenId);
-              closeConnection(tokenId, token.name);
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `✅ ${token.name} 重试成功`,
-                type: "success",
-              });
-            } catch (retryError) {
-              const errorMsg = retryError.message || "";
-              if (errorMsg.includes("400340") || errorMsg.includes("200750") || errorMsg.includes("11800010") || errorMsg.includes("12000030")) {
-                stillFailed.push(tokenId);
-                tokenStatus.value[tokenId] = "waiting_retry";
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `⚠️ ${token.name} 重试仍遇到${extractErrorCode(errorMsg)}错误，等待下次重试`,
-                  type: "warning",
-                });
-              } else {
-                tokenStatus.value[tokenId] = "failed";
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `❌ ${token.name} 重试失败: ${retryError.message}`,
-                  type: "error",
-                });
+              try {
+                // 重试时先关闭旧连接再重新连接
                 closeConnection(tokenId, token.name);
+                await executeSmartSendCarForToken(tokenId);
+                closeConnection(tokenId, token.name);
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `✅ ${token.name} 重试成功`,
+                  type: "success",
+                });
+              } catch (retryError) {
+                const errorMsg = retryError.message || "";
+                if (errorMsg.includes("400340") || errorMsg.includes("200750") || errorMsg.includes("11800010") || errorMsg.includes("12000030")) {
+                  stillFailed.push(tokenId);
+                  tokenStatus.value[tokenId] = "waiting_retry";
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `⚠️ ${token.name} 重试仍遇到${extractErrorCode(errorMsg)}错误，等待下次重试`,
+                    type: "warning",
+                  });
+                } else {
+                  tokenStatus.value[tokenId] = "failed";
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `❌ ${token.name} 重试失败: ${retryError.message}`,
+                    type: "error",
+                  });
+                  closeConnection(tokenId, token.name);
+                }
               }
-            }
+            }));
           }
 
           retry400340Tokens.length = 0;
@@ -378,45 +402,63 @@ export function createTasksCar(deps) {
     let helperUsageMap = {};
     let sortedHelpers = [];
 
-    const updateHelperUsage = async () => {
+    try {
+      // 获取护卫使用情况
       try {
         const usageRes = await tokenStore.sendMessageWithPromise(tokenId, "car_getmemberhelpingcnt", {}, getTimeout());
         helperUsageMap = usageRes?.body?.memberHelpingCntMap || usageRes?.memberHelpingCntMap || {};
-      } catch (_) {}
-    };
-
-    try {
-      await updateHelperUsage();
-      await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
-      const legionRes = await tokenStore.sendMessageWithPromise(tokenId, "legion_getinfo", {}, getTimeout());
-      const membersMap = legionRes?.body?.info?.members || legionRes?.info?.members || {};
-
-      sortedHelpers = Object.values(membersMap)
-        .filter((m) => !currentRoleId || String(m.roleId) !== currentRoleId)
-        .map((m) => ({ id: String(m.roleId), name: m.name || m.nickname || String(m.roleId), redQuench: m.custom?.red_quench_cnt || 0 }))
-        .sort((a, b) => b.redQuench - a.redQuench);
-
-      const topHelpers = sortedHelpers.slice(0, 5);
-      if (topHelpers.length > 0) {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${tokenName} 护卫优先级(前5): ${topHelpers.map((h, i) => `${i + 1}.${h.name}(红粹:${h.redQuench})`).join(", ")}`,
-          type: "info",
-        });
+      } catch (e) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 获取护卫使用次数失败: ${e.message}，将使用空数据`, type: "warning" });
       }
-      addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 获取到 ${sortedHelpers.length} 位潜在护卫`, type: "info" });
+
+      await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
+
+      // 获取军团成员（带重试）
+      let legionRes = null;
+      const maxRetries = 2;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          legionRes = await tokenStore.sendMessageWithPromise(tokenId, "legion_getinfo", {}, getTimeout());
+          break; // 成功则跳出重试循环
+        } catch (e) {
+          if (attempt < maxRetries) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 获取军团信息失败(第${attempt}次)，重试中...`, type: "warning" });
+            await new Promise((r) => setTimeout(r, 1000));
+          } else {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 获取军团信息失败: ${e.message}，将不带护卫发车`, type: "warning" });
+          }
+        }
+      }
+
+      if (legionRes) {
+        const membersMap = legionRes?.body?.info?.members || legionRes?.info?.members || {};
+
+        sortedHelpers = Object.values(membersMap)
+          .filter((m) => !currentRoleId || String(m.roleId) !== currentRoleId)
+          .map((m) => ({ id: String(m.roleId), name: m.name || m.nickname || String(m.roleId), redQuench: m.custom?.red_quench_cnt || 0 }))
+          .sort((a, b) => b.redQuench - a.redQuench);
+
+        const topHelpers = sortedHelpers.slice(0, 5);
+        if (topHelpers.length > 0) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${tokenName} 护卫优先级(前5): ${topHelpers.map((h, i) => `${i + 1}.${h.name}(红粹:${h.redQuench})`).join(", ")}`,
+            type: "info",
+          });
+        }
+        addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 获取到 ${sortedHelpers.length} 位潜在护卫`, type: "info" });
+      }
     } catch (e) {
       addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 获取护卫数据失败: ${e.message}，将不带护卫发车`, type: "warning" });
     }
 
-    return { sortedHelpers, helperUsageMap, updateHelperUsage };
+    return { sortedHelpers, helperUsageMap };
   };
 
   /** 分配护卫 */
-  const assignHelper = async (tokenId, tokenName, car, sortedHelpers, helperUsageMap, updateHelperUsage, helperPresets = []) => {
+  const assignHelper = async (tokenId, tokenName, car, sortedHelpers, helperUsageMap, helperPresets = []) => {
     if (Number(car.color || 0) < 5 || car.helperId) return;
-    await updateHelperUsage();
-    await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
+    // 使用本地跟踪的 helperUsageMap，不再重复查询服务器
 
     if (!sortedHelpers.length) {
       addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 车辆[${gradeLabel(car.color)}]需要护卫，但未获取到可用护卫列表`, type: "warning" });
@@ -450,9 +492,9 @@ export function createTasksCar(deps) {
   };
 
   /** 处理单辆车的智能发车逻辑，返回处理后的最新刷新券数量 */
-  const processCarForSmartSend = async (tokenId, tokenName, car, refreshTickets, customConditions, carMinColor, refreshDelay, requireMinColorWithConditions, useGoldRefresh, sortedHelpers, helperUsageMap, updateHelperUsage, helperPresets = []) => {
+  const processCarForSmartSend = async (tokenId, tokenName, car, refreshTickets, customConditions, carMinColor, refreshDelay, requireMinColorWithConditions, useGoldRefresh, sortedHelpers, helperUsageMap, helperPresets = []) => {
     const effectiveTickets = useGoldRefresh ? 999 : refreshTickets;
-    const assignHelperFn = async () => assignHelper(tokenId, tokenName, car, sortedHelpers, helperUsageMap, updateHelperUsage, helperPresets);
+    const assignHelperFn = async () => assignHelper(tokenId, tokenName, car, sortedHelpers, helperUsageMap, helperPresets);
 
     // 检查是否直接满足发车条件
     if (shouldSendCar(car, effectiveTickets, carMinColor, customConditions, useGoldRefresh, requireMinColorWithConditions)) {
@@ -492,10 +534,12 @@ export function createTasksCar(deps) {
         if (data.rewards != null) car.rewards = data.rewards;
       }
 
-      await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
+      // 本地计算刷新券数量（每次刷新-1，金砖模式不消耗刷新券）
+      if (!useGoldRefresh) {
+        currentTickets--;
+      }
 
-      // 更新刷新券
-      currentTickets = await getTicketCount(tokenId);
+      await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
 
       // 检查刷新后是否满足条件
       if (shouldSendCar(car, currentTickets, carMinColor, customConditions, useGoldRefresh, requireMinColorWithConditions)) {

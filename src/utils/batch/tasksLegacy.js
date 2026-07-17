@@ -3,6 +3,8 @@
  * 包含: batchLegacyClaim, batchLegacyGiftSendEnhanced
  */
 
+import { getModuleDelayCompat } from "@/utils/batch/delayManager";
+
 /**
  * 功法残卷赠送/接收上限配置 (LegacyGiftConf)
  * 根据VIP等级决定每日赠送上限(giftLegacyMax)和接收上限(receiveLegacyMax)
@@ -131,15 +133,15 @@ export function createTasksLegacy(deps) {
     recipientIdInput,
     recipientInfo,
     securityPassword,
-    delayConfig,
     getModuleDelay,
     safeDelay,
   } = deps;
 
-  // 模块延迟辅助函数
-  const _getModuleDelay = getModuleDelay || ((moduleName) => {
-    return delayConfig?.action || 1500;
-  });
+  // 使用集中式延迟管理器（兼容新旧API）
+  const _getModuleDelay = (moduleName) => {
+    if (getModuleDelay) return getModuleDelay(moduleName);
+    return getModuleDelayCompat(moduleName, batchSettings);
+  };
 
   /**
    * 批量领取功法残卷

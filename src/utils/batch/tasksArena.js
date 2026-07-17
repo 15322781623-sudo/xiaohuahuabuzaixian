@@ -4,6 +4,7 @@
  */
 
 import { ARENA_TARGET, FISH_TARGET } from "./constants.js";
+import { getModuleDelayCompat } from "@/utils/batch/delayManager";
 
 /**
  * 格式化战力值为大数字格式 (例如: 11128873547 -> 111.29亿)
@@ -57,10 +58,11 @@ export function createTasksArena(deps) {
     safeDelay,
   } = deps;
 
-  // 模块延迟辅助函数
-  const _getModuleDelay = getModuleDelay || ((moduleName) => {
-    return delayConfig?.action || 1500;
-  });
+  // 使用集中式延迟管理器（兼容新旧API）
+  const _getModuleDelay = (moduleName) => {
+    if (getModuleDelay) return getModuleDelay(moduleName);
+    return getModuleDelayCompat(moduleName, batchSettings);
+  };
 
   /**
    * 执行单次竞技场战斗

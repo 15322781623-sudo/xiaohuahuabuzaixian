@@ -122,6 +122,7 @@ export const availableTasks = [
   { label: "兑换码领取", value: "batchClaimCdkReward" },
   { label: "消耗活动兑换购买", value: "batchActivityExchange" },
   { label: "领取竞技大厅道具", value: "batchClaimApexRewards" },
+  { label: "比赛竞猜", value: "batchSaltCupBet" },
 ];
 
 // 黑市商品列表

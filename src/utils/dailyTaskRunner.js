@@ -1,4 +1,5 @@
 import { useTokenStore } from "@/stores/tokenStore";
+import { SINGLE_ACCOUNT_COMMAND_DELAY_CAP, MODULE_DELAY_GROUP_MAP, DELAY_GROUPS } from "@/utils/batch/delayManager";
 
 // ==================== 常量定义 ====================
 
@@ -303,6 +304,32 @@ export class DailyTaskRunner {
   error(msg) { this.log(msg, 'error'); }
   info(msg) { this.log(msg, 'info'); }
 
+  /**
+   * 获取有效的命令延迟（单账号模式自动加速）
+   * @returns {number} 实际命令延迟（ms）
+   */
+  _getEffectiveCommandDelay() {
+    const baseDelay = this.delaySettings.commandDelay;
+    if (this.batchSettings?.singleAccountMode) {
+      return Math.min(baseDelay, SINGLE_ACCOUNT_COMMAND_DELAY_CAP);
+    }
+    return baseDelay;
+  }
+
+  /**
+   * 应用单账号加速倍率到任意延迟值
+   * @param {number} ms 原始延迟（ms）
+   * @param {number} minMs 最小延迟（ms）
+   * @returns {number} 实际延迟（ms）
+   */
+  _accelerateDelay(ms, minMs = 50) {
+    if (this.batchSettings?.singleAccountMode) {
+      const mult = this.batchSettings.singleAccountMultiplier ?? 0.2;
+      return Math.max(minMs, Math.round(ms * mult));
+    }
+    return ms;
+  }
+
   // ==================== 设置管理 ====================
   
   loadSettings(roleId) {
@@ -398,7 +425,7 @@ export class DailyTaskRunner {
         this.tokenId, cmd, params, actualTimeout
       );
       
-      await delay(this.delaySettings.commandDelay);
+      await delay(this._getEffectiveCommandDelay());
       
       // 检查服务器返回的错误（不抛出异常，由调用者处理）
       if (result && result.error) {
@@ -421,13 +448,18 @@ export class DailyTaskRunner {
       
       return result;
     } catch (error) {
-      // ✅ 连接错误或可重试错误码重试
-      if ((isConnectionError(error) || isRetryableError(error)) && retryCount < MAX_RETRIES) {
-        const isRateLimit = isRetryableError(error);
-        // ✅ 限流错误用更长的重试间隔（30 秒），连接错误保持 2 秒
-        const retryDelay = isRateLimit ? 30000 : 2000;
-        if (!silent) this.warn(`[${isRateLimit ? '服务器限流' : '连接错误'}] ${description}，${retryDelay/1000}秒后重试 (${retryCount + 1}/${MAX_RETRIES})`);
-        await delay(retryDelay);
+      // ✅ 400340/200750/11800010 限流错误：不在内部重试，直接向上抛出交由外层重试机制处理
+      if (isRetryableError(error)) {
+        this.has400340Error = true;
+        const code = getErrorCode(error);
+        if (!silent) this.warn(`[${description}] 服务器限流(${code})，停止后续任务，交由外层重试机制处理`);
+        throw error;
+      }
+      
+      // ✅ 连接错误重试（最多 MAX_RETRIES 次，间隔 2 秒）
+      if (isConnectionError(error) && retryCount < MAX_RETRIES) {
+        if (!silent) this.warn(`[连接错误] ${description}，2秒后重试 (${retryCount + 1}/${MAX_RETRIES})`);
+        await delay(2000);
         return this.sendCommand(cmd, params, { ...options, retryCount: retryCount + 1 });
       }
 
@@ -530,7 +562,7 @@ export class DailyTaskRunner {
         { itemId: boxId, number: 10 },
         3000
       );
-      await delay(this.delaySettings.commandDelay);
+      await delay(this._getEffectiveCommandDelay());
       this.success(`开启${boxName}10个 - 成功`);
       return true;
     } catch (error) {
@@ -745,7 +777,7 @@ export class DailyTaskRunner {
       // 切换阵容
       const switched = await this.switchFormationIfNeeded(this.settings.arenaFormation);
       if (switched) {
-        await delay(4000); // 切换后短暂等待
+        await delay(this._accelerateDelay(4000, 500)); // 切换后短暂等待（单账号加速）
       }
 
       try {
@@ -784,7 +816,7 @@ export class DailyTaskRunner {
         // 执行战斗
         for (let i = 1; i <= ARENA_TIME.MAX_FIGHTS; i++) {
           await this.executeArenaFight(i);
-          if (i < ARENA_TIME.MAX_FIGHTS) await delay(1000);
+          if (i < ARENA_TIME.MAX_FIGHTS) await delay(this._accelerateDelay(1000, 100));
         }
 
         this.success('竞技场战斗流程完成');
@@ -950,7 +982,7 @@ export class DailyTaskRunner {
         await this.sendCommandSafe('genie_buysweep', {}, 
           { description: `免费扫荡卷 ${i + 1}/${FREE_SWEEP_COUNT}` });
         if (i < FREE_SWEEP_COUNT - 1) {
-          await delay(3000 + Math.random() * 2000);
+          await delay(this._accelerateDelay(3000 + Math.random() * 2000, 200));
         }
       });
     }
@@ -1003,7 +1035,7 @@ export class DailyTaskRunner {
         await this.sendCommandSafe('genie_sweep', { genieId: gid }, 
           { description: `${name}灯神扫荡`, timeout: this.getTimeout('genie_sweep'), context: 'genie' });
         if (idx < genieSweeps.length - 1) {
-          await delay(3000 + Math.random() * 2000);
+          await delay(this._accelerateDelay(3000 + Math.random() * 2000, 200));
         }
       });
     });
@@ -1102,23 +1134,32 @@ export class DailyTaskRunner {
    */
   buildRewardTasks() {
     const tasks = [];
+    // ✅ 从 batchSettings 读取奖励领取延迟（默认 3000ms，单账号加速）
+    const claimDelay = this._accelerateDelay(
+      this.batchSettings?.rewardClaimDelay ?? 3000, 100
+    );
 
     // 每日任务奖励（使用sendCommandSafe静默处理已领取的）
     for (let i = 1; i <= DAILY_TASK_COUNT; i++) {
-      tasks.push(() => this.sendCommandSafe('task_claimdailypoint', { taskId: i }, 
-        { description: `任务奖励${i}` }));
+      tasks.push(async () => {
+        await this.sendCommandSafe('task_claimdailypoint', { taskId: i }, 
+          { description: `任务奖励${i}` });
+        if (i < DAILY_TASK_COUNT && claimDelay > 0) {
+          await delay(claimDelay);
+        }
+      });
     }
 
-    // 日常奖励（领取类操作间隔3-5秒，防止触发限流）
+    // 日常奖励（领取类操作使用可配置延迟，防止触发限流）
     tasks.push(async () => {
       await this.sendCommandSafe('task_claimdailyreward', {}, { description: '日常奖励' });
-      await delay(3000 + Math.random() * 2000);
+      if (claimDelay > 0) await delay(claimDelay);
     });
 
     // 周常奖励
     tasks.push(async () => {
       await this.sendCommandSafe('task_claimweekreward', {}, { description: '周常奖励' });
-      await delay(3000 + Math.random() * 2000);
+      if (claimDelay > 0) await delay(claimDelay);
     });
 
     // 通行证奖励
@@ -1348,13 +1389,24 @@ export class DailyTaskRunner {
     // ✅ 根据活跃度决定执行哪些任务
     let allTasks = []; // 每项格式: { fn, module }
     
-    // 获取模块延迟的辅助函数
+    // 获取模块延迟的辅助函数（支持单账号加速）
     const getModuleDelay = (moduleName) => {
-      const md = this.batchSettings?.moduleDelays;
-      if (md) {
-        return md[moduleName] || md.default || this.delaySettings.taskDelay;
+      let delayMs;
+      // 优先使用 delayGroups（新统一延迟系统）
+      if (this.batchSettings?.delayGroups) {
+        const group = MODULE_DELAY_GROUP_MAP[moduleName] || 'normal';
+        delayMs = this.batchSettings.delayGroups[group] ?? DELAY_GROUPS[group];
+      } else {
+        const md = this.batchSettings?.moduleDelays;
+        delayMs = md ? (md[moduleName] || md.default || this.delaySettings.taskDelay) : this.delaySettings.taskDelay;
       }
-      return this.delaySettings.taskDelay;
+      // 单账号加速
+      if (this.batchSettings?.singleAccountMode) {
+        const multiplier = typeof this.batchSettings.singleAccountMultiplier === 'number'
+          ? this.batchSettings.singleAccountMultiplier : 0.2;
+        delayMs = Math.max(50, Math.round(delayMs * multiplier));
+      }
+      return delayMs;
     };
 
     if (activityResult.isFullActivity) {
@@ -1406,8 +1458,16 @@ export class DailyTaskRunner {
         await fn();
         completedCount++;
         this.callbacks?.onProgress?.(Math.floor(((i + 1) / total) * 100));
-        // 使用模块延迟代替全局任务延迟
-        await delay(getModuleDelay(module));
+        // ✅ 延迟控制：模块切换时用 moduleDelay，同模块子任务间用 dailySubtaskDelay
+        const nextModule = allTasks[i + 1]?.module;
+        if (!nextModule || nextModule !== module) {
+          await delay(getModuleDelay(module));
+        } else {
+          const subtaskDelay = this._accelerateDelay(
+            this.batchSettings?.dailySubtaskDelay ?? 300, 50
+          );
+          if (subtaskDelay > 0) await delay(subtaskDelay);
+        }
       } catch (error) {
         // ✅ 检测可重试错误码，标记需要外层重试
         const errMsg = error?.message || '';

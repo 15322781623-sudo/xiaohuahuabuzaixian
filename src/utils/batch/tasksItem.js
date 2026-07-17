@@ -3,6 +3,7 @@ import { PEACH_TASKS } from "@/utils/PeachTaskIds";
 import ConsumeActivityManager from "@/utils/consumeActivityManager";
 import { SKIN_DICT } from "@/utils/skinMap";
 import { createPushMapRunner } from "@/utils/batch/pushMapRunner";
+import { getModuleDelayCompat } from "@/utils/batch/delayManager";
 
 /**
  * 开箱、钓鱼、招募类任务
@@ -31,16 +32,13 @@ export function createTasksItem(deps) {
     message,
     currentRunningTokenId,
     helperSettings,
-    delayConfig,
-    moduleDelays,
+    getModuleDelay,
   } = deps;
 
-  // 获取模块延迟的辅助函数
+  // 使用集中式延迟管理器（兼容新旧API）
   const _getModuleDelay = (moduleName) => {
-    if (moduleDelays) {
-      return moduleDelays[moduleName] || moduleDelays.default || 1000;
-    }
-    return delayConfig?.task || 1000;
+    if (getModuleDelay) return getModuleDelay(moduleName);
+    return getModuleDelayCompat(moduleName, batchSettings);
   };
 
   const boxNames = {

@@ -785,6 +785,13 @@
                 >
                   领取竞技大厅道具
                 </n-button>
+                <n-button
+                  size="small"
+                  @click="openSaltCupBetModal"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  比赛竞猜
+                </n-button>
               </n-space>
             </n-tab-pane>
             <n-tab-pane name="pet" tab="宠物">
@@ -3801,6 +3808,37 @@
               </div>
             </div>
           </div>
+
+          <!-- 图鉴升星类型选择 -->
+          <div v-if="taskForm.selectedTasks.includes('batchBookUpgrade')" class="task-config-card">
+            <div class="config-card-header">
+              <span class="config-card-title">⭐ 图鉴升星 - 选择升星类型</span>
+            </div>
+            <div class="config-card-content">
+              <n-checkbox-group v-model:value="taskForm.bookUpgradeTypes">
+                <n-checkbox value="hero">英雄升星</n-checkbox>
+                <n-checkbox value="fish">鱼灵升星</n-checkbox>
+                <n-checkbox value="skin">皮肤激活</n-checkbox>
+              </n-checkbox-group>
+            </div>
+          </div>
+
+          <!-- 比赛竞猜选项 -->
+          <div v-if="taskForm.selectedTasks.includes('batchSaltCupBet')" class="task-config-card">
+            <div class="config-card-header">
+              <span class="config-card-title">🏆 比赛竞猜 - 选择竞猜选项</span>
+            </div>
+            <div class="config-card-content">
+              <n-alert type="info" size="small" style="margin-bottom: 12px;">
+                自动获取所有未下注的比赛并对所有比赛下注相同选项
+              </n-alert>
+              <n-radio-group v-model:value="taskForm.saltCupBetPick" size="small">
+                <n-radio :value="1">主胜</n-radio>
+                <n-radio :value="2">平局</n-radio>
+                <n-radio :value="3">客胜</n-radio>
+              </n-radio-group>
+            </div>
+          </div>
         </div>
         
         <!-- 不上线时段开关 -->
@@ -3809,7 +3847,7 @@
             <div class="offline-time-info">
               <div class="offline-time-title">🚫 不上线时段</div>
               <div class="offline-time-desc">
-                周三05:00-07:00 / 周六19:50-21:10 / 周日19:50-20:40
+                周五05:00-07:00 / 周六19:50-21:10 / 周日19:50-20:40
               </div>
             </div>
             <n-switch
@@ -3941,11 +3979,14 @@
           <!-- 右列：延迟与连接设置 -->
           <n-grid-item>
             <n-divider title-placement="left" style="margin: 8px 0 12px 0">
-              <span style="font-size: 14px; font-weight: 600;">️ 延迟设置 (ms)</span>
+              <span style="font-size: 14px; font-weight: 600;">⏱️ 基础延迟设置 (ms) - 旧版兼容</span>
               <n-button size="tiny" quaternary type="primary" @click="resetDelaySettings" style="margin-left: 8px;">
                 恢复默认
               </n-button>
             </n-divider>
+            <div style="font-size: 11px; color: var(--text-color-3); margin-bottom: 8px;">
+              以下为旧版延迟设置，新功能已统一使用上方「功能模块延迟分组」。仅用于个别未迁移场景的兼容。
+            </div>
             <div class="settings-grid-responsive">
               <div class="setting-item-responsive">
                 <label class="setting-label-responsive">命令延迟</label>
@@ -3955,75 +3996,68 @@
                 <label class="setting-label-responsive">任务间延迟</label>
                 <n-input-number v-model:value="batchSettings.taskDelay" :min="100" :max="5000" :step="100" size="small" class="input-responsive" />
               </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">操作延迟</label>
-                <n-input-number v-model:value="batchSettings.actionDelay" :min="100" :max="2000" :step="100" size="small" class="input-responsive" />
-              </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">战斗延迟</label>
-                <n-input-number v-model:value="batchSettings.battleDelay" :min="100" :max="5000" :step="100" size="small" class="input-responsive" />
-              </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">刷新延迟</label>
-                <n-input-number v-model:value="batchSettings.refreshDelay" :min="500" :max="6000" :step="100" size="small" class="input-responsive" />
-              </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">长延迟</label>
-                <n-input-number v-model:value="batchSettings.longDelay" :min="1000" :max="13000" :step="500" size="small" class="input-responsive" />
-              </div>
             </div>
 
             <n-divider title-placement="left" style="margin: 16px 0 12px 0">
-              <span style="font-size: 14px; font-weight: 600;">🎯 功能模块延迟(ms)</span>
+              <span style="font-size: 14px; font-weight: 600;">🎯 功能模块延迟分组(ms)</span>
               <n-button size="tiny" quaternary type="primary" @click="resetModuleDelays" style="margin-left: 8px;">
                 恢复默认
               </n-button>
             </n-divider>
             <div class="settings-grid-responsive">
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">日常任务</label>
-                <n-input-number v-model:value="batchSettings.moduleDelays.daily" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+              <div class="setting-item-responsive" v-for="grp in delayGroupList" :key="grp.key">
+                <label class="setting-label-responsive" :title="grp.desc">{{ grp.label }}</label>
+                <n-input-number v-model:value="batchSettings.delayGroups[grp.key]" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
               </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">竞技场</label>
-                <n-input-number v-model:value="batchSettings.moduleDelays.arena" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+            </div>
+            <div style="font-size: 11px; color: var(--text-color-3); line-height: 1.5; margin-top: 6px;" v-for="grp in delayGroupList" :key="'desc-' + grp.key">
+              <strong>{{ grp.label }}</strong>: {{ grp.desc }} → 涵盖: {{ grp.modules.join('、') }}
+            </div>
+
+            <n-divider title-placement="left" style="margin: 16px 0 12px 0">
+              <span style="font-size: 14px; font-weight: 600;">📝 子任务延迟 / 🎁 奖励领取 / ⚡ 单账号加速</span>
+            </n-divider>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start;">
+              <!-- 子任务间延迟 -->
+              <div class="setting-item-responsive" style="flex: 1; min-width: 0; min-width: 140px;">
+                <label class="setting-label-responsive" title="日常任务中同一模块内每个子任务完成后的等待时间(ms)，设为0则子任务间无等待">子任务间(ms)</label>
+                <n-input-number
+                  v-model:value="batchSettings.dailySubtaskDelay"
+                  :min="0" :max="5000" :step="50"
+                  size="small" class="input-responsive"
+                  @update:value="autoSaveBatchSettings"
+                />
               </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">爬塔/怪塔</label>
-                <n-input-number v-model:value="batchSettings.moduleDelays.tower" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+              <!-- 奖励领取延迟 -->
+              <div class="setting-item-responsive" style="flex: 1; min-width: 0; min-width: 140px;">
+                <label class="setting-label-responsive" title="日常任务奖励领取操作间的等待时间(ms)，包括任务奖励、日常奖励、周常奖励等，设为0则无等待">奖励领取(ms)</label>
+                <n-input-number
+                  v-model:value="batchSettings.rewardClaimDelay"
+                  :min="0" :max="10000" :step="500"
+                  size="small" class="input-responsive"
+                  @update:value="autoSaveBatchSettings"
+                />
               </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">黑市商店</label>
-                <n-input-number v-model:value="batchSettings.moduleDelays.store" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
+              <!-- 单账号智能加速 -->
+              <div class="setting-item-responsive" style="flex: 1.5; min-width: 180px;">
+                <label class="setting-label-responsive" title="仅选拯1个账号执行时，自动降低延迟加快执行速度">单账号加速</label>
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  <n-switch v-model:value="batchSettings.singleAccountSpeedUp" @update:value="autoSaveBatchSettings" size="small" style="flex-shrink: 0;" />
+                  <n-input-number
+                    v-model:value="batchSettings.singleAccountMultiplier"
+                    :min="0.05" :max="1.0" :step="0.05" :precision="2"
+                    size="small" style="flex: 1; min-width: 100px;"
+                    @update:value="autoSaveBatchSettings"
+                  />
+                </div>
               </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">宝库/梦境</label>
-                <n-input-number v-model:value="batchSettings.moduleDelays.treasure" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
-              </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">消耗活动</label>
-                <n-input-number v-model:value="batchSettings.moduleDelays.activity" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
-              </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">俱乐部</label>
-                <n-input-number v-model:value="batchSettings.moduleDelays.club" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
-              </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">英雄升级</label>
-                <n-input-number v-model:value="batchSettings.moduleDelays.hero" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
-              </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">罐子</label>
-                <n-input-number v-model:value="batchSettings.moduleDelays.bottle" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
-              </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">挂机/签到</label>
-                <n-input-number v-model:value="batchSettings.moduleDelays.hangup" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
-              </div>
-              <div class="setting-item-responsive">
-                <label class="setting-label-responsive">默认</label>
-                <n-input-number v-model:value="batchSettings.moduleDelays.default" :min="100" :max="10000" :step="100" size="small" class="input-responsive" />
-              </div>
+            </div>
+            <div style="font-size: 11px; color: var(--text-color-3); line-height: 1.5; margin-top: 4px;">
+              子任务间 {{ batchSettings.dailySubtaskDelay }}ms · 奖励领取间 {{ batchSettings.rewardClaimDelay }}ms · 
+              <template v-if="batchSettings.singleAccountSpeedUp">
+                加速 {{ batchSettings.singleAccountMultiplier }}×（快速 {{ Math.round(batchSettings.delayGroups.fast * batchSettings.singleAccountMultiplier) }}ms，标准 {{ Math.round(batchSettings.delayGroups.normal * batchSettings.singleAccountMultiplier) }}ms，战斗 {{ Math.round(batchSettings.delayGroups.battle * batchSettings.singleAccountMultiplier) }}ms，重度 {{ Math.round(batchSettings.delayGroups.heavy * batchSettings.singleAccountMultiplier) }}ms）
+              </template>
+              <template v-else>加速已关闭</template>
             </div>
             
             <n-divider title-placement="left" style="margin: 16px 0 12px 0">
@@ -4227,6 +4261,82 @@
         </div>
         <div class="modal-actions" style="margin-top: 20px; text-align: right">
           <n-button @click="showWarGuessModal = false">关闭</n-button>
+        </div>
+      </div>
+    </n-modal>
+
+    <!-- SaltCup Bet Modal (比赛竞猜) -->
+    <n-modal
+      v-model:show="showSaltCupBetModal"
+      preset="card"
+      title="比赛竞猜"
+      style="width: 90%; max-width: 900px"
+    >
+      <div class="settings-content">
+        <div class="settings-grid" style="display: block;">
+          <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+            <n-button type="primary" @click="fetchSaltCupBetData" :loading="saltCupBetLoading">
+              刷新比赛数据
+            </n-button>
+            <span v-if="saltCupBetLoading" style="color: #999;">加载中...</span>
+          </div>
+
+          <div v-if="saltCupMatchList.length === 0 && !saltCupBetLoading" style="text-align: center; color: #999; padding: 40px 0;">
+            暂无比赛数据，请点击刷新获取
+          </div>
+
+          <div v-for="match in saltCupMatchList" :key="match.matchId" style="border: 1px solid var(--n-border-color, #e0e0e0); border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+              <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+                <img v-if="match.leftRole?.headImg" :src="match.leftRole.headImg" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" />
+                <div>
+                  <div style="font-weight: bold; font-size: 14px;">{{ match.leftRole?.name || '未知' }}</div>
+                  <div style="font-size: 12px; color: #999;">战力: {{ formatPower(match.leftTotalPower || 0) }}</div>
+                </div>
+              </div>
+              <div style="text-align: center; font-size: 18px; font-weight: bold; padding: 0 16px;">
+                <span style="color: #ff6b6b;">{{ match.leftRole?.newScore || 0 }}</span>
+                <span style="color: #999; margin: 0 4px;">:</span>
+                <span style="color: #4dabf7;">{{ match.rightRole?.newScore || 0 }}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px; flex: 1; justify-content: flex-end;">
+                <div style="text-align: right;">
+                  <div style="font-weight: bold; font-size: 14px;">{{ match.rightRole?.name || '未知' }}</div>
+                  <div style="font-size: 12px; color: #999;">战力: {{ formatPower(match.rightTotalPower || 0) }}</div>
+                </div>
+                <img v-if="match.rightRole?.headImg" :src="match.rightRole.headImg" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" />
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: center;">
+              <n-button
+                size="small"
+                :type="match.betRecord?.pick === 1 ? 'default' : 'error'"
+                :disabled="isRunning"
+                @click="handleSaltCupBet(match.matchId, 1)"
+              >
+                {{ match.betRecord?.pick === 1 ? '已押主胜 ✓' : '主胜' }}
+              </n-button>
+              <n-button
+                size="small"
+                :type="match.betRecord?.pick === 2 ? 'default' : 'warning'"
+                :disabled="isRunning"
+                @click="handleSaltCupBet(match.matchId, 2)"
+              >
+                {{ match.betRecord?.pick === 2 ? '已押平局 ✓' : '平局' }}
+              </n-button>
+              <n-button
+                size="small"
+                :type="match.betRecord?.pick === 3 ? 'default' : 'info'"
+                :disabled="isRunning"
+                @click="handleSaltCupBet(match.matchId, 3)"
+              >
+                {{ match.betRecord?.pick === 3 ? '已押客胜 ✓' : '客胜' }}
+              </n-button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions" style="margin-top: 20px; text-align: right">
+          <n-button @click="showSaltCupBetModal = false">关闭</n-button>
         </div>
       </div>
     </n-modal>
@@ -5408,6 +5518,7 @@ import {
   createTasksStore,
   createTasksLegacy,
 } from "@/utils/batch";
+import { getModuleDelay, loadDelayGroups, saveDelayGroups, DELAY_GROUPS, DELAY_GROUP_LABELS, DELAY_GROUP_DESCRIPTIONS, DELAY_GROUP_MODULES, MODULE_DELAY_GROUP_MAP } from "@/utils/batch/delayManager";
 
 
 import { downloadFile } from "@/utils/imageExport";
@@ -5721,30 +5832,28 @@ const getCurrentActivityWeek = computed(() => {
 });
 
 const isWeirdTowerActivityOpen = computed(() => {
-  if (getCurrentActivityWeek.value !== "黑市周") return false;
+  // ✅ 直接使用周期计算，不依赖 getCurrentActivityWeek（避免周期边界误判）
+  const now = currentTime.value;
+  const start = new Date("2025-12-12T12:00:00"); // 黑市周参考起点：周五 12:00
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  const cycleMs = 3 * weekMs;
 
-  const now = new Date();
+  const elapsed = now - start;
+  if (elapsed < 0) return false;
+
+  // 1. 检查是否在3周循环的黑市周周期内
+  const cyclePosition = elapsed % cycleMs;
+  if (cyclePosition >= weekMs) return false; // 招募周或宝箱周
+
+  // 2. 检查是否在黑市周间歇期（周五 00:00-11:59）
+  // 黑市周从周五 12:00 开始，到下周四周 23:59 结束
+  // 周五 00:00-11:59 是间歇期（新周期的第一天但活动尚未开启）
   const day = now.getDay();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
-  const currentTime = hour * 60 + minute; // 转换为分钟
-  
-  // 黑市周开放时间：周五12:00开始，到下周五11:00结束
   if (day === 5) {
-    // 周五：11:00前 或 12:00后开放
-    const morningEnd = 11 * 60;      // 11:00 = 660分钟
-    const afternoonStart = 12 * 60;  // 12:00 = 720分钟
-    
-    // 周五11:00前开放（本周黑市周的最后时刻）
-    // 或周五12:00后开放（新黑市周的开始）
-    if (currentTime < morningEnd || currentTime >= afternoonStart) {
-      return true;
-    }
-    // 周五11:00-12:00之间不开放
-    return false;
+    const hour = now.getHours();
+    if (hour < 12) return false; // 周五 12:00 前是间歇期
   }
-  
-  // 其他时间（周六到周四）全天开放
+
   return true;
 });
 
@@ -5894,6 +6003,13 @@ const warGuessLoading = ref(false);
 const warGuessCoin = ref(20);
 const selectedWarGuessLegionId = ref(null);
 const currentGuessCount = ref(0);
+
+// ======================
+// SaltCup Bet Feature (比赛竞猜)
+// ======================
+const showSaltCupBetModal = ref(false);
+const saltCupMatchList = ref([]);
+const saltCupBetLoading = ref(false);
 
 // ======================
 // Apex Cheering Feature (竞技大厅助威)
@@ -6573,6 +6689,88 @@ const handleWarGuessCheer = async () => {
     
 };
 
+// SaltCup Bet Functions (比赛竞猜)
+const openSaltCupBetModal = async () => {
+  showSaltCupBetModal.value = true;
+  saltCupMatchList.value = [];
+  await fetchSaltCupBetData();
+};
+
+const fetchSaltCupBetData = async () => {
+  if (selectedTokens.value.length === 0) {
+    message.warning("请先选择一个账号用于获取竞猜数据");
+    return;
+  }
+  
+  const tokenId = selectedTokens.value[0];
+  const token = tokens.value.find(t => t.id === tokenId);
+  
+  saltCupBetLoading.value = true;
+  try {
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `正在使用 ${token.name} 获取比赛竞猜数据...`,
+      type: "info",
+    });
+    
+    const status = tokenStore.getWebSocketStatus(tokenId);
+    if (status !== "connected") {
+      tokenStore.createWebSocketConnection(tokenId, token.token, token.wsUrl);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    
+    const res = await tokenStore.sendMessageWithPromise(tokenId, "SaltCup26_GetBetInfo", {}, 5000);
+    
+    if (res && res.matchList) {
+      const matchList = Array.isArray(res.matchList) ? res.matchList : Object.values(res.matchList);
+      const betRecord = res.roleData?.betRecord || {};
+      
+      // 解析已下注记录，扁平化为 matchId -> record
+      const betRecordMap = {};
+      for (const scheduleId of Object.keys(betRecord)) {
+        const scheduleMap = betRecord[scheduleId];
+        for (const matchId of Object.keys(scheduleMap)) {
+          const record = scheduleMap[matchId];
+          if (record && record.betTime > 0) {
+            betRecordMap[matchId] = record;
+          }
+        }
+      }
+      
+      saltCupMatchList.value = matchList.map(match => {
+        // 计算双方总战力
+        const leftTotalPower = (match.leftRole?.starList || []).reduce((sum, star) => sum + (star.power || 0), 0);
+        const rightTotalPower = (match.rightRole?.starList || []).reduce((sum, star) => sum + (star.power || 0), 0);
+        return {
+          matchId: match.matchId,
+          leftRole: match.leftRole,
+          rightRole: match.rightRole,
+          leftTotalPower,
+          rightTotalPower,
+          betRecord: betRecordMap[match.matchId] || null,
+        };
+      });
+    } else {
+      message.warning("获取竞猜数据为空");
+    }
+  } catch (error) {
+    console.error("Fetch saltcup bet error:", error);
+    message.error("获取竞猜数据失败: " + error.message);
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `获取竞猜数据失败: ${error.message}`,
+      type: "error",
+    });
+  } finally {
+    saltCupBetLoading.value = false;
+  }
+};
+
+const handleSaltCupBet = async (matchId, pick) => {
+  showSaltCupBetModal.value = false;
+  await batchSaltCupBet(matchId, pick);
+};
+
 // 预设护卫成员状态（账号单独设置弹窗）
 const settingsHelperLoading = ref(false);
 const settingsHelperMembers = ref([]);
@@ -7023,16 +7221,25 @@ const batchSettings = reactive({
   tokenListColumns: 4,  // 默认4列
   autoColumns: true,    // 默认启用自动列数
   useGoldRefreshFallback: false,
-  // 延迟配置（毫秒）
+  // 延迟配置（毫秒） - 保留用于向后兼容
   commandDelay: 1000,       // 命令间延迟
   taskDelay: 1000,          // 任务间延迟
+  dailySubtaskDelay: 300,   // 日常任务子任务间延迟（同模块内每个子任务完成后的等待）
+  rewardClaimDelay: 3000,   // 奖励领取间延迟（日常奖励、周常奖励等领取操作间的等待）
   actionDelay: 1000,        // 一般操作延迟（开箱、钓鱼、招募等）
   battleDelay: 1500,        // 战斗延迟（宝库、竞技场等）
   refreshDelay: 1500,       // 刷新延迟（发车刷新等）
   longDelay: 5000,          // 长延迟（功法赠送等）
   taskIntervalWait: 0,      // 定时任务中每完成一个任务后的等待时间(秒)，0为不等待
   batchIntervalWait: 5,     // 定时任务中每完成一批账号后的等待时间(秒)，默认5秒，0为不等待
-  // 功能模块延迟配置(ms)
+  // 单账号智能加速配置
+  singleAccountSpeedUp: true,          // 是否启用单账号自动加速（总开关）
+  singleAccountMultiplier: 0.2,        // 单账号延迟倍率（0.2=原延迟的20%，即加速5倍）
+  singleAccountMode: false,            // 运行时标志（不持久化，由执行逻辑自动设置）
+  // 功能模块延迟分组配置(ms) - 新统一延迟系统
+  // 快速/标准/战斗/重度 四个分组，模块自动映射到对应分组
+  delayGroups: { fast: 2000, normal: 3000, battle: 3000, heavy: 5000 },
+  // 旧模块延迟配置（保留向后兼容，新代码优先使用 delayGroups）
   moduleDelays: {
     daily: 800,         // 日常任务
     arena: 1000,        // 竞技场
@@ -7044,6 +7251,7 @@ const batchSettings = reactive({
     hero: 1000,         // 英雄/鱼灵/宠物升级
     bottle: 500,        // 罐子（重置/领取）
     hangup: 500,        // 挂机/签到/答题
+    nightmare: 3000,    // 十殿抽奖
     default: 800,       // 默认
   },
   // 黑市多选购买配置
@@ -7117,7 +7325,18 @@ const loadBatchSettings = () => {
         Object.assign(batchSettings.moduleDelays, parsed.moduleDelays);
         delete parsed.moduleDelays;
       }
+      // 深度合并 delayGroups，保留新增分组的默认值
+      if (parsed.delayGroups && batchSettings.delayGroups) {
+        Object.assign(batchSettings.delayGroups, parsed.delayGroups);
+        delete parsed.delayGroups;
+      }
+      // 如果没有 delayGroups 但 moduleDelays 存在，从 moduleDelays 迁移默认值
+      if (!batchSettings.delayGroups || Object.keys(batchSettings.delayGroups).length === 0) {
+        batchSettings.delayGroups = { fast: 2000, normal: 3000, battle: 3000, heavy: 5000 };
+      }
       Object.assign(batchSettings, parsed);
+      // 确保运行时标志不被持久化
+      batchSettings.singleAccountMode = false;
       
       // 如果开启了自动模式，立即重新计算列数
       if (batchSettings.autoColumns && typeof window !== 'undefined') {
@@ -7139,6 +7358,9 @@ const saveBatchSettings = () => {
   try {
     // 检查并发数是否超过推荐值
     const optimalSize = getOptimalPoolSize();
+    // 临时剥离运行时标志
+    const runtimeFlags = { singleAccountMode: batchSettings.singleAccountMode };
+    batchSettings.singleAccountMode = false;
     if (batchSettings.maxActive > optimalSize) {
       let browserName = "浏览器";
       if (/Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent)) {
@@ -7156,6 +7378,8 @@ const saveBatchSettings = () => {
     }
     
     localStorage.setItem("batchSettings", JSON.stringify(batchSettings));
+    // 恢复运行时标志
+    Object.assign(batchSettings, runtimeFlags);
     
     // 输出当前配置信息
     console.log('=== 当前高级配置 ===');
@@ -7179,18 +7403,30 @@ const saveBatchSettings = () => {
 // 开关切换时自动保存（不弹窗提示）
 const autoSaveBatchSettings = () => {
   try {
+    // 剥离运行时标志
+    const wasSingleMode = batchSettings.singleAccountMode;
+    batchSettings.singleAccountMode = false;
     localStorage.setItem("batchSettings", JSON.stringify(batchSettings));
+    batchSettings.singleAccountMode = wasSingleMode;
   } catch (e) { /* ignore */ }
 };
 
-// 恢复模块延迟默认值
+// 恢复模块延迟默认值（现在为延迟分组）
 const resetModuleDelays = () => {
-  const defaults = defaultBatchSettings.moduleDelays;
+  const defaults = { fast: 2000, normal: 3000, battle: 3000, heavy: 5000 };
   Object.keys(defaults).forEach(key => {
-    batchSettings.moduleDelays[key] = defaults[key];
+    batchSettings.delayGroups[key] = defaults[key];
   });
-  message.success("模块延迟已恢复默认值");
+  message.success("模块延迟分组已恢复默认值");
 };
+
+// 延迟分组列表（用于UI渲染）
+const delayGroupList = computed(() => [
+  { key: 'fast', label: DELAY_GROUP_LABELS.fast, desc: DELAY_GROUP_DESCRIPTIONS.fast, modules: DELAY_GROUP_MODULES.fast },
+  { key: 'normal', label: DELAY_GROUP_LABELS.normal, desc: DELAY_GROUP_DESCRIPTIONS.normal, modules: DELAY_GROUP_MODULES.normal },
+  { key: 'battle', label: DELAY_GROUP_LABELS.battle, desc: DELAY_GROUP_DESCRIPTIONS.battle, modules: DELAY_GROUP_MODULES.battle },
+  { key: 'heavy', label: DELAY_GROUP_LABELS.heavy, desc: DELAY_GROUP_DESCRIPTIONS.heavy, modules: DELAY_GROUP_MODULES.heavy },
+]);
 
 // 恢复延迟设置默认值
 const resetDelaySettings = () => {
@@ -7417,6 +7653,8 @@ const taskForm = reactive({
   },
   nightmarePresetIds: [], // 十殿阎罗挑战预设ID列表
   nightmarePresetDelay: 10, // 预设间执行间隔（秒），默认10秒
+  saltCupBetPick: 1, // 比赛竞猜选项: 1=主胜, 2=平局, 3=客胜
+  bookUpgradeTypes: ['hero', 'fish', 'skin'], // 图鉴升星类型: hero=英雄, fish=鱼灵, skin=皮肤
 });
 
 // 任务分组定义
@@ -7429,7 +7667,7 @@ const taskGroupDefinitions = [
   { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
   { name: 'pet', label: '宠物', tasks: ['legion_buy_spotted_egg', 'use_spotted_egg', 'claim_pet_book', 'batch_pet_merge', 'batch_pet_upgrade'] },
   { name: 'nightmare', label: '十殿', tasks: ['batchNightmareChallengePresets', 'nightmare_draw_lottery', 'nightmare_claim_book_reward', 'star_drawturntable', 'batch_star_challenge'] },
-  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchAutumnUseItem', 'batchClaimCdkReward', 'batchClaimApexRewards'] },
+  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchAutumnUseItem', 'batchClaimCdkReward', 'batchClaimApexRewards', 'batchSaltCupBet'] },
   { name: 'legacy', label: '功法', tasks: ['batchLegacyHangup', 'batchLegacyClaim', 'batchLegacyGiftSendEnhanced', 'batchLegacyClaimGiftTask'] },
   { name: 'monthly', label: '月度', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items'] },
   { name: 'consumeActivity', label: '消耗活动', tasks: ['batchConsumeActivity', 'batchClaimConsumeRewards', 'batchApexCheer', 'batchUseActivityItem', 'batchActivityExchange'] }
@@ -7726,6 +7964,8 @@ const cancelTaskEdit = () => {
     };
     taskForm.nightmarePresetIds = [];
     taskForm.nightmarePresetDelay = 10;
+    taskForm.saltCupBetPick = 1;
+    taskForm.bookUpgradeTypes = ['hero', 'fish', 'skin'];
     taskForm.fragmentPackItems = [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005];
     taskScheduleSelectedGroupIds.value = [];
   }, 300);
@@ -7838,6 +8078,8 @@ const openTaskModal = () => {
   // 十殿预设配置
   taskForm.nightmarePresetIds = [];
   taskForm.nightmarePresetDelay = 10;
+  taskForm.saltCupBetPick = 1;
+  taskForm.bookUpgradeTypes = ['hero', 'fish', 'skin'];
   
   // 碎片礼包配置（默认全选）
   taskForm.fragmentPackItems = [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005];
@@ -8026,6 +8268,8 @@ const editTask = (task) => {
     },
     nightmarePresetIds: task.nightmarePresetIds || [],
     nightmarePresetDelay: task.nightmarePresetDelay || 10,
+    saltCupBetPick: task.saltCupBetPick !== undefined ? task.saltCupBetPick : 1,
+    bookUpgradeTypes: task.bookUpgradeTypes && task.bookUpgradeTypes.length > 0 ? [...task.bookUpgradeTypes] : ['hero', 'fish', 'skin'],
     pushStartTime: task.pushStartTime ? (() => {
       const [h, m] = task.pushStartTime.split(':').map(Number);
       const d = new Date();
@@ -8123,7 +8367,7 @@ const saveTask = () => {
       selectedTokens: [],
       selectedTasks: [],
       enabled: taskForm.enabled,
-      offlineTimeEnabled: false,
+      offlineTimeEnabled: taskForm.offlineTimeEnabled || false, // 推图任务也支持不上线时段
       pushStartTime: msToTimeStr(taskForm.pushStartTime),
       pushStopTime: taskForm.pushStopTime ? msToTimeStr(taskForm.pushStopTime) : null,
     };
@@ -8293,6 +8537,8 @@ const saveTask = () => {
     smartDeparture: JSON.parse(JSON.stringify(taskForm.smartDeparture)),
     nightmarePresetIds: [...(taskForm.nightmarePresetIds || [])],
     nightmarePresetDelay: taskForm.nightmarePresetDelay || 10,
+    saltCupBetPick: taskForm.saltCupBetPick || 1,
+    bookUpgradeTypes: [...(taskForm.bookUpgradeTypes || ['hero', 'fish', 'skin'])],
   };
 
   let isNew = !editingTask.value;
@@ -9921,6 +10167,18 @@ const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) =>
   
   const taskStartTime = Date.now();
   const availableTokens = [...selectedTokens.value];
+
+  // ✅ 单账号智能加速：仅1个账号时自动降低延迟
+  if (batchSettings.singleAccountSpeedUp && availableTokens.length === 1) {
+    batchSettings.singleAccountMode = true;
+    const mult = batchSettings.singleAccountMultiplier;
+    const token = tokens.value.find(t => t.id === availableTokens[0]);
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `⚡ ${token?.name || '单账号'} 单账号加速模式（延迟×${mult}）`,
+      type: 'info',
+    });
+  }
   
   // 清理本次执行相关的失败原因缓存
   availableTokens.forEach(tokenId => {
@@ -10082,6 +10340,8 @@ const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) =>
   } finally {
     // 清除定时器
     clearInterval(progressTimer);
+    // 重置单账号加速标志
+    batchSettings.singleAccountMode = false;
   }
 };
 
@@ -10198,45 +10458,47 @@ const healthCheck = () => {
           type: "warning",
         });
       } else {
+        // ✅ 定时任务超2小时仍运行，强制结束
+        console.error(
+          `[${new Date().toISOString()}] 定时任务卡住超过2小时，强制结束`,
+        );
+        shouldStop.value = true; // 通知正在执行的任务停止
+        isScheduledTaskRunning.value = false;
+        currentScheduledTask = null;
+        scheduledTaskStartTime = null;
+        isRunning.value = false;
+        currentRunningTokenId.value = null;
+        // 清理所有 runningTokens 状态并关闭 WebSocket 连接
+        tokenStore.runningTokens.value.forEach(tokenId => {
+          tokenStore.closeWebSocketConnection(tokenId);
+          tokenStore.setTokenRunning(tokenId, false);
+        });
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: "=== 警告：任务执行已超过2小时，定时任务仍在运行中 ===",
+          message: "=== 检测到定时任务执行已超过2小时，已强制结束当前任务 ===",
           type: "warning",
         });
       }
     }
   }
   
-  // 检查定时任务执行状态是否卡住
-  if (isScheduledTaskRunning.value && currentScheduledTask) {
-    const now = Date.now();
-    // 十殿挑战任务超时阈值为 160 分钟（>内部 150 分钟超时），其他任务保持 260 分钟（>批量任务 240 分钟超时）
-    const isNightmareHealthTask = currentScheduledTask?.taskName === 'batchNightmareChallengePresets' 
-      || currentScheduledTask?.name?.includes('十殿');
-    const taskTimeoutMs = isNightmareHealthTask ? (160 * 60 * 1000) : (260 * 60 * 1000);
-    const taskTimeoutAgo = now - taskTimeoutMs;
-    if (scheduledTaskStartTime && scheduledTaskStartTime < taskTimeoutAgo) {
-      const timeoutMinutes = Math.round(taskTimeoutMs / 60000);
+  // 兜底检查：isRunning=false 但 isScheduledTaskRunning 仍为 true（异常情况，如子任务 finally 已重置 isRunning 但外层未清理）
+  if (!isRunning.value && isScheduledTaskRunning.value && scheduledTaskStartTime) {
+    const elapsed = Date.now() - scheduledTaskStartTime;
+    if (elapsed > 260 * 60 * 1000) {
       console.error(
-        `[${new Date().toISOString()}] 定时任务执行状态已持续${timeoutMinutes}分钟，重置状态`,
+        `[${new Date().toISOString()}] isRunning=false 但 isScheduledTaskRunning 已持续${Math.round(elapsed/60000)}分钟，重置状态`,
       );
       isScheduledTaskRunning.value = false;
       currentScheduledTask = null;
-      scheduledTaskStartTime = null; // ✅ 问题2：健康检查重置时清除超时计时
-      // ✅ 关键修复：定时任务超时后也必须重置 isRunning
-      // 否则 isRunning 卡在 true → 调度器行6491永远 return → 后续所有定时任务无法执行
-      if (isRunning.value) {
-        isRunning.value = false;
-        currentRunningTokenId.value = null;
-      }
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `=== 检测到定时任务执行超过${timeoutMinutes}分钟，已重置定时任务状态和isRunning ===`,
-        type: "warning",
-      });
-      // ✅ 同时清理runningTokens状态
+      scheduledTaskStartTime = null;
       tokenStore.runningTokens.value.forEach(tokenId => {
         tokenStore.setTokenRunning(tokenId, false);
+      });
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `=== 检测到 isRunning=false 但定时任务状态未清理（持续${Math.round(elapsed/60000)}分钟），已兜底重置 ===`,
+        type: "warning",
       });
     }
   }
@@ -10330,6 +10592,16 @@ const startScheduler = () => {
               if (elapsed < 60000) { // 1分钟内已执行过
                 return;
               }
+            }
+
+            // ✅ 不上线时段检查（调度器层：最早拦截，避免任何副作用执行）
+            if (task.offlineTimeEnabled && isInOfflineTime()) {
+              addLog({
+                time: currentTime,
+                message: `🚫 定时任务 ${task.name} 处于不上线时段，跳过执行`,
+                type: "warning",
+              });
+              return;
             }
 
             // ✅ 定时任务仅与其他定时任务互斥，不参与日常任务的互斥排队
@@ -11030,6 +11302,18 @@ const executeScheduledTask = async (task) => {
       });
     }
 
+    // ✅ 单账号智能加速（定时任务）
+    if (batchSettings.singleAccountSpeedUp && availableTokens.length === 1) {
+      batchSettings.singleAccountMode = true;
+      const mult = batchSettings.singleAccountMultiplier;
+      const token = tokens.value.find(t => t.id === availableTokens[0]);
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `⚡ ${token?.name || '单账号'} 单账号加速模式（延迟×${mult}）`,
+        type: 'info',
+      });
+    }
+
     // 任务执行前检查不上线时段（只检查一次）
     let isOfflineTime = false;
     if (task.offlineTimeEnabled) {
@@ -11095,7 +11379,7 @@ const executeScheduledTask = async (task) => {
         
         // ✅ 只执行在活动周的任务（使用局部变量，不修改原始配置）
         activeTasks = tasksInActivityWeek;
-      }
+      }  
     }
 
     // ✅ 换皮闯关活动检测：在执行前检测，未开启就跳过整个任务
@@ -11105,6 +11389,21 @@ const executeScheduledTask = async (task) => {
     if (hasSkinChallengeTask && availableTokens.length > 0) {
       // 需要连接一个Token来检测活动是否开启
       const testTokenId = availableTokens[0];
+      
+      // ✅ 活动时间范围校验函数（根据 actId 前6位解析 YYMMDD，活动周期7天）
+      const isActivityTimeValid = (rawActId) => {
+        const idStr = String(rawActId);
+        if (idStr.length < 6) return false;
+        const year = 2000 + parseInt(idStr.substring(0, 2));
+        const month = parseInt(idStr.substring(2, 4)) - 1;
+        const day = parseInt(idStr.substring(4, 6));
+        const startDate = new Date(year, month, day);
+        const endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 7);
+        const now = new Date();
+        return now >= startDate && now < endDate;
+      };
+      
       try {
         await ensureConnection(testTokenId);
         const activityRes = await tokenStore.sendMessageWithPromise(
@@ -11114,34 +11413,57 @@ const executeScheduledTask = async (task) => {
           5000,
         );
         const actEGameInfo = activityRes?.activity?.actEGameInfo || activityRes?.actEGameInfo;
-        // ✅ 不再严格判断 actId === 2606262，只要获取到 actEGameInfo 就认为活动存在
-        // 原因：手动执行一键换皮闯关时也是直接调用 pushMapRunner，不会检查活动 ID 是否正确
-        // 如果 actEGameInfo 存在，说明活动配置已经加载，可以执行后续操作
-        let isActivityOpen = actEGameInfo != null;
+        let isActivityOpen = false;
+        let validActId = null;
         
         console.log('[换皮闯关检测] actEGameInfo:', actEGameInfo);
-        console.log('[换皮闯关检测] isActivityOpen:', isActivityOpen);
         
-        if (isActivityOpen) {
-          // ✅ 成功获取活动状态，缓存结果供后续回退使用
-          try {
-            localStorage.setItem('skinChallenge_activityCache', JSON.stringify({
-              actId: Number(actEGameInfo.actId),
-              timestamp: Date.now(),
-            }));
-          } catch {}
+        if (actEGameInfo?.actId) {
+          const rawActId = actEGameInfo.actId;
+          // ✅ 严格校验：actEGameInfo 非空 + 活动时间范围内
+          isActivityOpen = isActivityTimeValid(rawActId);
+          if (isActivityOpen) {
+            validActId = rawActId;
+            // ✅ 成功检测，缓存结果
+            try {
+              localStorage.setItem('skinChallenge_activityCache', JSON.stringify({
+                actId: Number(rawActId),
+                timestamp: Date.now(),
+              }));
+            } catch {}
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `✅ 换皮闯关活动已开启（actId: ${rawActId}）`,
+              type: "success",
+            });
+          } else {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `🚫 换皮闯关活动已过期（actId: ${rawActId}，已不在7天周期内）`,
+              type: "warning",
+            });
+          }
         } else {
-          // ✅ 回退：服务端返回空时检查缓存，如果近期已成功检测过则推演活动已开启
+          // ✅ actEGameInfo 为空，检查缓存并校验时间范围
           try {
             const cache = JSON.parse(localStorage.getItem('skinChallenge_activityCache') || 'null');
             if (cache?.actId && cache?.timestamp && (Date.now() - cache.timestamp) < 24 * 60 * 60 * 1000) {
-              const hoursAgo = Math.round((Date.now() - cache.timestamp) / 3600000);
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⚠️ 活动检测返回空，但 ${hoursAgo}小时前缓存显示活动已开启(actId:${cache.actId})，推演活动存在，继续执行`,
-                type: "warning",
-              });
-              isActivityOpen = true;
+              if (isActivityTimeValid(cache.actId)) {
+                const hoursAgo = Math.round((Date.now() - cache.timestamp) / 3600000);
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `⚠️ 活动检测返回空，但 ${hoursAgo}小时前缓存显示活动已开启(actId:${cache.actId})且时间未过期，继续执行`,
+                  type: "warning",
+                });
+                isActivityOpen = true;
+                validActId = cache.actId;
+              } else {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `🚫 活动检测返回空，缓存 actId:${cache.actId} 已过期，活动未开启`,
+                  type: "warning",
+                });
+              }
             }
           } catch {}
         }
@@ -11152,42 +11474,45 @@ const executeScheduledTask = async (task) => {
             message: `=== 定时任务 ${task.name} 包含的任务都需要换皮闯关活动，但当前活动未开启，取消执行 ===`,
             type: "warning",
           });
-          // 关闭测试连接
           tokenStore.closeWebSocketConnection(testTokenId);
           return;  // ✅ finally块会清理状态
         }
-        
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `✅ 换皮闯关活动已开启（actId: ${actEGameInfo?.actId || '缓存推演'}）`,
-          type: "success",
-        });
         
         // 关闭测试连接，后续任务会按需连接
         tokenStore.closeWebSocketConnection(testTokenId);
       } catch (err) {
         console.error('[换皮闯关检测] 检测失败:', err);
-        // ✅ 回退：请求失败时检查缓存
+        // ✅ 回退：请求失败时检查缓存并校验时间范围
         let useCache = false;
         try {
           const cache = JSON.parse(localStorage.getItem('skinChallenge_activityCache') || 'null');
           if (cache?.actId && cache?.timestamp && (Date.now() - cache.timestamp) < 24 * 60 * 60 * 1000) {
-            const hoursAgo = Math.round((Date.now() - cache.timestamp) / 3600000);
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `⚠️ 活动检测请求失败: ${err.message}，但 ${hoursAgo}小时前缓存显示活动已开启(actId:${cache.actId})，推演活动存在，继续执行`,
-              type: "warning",
-            });
-            useCache = true;
+            if (isActivityTimeValid(cache.actId)) {
+              const hoursAgo = Math.round((Date.now() - cache.timestamp) / 3600000);
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `⚠️ 活动检测请求失败: ${err.message}，但 ${hoursAgo}小时前缓存显示活动已开启(actId:${cache.actId})且时间未过期，继续执行`,
+                type: "warning",
+              });
+              useCache = true;
+            } else {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `🚫 活动检测请求失败，缓存 actId:${cache.actId} 已过期，活动未开启`,
+                type: "warning",
+              });
+            }
           }
         } catch {}
         
         if (!useCache) {
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `⚠️ 换皮闯关活动检测失败: ${err.message}，无可用缓存，将继续执行任务`,
+            message: `=== 换皮闯关活动检测失败且无可用缓存，取消执行 ===`,
             type: "warning",
           });
+          try { tokenStore.closeWebSocketConnection(testTokenId); } catch {}
+          return;  // ✅ 无法确认活动状态，取消执行
         }
         // 关闭测试连接
         try { tokenStore.closeWebSocketConnection(testTokenId); } catch {}
@@ -11230,33 +11555,6 @@ const executeScheduledTask = async (task) => {
       }
     }
     
-    if (isOfflineTime) {
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `=== 处于不上线时段，跳过Token检查 ===`,
-        type: "warning",
-      });
-    } else {
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `开始检查Token连接状态...`,
-        type: "info",
-      });
-
-      // ✅ 优化：不再预先连接所有Token，改为边连接边执行
-      // 只检查已连接的Token数量，未连接的在执行任务时按需连接
-      const connectedCount = availableTokens.filter(tokenId => {
-        const connection = tokenStore.wsConnections[tokenId];
-        return connection?.status === "connected";
-      }).length;
-      
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `当前已连接 ${connectedCount}/${availableTokens.length} 个Token，其余将在执行时按需连接`,
-        type: "info",
-      });
-    }
-
     // Always use the latest selectedTokens from the task that exist in current tokens.value
     selectedTokens.value = [...availableTokens];
 
@@ -11745,18 +12043,41 @@ const executeScheduledTask = async (task) => {
                   type: "warning",
                 });
               }
+            } else if (taskName === 'batchBookUpgrade') {
+              // 图鉴升星，传入选择的升星类型
+              const types = task.bookUpgradeTypes && task.bookUpgradeTypes.length > 0 ? task.bookUpgradeTypes : ['hero', 'fish', 'skin'];
+              const typeLabels = { hero: '英雄', fish: '鱼灵', skin: '皮肤' };
+              const selectedLabels = types.map(t => typeLabels[t] || t).join('+');
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `⭐ 图鉴升星：执行【${selectedLabels}】`,
+                type: "info",
+              });
+              await taskFunction(types);
+            } else if (taskName === 'batchSaltCupBet') {
+              // 比赛竞猜，自动获取所有比赛并下注
+              const pickVal = task.saltCupBetPick !== undefined ? task.saltCupBetPick : 1;
+              const pickLabels = { 1: '主胜', 2: '平局', 3: '客胜' };
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `🏆 比赛竞猜：自动对所有未下注比赛押【${pickLabels[pickVal] || '主胜'}】`,
+                type: "info",
+              });
+              await taskFunction(null, pickVal);
             } else {
               await taskFunction();
             }
             }; // end executeTaskFunction
+            let _raceTimeoutId;
             await Promise.race([
               executeTaskFunction(),
-              new Promise((_, reject) => setTimeout(() => {
+              new Promise((_, reject) => { _raceTimeoutId = setTimeout(() => {
                 console.error(`[定时任务] 检测到 ${taskName} 执行超时 (${BATCH_TASK_TIMEOUT / 60000}分钟)，记录当前正在执行的账号数量:`, 
                   taskExecutionRecords.value[taskRecordIndex]?.runningCount || 0);
                 reject(new Error(`批量任务执行超时（${BATCH_TASK_TIMEOUT / 60000}分钟）`));
-              }, BATCH_TASK_TIMEOUT))
+              }, BATCH_TASK_TIMEOUT); })
             ]);
+
           
             // ✅ 任务执行成功，更新成功统计（由实时进度定时器负责计算，这里不再累加）
             if (taskExecutionRecords.value[taskRecordIndex]) {
@@ -11774,9 +12095,6 @@ const executeScheduledTask = async (task) => {
               type: "error",
             });
             
-            // ✅ 清除实时进度更新定时器
-            if (scheduledProgressTimer) clearInterval(scheduledProgressTimer);
-          
             // ✅ 检查是否为真正的超时错误（区分误报和真实超时）
             const isTimeoutError = error.message && error.message.includes('批量任务执行超时');
                       
@@ -11837,32 +12155,21 @@ const executeScheduledTask = async (task) => {
                 return; // ⚠️ 不要覆盖已完成的结果
               }
                         
-              // ✅ 只有当确实存在正在执行或未完成的任务时，才将剩余账号标记为失败
-              if (currentRunningCount > 0 || currentSuccessCount < batchStartCount) {
-                // 更新失败统计（只统计实际失败的账号数）
-                const actualFailedCount = batchStartCount - currentSuccessCount;
-                taskExecutionRecords.value[taskRecordIndex].failCount += actualFailedCount;
-                taskExecutionRecords.value[taskRecordIndex].runningCount = Math.max(0, 
-                  taskExecutionRecords.value[taskRecordIndex].runningCount - actualFailedCount);
+              // ✅ 只有当存在仍在运行的账号时，才将其标记为失败（避免重复累加已失败的账号）
+              if (currentRunningCount > 0) {
+                // 只将仍在 running/waiting 的账号追加到失败
+                taskExecutionRecords.value[taskRecordIndex].failCount += currentRunningCount;
+                taskExecutionRecords.value[taskRecordIndex].runningCount = 0;
                           
-                // 记录失败账号（只记录尚未成功的账号）
-                const failedTokens = tokens.value.filter(t => 
-                  !availableTokens.some(id => id === t.id) || 
-                  taskExecutionRecords.value[taskRecordIndex].failedAccounts.some(fa => fa.name === t.name)
-                );
-                          
+                // ✅ 修复：使用 tokenStatus 准确判断哪些账号尚未完成（原逻辑条件反转，会将已成功/已失败的账号重复记录）
                 availableTokens.forEach(tokenId => {
-                  const token = tokens.value.find(t => t.id === tokenId);
-                  const alreadyFailed = taskExecutionRecords.value[taskRecordIndex].failedAccounts.some(fa => fa.name === token?.name);
-                            
-                  // ✅ 只记录尚未成功的账号
-                  const hasNotSucceeded = taskExecutionRecords.value[taskRecordIndex].successCount === 0 || 
-                    taskExecutionRecords.value[taskRecordIndex].failedAccounts.length < batchStartCount;
-                            
-                  if (!alreadyFailed && hasNotSucceeded) {
+                  const status = tokenStatus.value[tokenId];
+                  // 只处理尚未完成的账号（running/waiting/waiting_retry 状态）
+                  if (status === 'running' || status === 'waiting' || status === 'waiting_retry') {
+                    const token = tokens.value.find(t => t.id === tokenId);
                     taskExecutionRecords.value[taskRecordIndex].failedAccounts.push({
                       name: token?.name || '未知账号',
-                      error: tokenFailReasons.value[tokenId] || error.message || '执行失败',
+                      error: tokenFailReasons.value[tokenId] || error.message || '执行超时',
                       time: new Date().toLocaleTimeString(),
                     });
                   }
@@ -11890,14 +12197,12 @@ const executeScheduledTask = async (task) => {
               }
             }
           } finally {
-            // ✅ 关键修复：无论任务函数成功或失败，都必须重置 isRunning
-            // 原因：大部分任务函数内部设置 isRunning.value = true，但异常时没有 try/finally 保护
-            // 如果 isRunning 卡住为 true，调度器会永远跳过所有定时任务
-            if (isRunning.value) {
-              isRunning.value = false;
-              currentRunningTokenId.value = null;
-            }
-            // ✅ 修复：每个子任务完成后刷新 scheduledTaskStartTime，防止 healthCheck 误判定时任务卡死
+            // ✅ 统一在 finally 中清理定时器和状态，确保无论成功/失败/异常都能执行
+            // 1. 清理超时定时器（防止内存泄漏）
+            if (typeof _raceTimeoutId !== 'undefined' && _raceTimeoutId) clearTimeout(_raceTimeoutId);
+            // 2. 清理实时进度定时器
+            if (scheduledProgressTimer) clearInterval(scheduledProgressTimer);
+            // 3. 刷新心跳时间戳，防止 healthCheck 误判定时任务卡死
             scheduledTaskStartTime = Date.now();
             lastTaskExecution = Date.now();
           }
@@ -11912,9 +12217,6 @@ const executeScheduledTask = async (task) => {
             message: `✅ ${taskLabel} 执行完成，用时：${taskElapsedStr}`,
             type: "success",
           });
-          
-          // ✅ 清除实时进度更新定时器
-          if (scheduledProgressTimer) clearInterval(scheduledProgressTimer);
           
           // ✅ 更新子任务执行记录
           if (taskExecutionRecords.value[taskRecordIndex]) {
@@ -11938,6 +12240,15 @@ const executeScheduledTask = async (task) => {
                   finalFailedAccounts.push({
                     name: token?.name || '未知账号',
                     error: tokenFailReasons.value[tokenId] || '未知错误',
+                    time: new Date().toLocaleTimeString(),
+                  });
+                } else if (status === 'running' || status === 'waiting' || status === 'waiting_retry') {
+                  // ✅ 修复：仍在 running/waiting 的账号视为失败（超时中断后 tokenStatus 可能未被更新）
+                  finalFailCount++;
+                  const token = tokens.value.find(t => t.id === tokenId);
+                  finalFailedAccounts.push({
+                    name: token?.name || '未知账号',
+                    error: tokenFailReasons.value[tokenId] || '执行中断',
                     time: new Date().toLocaleTimeString(),
                   });
                 }
@@ -12071,6 +12382,13 @@ saveTaskExecutionRecordsToStorage();
     isScheduledTaskRunning.value = false;
     currentScheduledTask = null;
     scheduledTaskStartTime = null; // ✅ 清除超时计时
+    // 重置单账号加速标志
+    batchSettings.singleAccountMode = false;
+    // ✅ 统一在此处重置 isRunning（不再在子任务 finally 中重置，避免竞态窗口）
+    if (isRunning.value) {
+      isRunning.value = false;
+      currentRunningTokenId.value = null;
+    }
 
     // ✅ 任务完成后，同步处理待执行队列（不再用 nextTick，避免与调度器兖底竞态）
     if (pendingTaskQueue.length > 0) {
@@ -14473,6 +14791,8 @@ const releaseConnectionSlot = () => {
  * @param {string[]} tokenIds - Token ID 列表
  * @param {Function} processFn - 处理函数 (tokenId) => Promise
  */
+const ACCOUNT_STUCK_TIMEOUT = 25 * 60 * 1000; // 25分钟单账号超时
+
 const runStreaming = async (tokenIds, processFn) => {
   const maxConcurrent = batchSettings.maxActive || 5;
   const queue = [...tokenIds];
@@ -14482,7 +14802,27 @@ const runStreaming = async (tokenIds, processFn) => {
   const launchNext = () => {
     if (queue.length === 0 || shouldStop.value) return;
     const tokenId = queue.shift();
-    const p = processFn(tokenId)
+    const token = tokens.value.find(t => t.id === tokenId);
+    let timeoutId;
+    const p = Promise.race([
+      processFn(tokenId),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `⏱️ ${token?.name || tokenId} 执行超过25分钟，强制超时`,
+            type: "warning",
+          });
+          // 关闭 WebSocket 连接，使正在等待响应的 sendWithPromise 立即报错
+          try { tokenStore.closeWebSocketConnection(tokenId); } catch {}
+          // 释放连接槽位，防止槽位泄漏
+          try { releaseConnectionSlot(); } catch {}
+          tokenStatus.value[tokenId] = "failed";
+          tokenFailReasons.value[tokenId] = '单账号执行超时（25分钟）';
+          reject(new Error(`账号 ${token?.name || tokenId} 执行超时（25分钟）`));
+        }, ACCOUNT_STUCK_TIMEOUT);
+      })
+    ])
       .catch((err) => {
         // ✅ 修复：确保异常时 tokenStatus 被正确设置，避免误判
         const currentStatus = tokenStatus.value[tokenId];
@@ -14492,6 +14832,7 @@ const runStreaming = async (tokenIds, processFn) => {
         }
       })
       .finally(() => {
+        if (timeoutId) clearTimeout(timeoutId);
         running.delete(p);
         completedCount++;
       });
@@ -14707,7 +15048,7 @@ const createTaskDeps = () => ({
   },
   message,
   currentRunningTokenId,
-  // 延迟配置
+  // 延迟配置 - 统一使用 delayManager 的延迟分组
   delayConfig: {
     command: batchSettings.commandDelay,
     task: batchSettings.taskDelay,
@@ -14716,13 +15057,13 @@ const createTaskDeps = () => ({
     refresh: batchSettings.refreshDelay,
     long: batchSettings.longDelay,
   },
-  // 功能模块延迟配置
+  // 功能模块延迟配置（保留用于向后兼容）
   moduleDelays: batchSettings.moduleDelays,
-  // 获取模块延迟的辅助函数
+  // 延迟分组配置（新统一系统）
+  delayGroups: batchSettings.delayGroups,
+  // 获取模块延迟的辅助函数（使用集中式 delayManager）
   getModuleDelay: (moduleName) => {
-    const md = batchSettings.moduleDelays;
-    if (md) return md[moduleName] || md.default || batchSettings.taskDelay || 1000;
-    return batchSettings.taskDelay || 1000;
+    return getModuleDelay(moduleName, batchSettings);
   },
   // 安全延迟函数（支持中途停止）
   safeDelay: async (ms, checkInterval = 100) => {
@@ -15305,7 +15646,7 @@ const tasksArena = wrapTaskFunctions(createTasksArena(createTaskDeps()));
 const { batcharenafight, batchTopUpFish, batchTopUpArena } = tasksArena;
 
 const tasksStore = wrapTaskFunctions(createTasksStore(createTaskDeps()));
-const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, batch_mail_claim_and_cleanup, saltcup26_openstarpack_use } = tasksStore;
+const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, batch_mail_claim_and_cleanup, saltcup26_openstarpack_use, batchSaltCupBet, getSaltCupBetInfo } = tasksStore;
 
 // ====== 采购清单配置 ======
 // 采购清单可选项（用于任务模板中多选）
@@ -16346,6 +16687,71 @@ const startBatch = async () => {
     tokenStatus.value[id] = "waiting";
   });
 
+  // ✅ 新增：为手动日常任务创建任务完成情况记录
+  // 定时任务调用时跳过：executeScheduledTask 已在外层创建了记录，避免重复
+  const _isFromScheduledTask = isScheduledTaskRunning.value;
+  const availableTokens = [...selectedTokens.value];
+
+  // ✅ 单账号智能加速
+  if (batchSettings.singleAccountSpeedUp && availableTokens.length === 1) {
+    batchSettings.singleAccountMode = true;
+    const mult = batchSettings.singleAccountMultiplier;
+    const token = tokens.value.find(t => t.id === availableTokens[0]);
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `⚡ ${token?.name || '单账号'} 单账号加速模式（延迟×${mult}）`,
+      type: 'info',
+    });
+  }
+
+  // 清理本次执行相关的失败原因缓存
+  availableTokens.forEach(tokenId => {
+    delete tokenFailReasons.value[tokenId];
+  });
+  const _batchTaskRecordIndex = _isFromScheduledTask ? -1 : taskExecutionRecords.value.push({
+    name: '日常任务',
+    startTime: batchStartTime,
+    endTime: null,
+    elapsedStr: null,
+    status: 'running',
+    totalAccounts: availableTokens.length,
+    successCount: 0,
+    failCount: 0,
+    runningCount: availableTokens.length,
+    progressPercent: 0,
+    failedAccounts: [],
+    scheduledTime: null,
+    isManual: true,
+  }) - 1;
+
+  // 定时更新进度
+  const _batchProgressTimer = setInterval(() => {
+    let successCount = 0, failCount = 0, runningCount = 0;
+    const failedAccounts = [];
+    availableTokens.forEach(tokenId => {
+      const status = tokenStatus.value[tokenId];
+      if (status === 'completed') successCount++;
+      else if (status === 'failed') {
+        failCount++;
+        const token = tokens.value.find(t => t.id === tokenId);
+        failedAccounts.push({
+          name: token?.name || '未知账号',
+          error: tokenFailReasons.value[tokenId] || '未知错误',
+          time: new Date().toLocaleTimeString(),
+        });
+      } else if (status === 'running' || status === 'waiting' || status === 'waiting_retry') runningCount++;
+    });
+    const record = taskExecutionRecords.value[_batchTaskRecordIndex];
+    if (record) {
+      record.successCount = successCount;
+      record.failCount = failCount;
+      record.runningCount = runningCount;
+      record.failedAccounts = failedAccounts;
+      const completed = successCount + failCount;
+      record.progressPercent = record.totalAccounts > 0 ? Math.round((completed / record.totalAccounts) * 100) : 0;
+    }
+  }, 500);
+
   // 400340重试队列：收集第一批执行中遇到400340错误的账号
   const retry400340Tokens = [];
   const MAX_400340_RETRIES = batchSettings.defaultRetryCount || 2;
@@ -16670,7 +17076,7 @@ const startBatch = async () => {
   // 等待所有任务完成后再继续
   await new Promise((r) => setTimeout(r, 1000));
 
-  // ==================== 400340 重试逻辑 ====================
+  // ==================== 400340 重试逻辑（连接池滚动执行） ====================
   if (retry400340Tokens.length > 0 && !shouldStop.value) {
     const waitSeconds = RETRY_WAIT_TIME / 1000;
     const waitMinutes = Math.floor(waitSeconds / 60);
@@ -16683,7 +17089,6 @@ const startBatch = async () => {
     });
 
     for (let retryRound = 0; retryRound < MAX_400340_RETRIES && retry400340Tokens.length > 0 && !shouldStop.value; retryRound++) {
-      // 等待重试延迟
       addLog({
         time: new Date().toLocaleTimeString(),
         message: `⏳ 等待${waitDesc}后进行第${retryRound + 1}次重试（${retry400340Tokens.length}个账号）...`,
@@ -16695,28 +17100,20 @@ const startBatch = async () => {
 
       addLog({
         time: new Date().toLocaleTimeString(),
-        message: `\n=== 开始400340重试 第${retryRound + 1}/${MAX_400340_RETRIES}次（${retry400340Tokens.length}个账号）===`,
+        message: `\n=== 开始400340重试 第${retryRound + 1}/${MAX_400340_RETRIES}次（${retry400340Tokens.length}个账号）并发数: ${maxConcurrent} ===`,
         type: "info",
       });
 
+      // ✅ 使用连接池滚动执行重试任务
+      const retryQueue = [...retry400340Tokens];
+      const retryActiveTokens = new Set();
+      const retryCompletionMap = new Map();
       const stillFailed = [];
 
-      for (let i = 0; i < retry400340Tokens.length; i++) {
-        if (shouldStop.value) break;
-
-        const tokenId = retry400340Tokens[i];
+      const executeRetryTokenRolling = async (tokenId) => {
+        if (shouldStop.value) return;
         const token = tokens.value.find((t) => t.id === tokenId);
-        if (!token) continue;
-
-        // 账号间延迟（非第一个账号时）
-        if (i > 0 && (batchSettings.accountRetryInterval || 0) > 0) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `⏳ 等待${batchSettings.accountRetryInterval / 1000}秒后处理下一个账号...`,
-            type: "info",
-          });
-          await new Promise((r) => setTimeout(r, batchSettings.accountRetryInterval || 3000));
-        }
+        if (!token) return;
 
         tokenStatus.value[tokenId] = "running";
 
@@ -16727,12 +17124,9 @@ const startBatch = async () => {
             type: "info",
           });
 
-          await ensureConnection(tokenId, 3);
-
-          // 等待连接稳定
+          await ensureConnection(tokenId, 3, true); // skipSlot=true，由滚动执行控制并发
           await new Promise((r) => setTimeout(r, 2000));
 
-          // 创建新的runner
           const retryRunner = new DailyTaskRunner(tokenStore, {
             commandDelay: batchSettings.commandDelay,
             taskDelay: batchSettings.taskDelay,
@@ -16769,13 +17163,63 @@ const startBatch = async () => {
           });
         } finally {
           tokenStore.closeWebSocketConnection(tokenId);
-          releaseConnectionSlot(); // 与 ensureConnection 中的 waitForConnectionSlot 对应
+          lastTaskExecution = Date.now();
           addLog({
             time: new Date().toLocaleTimeString(),
             message: `${token.name} 连接已关闭  (活跃: ${connectionQueue.active}/${batchSettings.maxActive})`,
             type: "info",
           });
         }
+      };
+
+      // 滚动执行循环
+      while (retryQueue.length > 0 || retryActiveTokens.size > 0) {
+        if (shouldStop.value) break;
+
+        while (retryQueue.length > 0 && retryActiveTokens.size < maxConcurrent) {
+          const nextTokenId = retryQueue.shift();
+          retryActiveTokens.add(nextTokenId);
+
+          const promise = (async () => {
+            try {
+              await Promise.race([
+                executeRetryTokenRolling(nextTokenId),
+                new Promise((_, reject) => setTimeout(() =>
+                  reject(new Error(`重试执行超时（${TOKEN_EXECUTION_TIMEOUT / 60000}分钟）`)),
+                  TOKEN_EXECUTION_TIMEOUT
+                ))
+              ]);
+            } catch (timeoutErr) {
+              const token = tokens.value.find((t) => t.id === nextTokenId);
+              stillFailed.push(nextTokenId);
+              tokenStatus.value[nextTokenId] = "failed";
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `⏰ ${token?.name} 重试超时，强制标记为失败`,
+                type: "warning",
+              });
+              tokenStore.closeWebSocketConnection(nextTokenId);
+              lastTaskExecution = Date.now();
+            }
+          })();
+
+          retryCompletionMap.set(nextTokenId, promise);
+        }
+
+        if (retryActiveTokens.size > 0) {
+          const activePromises = [...retryActiveTokens].map(id => retryCompletionMap.get(id));
+          await Promise.race(activePromises);
+
+          for (const [tid] of retryCompletionMap.entries()) {
+            const status = tokenStatus.value[tid];
+            if (status === 'completed' || status === 'failed' || status === 'waiting_retry') {
+              retryActiveTokens.delete(tid);
+              retryCompletionMap.delete(tid);
+            }
+          }
+        }
+
+        await new Promise(r => setTimeout(r, 50));
       }
 
       // 更新重试队列
@@ -16816,6 +17260,43 @@ const startBatch = async () => {
     });
   }
 
+  // ✅ 清理进度定时器并最终更新任务记录
+  clearInterval(_batchProgressTimer);
+  {
+    let successCount = 0, failCount = 0;
+    const failedAccounts = [];
+    availableTokens.forEach(tokenId => {
+      const status = tokenStatus.value[tokenId];
+      if (status === 'completed') successCount++;
+      else if (status === 'failed') {
+        failCount++;
+        const token = tokens.value.find(t => t.id === tokenId);
+        failedAccounts.push({
+          name: token?.name || '未知账号',
+          error: tokenFailReasons.value[tokenId] || '未知错误',
+          time: new Date().toLocaleTimeString(),
+        });
+      }
+    });
+    const record = taskExecutionRecords.value[_batchTaskRecordIndex];
+    if (record) {
+      record.successCount = successCount;
+      record.failCount = failCount;
+      record.runningCount = 0;
+      record.failedAccounts = failedAccounts;
+      record.progressPercent = 100;
+      record.endTime = Date.now();
+      const elapsed = record.endTime - record.startTime;
+      record.elapsedStr = elapsed >= 60000
+        ? `${Math.floor(elapsed / 60000)}分${Math.floor((elapsed % 60000) / 1000)}秒`
+        : `${(elapsed / 1000).toFixed(1)}秒`;
+      if (failCount === 0) record.status = 'success';
+      else if (successCount > 0) record.status = 'partial';
+      else record.status = 'fail';
+    }
+    saveTaskExecutionRecordsToStorage();
+  }
+
   // ✅ 显示日常任务总用时
   const batchElapsed = Date.now() - batchStartTime;
   const batchElapsedStr = batchElapsed >= 60000
@@ -16829,6 +17310,8 @@ const startBatch = async () => {
 
   isRunning.value = false;
   currentRunningTokenId.value = null;
+  // 重置单账号加速标志
+  batchSettings.singleAccountMode = false;
   
   // ✅ 日常任务结束后，主动消费定时任务队列
   if (pendingTaskQueue.length > 0 && !isScheduledTaskRunning.value) {

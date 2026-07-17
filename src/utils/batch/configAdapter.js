@@ -4,6 +4,7 @@
  */
 
 import { DELAY_CONFIG, RETRY_CONFIG, TIMEOUT_CONFIG } from "./constants.js";
+import { DELAY_GROUPS } from "@/utils/batch/delayManager";
 
 /**
  * 获取超时配置
@@ -38,18 +39,16 @@ export const getRetryConfig = (userSettings = {}) => {
 };
 
 /**
- * 获取延迟配置
+ * 获取延迟分组配置
  * @param {object} userSettings - 用户自定义设置(batchSettings)
- * @returns {object} 应用了用户设置后的延迟配置
+ * @returns {object} 应用了用户设置后的延迟分组配置
  */
-export const getDelayConfig = (userSettings = {}) => {
+export const getDelayGroupConfig = (userSettings = {}) => {
   return {
-    COMMAND: userSettings.commandDelay || DELAY_CONFIG.COMMAND,
-    TASK: userSettings.taskDelay || DELAY_CONFIG.TASK,
-    ACTION: userSettings.actionDelay || DELAY_CONFIG.ACTION,
-    BATTLE: userSettings.battleDelay || DELAY_CONFIG.BATTLE,
-    REFRESH: userSettings.refreshDelay || DELAY_CONFIG.REFRESH,
-    LONG: userSettings.longDelay || DELAY_CONFIG.LONG,
+    FAST: userSettings.delayGroups?.fast || DELAY_GROUPS.fast,
+    NORMAL: userSettings.delayGroups?.normal || DELAY_GROUPS.normal,
+    BATTLE: userSettings.delayGroups?.battle || DELAY_GROUPS.battle,
+    HEAVY: userSettings.delayGroups?.heavy || DELAY_GROUPS.heavy,
   };
 };
 
@@ -62,7 +61,7 @@ export const getFullConfig = (userSettings = {}) => {
   return {
     timeout: getTimeoutConfig(userSettings),
     retry: getRetryConfig(userSettings),
-    delay: getDelayConfig(userSettings),
+    delay: getDelayGroupConfig(userSettings),
   };
 };
 
@@ -86,17 +85,18 @@ export const getConfigDescription = (userSettings = {}) => {
   • 重试延迟: ${config.retry.DEFAULT_DELAY}ms
   • 账号间隔: ${config.retry.ACCOUNT_INTERVAL}ms
 
-- 延迟设置:
-  • 命令延迟: ${config.delay.COMMAND}ms
-  • 任务延迟: ${config.delay.TASK}ms
-  • 战斗延迟: ${config.delay.BATTLE}ms
+- 延迟分组:
+  • 快速操作: ${config.delay.FAST}ms
+  • 标准操作: ${config.delay.NORMAL}ms
+  • 战斗操作: ${config.delay.BATTLE}ms
+  • 重度操作: ${config.delay.HEAVY}ms
   `.trim();
 };
 
 export default {
   getTimeoutConfig,
   getRetryConfig,
-  getDelayConfig,
+  getDelayGroupConfig,
   getFullConfig,
   getConfigDescription,
 };

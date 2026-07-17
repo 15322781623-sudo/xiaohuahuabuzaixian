@@ -531,6 +531,8 @@ export function registerDefaultCommands(reg) {
 
     // 咸鱼神杯
     .register("saltcup26_openstarpack", { packId: 5501, starId: 0, cnt: 1 })
+    .register("SaltCup26_GetBetInfo")
+    .register("saltcup26_placebet", { matchId: "", pick: 1 })
 
     // 发送游戏内消息
     .register("system_sendchatmessage");
@@ -1519,6 +1521,8 @@ export class XyzwWebSocketClient {
       warguess_getguesscoinrewardresp: "warguess_getguesscoinreward",
       warguess_getguessinforesp: "warguess_getguessinfo",
       warguess_guessclaimresp: "warguess_guessclaim",
+      saltcup26_getbetinforesp: "SaltCup26_GetBetInfo",
+      saltcup26_placebetresp: "saltcup26_placebet",
       league_getbattlefieldresp: "league_getbattlefield",
       league_getgroupopponentresp: "league_getgroupopponent",
       // 咸王宝库

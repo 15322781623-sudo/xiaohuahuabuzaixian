@@ -14,6 +14,70 @@ export const useChangelogStore = defineStore("changelog", () => {
    */
   const changelogs = ref([
   {
+    version: "v2.34.0",
+    date: "2026-07-14",
+    type: "minor",
+    title: "四层延迟架构 & 单账号智能加速 & 性能优化",
+    features: [
+      "单账号智能加速：仅选择1个账号执行时，自动将延迟降低为原来的 20%（可配置倍率），加速5倍执行，多账号时自动恢复原延迟",
+      "日常子任务延迟独立控制：新增 dailySubtaskDelay 配置项（默认300ms），专门控制同模块内子任务间的等待时间，与命令延迟、模块切换延迟分层独立",
+      "四层延迟架构：命令级(commandDelay) → 子任务级(dailySubtaskDelay) → 模块级(delayGroups) → 单账号加速倍率(singleAccountMultiplier)，层次分明各司其职",
+    ],
+    improvements: [
+      "moduleDelay 重叠修复：模块级延迟从「每个子任务后都加」改为「仅在模块切换时加一次」，9个领取任务的纯延迟从 31.5秒 降至 7.5秒，提速4.2倍",
+      "API调用优化：移除 ensureConnection 后的冗余 role_getroleinfo 验证调用，英雄升星和鱼灵升星减少约60行重复代码，每账号节省3-4次API调用",
+      "卡片日常补齐接入单账号加速：TokenCard 的一键补齐按钮始终为单账号操作，自动启用加速模式",
+      "手动执行日常任务创建完成记录：「开始执行」按钮现在也会创建任务完成情况记录，与定时任务和手动按钮功能保持一致",
+    ],
+    fixes: [],
+  },
+  {
+    version: "v2.33.0",
+    date: "2026-07-14",
+    type: "minor",
+    title: "定时任务执行逻辑优化 & 防卡死增强",
+    features: [
+      "runStreaming 单账号超时保护：每个账号执行超过 25 分钟自动强制超时，关闭 WebSocket 连接并释放槽位，防止单账号卡死拖慢整个任务",
+    ],
+    improvements: [
+      "定时任务超时统计修复：子任务超时后，仍在 running/waiting 状态的账号现在正确计入失败数和失败详情列表，不再被统计重算覆盖丢失",
+      "定时器清理统一移至 finally 块：scheduledProgressTimer 和 _raceTimeoutId 的清理逻辑统一在 finally 中执行，确保无论成功/失败/异常都能释放，防止内存泄漏",
+      "移除不上线时段重复检查：删除已在上游 return 后永远无法执行的死代码（原 27 行），简化执行流程",
+    ],
+    fixes: [
+      "修复超时失败账号记录逻辑反转：原条件会误将已成功/已失败的账号重复记录为失败，现改为通过 tokenStatus 精确判断只记录仍在 running/waiting 的账号",
+      "修复不上线时段 UI 文案错误：显示文本从「周三05:00-07:00」修正为「周五05:00-07:00」，与实际代码逻辑（dayOfWeek===5）一致",
+      "修复子任务超时后进度回退：post-finally 统计重算现在将 running/waiting 状态的账号视为失败，不再导致 failCount 被覆盖为更小值、进度百分比回退",
+    ],
+  },
+  {
+    version: "v2.32.0",
+    date: "2026-07-14",
+    type: "minor",
+    title: "比赛竞猜 & 智能发车优化 & 十殿抽奖优化 & 卡密管理增强",
+    features: [
+      "新增比赛竞猜功能：资源模块新增比赛竞猜按钮，支持查看所有比赛并选择主胜/平局/客胜下注，多账号并发执行，已下注账号自动跳过，支持定时任务自动对所有未下注比赛下注",
+      "新增延迟分组系统：将分散的模块延迟统一为 4 个分组（快速/标准/战斗/重度），默认值 2000/3000/3000/5000ms，可在设置面板调整",
+      "十殿抽奖新增独立延迟控制：新增 nightmare 模块延迟（默认 3 秒），可在设置面板「功能模块延迟」区域调整，解决“操作过快”报错",
+      "卡密列表排序功能：状态列和创建时间列支持点击排序，点击切换升序/降序，表头显示排序方向指示器",
+    ],
+    improvements: [
+      "比赛竞猜并发执行：多账号通过 runStreaming 并发下注，按 maxActive 控制并发数，账号间无需等待",
+      "智能发车 API 调用优化：刷新券仅在发车前获取一次，后续刷新通过本地递减计算，不再每次刷新后查询服务器；护卫使用情况也改为本地跟踪，减少大量冗余 API 调用",
+      "智能发车并发控制：主流程和重试逻辑均改为严格分批执行（每批 maxActive 个账号），一批完成后再执行下一批，与十殿抽奖保持一致",
+      "智能发车护卫获取容错：legion_getinfo 请求失败时自动重试（最多 2 次），提高护卫分配成功率",
+      "十殿抽奖 API 调用优化：移除循环内重复 nightmare_claimturnrewardtimes 调用，改为进入循环前一次性领取，API 调用量减少约 45%，降低触发 400340 限流风险",
+      "十殿抽奖分批并发控制：主流程和重试逻辑均改为严格分批执行（每批 maxActive 个账号），一批完成后再执行下一批，批次间自动等待",
+      "卡密管理后台登录优化：新增轻量级 /api/card/admin-check 接口，登录验证不再加载完整卡密列表，响应更快",
+      "卡密列表接口优化：/api/card/list 改用 Promise.all() 并行读取 KV，提升大批量卡密加载速度",
+      "抽奖成功日志改为绿色显示：单次抽奖成功日志类型从 info 改为 success",
+    ],
+    fixes: [
+      "修复智能发车刷新券突降为0：role_getroleinfo 响应异常时不再误判刷新券不足，改为本地计算避免服务端响应缺失导致的误判",
+      "修复卡密管理页面无法鼠标滚动：body 样式从 height:100% 改为 min-height:100%，允许页面内容超出视口时正常滚动",
+    ],
+  },
+  {
     version: "v2.31.0",
     date: "2026-07-11",
     type: "minor",
@@ -30,6 +94,8 @@ export const useChangelogStore = defineStore("changelog", () => {
       "一键换皮闯关活动状态缓存推演：activity_get 失败或返回空时使用 localStorage 缓存（24小时有效期）推演活动是否开启，减少误判",
       "十殿后台战斗 UI 状态恢复增强：添加 _skipCaptainWatch 标志防止程序化状态变更触发 watch 清空队伍信息，!roomId 异常路径也完整恢复 UI 状态",
       "WebSocket 命令注册：新增 legion_buypayloaditem（蟠桃提交铃铛）、legion_payloadsignup（蟠桃报名）及对应响应映射",
+      "爬怪异塔能量刷新策略调整：从每 8 次改为每 10 次刷新真实能量，匹配每 10 次胜利后关卡重置体力恢复的节奏，避免第 10 次胜利后因估算能量为 0 而误停",
+      "领取挂机 API 顺序调整：先调用 system_claimhangupreward 领取挂机收益，再调用 system_mysharecallback 分享回调，与实际抓包流程一致",
     ],
     fixes: [
       "修复十殿阎罗后台战斗成员恢复状态不显示：_parseRoomInfo 中 _onStatusChange 调用移至成员解析之后，确保 UI 获取到最新的武将存活/阵亡数据",
@@ -38,6 +104,7 @@ export const useChangelogStore = defineStore("changelog", () => {
       "修复十殿阎罗后台战斗失败预设重新执行时出现 2 个相同队伍：在 push 新战斗条目前先移除同一预设的旧条目（failed/completed 等状态）",
       "修复十殿阎罗新建预设时保留之前队伍信息：编辑器容器添加 :key 强制重新渲染，确保 n-select 等组件内部状态完全重置",
       "修复十殿阎罗后台战斗预设队伍成员恢复状态缺失：getMembers() 新增返回 heroes 数组，UI 显示每个武将的存活/阵亡状态",
+      "修复任务完成情况误判失败账号：单账号执行超时时不再误判已完成的任务；runStreaming 异常时正确设置 tokenStatus；防御性检查覆盖 running/waiting 状态；任务完成或异常时统一处理未完成账号",
     ],
   },
   {

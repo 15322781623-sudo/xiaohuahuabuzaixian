@@ -87,8 +87,12 @@
           <div class="table-header">
             <span class="col-index">#</span>
             <span class="col-key">卡密</span>
-            <span class="col-status">状态</span>
-            <span class="col-time">创建时间</span>
+            <span class="col-status sortable" :class="{ 'sort-active': sortField === 'status' }" @click="toggleSort('status')">
+              状态 <span class="sort-icon">{{ sortField === 'status' ? (sortAsc ? '↑' : '↓') : '↕' }}</span>
+            </span>
+            <span class="col-time sortable" :class="{ 'sort-active': sortField === 'createdAt' }" @click="toggleSort('createdAt')">
+              创建时间 <span class="sort-icon">{{ sortField === 'createdAt' ? (sortAsc ? '↑' : '↓') : '' }}</span>
+            </span>
             <span class="col-device">绑定设备</span>
             <span class="col-action">操作</span>
           </div>
@@ -151,18 +155,52 @@ const actionLoading = ref('');
 
 // 搜索
 const searchText = ref('');
+
+// 排序
+const sortField = ref(''); // 'status' | 'createdAt' | ''
+const sortAsc = ref(true);
+
+const toggleSort = (field) => {
+  if (sortField.value === field) {
+    sortAsc.value = !sortAsc.value;
+  } else {
+    sortField.value = field;
+    sortAsc.value = true;
+  }
+};
+
 const filteredCards = computed(() => {
   const keyword = searchText.value.trim().toLowerCase();
-  if (!keyword) return cards.value;
-  return cards.value.filter(card =>
-    card.cardKey.toLowerCase().includes(keyword)
-    || (card.status === 'activated' ? '已激活' : '未使用').includes(keyword)
-    || (card.deviceId || '').toLowerCase().includes(keyword)
-  );
+  let result = keyword
+    ? cards.value.filter(card =>
+        card.cardKey.toLowerCase().includes(keyword)
+        || (card.status === 'activated' ? '已激活' : '未使用').includes(keyword)
+        || (card.deviceId || '').toLowerCase().includes(keyword)
+      )
+    : [...cards.value];
+
+  // 排序
+  if (sortField.value) {
+    result.sort((a, b) => {
+      let cmp = 0;
+      if (sortField.value === 'status') {
+        // 已激活排前面
+        const aVal = a.status === 'activated' ? 0 : 1;
+        const bVal = b.status === 'activated' ? 0 : 1;
+        cmp = aVal - bVal;
+      } else if (sortField.value === 'createdAt') {
+        cmp = (a.createdAt || '').localeCompare(b.createdAt || '');
+      }
+      return sortAsc.value ? cmp : -cmp;
+    });
+  }
+
+  return result;
 });
 
 /**
  * 验证管理员密码
+ * ✅ 优化：使用轻量级 /api/card/admin-check 接口，只验证密码不加载列表
  */
 const verifyAdmin = async () => {
   if (!adminPassword.value) {
@@ -173,18 +211,23 @@ const verifyAdmin = async () => {
   adminError.value = '';
 
   try {
-    const resp = await fetch(`${WORKER_BASE}/api/card/list`, {
+    // 先验证密码（快速响应）
+    const checkResp = await fetch(`${WORKER_BASE}/api/card/admin-check`, {
+      method: 'POST',
       headers: { 'X-Admin-Password': adminPassword.value },
     });
-    const data = await resp.json();
+    const checkData = await checkResp.json();
 
-    if (data.success) {
-      adminVerified.value = true;
-      cards.value = data.cards || [];
-      message.success('验证成功');
-    } else {
-      adminError.value = data.error || '密码错误';
+    if (!checkData.success) {
+      adminError.value = checkData.error || '密码错误';
+      return;
     }
+
+    adminVerified.value = true;
+    message.success('验证成功');
+
+    // 验证成功后再加载卡密列表（不阻塞登录）
+    loadCards();
   } catch (e) {
     adminError.value = `网络错误：${e.message}`;
   } finally {
@@ -521,6 +564,27 @@ const formatDate = (dateStr) => {
   border-bottom: 2px solid #f0f0f0;
   font-weight: 600;
   color: #666;
+}
+
+/* 可排序列 */
+.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s;
+}
+
+.sortable:hover {
+  color: var(--primary-color, #2080f0);
+}
+
+.sort-active {
+  color: var(--primary-color, #2080f0);
+}
+
+.sort-icon {
+  font-size: 12px;
+  margin-left: 2px;
+  opacity: 0.6;
 }
 
 .table-row {

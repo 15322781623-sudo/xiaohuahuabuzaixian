@@ -3,6 +3,8 @@
  * 包含: climbTower, climbWeirdTower, batchClaimFreeEnergy
  */
 
+import { getModuleDelayCompat } from "@/utils/batch/delayManager";
+
 /**
  * 创建爬塔类任务执行器
  * @param {Object} deps - 依赖项
@@ -29,12 +31,16 @@ export function createTasksTower(deps) {
     getModuleDelay,
   } = deps;
 
-  // 模块延迟辅助函数（确保至少1000ms，避免连续请求被服务端拒绝）
-  const _getModuleDelay = getModuleDelay || ((moduleName) => {
-    const md = batchSettings.moduleDelays;
-    const delay = md ? (md[moduleName] || md.default || batchSettings.taskDelay || 1000) : (batchSettings.taskDelay || 1000);
+  // 使用集中式延迟管理器（兼容新旧API，确保至少1000ms避免连续请求被服务端拒绝）
+  const _getModuleDelay = (moduleName) => {
+    let delay;
+    if (getModuleDelay) {
+      delay = getModuleDelay(moduleName);
+    } else {
+      delay = getModuleDelayCompat(moduleName, batchSettings);
+    }
     return Math.max(delay, 1000);
-  });
+  };
 
   // 默认配置
   const DEFAULT_CONFIG = {
