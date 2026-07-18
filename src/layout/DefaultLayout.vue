@@ -53,6 +53,16 @@
           <router-link
             active-class="active"
             class="nav-item"
+            to="/admin/game-login"
+          >
+            <n-icon>
+              <GameController></GameController>
+            </n-icon>
+            <span>游戏登录</span>
+          </router-link>
+          <router-link
+            active-class="active"
+            class="nav-item"
             to="/admin/message-test"
           >
             <n-icon>
@@ -158,6 +168,16 @@
         </router-link>
         <router-link
           class="drawer-item"
+          to="/admin/game-login"
+          @click="isMobileMenuOpen = false"
+        >
+          <n-icon>
+            <GameController></GameController>
+          </n-icon>
+          <span>游戏登录</span>
+        </router-link>
+        <router-link
+          class="drawer-item"
           to="/admin/message-test"
           @click="isMobileMenuOpen = false"
         >
@@ -217,6 +237,7 @@ import {
   Menu,
   PersonCircle,
   Settings,
+  GameController,
 } from "@vicons/ionicons5";
 
 import { useRouter } from "vue-router";

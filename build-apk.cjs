@@ -143,6 +143,14 @@ const main = async () => {
       logStep(3, '跳过前端构建 (--skip-build)');
     }
 
+    // 步骤 3.5: JS 代码混淆加密
+    logStep('3.5', 'JS 代码混淆加密');
+    if (!exec('node scripts/obfuscate-dist.cjs')) {
+      log('代码混淆失败，继续构建（使用未混淆代码）', 'warn');
+    } else {
+      log('代码混淆完成', 'success');
+    }
+
     // 步骤 4: Capacitor 同步
     logStep(4, '同步 Capacitor (npx cap sync android)');
     if (!exec('npx cap sync android')) {

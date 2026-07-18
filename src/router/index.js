@@ -119,6 +119,15 @@ const my_routes = [
         },
       },
       {
+        path: "game-login",
+        name: "GameLogin",
+        component: () => import("@/views/GameLogin.vue"),
+        meta: {
+          title: "游戏登录",
+          requiresToken: true,
+        },
+      },
+      {
         path: "card-manager",
         name: "CardManager",
         component: () => import("@/views/CardManager.vue"),

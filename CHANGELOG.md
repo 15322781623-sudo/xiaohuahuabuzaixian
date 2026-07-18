@@ -1,5 +1,30 @@
 # 更新日志
 
+## [2.36.0] - 2026-07-14
+
+### ✨ 新功能
+- **断线重连+保活机制**: WebSocket断线自动检测，8秒后通过刷新游戏窗口重连（最多3次），空闲120秒自动发送心跳保活，连接状态实时指示器显示
+- **周期性健康检查**: 父窗口每30秒向所有游戏iframe发送WS_HEALTH_PING，检测连接存活状态，异常时自动触发恢复
+- **game.html增强代码自注入**: 独立窗口打开时自动从localStorage读取增强代码并执行，批量日常任务通过独立窗口登录的账号也能注入游戏增强脚本
+
+### ⚡ 优化
+- **游戏窗口网格自适应宽高**: 基于容器尺寸+游戏9:16比例自动计算最优列数和单元格尺寸，ResizeObserver实时监听容器变化
+- **十殿加速UI全面优化**: 面板宽度从220px缩减至160px，字体/滑块/间距全面缩小约40%，收起时仅显示标题标签
+- **十殿加速默认收起状态**: 初始加载时面板折叠，点击▼按钮展开配置滑块
+- **移除挤号断线(kickSession)功能**: 由断线重连机制替代
+- **增强脚本更新**: 更新15个增强脚本，新增3个脚本，移除重复功能项
+- **新增4个增强脚本**: 自动蟠桃园、升星助手、道具使用、对手洗练
+- **游戏窗口刷新按钮(↻)**: 支持单独刷新指定游戏窗口
+- **刷新重登重新解码登录数据**: refreshSingle重新获取loginData并写入localStorage
+- **notifyIframesResize增加readyState防护**: 跳过未加载完成的iframe
+- **列数切换时强制iframe重绘**: visibility切换+resize事件通知游戏引擎重算画布尺寸
+
+### 🐛 修复
+- **cocos2d引擎_initRenderer崩溃**: document.querySelector返回null导致'reading tagName of null'错误，采用三层防护
+- **patch.js DOM null错误**: _initFrameSize/_resizeEvent添加DOM就绪检查
+- **refreshSingle登录数据丢失**: game.html首次加载后removeItem导致二次刷新无法获取token
+- **arenaReport语法错误**: 移除多余的闭合花括号
+
 ## [2.29.0] - 2026-07-10
 
 ### ✨ 新功能

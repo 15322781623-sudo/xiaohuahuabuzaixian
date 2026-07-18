@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html style="width:100%;height:100%;margin:0;padding:0;overflow:hidden;">
+<head>
+  <meta charset="utf-8" />
+  <title>咸鱼之王</title>
+  <meta name="viewport" content="width=device-width,user-scalable=no,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="format-detection" content="telephone=no" />
+  <meta name="renderer" content="webkit" />
+  <meta name="force-rendering" content="webkit" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="screen-orientation" content="portrait" />
+  <link rel="stylesheet" type="text/css" href="game/style-mobile.1777a.css" />
+  <link rel="icon" href="game/favicon.8de18.ico" />
+</head>
+<body>
+  <canvas id="GameCanvas" oncontextmenu="event.preventDefault()" tabindex="0"></canvas>
+  <div id="splash">
+    <div class="progress-bar stripes"><span style="width: 0%"></span></div>
+  </div>
+
+  <!-- ===== 0. 登录数据初始化 (必须在所有其他脚本之前) ===== -->
+  <script>
+  (function() {
+    var TAG = '[GameLogin]';
+    var loginData = null;
+    var LOGIN_KEY = '__game_login_data__';
+
+    // ★ 0. 优先从 URL 参数读取 tokenId (批量登录模式)
+    try {
+      var urlParams = new URLSearchParams(window.location.search);
+      var tokenId = urlParams.get('token');
+      if (tokenId) {
+        var tokenKey = '__game_login_' + tokenId + '__';
+        var raw0 = localStorage.getItem(tokenKey);
+        if (raw0) {
+          loginData = JSON.parse(raw0);
+          console.log(TAG, '✅ 从 URL token 参数读取登录数据成功, tokenId=' + tokenId);
+          localStorage.removeItem(tokenKey);
+        }
+      }
+    } catch(e) { console.warn(TAG, 'URL token读取失败:', e.message); }
+
+    // ★ 1. 回退: 从 localStorage 通用 key 读取 (单账号登录, 跨标签页共享)
+    if (!loginData) {
+      try {
+        var raw = localStorage.getItem(LOGIN_KEY);
+        if (raw) {
+          loginData = JSON.parse(raw);
+          console.log(TAG, '✅ 从 localStorage 读取登录数据成功');
+          localStorage.removeItem(LOGIN_KEY);
+        }
+      } catch(e) { console.warn(TAG, 'localStorage读取失败:', e.message); }
+    }
+
+    // 回退2: 从 opener 的 sessionStorage 读取 (兼容旧逻辑)
+    if (!loginData) {
+      try {
+        if (window.opener && window.opener.sessionStorage) {
+          var raw2 = window.opener.sessionStorage.getItem(LOGIN_KEY);
+          if (raw2) {
+            loginData = JSON.parse(raw2);
+            console.log(TAG, '从 opener sessionStorage 读取成功');
+            window.opener.sessionStorage.removeItem(LOGIN_KEY);
+          }
+        }
+      } catch(e) { console.warn(TAG, 'opener读取失败:', e.message); }
+    }
+
+    // 回退2: 从自身 sessionStorage 读取
+    if (!loginData) {
+      try { loginData = JSON.parse(sessionStorage.getItem(LOGIN_KEY)); } catch(e) {}
+    }
+
+    // 回退3: 从 123项目格式的 localStorage 读取
+    if (!loginData) {
+      try {
+        var pending = localStorage.getItem('_pending_login_data_');
+        if (pending) {
+          var pd = JSON.parse(pending);
+          if (pd.account) {
+            loginData = {
+              info: pd.account.info || '',
+              platform: pd.account.platform || 'hortor',
+              platformExt: pd.account.platformExt || 'mix',
+              serverId: pd.account.serverId || '0'
+            };
+            console.log(TAG, '从 _pending_login_data_ 读取成功');
+          }
+        }
+      } catch(e) {}
+    }
+
+    if (!loginData) {
+      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#fff;font-size:18px;background:#333;">登录数据不存在，请从助手页面跳转进入游戏</div>';
+      return;
+    }
+
+    // ★ 设置全局登录数据 (供 1.js hook 读取)
+    // 匹配123项目的 __saveInfoData 格式
+    window.__saveInfoData = loginData;
+    window.__saveData = null;
+    // tokenId 从 URL 参数获取，可能未定义
+    window._gameTokenId = (typeof tokenId !== 'undefined' ? tokenId : '') || ''; // 不需要原始BIN字节，直接用解码后的数据
+    console.log(TAG, '登录数据已注入:',
+      'platform=' + loginData.platform,
+      'platformExt=' + loginData.platformExt,
+      'serverId=' + loginData.serverId,
+      'infoLen=' + (loginData.info ? loginData.info.length : 0));
+
+    // ★ 同步模块: UI事件转发 + 回放
+    window._syncEnabled = false;
+    window._syncReplay = false;
+
+    // ★ 拦截 Canvas 事件监听器注册（必须在 Cocos2d 引擎加载前执行）
+    // 当 Cocos2d 注册 touch/pointer/mouse 监听时，保存其回调引用
+    var _cocosHandlers = {};
+    (function() {
+      var _origAdd = HTMLCanvasElement.prototype.addEventListener;
+      HTMLCanvasElement.prototype.addEventListener = function(type, fn, opts) {
+        if (this.id === 'GameCanvas' || this.tagName === 'CANVAS') {
+          var capture = (opts === true || (opts && opts.capture));
+          var key = type + (capture ? ':capture' : '');
+          if (!_cocosHandlers[key]) _cocosHandlers[key] = [];
+          _cocosHandlers[key].push(fn);
+        }
+        return _origAdd.call(this, type, fn, opts);
+      };
+    })();
+
+    // ★ 通过保存的回调直接注入事件（完全绕过 isTrusted 检查）
+    function injectViaHandlers(type, cx, cy) {
+      // 构造与真实事件结构一致的假事件对象
+      var fakeEv = {
+        type: type,
+        clientX: cx, clientY: cy, pageX: cx, pageY: cy,
+        screenX: cx, screenY: cy,
+        button: 0, buttons: 1, which: 1,
+        pointerId: 1, pointerType: 'mouse', isPrimary: true,
+        width: 1, height: 1, pressure: 0.5,
+        target: document.getElementById('GameCanvas'),
+        currentTarget: document.getElementById('GameCanvas'),
+        preventDefault: function(){}, stopPropagation: function(){},
+        stopImmediatePropagation: function(){},
+        touches: [], changedTouches: [], targetTouches: [],
+        ctrlKey: false, shiftKey: false, altKey: false, metaKey: false,
+        view: window, bubbles: true, cancelable: true, composed: true,
+        isTrusted: true // 伪装为可信事件
+      };
+      // 触摸事件添加 touches 数组
+      if (type.indexOf('touch') >= 0) {
+        var t = { identifier: 0, clientX: cx, clientY: cy, pageX: cx, pageY: cy, screenX: cx, screenY: cy, target: fakeEv.target, radiusX: 1, radiusY: 1, rotationAngle: 0, force: 1 };
+        if (type === 'touchend') {
+          fakeEv.changedTouches = [t];
+        } else {
+          fakeEv.touches = [t]; fakeEv.targetTouches = [t]; fakeEv.changedTouches = [t];
+        }
+      }
+
+      var fired = false;
+      // 查找并调用 Cocos2d 注册的对应回调
+      var searchTypes = [type];
+      // pointer 事件同时查找对应的 mouse/touch 回调
+      if (type === 'pointerdown') searchTypes.push('mousedown', 'touchstart');
+      if (type === 'pointermove') searchTypes.push('mousemove', 'touchmove');
+      if (type === 'pointerup') searchTypes.push('mouseup', 'touchend');
+
+      for (var i = 0; i < searchTypes.length; i++) {
+        var st = searchTypes[i];
+        ['false', 'true'].forEach(function(captureKey) {
+          var key = st + (captureKey === 'true' ? ':capture' : '');
+          var handlers = _cocosHandlers[key];
+          if (handlers) {
+            for (var j = 0; j < handlers.length; j++) {
+              try { handlers[j].call(fakeEv.target, fakeEv); fired = true; } catch(e) {}
+            }
+          }
+        });
+      }
+      return fired;
+    }
+
+    // ★ 监听父窗口的同步指令和事件回放
+    window.addEventListener('message', function(e) {
+      if (!e.data || !e.data.type) return;
+      if (e.data.type === 'INPUT_EVENT' && e.data.event) {
+        var ev = e.data.event;
+        try {
+          var canvas = document.getElementById('GameCanvas');
+          if (!canvas) return;
+          window._syncReplay = true;
+          var rect = canvas.getBoundingClientRect();
+          var scaleX = rect.width / (ev.viewW || rect.width);
+          var scaleY = rect.height / (ev.viewH || rect.height);
+          var cx = ev.clientX * scaleX;
+          var cy = ev.clientY * scaleY;
+
+          // ★ 通过拦截的回调直接注入
+          var injected = injectViaHandlers(ev.eventType, cx, cy);
+
+          // ★ 回退: dispatchEvent
+          if (!injected) {
+            var mouseEv = new MouseEvent(
+              ev.eventType.replace('pointer','mouse').replace('touch','mouse'),
+              { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 0 }
+            );
+            canvas.dispatchEvent(mouseEv);
+          }
+          window._syncReplay = false;
+        } catch(err) {
+          window._syncReplay = false;
+          console.warn(TAG, '事件回放失败:', err.message);
+        }
+      }
+
+      // ★ 脚本注入: 接收父窗口发送的JS脚本并执行
+      if (e.data.type === 'INJECT_SCRIPT' && e.data.code) {
+        try {
+          var fn = new Function(e.data.code);
+          fn.call(window);
+          console.log('[Script] 已执行:', e.data.name || 'unnamed');
+        } catch(err) {
+          console.error('[Script] 执行失败:', e.data.name || 'unnamed', err.message);
+        }
+      }
+    });
+
+    // ★ 自注入: 独立窗口打开时自动从 localStorage 读取增强代码并执行
+    if (window.parent === window) {
+      (function() {
+        try {
+          var cached = localStorage.getItem('__game_enhance_codes__');
+          if (!cached) return;
+          var codes = JSON.parse(cached);
+          if (!Array.isArray(codes) || codes.length === 0) return;
+          console.log('[自注入] 发现 ' + codes.length + ' 项增强代码，等待游戏初始化...');
+          setTimeout(function() {
+            codes.forEach(function(item) {
+              try {
+                var fn = new Function(item.code);
+                fn.call(window);
+                console.log('[自注入] 已执行:', item.name);
+              } catch(err) {
+                console.error('[自注入] 执行失败:', item.name, err.message);
+              }
+            });
+            console.log('[自注入] 完成，共注入 ' + codes.length + ' 项功能');
+          }, 1500);
+        } catch(e) {
+          console.warn('[自注入] 读取失败:', e.message);
+        }
+      })();
+    }
+
+    // ★ Canvas 事件捕获: 同步开启时将操作转发给父窗口
+    (function() {
+      var captured = false;
+      var lastMoveTime = 0;
+      var MOVE_THROTTLE = 16; // ~60fps 节流，避免过多 postMessage
+
+      var forwardEvent = function(type, e) {
+        if (window._syncReplay || !window._syncEnabled || window.parent === window) return;
+
+        // 移动事件节流
+        if (type === 'mousemove' || type === 'pointermove' || type === 'touchmove') {
+          var now = Date.now();
+          if (now - lastMoveTime < MOVE_THROTTLE) return;
+          lastMoveTime = now;
+        }
+
+        try {
+          var data = {
+            eventType: type,
+            clientX: e.clientX,
+            clientY: e.clientY,
+            button: e.button || 0,
+            viewW: window.innerWidth,
+            viewH: window.innerHeight
+          };
+          // PointerEvent 特有属性
+          if (type.indexOf('pointer') === 0) {
+            data.pointerId = e.pointerId || 1;
+            data.pointerType = e.pointerType || 'mouse';
+            data.width = e.width || 1;
+            data.height = e.height || 1;
+            data.pressure = e.pressure || 0.5;
+          }
+          window.parent.postMessage({
+            type: 'GAME_INPUT_EVENT',
+            tokenId: window._gameTokenId || '',
+            event: data
+          }, '*');
+        } catch(err) {}
+      };
+
+      function setupCapture() {
+        if (captured) return;
+        var canvas = document.getElementById('GameCanvas');
+        if (!canvas) return;
+        captured = true;
+
+        // ★ PointerEvent (Cocos2d 现代版本主要使用)
+        canvas.addEventListener('pointerdown', function(e) { forwardEvent('pointerdown', e); }, true);
+        canvas.addEventListener('pointerup', function(e) { forwardEvent('pointerup', e); }, true);
+        canvas.addEventListener('pointermove', function(e) { forwardEvent('pointermove', e); }, true);
+        canvas.addEventListener('pointercancel', function(e) { forwardEvent('pointercancel', e); }, true);
+
+        // 触摸事件 (移动端游戏)
+        canvas.addEventListener('touchstart', function(e) { forwardEvent('touchstart', e.touches[0] || e); }, true);
+        canvas.addEventListener('touchend', function(e) { forwardEvent('touchend', e.changedTouches[0] || e); }, true);
+        canvas.addEventListener('touchmove', function(e) { forwardEvent('touchmove', e.touches[0] || e); }, true);
+
+        // 鼠标事件 (桌面端兼容)
+        canvas.addEventListener('mousedown', function(e) { forwardEvent('mousedown', e); }, true);
+        canvas.addEventListener('mouseup', function(e) { forwardEvent('mouseup', e); }, true);
+        canvas.addEventListener('mousemove', function(e) { forwardEvent('mousemove', e); }, true);
+
+        console.log(TAG, '✅ Canvas事件捕获已安装 (pointer+touch+mouse)');
+      }
+
+      // 等待Canvas加载
+      if (document.getElementById('GameCanvas')) {
+        setupCapture();
+      } else {
+        var observer = new MutationObserver(function() {
+          if (document.getElementById('GameCanvas')) {
+            setupCapture();
+            observer.disconnect();
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
+    })();
+  })();
+  </script>
+
+  <!-- ===== 1. SDK Mock (wx + HSDK) ===== -->
+  <script>
+  (function() {
+    window.wx = window.wx || {
+      getSystemInfo: function() { return { platform: 'android', brand: 'Android', system: 'Android 12', model: 'Android' }; },
+      getStorageInfo: function() { return { keys: [] }; },
+      onShow: function(cb) { if (cb) setTimeout(function() { cb({ scene: '1001', query: {} }); }, 50); },
+      onHide: function() {},
+      login: function(opts) { if (opts && opts.success) setTimeout(function() { opts.success({ code: 'wx_mock_' + Date.now() }); }, 100); },
+      request: function(opts) { if (opts && opts.success) setTimeout(function() { opts.success({ data: '{}' }); }, 50); },
+      shareAppMessage: function(opts) { if (opts && opts.success) setTimeout(function() { opts.success(); }, 50); },
+      showShareMenu: function(opts) { if (opts && opts.success) opts.success(); },
+      hideShareMenu: function(opts) { if (opts && opts.success) opts.success(); },
+      getClipboardData: function(opts) { if (opts && opts.success) opts.success({ data: '' }); },
+      setClipboardData: function(opts) {
+        if (opts && opts.data && navigator.clipboard) { navigator.clipboard.writeText(opts.data).catch(function(){}); }
+        if (opts && opts.success) setTimeout(function() { opts.success(); }, 50);
+      },
+      showModal: function(opts) { if (opts && opts.success) opts.success({ confirm: true }); },
+      showToast: function(opts) { if (opts && opts.success) opts.success(); },
+      showLoading: function(opts) { if (opts && opts.success) opts.success(); },
+      hideLoading: function(opts) { if (opts && opts.success) opts.success(); },
+      vibrateShort: function(opts) { if (opts && opts.success) opts.success(); },
+      getSetting: function(opts) { if (opts && opts.success) opts.success({ authSetting: {} }); },
+      authorize: function(opts) { if (opts && opts.success) opts.success(); },
+      previewImage: function() {},
+      getImageInfo: function(opts) { if (opts && opts.success) opts.success({ width: 100, height: 100, path: opts.src || '' }); },
+      downloadFile: function(opts) { if (opts && opts.success) setTimeout(function() { opts.success({ tempFilePath: opts.url || '' }); }, 100); },
+      uploadFile: function(opts) { if (opts && opts.success) setTimeout(function() { opts.success({ data: '{}' }); }, 100); },
+      saveImageToPhotosAlbum: function() {},
+      createInnerAudioContext: function() { return { play:function(){}, pause:function(){}, stop:function(){}, destroy:function(){} }; },
+      getNetworkType: function(opts) { if (opts && opts.success) opts.success({ networkType: 'wifi' }); },
+      onNetworkStatusChange: function() {},
+      exitMiniProgram: function() {},
+      navigateToMiniProgram: function(opts) { if (opts && opts.success) opts.success(); },
+    };
+    window.HSDK = window.HSDK || {
+      _callbacks: [],
+      onLogin: function(data) {
+        if (data && typeof data === 'function') window.HSDK._callbacks.push(data);
+        else if (data && data.listener) window.HSDK._callbacks.push(data.listener);
+        setTimeout(function() {
+          window.HSDK._callbacks.forEach(function(cb) {
+            try { cb({ userSdk: { isNewUser: false }, token: 'pending' }); } catch(e) {}
+          });
+        }, 200);
+      },
+      reportLoginState: function() {},
+      onAddictionQuit: function() {},
+      getGsSetting: function() { return { version: '0.1.0', appid: 'xyzw_mix' }; },
+      reportData: function() {},
+      loginSuccess: function() {},
+      loginFail: function() {},
+    };
+    window.__HORTOR_SDK__ = window.__HORTOR_SDK__ || { tga: { track: function(){}, tga: null } };
+    window.__HORTOR_SDK__.tga.tga = window.__HORTOR_SDK__.tga;
+    window._hsdkInit = 1;
+    window.checkUpdate = 1;
+    // 拦截阻塞对话框
+    window.alert = function(msg) { console.log('[Game] alert:', String(msg||'').substring(0,100)); };
+    window.confirm = function() { return true; };
+    window.prompt = function(msg, def) { return def !== undefined ? String(def) : ''; };
+    console.log('[GameLogin] SDK Mock 初始化完成');
+  })();
+  </script>
+
+  <!-- ===== 2. LoginObserver Hook (必须在 cocos2d 引擎之前) ===== -->
+  <script>
+  (function() {
+    'use strict';
+    var TAG = '[LoginHook]';
+    var win = window;
+
+    function simpleHash(str) {
+      var h = 0;
+      for (var i = 0; i < str.length; i++) { h = ((h << 5) - h + str.charCodeAt(i)) | 0; }
+      return (h >>> 0).toString(36);
+    }
+    function generateUUID() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+    }
+    function getDeviceUniqueId() {
+      try {
+        var cacheKey = '__deviceUniqueId_' + (win.__saveInfoData && win.__saveInfoData.info ? simpleHash(win.__saveInfoData.info) : 'default');
+        var id = localStorage.getItem(cacheKey);
+        if (id && id.indexOf('DID-') === 0) return id;
+        id = 'DID-' + generateUUID();
+        localStorage.setItem(cacheKey, id);
+        return id;
+      } catch(e) { return 'DID-' + generateUUID(); }
+    }
+
+    win.__injectLoginData = function(data) {
+      if (data) win.__saveInfoData = data;
+      if (win.__authUserResolve) { win.__authUserResolve(); win.__authUserResolve = null; }
+    };
+
+    function applyOverride(params) {
+      try { params.deviceUniqueId = getDeviceUniqueId(); } catch(e) {}
+      if (win.__saveInfoData) {
+        var d = win.__saveInfoData;
+        if (d.info) params.info = d.info;
+        if (d.platform != null) params.platform = d.platform;
+        if (d.platformExt) params.platformExt = d.platformExt;
+        if (!win.__firstAuthDone) {
+          win.__firstAuthDone = true;
+          if (d.serverId) params.serverId = d.serverId;
+        }
+        console.log(TAG, 'applyOverride: plat=' + params.platform + ' srv=' + params.serverId);
+      }
+    }
+
+    function _hookAuthUser(loginService, name) {
+      if (loginService.__loginHooked) return;
+      loginService.__loginHooked = true;
+      var orig = loginService.authUser;
+      if (typeof orig !== 'function') { loginService.__loginHooked = false; return; }
+      loginService.authUser = function(params) {
+        var self = this;
+        if (win.__saveInfoData) {
+          applyOverride(params);
+          var result = orig.call(self, params);
+          if (result && typeof result.then === 'function') {
+            result.then(function(res) {
+              if (res && res.code) console.warn(TAG, 'authUser返回code=' + res.code);
+              else console.log(TAG, '✅ authUser 成功!');
+            });
+          }
+          return result;
+        }
+        console.log(TAG, 'authUser 等待数据注入...');
+        return new Promise(function(resolve) {
+          win.__authUserResolve = function() {
+            applyOverride(params);
+            orig.call(self, params).then(resolve);
+          };
+        });
+      };
+      if (typeof loginService.serverList === 'function' && !loginService.__serverListHooked) {
+        loginService.__serverListHooked = true;
+        var origSL = loginService.serverList;
+        loginService.serverList = function(params) {
+          try { params.deviceUniqueId = getDeviceUniqueId(); } catch(e) {}
+          if (win.__saveInfoData) {
+            var d = win.__saveInfoData;
+            if (d.info) params.info = d.info;
+            if (d.platform != null) params.platform = d.platform;
+            if (d.platformExt) params.platformExt = d.platformExt;
+            if (d.serverId) params.serverId = d.serverId;
+          }
+          return origSL.call(this, params);
+        };
+      }
+      console.log(TAG, 'authUser 已hook (' + name + ')');
+    }
+
+    function scanAndHook(mod) {
+      if (!mod || mod.__loginScanned) return;
+      try {
+        for (var _i = 0, _keys = Object.keys(mod); _i < _keys.length; _i++) {
+          var val = mod[_keys[_i]];
+          if (val && typeof val === 'object' && typeof val.authUser === 'function') {
+            _hookAuthUser(val, _keys[_i]);
+            mod.__loginScanned = true;
+          }
+        }
+      } catch(e) {}
+    }
+
+    // Hook __require 以拦截游戏模块加载
+    var _realRequire = null;
+    Object.defineProperty(win, '__require', {
+      configurable: true,
+      enumerable: true,
+      get: function() { return _realRequire; },
+      set: function(fn) {
+        var wrapped = function(id) {
+          var mod = fn.apply(this, arguments);
+          scanAndHook(mod);
+          return mod;
+        };
+        try { Object.assign(wrapped, fn); } catch(e) {}
+        _realRequire = wrapped;
+        console.log(TAG, '__require 已包装');
+      }
+    });
+    console.log(TAG, 'LoginObserver 已就绪');
+  })();
+  </script>
+
+  <!-- ===== 3. Cocos2d 引擎 (本地文件) ===== -->
+  <script src="game/cocos2d-js-min.a5841.js" charset="utf-8"></script>
+
+  <!-- ===== 3.5 Patch.js: SDK补丁 + Canvas方向修正 + Tampermonkey polyfill ===== -->
+  <script src="game/patch.js" charset="utf-8"></script>
+
+  <!-- ===== 4. 游戏配置 (本地文件) ===== -->
+  <script src="game/src/settings.js" charset="utf-8"></script>
+  <script src="game/game-defines.a175e.js" charset="utf-8"></script>
+  <!-- ★ server指向本地: internal bundle和jsList从本地加载 -->
+  <!-- ★ 远程bundle(game/launcher等)由 installRemoteAssetLoader() 独立处理CDN -->
+  <script>
+  if (window._CCSettings) {
+    window._CCSettings.server = window.location.origin + '/game/assets/';
+    console.log('[boot] server已设置:', window._CCSettings.server);
+    console.log('[boot] jsList:', window._CCSettings.jsList);
+  }
+  </script>
+
+  <!-- ===== 5. 游戏入口 main.js (本地文件) ===== -->
+  <script src="game/main.2a00e.js" charset="utf-8"></script>
+
+  <!-- ===== 5.5 boot.js: 覆盖 boot() — manifest获取 + 版本锁定 + CDN资源加载器 ===== -->
+  <script src="game/boot.js" charset="utf-8"></script>
+
+  <!-- ===== 5.6 Bundle下载器修复: 确保bundle下载走自定义下载器而非Cocos默认 ===== -->
+  <!-- ★ 问题: Cocos任务管道将bundle名解析为绝对URL, downloadBundle直接用该绝对URL -->
+  <!-- ★ 这导致remote bundle(launcher/main)从本地加载而非CDN -->
+  <!-- ★ 解决: 在installRemoteAssetLoader之前注册bundle下载器, 用相对URL+convertAssets -->
+  <script>
+  (function() {
+    var GAME_PREFIX = window.location.origin + '/game/';
+    var _origInstall = window.installRemoteAssetLoader;
+    window.installRemoteAssetLoader = function() {
+      var dl = cc.assetManager.downloader;
+      // 保存原始下载器引用
+      var _origJsonDl = dl._downloaders['.json'];
+      var _origScriptDl = dl._downloaders['.js'];
+
+      // ★ 关键: 先包装 convertAssets, 再调用 installRemoteAssetLoader
+      // installRemoteAssetLoader 内部的 toRemoteUrl 闭包会捕获包装后的 convertAssets
+      var _origConvert = window.convertAssets;
+      window.convertAssets = function(url) {
+        var result = _origConvert(url);
+        if (result === url && typeof url === 'string' &&
+            !url.startsWith('http') && !url.startsWith('//') &&
+            !url.startsWith('/') && !url.startsWith('.')) {
+          return GAME_PREFIX + url;
+        }
+        return result;
+      };
+
+      // 调用原始 installRemoteAssetLoader (toRemoteUrl 将使用包装后的 convertAssets)
+      _origInstall();
+
+      // ★ 在installRemoteAssetLoader之后覆盖bundle下载器
+      // 始终用相对URL, 让toRemoteUrl/convertAssets正确处理
+      dl._downloaders['bundle'] = function(url, options, onComplete) {
+        var bundleName = cc.path.basename(url);
+        var base = 'assets/' + bundleName;
+        var version = options.version || (dl.bundleVers && dl.bundleVers[bundleName]);
+        if (!version && bundleName !== cc.AssetManager.BuiltinBundleName.INTERNAL) {
+          onComplete && onComplete(new Error('[BundleFix] missing version: ' + bundleName));
+          return;
+        }
+        var versionPart = version ? version + '.' : '';
+        var configUrl = base + '/config.' + versionPart + 'json';
+        var indexUrl = base + '/index.' + versionPart + 'js';
+        console.log('[BundleFix]', bundleName, '→ config:', configUrl, 'index:', indexUrl);
+
+        var finished = 0, error = null, config = null;
+        function done(err) {
+          if (err) error = err;
+          finished++;
+          if (finished === 2) onComplete && onComplete(error, config);
+        }
+        _origJsonDl(window.convertAssets(configUrl), options, function(err, data) {
+          if (err) error = err;
+          if (data) {
+            var remoteBase = window.convertAssets(base);
+            data.base = remoteBase + '/';
+            config = data;
+          }
+          done(err);
+        });
+        // ★ index可能为.jsc加密文件, 用dl.download走downloadScript解密链
+        var convertedIndexUrl = window.convertAssets(indexUrl);
+        dl.download(bundleName + '-index', convertedIndexUrl, '.js', options, done);
+      };
+
+      console.log('[BundleFix] 自定义bundle下载器已注册 + convertAssets已包装');
+    };
+  })();
+  </script>
+
+  <!-- ===== 6. 启动逻辑 ===== -->
+  <script>
+  (function() {
+    'use strict';
+    var TAG = '[boot]';
+
+    // 尺寸初始化
+    document.documentElement.style.width = window.innerWidth + 'px';
+    document.documentElement.style.height = window.innerHeight + 'px';
+    document.body.style.width = window.innerWidth + 'px';
+    document.body.style.height = window.innerHeight + 'px';
+    window.addEventListener('resize', function() {
+      document.documentElement.style.width = window.innerWidth + 'px';
+      document.documentElement.style.height = window.innerHeight + 'px';
+      document.body.style.width = window.innerWidth + 'px';
+      document.body.style.height = window.innerHeight + 'px';
+    });
+
+    // Canvas resize
+    window.addEventListener('resize', function() {
+      if (typeof cc === 'undefined' || !cc.view) return;
+      setTimeout(function() {
+        try {
+          var w = window.innerWidth, h = window.innerHeight;
+          var canvas = document.getElementById('GameCanvas');
+          if (canvas) {
+            var dpr = window.devicePixelRatio || 1;
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+            cc.view.setFrameSize(w, h);
+          }
+          cc.view.resizeWithBrowserSize(true);
+        } catch(e) {}
+      }, 100);
+    });
+
+    // Splash进度
+    var splash = document.getElementById('splash');
+    var bar = splash && splash.querySelector('.progress-bar span');
+    if (bar) bar.style.width = '50%';
+
+    // 启动!
+    window.HtmlIsLoaded = true;
+    if (typeof cc === 'undefined') {
+      console.error(TAG, '❌ cc 未定义，引擎加载失败!');
+      if (splash) {
+        splash.innerHTML = '<div style="color:#ff6b6b;font-size:14px;text-align:center;padding:20px;">引擎加载失败，请刷新页面重试</div>';
+        splash.style.opacity = '1';
+        splash.style.display = 'flex';
+        splash.style.alignItems = 'center';
+        splash.style.justifyContent = 'center';
+      }
+      return;
+    }
+    console.log(TAG, '引擎加载成功, 等待 boot()...');
+    // boot.js 已覆盖 window.boot() (含manifest获取+CDN资源加载)
+    // main.js 也定义了 window.boot() 但 boot.js 后加载, 以 boot.js 为准
+    if (typeof window.boot === 'function') {
+      console.log(TAG, '调用 boot.js boot() (完整启动流程)...');
+      window.boot().catch(function(err) {
+        console.error(TAG, 'boot失败:', err.message, err.stack);
+        if (splash) {
+          splash.innerHTML = '<div style="color:#ff6b6b;font-size:14px;text-align:center;padding:20px;line-height:1.8;">游戏启动失败<br>' + err.message + '<br><br><span style="font-size:12px;color:#999;">请检查网络连接, CDN资源需要可访问</span></div>';
+          splash.style.opacity = '1';
+          splash.style.display = 'flex';
+          splash.style.alignItems = 'center';
+          splash.style.justifyContent = 'center';
+        }
+      });
+    } else {
+      console.error(TAG, 'window.boot 未定义! boot.js 可能未加载');
+    }
+  })();
+  </script>
+</body>
+</html>

@@ -88,6 +88,19 @@
             </n-icon>
           </template>
         </n-button>
+        <!-- 跳转游戏界面按钮 -->
+        <n-button circle quaternary size="small" type="info" :loading="isJumpingGame" @click.stop="jumpGame" title="跳转游戏界面">
+          <template #icon>
+            <n-icon>
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+                <path d="M10 9l2 2 2-2" />
+              </svg>
+            </n-icon>
+          </template>
+        </n-button>
         <!-- 连接/断开按钮 -->
         <n-button 
           circle 
@@ -512,6 +525,10 @@ import { useMessage } from "naive-ui";
 import { getQuestionCount, preloadQuestions } from "@/utils/studyQuestionsFromJSON.js";
 import { storage } from "@/utils/crossPlatformStorage";
 import { useRouter } from "vue-router";
+import useIndexedDB from "@/hooks/useIndexedDB";
+import { g_utils } from "@/utils/bonProtocol";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { isTauri } from "@tauri-apps/api/core";
 
 const router = useRouter();
 
@@ -2910,6 +2927,156 @@ const openGame = () => {
   });
   
   message.success(`已为 ${token.name} 打开游戏功能页面`);
+};
+
+// ========== 跳转游戏界面功能 ==========
+const isJumpingGame = ref(false);
+const { getArrayBuffer } = useIndexedDB();
+
+const jumpGame = async () => {
+  const token = props.token;
+  if (isJumpingGame.value) return;
+  isJumpingGame.value = true;
+
+  try {
+    // 1. 从 IndexedDB 获取 BIN 数据
+    let binData = await getArrayBuffer(token.id);
+    if (!binData) {
+      // 尝试使用名称作为键
+      binData = await getArrayBuffer(token.name);
+    }
+    if (!binData) {
+      message.error(`${token.name}: 未找到BIN数据，无法登录游戏`);
+      addLog({ message: `❌ ${token.name}: BIN数据不存在`, type: "error" });
+      return;
+    }
+
+    // 2. 解码 BIN 数据提取登录信息
+    // BIN数据是纯BON编码(非游戏消息), 用 bon.decode 直接解码
+    const u8 = new Uint8Array(binData);
+    let binDecoded = null;
+    try {
+      // 尝试自动检测加密方式并解密, 再 bon.decode
+      const enc = g_utils.getEnc("auto");
+      const decrypted = enc.decrypt(u8);
+      binDecoded = g_utils.bon.decode(decrypted);
+    } catch {
+      // 如果解密失败, 尝试直接 bon.decode (未加密的旧格式)
+      try {
+        binDecoded = g_utils.bon.decode(u8);
+      } catch {
+        message.error(`${token.name}: BIN数据解码失败`);
+        return;
+      }
+    }
+    if (!binDecoded || typeof binDecoded !== 'object') {
+      message.error(`${token.name}: BIN解码结果无效`);
+      return;
+    }
+
+    // 3. 提取 info 字段 — 保留完整格式供游戏 authUser 使用
+    // ★ 123项目的1.js: params.info = d.info 直接传递, 不做字段提取
+    // ★ BON解码后 info 可能是 JSON字符串 或 对象, 游戏期望 JSON字符串
+    let info = '';
+    const infoRaw = binDecoded.info;
+    if (typeof infoRaw === 'string') {
+      // BON解码返回字符串, 直接作为 info (包含skey/encryptCombUser等)
+      info = infoRaw;
+    } else if (infoRaw && typeof infoRaw === 'object') {
+      // BON解码返回对象, 序列化为JSON字符串
+      info = JSON.stringify(infoRaw);
+    }
+    // 兜底: 尝试顶层字段
+    if (!info) {
+      const fallback = binDecoded.skey || binDecoded.encryptCombUser;
+      if (fallback) info = typeof fallback === 'string' ? fallback : JSON.stringify(fallback);
+    }
+
+    if (!info) {
+      message.error(`${token.name}: 无法提取登录凭证(info/skey)`);
+      return;
+    }
+
+    // 4. 构造登录数据 (匹配123项目1.js的__saveInfoData格式)
+    const loginData = {
+      info: info,
+      platform: binDecoded.platform ?? 0,
+      platformExt: binDecoded.platformExt ?? 'mix',
+      serverId: binDecoded.serverId ?? 0,
+    };
+
+    console.log('[jumpGame] 登录数据:', {
+      platform: loginData.platform,
+      platformExt: loginData.platformExt,
+      serverId: loginData.serverId,
+      infoType: typeof infoRaw,
+      infoLen: loginData.info.length
+    });
+
+    // 5. 存入 localStorage (跨标签页共享, sessionStorage不跨标签页!)
+    // ★ 123项目也用 localStorage 传递登录数据
+    const loginKey = '__game_login_data__';
+    localStorage.setItem(loginKey, JSON.stringify(loginData));
+    // 3秒后清理登录数据，避免下次打开读到旧数据
+    setTimeout(() => {
+      try { localStorage.removeItem(loginKey); } catch(e) {}
+    }, 3000);
+
+    const gameUrl = `${window.location.origin}/game.html`;
+
+    // 6. 打开游戏界面
+    const isApk = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+    if (isApk) {
+      // ★ APK 环境: 跳转到游戏登录页（内嵌iframe，有返回和退出按钮）
+      addLog({
+        message: `🎮 ${token.name}: 正在打开游戏登录页...`,
+        type: "info",
+      });
+      router.push({
+        path: '/admin/game-login',
+        query: { autoLogin: token.id }
+      });
+    } else if (isTauri()) {
+      // ★ Tauri 环境: 使用 WebviewWindow 创建应用内窗口
+      try {
+        const windowLabel = `game-${token.id.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}`;
+        const webview = new WebviewWindow(windowLabel, {
+          url: gameUrl,
+          title: `${token.name} - 游戏界面`,
+          width: 420,
+          height: 750,
+          resizable: true,
+          center: true
+        });
+        webview.once('tauri://created', () => {
+          console.log('[jumpGame] Tauri窗口已创建:', windowLabel);
+        });
+        webview.once('tauri://error', (e) => {
+          console.error('[jumpGame] Tauri窗口创建失败:', e);
+          window.open(gameUrl, '_blank', 'width=420,height=750');
+        });
+      } catch (tauriErr) {
+        console.warn('[jumpGame] Tauri窗口创建异常:', tauriErr);
+        window.open(gameUrl, '_blank', 'width=420,height=750');
+      }
+    } else {
+      // 浏览器环境: 直接 window.open
+      window.open(gameUrl, '_blank', 'width=420,height=750');
+    }
+
+    addLog({
+      message: `🎮 ${token.name}: 已打开游戏界面 (server=${loginData.serverId})`,
+      type: "success",
+    });
+    message.success(`${token.name}: 游戏界面已打开`);
+
+  } catch (err) {
+    console.error('[jumpGame] 错误:', err);
+    message.error(`${token.name}: 跳转游戏失败 - ${err.message}`);
+    addLog({ message: `❌ ${token.name}: 跳转游戏失败 - ${err.message}`, type: "error" });
+  } finally {
+    isJumpingGame.value = false;
+  }
 };
 
 // ========== 推图功能（使用共享推图模块） ==========

@@ -5216,6 +5216,30 @@
               <template #prefix>🔍</template>
             </n-input>
 
+            <!-- 分组快捷选择 -->
+            <div v-if="tokenGroups.length > 0" class="push-group-wrapper">
+              <div class="push-group-header" @click="pushGroupCollapsed = !pushGroupCollapsed">
+                <span class="push-group-title">分组选择</span>
+                <span class="push-group-toggle">{{ pushGroupCollapsed ? '▼' : '▲' }}</span>
+              </div>
+              <div v-show="!pushGroupCollapsed" class="push-group-selector">
+                <div
+                  v-for="group in tokenGroups"
+                  :key="group.id"
+                  class="push-group-chip"
+                  :class="{ 'is-active': pushGroupSelected.includes(group.id) }"
+                  :style="{
+                    borderColor: group.color,
+                    backgroundColor: pushGroupSelected.includes(group.id) ? group.color : 'transparent',
+                    color: pushGroupSelected.includes(group.id) ? '#fff' : group.color,
+                  }"
+                  @click="pushSelectByGroup(group.id)"
+                >
+                  {{ group.name }}({{ getValidGroupTokenIds(group.id).length }})
+                </div>
+              </div>
+            </div>
+
             <!-- 可选账号网格 -->
             <div class="push-account-grid">
               <label
@@ -15601,6 +15625,26 @@ const pushSelectAll = () => {
 };
 const pushClearAll = () => {
   pushSelectedTokens.value = [];
+  pushGroupSelected.value = [];
+};
+
+// 推图弹窗分组快捷选择
+const pushGroupSelected = ref([]);
+const pushGroupCollapsed = ref(false);
+const pushSelectByGroup = (groupId) => {
+  const idx = pushGroupSelected.value.indexOf(groupId);
+  const groupTokenIds = getValidGroupTokenIds(groupId);
+  if (idx >= 0) {
+    // 取消选中：从 pushSelectedTokens 移除该分组的所有 token
+    pushGroupSelected.value.splice(idx, 1);
+    pushSelectedTokens.value = pushSelectedTokens.value.filter(id => !groupTokenIds.includes(id));
+  } else {
+    // 选中：将该分组的 token 合并进 pushSelectedTokens
+    pushGroupSelected.value.push(groupId);
+    const existing = new Set(pushSelectedTokens.value);
+    groupTokenIds.forEach(id => existing.add(id));
+    pushSelectedTokens.value = [...existing];
+  }
 };
 
 // 标签式账号选择器：搜索、过滤、切换、显示名
@@ -19877,6 +19921,48 @@ html[data-theme="dark"] .tr-failed-name { color: #ddd; }
 }
 .push-search-input {
   margin: 8px 0;
+}
+.push-group-wrapper {
+  margin: 4px 0 8px;
+  border-bottom: 1px solid #e8e8e8;
+  padding-bottom: 6px;
+}
+.push-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 2px 0;
+  user-select: none;
+}
+.push-group-title {
+  font-size: 11px;
+  color: #666;
+  font-weight: 500;
+}
+.push-group-toggle {
+  font-size: 10px;
+  color: #999;
+}
+.push-group-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+.push-group-chip {
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 2px solid;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+.push-group-chip:hover {
+  opacity: 0.85;
 }
 .push-account-grid {
   display: grid;
