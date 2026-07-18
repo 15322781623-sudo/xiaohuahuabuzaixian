@@ -180,7 +180,6 @@ export function createTasksItem(deps) {
         }
 
         // 第一轮：对筛选出的英雄逐个升星
-        // 关键：检查响应码 _code，与油猴脚本 res._code !== 0 判断一致
         let heroUpgradeCount = 0;
         let heroTotalStars = 0;
         const firstPassFailed = [];
@@ -196,16 +195,13 @@ export function createTasksItem(deps) {
               break;
 
             try {
-              const res = await tokenStore.sendMessageWithPromise(
+              // resolve 即为成功，reject 表示无法升星
+              await tokenStore.sendMessageWithPromise(
                 tokenId,
                 "hero_heroupgradestar",
                 { heroId },
                 batchSettings.defaultCommandTimeout || 5000,
               );
-              // 检查响应码：与油猴脚本 res._code !== 0 判断一致
-              if (res && res._code !== undefined && res._code !== 0) {
-                break;
-              }
               heroStars++;
               heroTotalStars++;
             } catch (err) {
@@ -241,15 +237,12 @@ export function createTasksItem(deps) {
               if (shouldStop.value) break;
 
               try {
-                const res = await tokenStore.sendMessageWithPromise(
+                await tokenStore.sendMessageWithPromise(
                   tokenId,
                   "hero_heroupgradestar",
                   { heroId },
                   batchSettings.defaultCommandTimeout || 5000,
                 );
-                if (res && res._code !== undefined && res._code !== 0) {
-                  break;
-                }
                 heroStars++;
                 heroTotalStars++;
               } catch (err) {
@@ -368,13 +361,37 @@ export function createTasksItem(deps) {
 
         await ensureConnection(tokenId);
 
+        // 等待连接完全稳定（与 batchHeroUpgrade 对齐）
+        await new Promise((r) => setTimeout(r, 3000));
+
+        // 连接验证：发送一个轻量命令确认连接真正可用
+        let connectionVerified = false;
+        for (let verifyAttempt = 1; verifyAttempt <= 3; verifyAttempt++) {
+          try {
+            await tokenStore.sendMessageWithPromise(
+              tokenId, "role_getroleinfo", {}, batchSettings.defaultCommandTimeout || 5000,
+            );
+            connectionVerified = true;
+            break;
+          } catch (e) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 连接验证失败(第${verifyAttempt}次)，等待2秒重试...`,
+              type: "warning",
+            });
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+        }
+        if (!connectionVerified) {
+          throw new Error("连接验证失败，无法执行图鉴升星操作");
+        }
+
         let heroTotalStars = 0;
         let fishTotalStars = 0;
         let skinSuccessCount = 0;
 
-        // === 英雄图鉴升星（双轮尝试）===
+        // === 英雄图鉴升星 ===
         if (types.includes('hero')) {
-          // 核心：检查响应码 _code，与油猴脚本 res._code !== 0 判断一致
           let heroSuccessCount = 0;
           let heroSkippedCount = 0;
 
@@ -392,16 +409,16 @@ export function createTasksItem(deps) {
               if (shouldStop.value) break;
 
               try {
-                const res = await tokenStore.sendMessageWithPromise(
+                // sendMessageWithPromise 已在 packet 层处理 code：
+                // code===0 → resolve（成功），code!==0 → reject（失败）
+                // 所以 resolve 即为升星成功，reject 进入 catch 表示该英雄无法继续升星
+                await tokenStore.sendMessageWithPromise(
                   tokenId, "book_upgrade", { heroId }, batchSettings.defaultCommandTimeout || 8000,
                 );
-                // 检查响应码：与油猴脚本 res._code !== 0 判断一致
-                if (res && res._code !== undefined && res._code !== 0) {
-                  break;
-                }
                 heroStars++;
                 heroTotalStars++;
               } catch (err) {
+                // reject 表示服务器返回错误码（碎片不足/已满星等），停止该英雄
                 break;
               }
               await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
@@ -475,21 +492,18 @@ export function createTasksItem(deps) {
                 break;
 
               try {
-                const res = await tokenStore.sendMessageWithPromise(
+                // resolve 即为成功，reject 表示无法升星
+                await tokenStore.sendMessageWithPromise(
                   tokenId,
                   "book_upgradeartifact",
                   { artifactId },
                   batchSettings.defaultCommandTimeout || 8000,
                 );
-                // 检查响应码：与油猴脚本 res._code !== 0 判断一致
-                if (res && res._code !== undefined && res._code !== 0) {
-                  if (isUnowned && star === 1) break;
-                  break;
-                }
                 fishStars++;
                 fishTotalStars++;
               } catch (err) {
-                if (isUnowned && star === 1) break;
+                // 服务器返回错误码，停止该鱼灵升星
+                break;
               }
               await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
             }
@@ -818,16 +832,13 @@ export function createTasksItem(deps) {
           if (shouldStop.value)
             break;
           try {
-            const res = await tokenStore.sendMessageWithPromise(
+            // resolve 即为成功，reject 表示无可领取奖励
+            await tokenStore.sendMessageWithPromise(
               tokenId,
               "book_claimpointreward",
               {},
               batchSettings.defaultCommandTimeout || 5000,
             );
-            // 检查响应码：与油猴脚本 res._code !== 0 判断一致
-            if (res && res._code !== undefined && res._code !== 0) {
-              break;
-            }
             addLog({
               time: new Date().toLocaleTimeString(),
               message: `${token.name} 领取图鉴奖励成功`,

@@ -129,15 +129,22 @@
     })();
 
     // ★ 通过保存的回调直接注入事件（完全绕过 isTrusted 检查）
-    function injectViaHandlers(type, cx, cy) {
+    function injectViaHandlers(type, cx, cy, extra) {
+      extra = extra || {};
       // 构造与真实事件结构一致的假事件对象
       var fakeEv = {
         type: type,
         clientX: cx, clientY: cy, pageX: cx, pageY: cy,
         screenX: cx, screenY: cy,
-        button: 0, buttons: 1, which: 1,
-        pointerId: 1, pointerType: 'mouse', isPrimary: true,
-        width: 1, height: 1, pressure: 0.5,
+        offsetX: cx, offsetY: cy,
+        button: 0, buttons: type.indexOf('up') >= 0 ? 0 : 1, which: 1,
+        pointerId: extra.pointerId || 1,
+        pointerType: extra.pointerType || 'mouse',
+        isPrimary: true,
+        width: extra.width || 1, height: extra.height || 1,
+        pressure: extra.pressure != null ? extra.pressure : 0.5,
+        deltaX: extra.deltaX || 0, deltaY: extra.deltaY || 0,
+        deltaZ: extra.deltaZ || 0, deltaMode: extra.deltaMode || 0,
         target: document.getElementById('GameCanvas'),
         currentTarget: document.getElementById('GameCanvas'),
         preventDefault: function(){}, stopPropagation: function(){},
@@ -160,10 +167,9 @@
       var fired = false;
       // 查找并调用 Cocos2d 注册的对应回调
       var searchTypes = [type];
-      // pointer 事件同时查找对应的 mouse/touch 回调
-      if (type === 'pointerdown') searchTypes.push('mousedown', 'touchstart');
-      if (type === 'pointermove') searchTypes.push('mousemove', 'touchmove');
-      if (type === 'pointerup') searchTypes.push('mouseup', 'touchend');
+      // ★ 不扩展 searchTypes: 移动端一次触摸会产生 pointer+touch+mouse 三种事件
+      // 如果 pointer 扩展到 touch/mouse 处理器，会传入空 touches 数组的假事件，
+      // 破坏 Cocos2d 触摸序列跟踪，导致后续滑动操作不生效
 
       for (var i = 0; i < searchTypes.length; i++) {
         var st = searchTypes[i];
@@ -190,21 +196,66 @@
           if (!canvas) return;
           window._syncReplay = true;
           var rect = canvas.getBoundingClientRect();
-          var scaleX = rect.width / (ev.viewW || rect.width);
-          var scaleY = rect.height / (ev.viewH || rect.height);
-          var cx = ev.clientX * scaleX;
-          var cy = ev.clientY * scaleY;
+          // ★ 优先使用 canvas 相对坐标（解决 canvas 不在视口原点时的坐标偏差）
+          var cx, cy;
+          if (ev.canvasX != null && ev.canvasW) {
+            cx = (ev.canvasX / ev.canvasW) * rect.width;
+            cy = (ev.canvasY / ev.canvasH) * rect.height;
+          } else {
+            var scaleX = rect.width / (ev.viewW || rect.width);
+            var scaleY = rect.height / (ev.viewH || rect.height);
+            cx = ev.clientX * scaleX;
+            cy = ev.clientY * scaleY;
+          }
+
+          // ★ 传递事件附加属性（wheel delta、pointer 属性等）
+          var extra = {
+            pointerId: ev.pointerId, pointerType: ev.pointerType,
+            width: ev.width, height: ev.height, pressure: ev.pressure,
+            deltaX: ev.deltaX, deltaY: ev.deltaY,
+            deltaZ: ev.deltaZ, deltaMode: ev.deltaMode
+          };
 
           // ★ 通过拦截的回调直接注入
-          var injected = injectViaHandlers(ev.eventType, cx, cy);
+          var injected = injectViaHandlers(ev.eventType, cx, cy, extra);
 
-          // ★ 回退: dispatchEvent
+          // ★ 回退: dispatchEvent（按事件类型创建对应的原生事件）
           if (!injected) {
-            var mouseEv = new MouseEvent(
-              ev.eventType.replace('pointer','mouse').replace('touch','mouse'),
-              { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 0 }
-            );
-            canvas.dispatchEvent(mouseEv);
+            if (ev.eventType === 'wheel') {
+              var wheelEv = new WheelEvent('wheel', {
+                bubbles: true, cancelable: true, view: window,
+                clientX: cx, clientY: cy,
+                deltaX: ev.deltaX || 0, deltaY: ev.deltaY || 0,
+                deltaZ: ev.deltaZ || 0, deltaMode: ev.deltaMode || 0
+              });
+              canvas.dispatchEvent(wheelEv);
+            } else if (ev.eventType.indexOf('pointer') === 0 && typeof PointerEvent !== 'undefined') {
+              var ptrEv = new PointerEvent(ev.eventType, {
+                bubbles: true, cancelable: true, view: window,
+                clientX: cx, clientY: cy, button: 0,
+                pointerId: ev.pointerId || 1,
+                pointerType: ev.pointerType || 'mouse',
+                isPrimary: true, width: ev.width || 1, height: ev.height || 1,
+                pressure: ev.pressure != null ? ev.pressure : 0.5
+              });
+              canvas.dispatchEvent(ptrEv);
+            } else if (ev.eventType.indexOf('touch') >= 0) {
+              var touchObj = new Touch({ identifier: 0, target: canvas, clientX: cx, clientY: cy, pageX: cx, pageY: cy });
+              var touchInit = { bubbles: true, cancelable: true, view: window };
+              if (ev.eventType === 'touchend') {
+                touchInit.changedTouches = [touchObj];
+              } else {
+                touchInit.touches = [touchObj]; touchInit.targetTouches = [touchObj]; touchInit.changedTouches = [touchObj];
+              }
+              var tEv = new TouchEvent(ev.eventType, touchInit);
+              canvas.dispatchEvent(tEv);
+            } else {
+              var mouseEv = new MouseEvent(
+                ev.eventType.replace('pointer','mouse').replace('touch','mouse'),
+                { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 0 }
+              );
+              canvas.dispatchEvent(mouseEv);
+            }
           }
           window._syncReplay = false;
         } catch(err) {
@@ -256,26 +307,44 @@
     (function() {
       var captured = false;
       var lastMoveTime = 0;
-      var MOVE_THROTTLE = 16; // ~60fps 节流，避免过多 postMessage
+      var MOVE_THROTTLE = 32; // 节流，避免过多 postMessage
+      // ★ 触摸去重: 移动端一次交互同时产生 touch+pointer+mouse 事件
+      // 记录 touch 时间戳，100ms 内抑制对应的 pointer/mouse 事件
+      var lastTouchTime = 0;
+      var TOUCH_DEDUP_MS = 100;
 
       var forwardEvent = function(type, e) {
         if (window._syncReplay || !window._syncEnabled || window.parent === window) return;
 
-        // 移动事件节流
-        if (type === 'mousemove' || type === 'pointermove' || type === 'touchmove') {
+        // ★ 触摸去重: touch 事件记录时间戳，抑制紧随其后的 pointer/mouse 事件
+        if (type.indexOf('touch') === 0) {
+          lastTouchTime = Date.now();
+        } else if (type.indexOf('pointer') === 0 || type.indexOf('mouse') === 0) {
+          if (Date.now() - lastTouchTime < TOUCH_DEDUP_MS) return;
+        }
+
+        // 移动/滚轮事件节流
+        if (type === 'mousemove' || type === 'pointermove' || type === 'touchmove' || type === 'wheel') {
           var now = Date.now();
           if (now - lastMoveTime < MOVE_THROTTLE) return;
           lastMoveTime = now;
         }
 
         try {
+          var canvas = document.getElementById('GameCanvas');
+          var rect = canvas ? canvas.getBoundingClientRect() : null;
           var data = {
             eventType: type,
-            clientX: e.clientX,
-            clientY: e.clientY,
+            clientX: e.clientX || 0,
+            clientY: e.clientY || 0,
             button: e.button || 0,
             viewW: window.innerWidth,
-            viewH: window.innerHeight
+            viewH: window.innerHeight,
+            // ★ canvas 相对坐标（解决 canvas 不在视口原点时的坐标偏差）
+            canvasX: rect ? (e.clientX || 0) - rect.left : 0,
+            canvasY: rect ? (e.clientY || 0) - rect.top : 0,
+            canvasW: rect ? rect.width : 1,
+            canvasH: rect ? rect.height : 1
           };
           // PointerEvent 特有属性
           if (type.indexOf('pointer') === 0) {
@@ -284,6 +353,13 @@
             data.width = e.width || 1;
             data.height = e.height || 1;
             data.pressure = e.pressure || 0.5;
+          }
+          // WheelEvent 特有属性
+          if (type === 'wheel') {
+            data.deltaX = e.deltaX || 0;
+            data.deltaY = e.deltaY || 0;
+            data.deltaZ = e.deltaZ || 0;
+            data.deltaMode = e.deltaMode || 0;
           }
           window.parent.postMessage({
             type: 'GAME_INPUT_EVENT',
@@ -315,7 +391,10 @@
         canvas.addEventListener('mouseup', function(e) { forwardEvent('mouseup', e); }, true);
         canvas.addEventListener('mousemove', function(e) { forwardEvent('mousemove', e); }, true);
 
-        console.log(TAG, '✅ Canvas事件捕获已安装 (pointer+touch+mouse)');
+        // ★ 滚轮事件（列表滑动等场景）
+        canvas.addEventListener('wheel', function(e) { forwardEvent('wheel', e); }, true);
+
+        console.log(TAG, '✅ Canvas事件捕获已安装 (pointer+touch+mouse+wheel)');
       }
 
       // 等待Canvas加载

@@ -310,16 +310,12 @@ const runHeroUpgrade = async (mod) => {
         if (state.value.stopRequested)
           break;
         try {
-          const res = await tokenStore.sendMessageWithPromise(
+          await tokenStore.sendMessageWithPromise(
             tokenId,
             "hero_heroupgradestar",
             { heroId },
             8000,
           );
-          // 检查响应码：与油猴脚本 res._code !== 0 判断一致
-          if (res && res._code !== undefined && res._code !== 0) {
-            break;
-          }
           heroStars++;
           heroTotalStars++;
         } catch (err) {
@@ -363,7 +359,6 @@ const runBookUpgrade = async (mod) => {
     let heroSkippedCount = 0;
 
     // === 英雄图鉴升星（双轮尝试）===
-    // 核心：检查响应码 _code，与油猴脚本 res._code !== 0 判断一致
     addLog(`开始英雄图鉴升星，共${heroIds.value.length}个英雄`, "info");
 
     // 第一轮：尝试所有英雄
@@ -374,13 +369,9 @@ const runBookUpgrade = async (mod) => {
       for (let i = 1; i <= 10; i++) {
         if (state.value.stopRequested) break;
         try {
-          const res = await tokenStore.sendMessageWithPromise(
+          await tokenStore.sendMessageWithPromise(
             tokenId, "book_upgrade", { heroId }, 8000,
           );
-          // 检查响应码：与油猴脚本 res._code !== 0 判断一致
-          if (res && res._code !== undefined && res._code !== 0) {
-            break;
-          }
           heroStars++;
           heroTotalStars++;
         } catch (err) {
@@ -408,12 +399,9 @@ const runBookUpgrade = async (mod) => {
         for (let i = 1; i <= 10; i++) {
           if (state.value.stopRequested) break;
           try {
-            const res = await tokenStore.sendMessageWithPromise(
+            await tokenStore.sendMessageWithPromise(
               tokenId, "book_upgrade", { heroId }, 8000,
             );
-            if (res && res._code !== undefined && res._code !== 0) {
-              break;
-            }
             heroStars++;
             heroTotalStars++;
           } catch (err) {
@@ -472,23 +460,16 @@ const runBookUpgrade = async (mod) => {
         if (state.value.stopRequested)
           break;
         try {
-          const res = await tokenStore.sendMessageWithPromise(
+          await tokenStore.sendMessageWithPromise(
             tokenId,
             "book_upgradeartifact",
             { artifactId },
             8000,
           );
-          // 检查响应码：与油猴脚本 res._code !== 0 判断一致
-          if (res && res._code !== undefined && res._code !== 0) {
-            // 未拥有鱼灵第一次失败则跳过，已拥有则继续尝试
-            if (isUnowned && star === 1) break;
-            break;
-          }
           fishStars++;
           fishTotalStars++;
         } catch (err) {
-          // 未拥有鱼灵第一次失败则跳过，已拥有则继续尝试
-          if (isUnowned && star === 1) break;
+          break;
         }
         await sleep(mod.delay);
       }
@@ -562,23 +543,16 @@ const runFishBookUpgrade = async (mod) => {
         if (state.value.stopRequested)
           break;
         try {
-          const res = await tokenStore.sendMessageWithPromise(
+          await tokenStore.sendMessageWithPromise(
             tokenId,
             "book_upgradeartifact",
             { artifactId },
             8000,
           );
-          // 检查响应码：与油猴脚本 res._code !== 0 判断一致
-          if (res && res._code !== undefined && res._code !== 0) {
-            // 未拥有鱼灵第一次失败则跳过，已拥有则继续尝试
-            if (isUnowned && star === 1) break;
-            break;
-          }
           fishStars++;
           fishTotalStars++;
         } catch (err) {
-          // 未拥有鱼灵第一次失败则跳过，已拥有则继续尝试
-          if (isUnowned && star === 1) break;
+          break;
         }
         await sleep(mod.delay);
       }
@@ -677,16 +651,12 @@ const runClaimRewards = async (mod) => {
       if (state.value.stopRequested)
         break;
       try {
-        const res = await tokenStore.sendMessageWithPromise(
+        await tokenStore.sendMessageWithPromise(
           tokenId,
           "book_claimpointreward",
           {},
           8000,
         );
-        // 检查响应码：与油猴脚本 res._code !== 0 判断一致
-        if (res && res._code !== undefined && res._code !== 0) {
-          break;
-        }
         addLog(`领取图鉴奖励第${i}/10次`, "success");
         state.value.done++;
       } catch (err) {
