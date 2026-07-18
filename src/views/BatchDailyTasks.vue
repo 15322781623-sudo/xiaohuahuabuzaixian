@@ -1030,6 +1030,13 @@
                 >
                   助威商店多选购买
                 </n-button>
+                <n-button
+                  size="small"
+                  @click="openSaltRoadCheerModal"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  天宫助威
+                </n-button>
               </n-space>
             </n-tab-pane>
             <n-tab-pane name="consumeActivity" tab="消耗活动">
@@ -3839,6 +3846,63 @@
               </n-radio-group>
             </div>
           </div>
+
+          <!-- 天宫助威选项 -->
+          <div v-if="taskForm.selectedTasks.includes('batchSaltRoadCheer')" class="task-config-card">
+            <div class="config-card-header">
+              <span class="config-card-title">🏆 天宫助威 - 配置助威参数</span>
+            </div>
+            <div class="config-card-content">
+              <n-alert type="info" size="small" style="margin-bottom: 12px;">
+                点击“获取对阵”拉取当前对阵列表，然后勾选要助威的俱乐部队伍
+              </n-alert>
+              <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;">
+                <n-button size="small" :loading="taskSaltRoadLoading" @click="fetchTaskSaltRoadOpponents">
+                  获取对阵
+                </n-button>
+                <span v-if="taskForm.saltRoadLegionName" style="font-size: 14px; color: #18a058; font-weight: bold;">
+                  ✅ 已选：{{ taskForm.saltRoadLegionName }}
+                </span>
+                <span v-else-if="taskSaltRoadOpponents.length === 0" style="font-size: 13px; color: #888;">
+                  未获取对阵，将自动按左/右军助威
+                </span>
+              </div>
+              <!-- 对阵列表 -->
+              <div v-if="taskSaltRoadOpponents.length > 0" style="margin-bottom: 12px;">
+                <div v-for="(match, idx) in taskSaltRoadOpponents" :key="match.groupId || idx" 
+                  style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid #eee; flex-wrap: wrap;">
+                  <span style="font-size: 13px; color: #666; min-width: 40px;">组{{ match.groupId || (idx+1) }}</span>
+                  <n-button 
+                    size="tiny" 
+                    :type="taskForm.saltRoadLegionId === match.leftLegion?.id ? 'primary' : 'default'"
+                    @click="taskForm.saltRoadLegionId = match.leftLegion?.id; taskForm.saltRoadLegionName = match.leftLegion?.name || ''">
+                    ← {{ match.leftLegion?.name || '左军' }}
+                  </n-button>
+                  <span style="font-size: 12px; color: #999;">VS</span>
+                  <n-button 
+                    size="tiny" 
+                    :type="taskForm.saltRoadLegionId === match.rightLegion?.id ? 'primary' : 'default'"
+                    @click="taskForm.saltRoadLegionId = match.rightLegion?.id; taskForm.saltRoadLegionName = match.rightLegion?.name || ''">
+                    {{ match.rightLegion?.name || '右军' }} →
+                  </n-button>
+                </div>
+              </div>
+              <!-- 兑底：左右军选择 -->
+              <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                <div>
+                  <span style="font-size: 14px; margin-right: 8px;">未选队伍时按方向助威：</span>
+                  <n-radio-group v-model:value="taskForm.saltRoadSide" size="small">
+                    <n-radio :value="1">左军</n-radio>
+                    <n-radio :value="2">右军</n-radio>
+                  </n-radio-group>
+                </div>
+                <div>
+                  <span style="font-size: 14px; margin-right: 8px;">助威次数：</span>
+                  <n-input-number v-model:value="taskForm.saltRoadVoteCount" :min="1" :max="999" style="width: 120px;" size="small" />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         
         <!-- 不上线时段开关 -->
@@ -4415,6 +4479,67 @@
             {{ selectedApexTeamId ? `对队伍"${getSelectedTeamName()}"${apexVoteCount === 0 ? '全部赠送' : `赠送 ${apexVoteCount} 次`}` : '请先选择一个俱乐部' }}
           </n-button>
           <n-button @click="closeApexCheerModal">关闭</n-button>
+        </div>
+      </div>
+    </n-modal>
+
+    <!-- SaltRoad Cheer Modal (天宫助威) -->
+    <n-modal
+      v-model:show="showSaltRoadCheerModal"
+      preset="card"
+      title="天宫助威（盐道淘汰赛）"
+      style="width: 90%; max-width: 1000px"
+    >
+      <div class="settings-content">
+        <div class="settings-grid" style="display: block;">
+          <!-- 获取列表区域 -->
+          <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <span style="font-size: 14px;">日期(phase)：</span>
+            <n-input v-model:value="saltRoadPhaseInput" placeholder="如 260718，留空自动获取" style="width: 180px;" size="small" />
+            <n-button type="primary" @click="fetchSaltRoadOpponents" :loading="saltRoadCheerLoading" style="width: 200px; margin-bottom: 0;">
+              {{ saltRoadCheerLoading ? '加载中...' : '获取对阵列表' }}
+            </n-button>
+            <n-text type="info" style="font-size: 14px;">
+              期次：{{ saltRoadPhase || '-' }} | 共 {{ saltRoadOpponentList.length }} 场对阵
+            </n-text>
+          </div>
+
+          <!-- 助威数量设置 -->
+          <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 16px;">助威次数：</span>
+            <n-input-number 
+              v-model:value="saltRoadVoteCount" 
+              placeholder="助威次数" 
+              :min="1" 
+              :max="999" 
+              style="width: 200px"
+            />
+          </div>
+
+          <!-- 对阵列表 -->
+          <n-data-table
+            :columns="saltRoadOpponentColumns"
+            :data="saltRoadOpponentList"
+            :loading="saltRoadCheerLoading"
+            :row-key="row => row.battlefieldId"
+            :checked-row-keys="selectedSaltRoadBattlefieldId ? [selectedSaltRoadBattlefieldId] : []"
+            @update:checked-row-keys="(keys) => onSaltRoadRowSelect(keys)"
+            :row-props="saltRoadRowProps"
+            style="height: 500px; flex: 1;"
+            flex-height
+          />
+        </div>
+        <div class="modal-actions" style="margin-top: 20px; text-align: right">
+          <n-button 
+            @click="applySaltRoadCheer" 
+            type="primary" 
+            :disabled="!selectedSaltRoadBattlefieldId || !selectedSaltRoadWinSid || isRunning"
+          >
+            {{ selectedSaltRoadBattlefieldId && selectedSaltRoadWinSid 
+              ? `对 ${selectedSaltRoadSideValue === 1 ? '左军' : '右军'} 助威 ${saltRoadVoteCount} 次` 
+              : '请先选择对阵和方向' }}
+          </n-button>
+          <n-button @click="closeSaltRoadCheerModal">关闭</n-button>
         </div>
       </div>
     </n-modal>
@@ -5472,6 +5597,7 @@ import { DailyTaskRunner } from "@/utils/dailyTaskRunner";
 import { preloadQuestions } from "@/utils/studyQuestionsFromJSON.js";
 import { useMessage } from "naive-ui";
 import { Settings, AddCircleOutline, CheckmarkCircleOutline, CloseCircleOutline, ListOutline, CloudDownloadOutline, CloudUploadOutline, SearchOutline, DocumentTextOutline, CreateOutline, TrashOutline, SettingsOutline, PlayOutline, Add, CopyOutline } from "@vicons/ionicons5";
+import { getFirstSaturdayOfMonth, getLastSaturday } from "@/utils/clubBattleUtils";
 import TokenCard from "@/components/TokenCard.vue";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { storage } from "@/utils/crossPlatformStorage";
@@ -6539,6 +6665,282 @@ const applyApexVote = async () => {
   showApexCheerModal.value = false;
   message.success(`所有账号助威完成`);
 };
+
+// ======================
+// SaltRoad Cheering Feature (天宫助威)
+// ======================
+const showSaltRoadCheerModal = ref(false);
+const saltRoadOpponentList = ref([]);
+const saltRoadCheerLoading = ref(false);
+const saltRoadPhase = ref('');
+const saltRoadPhaseInput = ref(''); // 用户输入的phase，留空则自动获取
+const saltRoadVoteCount = ref(1);
+const selectedSaltRoadBattlefieldId = ref(null);
+const selectedSaltRoadGroupId = ref(null); // 选择的 groupId
+const selectedSaltRoadSideValue = ref(null); // 1=leftLegion, 2=rightLegion
+const selectedSaltRoadWinSid = ref(null); // 实际的 winSid
+
+const saltRoadRowProps = (row) => {
+  return {
+    style: "cursor: pointer",
+    onClick: () => {
+      selectedSaltRoadBattlefieldId.value = row.battlefieldId;
+    },
+  };
+};
+
+const onSaltRoadRowSelect = (keys) => {
+  selectedSaltRoadBattlefieldId.value = keys[0] || null;
+  // 选中对阵后默认左军
+  if (keys[0] && !selectedSaltRoadSideValue.value) {
+    selectedSaltRoadSideValue.value = 1;
+    // 找到对应数据，设置 winSid
+    const row = saltRoadOpponentList.value.find(r => r.groupId === keys[0]);
+    if (row && row.leftLegion?.id) {
+      selectedSaltRoadWinSid.value = row.leftLegion.id;
+    }
+  }
+};
+
+// 列定义
+const saltRoadOpponentColumns = [
+  { type: 'selection', multiple: false },
+  { title: '组别', key: 'groupId', width: 70 },
+  {
+    title: '左军', key: 'leftLegion', width: 280,
+    render(row) {
+      const leg = row.leftLegion;
+      return h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
+        h('img', { src: leg?.logo || '', style: { width: '32px', height: '32px', borderRadius: '4px' } }),
+        h('div', null, [
+          h('div', { style: 'font-weight: bold;' }, leg?.name || '-'),
+          h('div', { style: 'font-size: 12px; color: #888;' }, `战力: ${formatPower(leg?.power || 0)}`),
+        ]),
+      ]);
+    }
+  },
+  {
+    title: '助威方向', key: 'side', width: 140,
+    render(row) {
+      return h('div', { style: 'display: flex; gap: 8px;' }, [
+        h('button', {
+          style: selectedSaltRoadBattlefieldId.value === row.battlefieldId && selectedSaltRoadSideValue.value === 1
+            ? 'padding: 4px 12px; background: #18a058; color: white; border: none; border-radius: 4px; cursor: pointer;'
+            : 'padding: 4px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;',
+          onClick: (e) => {
+            e.stopPropagation();
+            selectedSaltRoadBattlefieldId.value = row.battlefieldId;
+            selectedSaltRoadGroupId.value = row.groupId;
+            selectedSaltRoadSideValue.value = 1;
+            selectedSaltRoadWinSid.value = row.leftLegion?.id || null;
+          }
+        }, '← 左军'),
+        h('button', {
+          style: selectedSaltRoadBattlefieldId.value === row.battlefieldId && selectedSaltRoadSideValue.value === 2
+            ? 'padding: 4px 12px; background: #2080f0; color: white; border: none; border-radius: 4px; cursor: pointer;'
+            : 'padding: 4px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;',
+          onClick: (e) => {
+            e.stopPropagation();
+            selectedSaltRoadBattlefieldId.value = row.battlefieldId;
+            selectedSaltRoadGroupId.value = row.groupId;
+            selectedSaltRoadSideValue.value = 2;
+            selectedSaltRoadWinSid.value = row.rightLegion?.id || null;
+          }
+        }, '右军 →'),
+      ]);
+    }
+  },
+  {
+    title: '右军', key: 'rightLegion', width: 280,
+    render(row) {
+      const leg = row.rightLegion;
+      return h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
+        h('img', { src: leg?.logo || '', style: { width: '32px', height: '32px', borderRadius: '4px' } }),
+        h('div', null, [
+          h('div', { style: 'font-weight: bold;' }, leg?.name || '-'),
+          h('div', { style: 'font-size: 12px; color: #888;' }, `战力: ${formatPower(leg?.power || 0)}`),
+        ]),
+      ]);
+    }
+  },
+];
+
+const openSaltRoadCheerModal = async () => {
+  showSaltRoadCheerModal.value = true;
+  selectedSaltRoadBattlefieldId.value = null;
+  selectedSaltRoadGroupId.value = null;
+  selectedSaltRoadSideValue.value = null;
+  selectedSaltRoadWinSid.value = null;
+  saltRoadOpponentList.value = [];
+  await fetchSaltRoadOpponents();
+};
+
+const closeSaltRoadCheerModal = () => {
+  for (const tokenId of selectedTokens.value) {
+    tokenStore.closeWebSocketConnection(tokenId);
+  }
+  showSaltRoadCheerModal.value = false;
+};
+
+const fetchSaltRoadOpponents = async () => {
+  if (selectedTokens.value.length === 0) {
+    message.warning("请先选择一个账号");
+    return;
+  }
+
+  const tokenId = selectedTokens.value[0];
+  const token = tokens.value.find(t => t.id === tokenId);
+
+  saltRoadCheerLoading.value = true;
+  try {
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `正在使用 ${token.name} 获取天宫助威对阵列表...`,
+      type: "info",
+    });
+
+    // Ensure connection
+    const status = tokenStore.getWebSocketStatus(tokenId);
+    if (status === "connecting") {
+      let retries = 0;
+      while (tokenStore.getWebSocketStatus(tokenId) !== "connected" && retries < 20) {
+        await new Promise(r => setTimeout(r, 1000));
+        retries++;
+      }
+      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+        throw new Error(`连接 ${token.name} 超时`);
+      }
+    } else if (status !== "connected") {
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `正在连接 ${token.name}...`,
+        type: "info",
+      });
+      const result = await tokenStore.createWebSocketConnection(tokenId, token.token, token.wsUrl);
+      if (!result) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接由其他进程处理，等待...`,
+          type: "info",
+        });
+      }
+      let retries = 0;
+      while (tokenStore.getWebSocketStatus(tokenId) !== "connected" && retries < 20) {
+        await new Promise(r => setTimeout(r, 1000));
+        retries++;
+      }
+      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
+        throw new Error(`连接 ${token.name} 失败`);
+      }
+    }
+
+    // 获取 phase 参数
+    let phase = saltRoadPhaseInput.value.trim();
+    
+    // 如果没有手动输入 phase，先尝试通过 saltroad_getwartype 自动获取
+    if (!phase) {
+      try {
+        const firstSaturday = getFirstSaturdayOfMonth();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `正在获取当前盐战信息 (date=${firstSaturday})...`,
+          type: "info",
+        });
+        const warTypeResp = await tokenStore.sendMessageWithPromise(tokenId, "saltroad_getwartype", { date: firstSaturday }, 10000);
+        if (warTypeResp) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `盐战信息: ${JSON.stringify(warTypeResp).substring(0, 300)}`,
+            type: "info",
+          });
+          // 尝试从响应中提取 phase/date 信息
+          if (warTypeResp.phase) {
+            phase = String(warTypeResp.phase);
+          } else if (warTypeResp.date) {
+            phase = String(warTypeResp.date);
+          } else if (warTypeResp.currentPhase) {
+            phase = String(warTypeResp.currentPhase);
+          }
+        }
+      } catch (e) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `获取盐战信息失败: ${e.message}，继续尝试直接获取对阵...`,
+          type: "warning",
+        });
+      }
+    }
+
+    // 如果仍然没有 phase，使用上周六的日期 (YYMMDD格式) 作为兜底
+    if (!phase) {
+      const lastSat = getLastSaturday(); // YYYY/MM/DD
+      // 转换为 YYMMDD 格式
+      const parts = lastSat.split('/');
+      if (parts.length === 3) {
+        phase = parts[0].slice(2) + parts[1] + parts[2];
+      }
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `使用兜底 phase: ${phase} (上周六: ${lastSat})`,
+        type: "info",
+      });
+    }
+
+    const requestParams = { phase };
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `请求参数: ${JSON.stringify(requestParams)}`,
+      type: "info",
+    });
+
+    const response = await tokenStore.sendMessageWithPromise(tokenId, "saltroad_getoutopponent", requestParams, 10000);
+    if (response && response.opponentList) {
+      saltRoadPhase.value = response.phase || '';
+      saltRoadOpponentList.value = response.opponentList.map(item => ({
+        battlefieldId: item.battlefieldId,
+        groupId: item.groupId,
+        winSid: item.winSid,
+        leftLegion: item.leftLegion,
+        rightLegion: item.rightLegion,
+      }));
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `获取到 ${saltRoadOpponentList.value.length} 场对阵`,
+        type: "success",
+      });
+    } else {
+      message.warning("获取对阵列表为空");
+      saltRoadOpponentList.value = [];
+    }
+  } catch (error) {
+    console.error("Fetch saltroad opponents error:", error);
+    message.error("获取对阵列表失败：" + error.message);
+  } finally {
+    saltRoadCheerLoading.value = false;
+  }
+};
+
+const applySaltRoadCheer = async () => {
+  if (!selectedSaltRoadSideValue.value) {
+    message.warning("请选择助威方向（左军/右军）");
+    return;
+  }
+
+  // 调用批量助威任务（自动获取 phase 和对阵列表）
+  await batchSaltRoadCheer(selectedSaltRoadSideValue.value, saltRoadVoteCount.value);
+
+  // 关闭弹窗
+  closeSaltRoadCheerModal();
+};
+
+// 弹窗关闭时释放连接槽
+watch(showSaltRoadCheerModal, (newVal) => {
+  if (!newVal) {
+    for (const tokenId of selectedTokens.value) {
+      tokenStore.closeWebSocketConnection(tokenId);
+    }
+  }
+});
 
 const getRemainingTimeText = () => {
   // 剩余时间文本（月度任务类似的逻辑）
@@ -7678,8 +8080,79 @@ const taskForm = reactive({
   nightmarePresetIds: [], // 十殿阎罗挑战预设ID列表
   nightmarePresetDelay: 10, // 预设间执行间隔（秒），默认10秒
   saltCupBetPick: 1, // 比赛竞猜选项: 1=主胜, 2=平局, 3=客胜
+  saltRoadBattlefieldId: '', // 天宫助威战场ID（已废弃，保留兼容）
+  saltRoadSide: 1, // 天宫助威方向: 1=左军, 2=右军
+  saltRoadVoteCount: 1, // 天宫助威次数
+  saltRoadLegionId: null, // 天宫助威预选军团ID
+  saltRoadLegionName: '', // 天宫助威预选军团名（显示用）
   bookUpgradeTypes: ['hero', 'fish', 'skin'], // 图鉴升星类型: hero=英雄, fish=鱼灵, skin=皮肤
 });
+
+// 定时任务配置 - 天宫助威对阵列表获取
+const taskSaltRoadOpponents = ref([]);
+const taskSaltRoadLoading = ref(false);
+
+const fetchTaskSaltRoadOpponents = async () => {
+  const formTokens = taskForm.selectedTokens;
+  if (!formTokens || formTokens.length === 0) {
+    message.warning("请先在定时任务中选择至少一个账号");
+    return;
+  }
+  const tokenId = formTokens[0];
+  const token = tokens.value.find(t => t.id === tokenId);
+  taskSaltRoadLoading.value = true;
+  try {
+    // 确保连接
+    const status = tokenStore.getWebSocketStatus(tokenId);
+    if (status !== 'connected') {
+      addLog({ time: new Date().toLocaleTimeString(), message: `正在连接 ${token.name} 以获取对阵列表...`, type: "info" });
+      await tokenStore.createWebSocketConnection(tokenId, token.token, token.wsUrl);
+      let retries = 0;
+      while (tokenStore.getWebSocketStatus(tokenId) !== 'connected' && retries < 15) {
+        await new Promise(r => setTimeout(r, 1000));
+        retries++;
+      }
+      if (tokenStore.getWebSocketStatus(tokenId) !== 'connected') {
+        throw new Error(`连接 ${token.name} 超时`);
+      }
+    }
+
+    // 获取 phase
+    let phase = null;
+    try {
+      const firstSaturday = getFirstSaturdayOfMonth();
+      const warTypeResp = await tokenStore.sendMessageWithPromise(tokenId, "saltroad_getwartype", { date: firstSaturday }, 10000);
+      if (warTypeResp) {
+        if (warTypeResp.phase) phase = String(warTypeResp.phase);
+        else if (warTypeResp.date) phase = String(warTypeResp.date);
+        else if (warTypeResp.currentPhase) phase = String(warTypeResp.currentPhase);
+      }
+    } catch (e) { /* ignore */ }
+    if (!phase) {
+      const lastSat = getLastSaturday();
+      const parts = lastSat.split('/');
+      if (parts.length === 3) phase = parts[0].slice(2) + parts[1] + parts[2];
+    }
+
+    const opponentResp = await tokenStore.sendMessageWithPromise(tokenId, "saltroad_getoutopponent", { phase }, 10000);
+    if (opponentResp && opponentResp.opponentList && opponentResp.opponentList.length > 0) {
+      taskSaltRoadOpponents.value = opponentResp.opponentList.map(item => ({
+        groupId: item.groupId,
+        leftLegion: item.leftLegion,
+        rightLegion: item.rightLegion,
+      }));
+      addLog({ time: new Date().toLocaleTimeString(), message: `获取到 ${taskSaltRoadOpponents.value.length} 场对阵`, type: "success" });
+    } else {
+      message.warning("获取对阵列表为空");
+      taskSaltRoadOpponents.value = [];
+    }
+  } catch (error) {
+    message.error("获取对阵列表失败：" + error.message);
+    taskSaltRoadOpponents.value = [];
+  } finally {
+    taskSaltRoadLoading.value = false;
+  }
+};
 
 // 任务分组定义
 const taskGroupDefinitions = [
@@ -7693,7 +8166,7 @@ const taskGroupDefinitions = [
   { name: 'nightmare', label: '十殿', tasks: ['batchNightmareChallengePresets', 'nightmare_draw_lottery', 'nightmare_claim_book_reward', 'star_drawturntable', 'batch_star_challenge'] },
   { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchAutumnUseItem', 'batchClaimCdkReward', 'batchClaimApexRewards', 'batchSaltCupBet'] },
   { name: 'legacy', label: '功法', tasks: ['batchLegacyHangup', 'batchLegacyClaim', 'batchLegacyGiftSendEnhanced', 'batchLegacyClaimGiftTask'] },
-  { name: 'monthly', label: '月度', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items'] },
+  { name: 'monthly', label: '月度', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items', 'batchSaltRoadCheer'] },
   { name: 'consumeActivity', label: '消耗活动', tasks: ['batchConsumeActivity', 'batchClaimConsumeRewards', 'batchApexCheer', 'batchUseActivityItem', 'batchActivityExchange'] }
 ];
 
@@ -7989,8 +8462,14 @@ const cancelTaskEdit = () => {
     taskForm.nightmarePresetIds = [];
     taskForm.nightmarePresetDelay = 10;
     taskForm.saltCupBetPick = 1;
+    taskForm.saltRoadBattlefieldId = '';
+    taskForm.saltRoadSide = 1;
+    taskForm.saltRoadVoteCount = 1;
+    taskForm.saltRoadLegionId = null;
+    taskForm.saltRoadLegionName = '';
     taskForm.bookUpgradeTypes = ['hero', 'fish', 'skin'];
     taskForm.fragmentPackItems = [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005];
+    taskSaltRoadOpponents.value = [];
     taskScheduleSelectedGroupIds.value = [];
   }, 300);
 };
@@ -8103,6 +8582,11 @@ const openTaskModal = () => {
   taskForm.nightmarePresetIds = [];
   taskForm.nightmarePresetDelay = 10;
   taskForm.saltCupBetPick = 1;
+  taskForm.saltRoadBattlefieldId = '';
+  taskForm.saltRoadSide = 1;
+  taskForm.saltRoadVoteCount = 1;
+  taskForm.saltRoadLegionId = null;
+  taskForm.saltRoadLegionName = '';
   taskForm.bookUpgradeTypes = ['hero', 'fish', 'skin'];
   
   // 碎片礼包配置（默认全选）
@@ -8112,6 +8596,7 @@ const openTaskModal = () => {
   console.log('[新增任务] weeklyMarketItems:', taskForm.weeklyMarketItems);
   console.log('[新增任务] legionStoreItems:', taskForm.legionStoreItems);
   
+  taskSaltRoadOpponents.value = [];
   taskScheduleSelectedGroupIds.value = [];
   showTaskModal.value = true;
 };
@@ -8293,6 +8778,11 @@ const editTask = (task) => {
     nightmarePresetIds: task.nightmarePresetIds || [],
     nightmarePresetDelay: task.nightmarePresetDelay || 10,
     saltCupBetPick: task.saltCupBetPick !== undefined ? task.saltCupBetPick : 1,
+    saltRoadBattlefieldId: task.saltRoadBattlefieldId || '',
+    saltRoadSide: task.saltRoadSide !== undefined ? task.saltRoadSide : 1,
+    saltRoadVoteCount: task.saltRoadVoteCount || 1,
+    saltRoadLegionId: task.saltRoadLegionId || null,
+    saltRoadLegionName: task.saltRoadLegionName || '',
     bookUpgradeTypes: task.bookUpgradeTypes && task.bookUpgradeTypes.length > 0 ? [...task.bookUpgradeTypes] : ['hero', 'fish', 'skin'],
     pushStartTime: task.pushStartTime ? (() => {
       const [h, m] = task.pushStartTime.split(':').map(Number);
@@ -8562,6 +9052,11 @@ const saveTask = () => {
     nightmarePresetIds: [...(taskForm.nightmarePresetIds || [])],
     nightmarePresetDelay: taskForm.nightmarePresetDelay || 10,
     saltCupBetPick: taskForm.saltCupBetPick || 1,
+    saltRoadBattlefieldId: taskForm.saltRoadBattlefieldId || '',
+    saltRoadSide: taskForm.saltRoadSide || 1,
+    saltRoadVoteCount: taskForm.saltRoadVoteCount || 1,
+    saltRoadLegionId: taskForm.saltRoadLegionId || null,
+    saltRoadLegionName: taskForm.saltRoadLegionName || '',
     bookUpgradeTypes: [...(taskForm.bookUpgradeTypes || ['hero', 'fish', 'skin'])],
   };
 
@@ -12088,6 +12583,26 @@ const executeScheduledTask = async (task) => {
                 type: "info",
               });
               await taskFunction(null, pickVal);
+            } else if (taskName === 'batchSaltRoadCheer') {
+              // 天宫助威：支持预选军团ID或自动按方向获取
+              const side = task.saltRoadSide || 1;
+              const voteCnt = task.saltRoadVoteCount || 1;
+              const legionId = task.saltRoadLegionId || null;
+              const legionName = task.saltRoadLegionName || '';
+              if (legionId) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `🏆 天宫助威：对 ${legionName}(${legionId}) 助威 ${voteCnt} 次`,
+                  type: "info",
+                });
+              } else {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `🏆 天宫助威：对 ${side === 1 ? '左军' : '右军'} 助威 ${voteCnt} 次（自动获取对阵）`,
+                  type: "info",
+                });
+              }
+              await taskFunction(side, voteCnt, legionId || undefined, legionName || undefined);
             } else {
               await taskFunction();
             }
@@ -15690,7 +16205,7 @@ const tasksArena = wrapTaskFunctions(createTasksArena(createTaskDeps()));
 const { batcharenafight, batchTopUpFish, batchTopUpArena } = tasksArena;
 
 const tasksStore = wrapTaskFunctions(createTasksStore(createTaskDeps()));
-const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, batch_mail_claim_and_cleanup, saltcup26_openstarpack_use, batchSaltCupBet, getSaltCupBetInfo } = tasksStore;
+const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, batch_mail_claim_and_cleanup, saltcup26_openstarpack_use, batchSaltCupBet, getSaltCupBetInfo, batchSaltRoadCheer } = tasksStore;
 
 // ====== 采购清单配置 ======
 // 采购清单可选项（用于任务模板中多选）

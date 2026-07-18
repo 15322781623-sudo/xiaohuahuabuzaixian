@@ -27,6 +27,11 @@ const VERSION_JSON_PATH = path.join(ROOT_DIR, 'version.json');
 const R2_BUCKET = 'xyzw-apk';
 const WORKER_NAME = 'xyzw-apk-updater';
 
+// ✅ Node.js 22 PATH 提前设置（Capacitor CLI 和 wrangler 均要求 Node >= 22）
+const node22Path = 'C:\\node22\\node-v22.16.0-win-x64';
+const originalPath = process.env.PATH;
+process.env.PATH = `${node22Path};${originalPath}`;
+
 // ========== 参数解析 ==========
 const args = process.argv.slice(2);
 const BUILD_DEBUG = args.includes('--debug');
@@ -214,10 +219,7 @@ const main = async () => {
       const wranglerBin = path.join(ROOT_DIR, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
       const wranglerCmd = `node "${wranglerBin}"`;
 
-      // 设置 Node 22 路径（wrangler 要求 Node >= 22）
-      const node22Path = 'C:\\node22\\node-v22.16.0-win-x64';
-      const originalPath = process.env.PATH;
-      process.env.PATH = `${node22Path};${originalPath}`;
+      // Node 22 PATH 已在脚本顶部设置，wrangler 要求 Node >= 22
 
       try {
         // 8.1 上传 APK 文件到 R2（使用英文文件名避免编码问题）

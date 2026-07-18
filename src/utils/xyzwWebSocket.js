@@ -271,6 +271,9 @@ export function registerDefaultCommands(reg) {
     .register("legion_claimpayloadtaskprogress")
     .register("saltroad_getwartype")
     .register("saltroad_getsaltroadwargrouprank")
+    // 天宫助威（盐道淘汰赛）
+    .register("saltroad_getoutopponent", { phase: "" }) // 获取天宫助威对阵列表，phase 为日期代码如"260718"
+    .register("saltroad_outcheer", { legionId: 0 }) // 天宫助威（使用军团 ID）
     .register("league_getbattlefield")
     .register("league_getgroupopponent")
 
@@ -1516,6 +1519,8 @@ export class XyzwWebSocketClient {
       legion_claimpayloadtaskprogressresp: "legion_claimpayloadtaskprogress",
       saltroad_getwartyperesp: "saltroad_getwartype",
       saltroad_getsaltroadwartotalrankresp: "saltroad_getsaltroadwartotalrank",
+      saltroad_getoutopponentresp: "saltroad_getoutopponent",
+      saltroad_outcheerresp: "saltroad_outcheer",
       warguess_getrankresp: "warguess_getrank",
       warguess_startguessresp: "warguess_startguess",
       warguess_getguesscoinrewardresp: "warguess_getguesscoinreward",

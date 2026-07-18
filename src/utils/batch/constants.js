@@ -114,6 +114,7 @@ export const availableTasks = [
   { label: "预约直播", value: "pkroom_appoint" },
   { label: "领取助威币", value: "claim_guess_coin" },
   { label: "助威商店多选购买", value: "legion_buy_store_items" },
+  { label: "天宫助威", value: "batchSaltRoadCheer" },
   { label: "邮箱领取与清理", value: "batch_mail_claim_and_cleanup" },
   { label: "消耗活动", value: "batchConsumeActivity" },
   { label: "领取消耗活动道具", value: "batchClaimConsumeRewards" },

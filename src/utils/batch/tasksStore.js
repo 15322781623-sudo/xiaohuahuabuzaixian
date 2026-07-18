@@ -5,6 +5,7 @@
 
 import { getActivityStatus } from "./connectionManager.js";
 import { getModuleDelayCompat } from "@/utils/batch/delayManager";
+import { getFirstSaturdayOfMonth, getLastSaturday } from "@/utils/clubBattleUtils";
 
 /**
  * 创建商店类任务执行器
@@ -5704,6 +5705,145 @@ export function createTasksStore(deps) {
     await batchCollectionExchange(items);
   };
 
+  /**
+   * 天宫助威（盐道淘汰赛助威）
+   * 支持两种模式：
+   *   1. 传 legionId：直接使用（定时任务配置时已选好队伍）
+   *   2. 传 side(1/2)：自动获取 phase 和对阵列表，解析军团 ID
+   * @param {number} sideOrLegionId - 助威方向(1=左军,2=右军) 或 直接军团ID
+   * @param {number} voteCnt - 助威次数
+   * @param {number} [directLegionId] - 直接指定的军团ID（优先使用）
+   * @param {string} [directLegionName] - 直接指定的军团名称（日志显示用）
+   */
+  const batchSaltRoadCheer = async (sideOrLegionId, voteCnt, directLegionId, directLegionName) => {
+    if (selectedTokens.value.length === 0) {
+      message.warning("请先选择账号");
+      return;
+    }
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    const sideLabel = (sideOrLegionId === 1) ? '左军' : '右军';
+    
+    await runStreaming(selectedTokens.value, async (tokenId) => {
+      if (shouldStop.value) return;
+    
+      currentRunningTokenId.value = tokenId;
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+    
+      try {
+        addLog({ time: new Date().toLocaleTimeString(), message: `=== 天宫助威：${token.name} ===`, type: "info" });
+        await ensureConnection(tokenId);
+    
+        let legionId = null;
+        let legionName = '';
+
+        if (directLegionId) {
+          // 模式1：定时任务已预选军团ID，直接使用
+          legionId = directLegionId;
+          legionName = directLegionName || `军团${directLegionId}`;
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 使用预选军团: ${legionName}(${directLegionId})`, type: "info" });
+        } else {
+          // 模式2：通过 side 自动获取 phase 和对阵列表
+          const side = sideOrLegionId;
+
+          // --- 自动获取 phase ---
+          let phase = null;
+          try {
+            const firstSaturday = getFirstSaturdayOfMonth();
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 获取盐战信息 (date=${firstSaturday})...`, type: "info" });
+            const warTypeResp = await tokenStore.sendMessageWithPromise(tokenId, "saltroad_getwartype", { date: firstSaturday }, 10000);
+            await new Promise((r) => setTimeout(r, _getModuleDelay('club')));
+            if (warTypeResp) {
+              if (warTypeResp.phase) phase = String(warTypeResp.phase);
+              else if (warTypeResp.date) phase = String(warTypeResp.date);
+              else if (warTypeResp.currentPhase) phase = String(warTypeResp.currentPhase);
+            }
+          } catch (e) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 获取盐战信息失败: ${e.message}，继续尝试...`, type: "warning" });
+          }
+
+          // 兜底：使用上周六日期 YYMMDD
+          if (!phase) {
+            const lastSat = getLastSaturday();
+            const parts = lastSat.split('/');
+            if (parts.length === 3) {
+              phase = parts[0].slice(2) + parts[1] + parts[2];
+            }
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 使用兜底 phase: ${phase}`, type: "info" });
+          }
+
+          // --- 获取对阵列表 ---
+          const opponentResp = await tokenStore.sendMessageWithPromise(tokenId, "saltroad_getoutopponent", { phase }, 10000);
+          await new Promise((r) => setTimeout(r, _getModuleDelay('club')));
+          if (!opponentResp || !opponentResp.opponentList || opponentResp.opponentList.length === 0) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ❌ 获取对阵列表为空，无法助威`, type: "error" });
+            tokenStatus.value[tokenId] = "error";
+            return;
+          }
+
+          const firstMatch = opponentResp.opponentList[0];
+          legionId = side === 1 ? firstMatch.leftLegion?.id : firstMatch.rightLegion?.id;
+          legionName = side === 1 ? (firstMatch.leftLegion?.name || '左军') : (firstMatch.rightLegion?.name || '右军');
+        }
+
+        if (!legionId) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ❌ 无法获取${sideLabel}军团 ID`, type: "error" });
+          tokenStatus.value[tokenId] = "error";
+          return;
+        }
+
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 对 ${legionName}(${legionId}) 助威`, type: "info" });
+    
+        const result = await tokenStore.sendMessageWithPromise(
+          tokenId,
+          "saltroad_outcheer",
+          { legionId },
+          batchSettings.defaultCommandTimeout || 8000
+        );
+        await new Promise((r) => setTimeout(r, _getModuleDelay('club')));
+
+        if (result?.error) {
+          const errorMsg = String(result.error);
+          if (errorMsg.includes('2300080')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ⚠️ 天宫助威：已对该军团助威过（错误 2300080）`, type: "warning" });
+            tokenStatus.value[tokenId] = "completed";
+          } else {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ❌ 天宫助威失败：${result.error}`, type: "error" });
+            tokenStatus.value[tokenId] = "error";
+          }
+        } else {
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ✅ 天宫助威成功！对 ${legionName} 助威`, type: "success" });
+          tokenStatus.value[tokenId] = "completed";
+        }
+      } catch (e) {
+        const errorMsg = String(e.message || '');
+        if (errorMsg.includes('2300080')) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ⚠️ 天宫助威：当前账号已对该军团助威过`, type: "warning" });
+          tokenStatus.value[tokenId] = "completed";
+        } else {
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ❌ 天宫助威异常：${e.message}`, type: "error" });
+          tokenStatus.value[tokenId] = "error";
+        }
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot(tokenId);
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 连接已关闭 (队列: ${connectionQueue.active}/${batchSettings.maxActive})`, type: "info" });
+      }
+    });
+
+    currentRunningTokenId.value = null;
+    isRunning.value = false;
+    shouldStop.value = false;
+    message.success("天宫助威批量执行完毕");
+  };
+
   return {
     legion_storebuygoods,
     legionStoreBuySkinCoins,
@@ -5741,5 +5881,6 @@ export function createTasksStore(deps) {
     saltcup26_openstarpack_use,
     batchSaltCupBet,
     getSaltCupBetInfo,
+    batchSaltRoadCheer,
   };
 }

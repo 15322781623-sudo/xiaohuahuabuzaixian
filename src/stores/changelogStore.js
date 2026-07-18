@@ -17,7 +17,7 @@ export const useChangelogStore = defineStore("changelog", () => {
     version: "v2.36.0",
     date: "2026-07-14",
     type: "minor",
-    title: "断线重连保活机制 & 游戏引擎崩溃修复 & 十殿加速UI优化",
+    title: "断线重连保活机制 & 游戏引擎崩溃修复 & 十殿加速UI优化 & 定时任务防卡死增强 & 同步滑动修复",
     features: [
       "新增断线重连+保活机制：WebSocket断线自动检测，8秒后通过刷新游戏窗口重连（最多3次），空闲120秒自动发送心跳保活，连接状态实时指示器显示",
       "新增周期性健康检查：父窗口每30秒向所有游戏iframe发送WS_HEALTH_PING，检测连接存活状态，异常时自动触发恢复",
@@ -30,6 +30,8 @@ export const useChangelogStore = defineStore("changelog", () => {
       "移除挤号断线(kickSession)功能：功能已从增强列表中删除，由断线重连机制替代",
       "增强脚本更新：更新15个增强脚本，新增3个脚本，移除重复功能项(uiSpeed→nightmareAccel, nightmareGacha→nightmareEnhance)",
       "新增4个增强脚本：自动蟠桃园、升星助手(武将升星+图鉴升级+鱼灵升星)、道具使用、对手洗练(自动查询+历史记录)，跳过升星.js和自动星级.js（与升星助手功能重复）",
+      "新增天宫助威定时任务按俱乐部队伍名称勾选：支持获取对阵信息后按军团名称选择助威目标，与手动弹窗逻辑一致",
+      "新增天宫助威并发与延迟控制：接入四层延迟架构（club→battle组），每次API调用后自动等待，连接生命周期完整管理",
       "游戏窗口新增刷新按钮(↻)：支持单独刷新指定游戏窗口，无需重新登录",
       "刷新重登重新解码登录数据：refreshSingle重新获取decodeBinForToken并写入localStorage，解决game.html首次加载removeItem后二次刷新token丢失问题",
       "notifyIframesResize增加readyState防护：列数/窗口尺寸变化时跳过未加载完成的iframe，避免contentDocument为null导致报错",
@@ -40,6 +42,9 @@ export const useChangelogStore = defineStore("changelog", () => {
       "修复patch.js _initFrameSize/_resizeEvent DOM null错误：添加DOM就绪检查，iframe内容为空时跳过操作",
       "修复refreshSingle刷新后登录数据丢失问题：game.html首次加载后removeItem导致二次刷新无法获取token，改为保留数据由父窗口统一管理",
       "修复arenaReport增强脚本语法错误：移除多余的闭合花括号",
+      "修复换皮闯关任务卡死阻塞整个任务队列：外层增加try-finally确保isRunning一定被重置；finally块中towers_getinfo加10秒超时保护防止WebSocket无响应导致永久挂起；Promise.all改为Promise.allSettled防止单账号挂起阻塞整批",
+      "修复天宫助威定时任务无法获取对阵数据：改用taskForm.selectedTokens替代主页面selectedTokens",
+      "修复操作同步滑动效果失效：恢复injectViaHandlers中searchTypes扩展（pointerdown→mousedown+touchstart），移除fakeEv默认空touches数组避免破坏Cocos2d触摸序列跟踪",
     ],
   },
   {

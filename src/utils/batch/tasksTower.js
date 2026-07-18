@@ -1448,6 +1448,9 @@ export function createTasksTower(deps) {
       tokenStatus.value[id] = "waiting";
     });
 
+    try {
+    // ✅ 外层 try-finally：确保 isRunning 一定会被重置，防止任务卡死阻塞整个调度器
+
     // ✅ 处理单个账号的换皮闯关逻辑
     const processSkinChallenge = async (tokenId) => {
       if (shouldStop.value) return;
@@ -1845,9 +1848,14 @@ export function createTasksTower(deps) {
           });
           
           // 获取最新的闯关数据（传入 actId）
-          const towerRes = actId 
-            ? await callWithRetry(tokenId, "towers_getinfo", { actId: Number(actId) })
-            : await callWithRetry(tokenId, "towers_getinfo", {});
+          // ✅ 加超时保护（10秒），防止 WebSocket 无响应导致 finally 永远挂起
+          const TOWER_REFRESH_TIMEOUT = 10000;
+          const towerRes = await Promise.race([
+            actId 
+              ? callWithRetry(tokenId, "towers_getinfo", { actId: Number(actId) })
+              : callWithRetry(tokenId, "towers_getinfo", {}),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('刷新闯关状态超时(10s)')), TOWER_REFRESH_TIMEOUT))
+          ]);
           
           // 更新到 tokenStore 的 tokenGameDataMap，触发账号卡片自动刷新
           const towerData = towerRes.actId ? towerRes : (towerRes.towerData?.actId ? towerRes.towerData : towerRes);
@@ -1915,8 +1923,17 @@ export function createTasksTower(deps) {
         type: "info",
       });
       
-      // 使用 Promise.all 并发执行本批所有账号
-      await Promise.all(batchTokens.map(tokenId => processSkinChallenge(tokenId)));
+      // ✅ 使用 Promise.allSettled 代替 Promise.all，防止单个账号挂起阻塞整批
+      const batchResults = await Promise.allSettled(batchTokens.map(tokenId => processSkinChallenge(tokenId)));
+      // 记录被拒绝的 promise（rejected = 未捕获异常，不应发生但做兜底）
+      const rejectedCount = batchResults.filter(r => r.status === 'rejected').length;
+      if (rejectedCount > 0) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `⚠️ 批次 ${batchIndex + 1} 有 ${rejectedCount} 个账号异常退出`,
+          type: "warning",
+        });
+      }
       
       addLog({
         time: new Date().toLocaleTimeString(),
@@ -1945,7 +1962,7 @@ export function createTasksTower(deps) {
         const endIdx = Math.min(startIdx + maxActive, currentRetry.length);
         const batchTokens = currentRetry.slice(startIdx, endIdx);
         addLog({ time: new Date().toLocaleTimeString(), message: `📦 重试批次 ${batchIndex + 1}/${retryBatches} 开始执行 ${batchTokens.length} 个账号`, type: "info" });
-        await Promise.all(batchTokens.map(tokenId => processSkinChallenge(tokenId)));
+        await Promise.allSettled(batchTokens.map(tokenId => processSkinChallenge(tokenId)));
       }
 
       currentRetry.forEach(id => { if (tokenStatus.value[id] === "failed") failedTokenIds.push(id); });
@@ -1954,6 +1971,12 @@ export function createTasksTower(deps) {
     isRunning.value = false;
     currentRunningTokenId.value = null;
     message.success("批量换皮闯关结束");
+
+    } finally {
+      // ✅ 兜底：无论任何异常，确保 isRunning 一定被重置
+      isRunning.value = false;
+      currentRunningTokenId.value = null;
+    }
   };
 
   /**

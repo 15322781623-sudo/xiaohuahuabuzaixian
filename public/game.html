@@ -19,6 +19,34 @@
     <div class="progress-bar stripes"><span style="width: 0%"></span></div>
   </div>
 
+  <!-- ===== -1. 恢复原始 fetch/XHR (绕过 CapacitorHttp 全局拦截) ===== -->
+  <script>
+  (function() {
+    // CapacitorHttp.enabled: true 会 patch window.fetch/XMLHttpRequest
+    // 原始版本保存在 window.CapacitorWebFetch / window.CapacitorWebXMLHttpRequest
+    // 游戏 iframe 不需要走拦截器，恢复原始版本避免请求被改写
+    try {
+      if (window.CapacitorWebFetch) {
+        window.fetch = window.CapacitorWebFetch;
+      }
+      if (window.CapacitorWebXMLHttpRequest) {
+        var orig = window.CapacitorWebXMLHttpRequest;
+        if (orig.fullObject) {
+          window.XMLHttpRequest = orig.fullObject;
+        } else {
+          var proto = XMLHttpRequest.prototype;
+          if (orig.open) proto.open = orig.open;
+          if (orig.send) proto.send = orig.send;
+          if (orig.abort) proto.abort = orig.abort;
+          if (orig.setRequestHeader) proto.setRequestHeader = orig.setRequestHeader;
+          if (orig.getResponseHeader) proto.getResponseHeader = orig.getResponseHeader;
+          if (orig.getAllResponseHeaders) proto.getAllResponseHeaders = orig.getAllResponseHeaders;
+        }
+      }
+    } catch(e) {}
+  })();
+  </script>
+
   <!-- ===== 0. 登录数据初始化 (必须在所有其他脚本之前) ===== -->
   <script>
   (function() {
@@ -149,7 +177,6 @@
         currentTarget: document.getElementById('GameCanvas'),
         preventDefault: function(){}, stopPropagation: function(){},
         stopImmediatePropagation: function(){},
-        touches: [], changedTouches: [], targetTouches: [],
         ctrlKey: false, shiftKey: false, altKey: false, metaKey: false,
         view: window, bubbles: true, cancelable: true, composed: true,
         isTrusted: true // 伪装为可信事件
@@ -167,18 +194,22 @@
       var fired = false;
       // 查找并调用 Cocos2d 注册的对应回调
       var searchTypes = [type];
-      // ★ 不扩展 searchTypes: 移动端一次触摸会产生 pointer+touch+mouse 三种事件
-      // 如果 pointer 扩展到 touch/mouse 处理器，会传入空 touches 数组的假事件，
-      // 破坏 Cocos2d 触摸序列跟踪，导致后续滑动操作不生效
+      // pointer 事件同时查找对应的 mouse/touch 回调
+      if (type === 'pointerdown') searchTypes.push('mousedown', 'touchstart');
+      if (type === 'pointermove') searchTypes.push('mousemove', 'touchmove');
+      if (type === 'pointerup') searchTypes.push('mouseup', 'touchend');
 
       for (var i = 0; i < searchTypes.length; i++) {
         var st = searchTypes[i];
         ['false', 'true'].forEach(function(captureKey) {
           var key = st + (captureKey === 'true' ? ':capture' : '');
           var handlers = _cocosHandlers[key];
-          if (handlers) {
+          if (handlers && handlers.length > 0) {
             for (var j = 0; j < handlers.length; j++) {
-              try { handlers[j].call(fakeEv.target, fakeEv); fired = true; } catch(e) {}
+              try {
+                handlers[j].call(fakeEv.target, fakeEv);
+                fired = true;
+              } catch(e) {}
             }
           }
         });
@@ -309,23 +340,24 @@
       var lastMoveTime = 0;
       var MOVE_THROTTLE = 32; // 节流，避免过多 postMessage
       // ★ 触摸去重: 移动端一次交互同时产生 touch+pointer+mouse 事件
-      // 记录 touch 时间戳，100ms 内抑制对应的 pointer/mouse 事件
+      // 记录 touch 时间戳，抑制后续冗余的 pointer/mouse 事件
       var lastTouchTime = 0;
       var TOUCH_DEDUP_MS = 100;
 
       var forwardEvent = function(type, e) {
         if (window._syncReplay || !window._syncEnabled || window.parent === window) return;
 
-        // ★ 触摸去重: touch 事件记录时间戳，抑制紧随其后的 pointer/mouse 事件
+        // ★ 去重: 防止同一次交互的多种事件类型都被转发导致目标窗口抖动
+        var now = Date.now();
         if (type.indexOf('touch') === 0) {
-          lastTouchTime = Date.now();
+          lastTouchTime = now;
         } else if (type.indexOf('pointer') === 0 || type.indexOf('mouse') === 0) {
-          if (Date.now() - lastTouchTime < TOUCH_DEDUP_MS) return;
+          // pointer/mouse 事件: 如果近期有 touch 事件，说明 touch 已处理，跳过
+          if (now - lastTouchTime < TOUCH_DEDUP_MS) return;
         }
 
         // 移动/滚轮事件节流
         if (type === 'mousemove' || type === 'pointermove' || type === 'touchmove' || type === 'wheel') {
-          var now = Date.now();
           if (now - lastMoveTime < MOVE_THROTTLE) return;
           lastMoveTime = now;
         }

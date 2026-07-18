@@ -203,7 +203,7 @@
               <div
                 v-for="token in filteredTokens" :key="token.id"
                 :class="['token-item', { 'token-opened': hasIframe(token.id), 'token-dragging': dragTokenId === token.id }]"
-                draggable="true"
+                :draggable="!isMobile"
                 @dragstart="onDragStart($event, token)"
                 @dragend="onDragEnd"
               >
@@ -301,6 +301,7 @@
               <template v-else>
                 <n-button size="tiny" :type="gridColsMode===1?'primary':'default'" ghost @click="gridColsMode=1">1</n-button>
                 <n-button size="tiny" :type="gridColsMode===2?'primary':'default'" ghost @click="gridColsMode=2">2</n-button>
+                <n-button size="tiny" :type="gridColsMode===3?'primary':'default'" ghost @click="gridColsMode=3">3</n-button>
               </template>
             </div>
           </div>
@@ -669,7 +670,9 @@ const gameGridRef = ref(null);
 // ── 自适应列数计算（宽高双约束）──
 const GAME_ASPECT_RATIO = 9 / 16; // 游戏竖屏宽高比 (width/height)
 const MIN_CELL_WIDTH = 180;
+const MOBILE_MIN_CELL_WIDTH = 120; // 移动端最小 cell 宽度
 const MIN_IFRAME_HEIGHT = 240; // iframe 最小高度
+const MOBILE_MIN_IFRAME_HEIGHT = 160; // 移动端 iframe 最小高度
 const CELL_HEADER_H = 28; // cell-header 高度
 const GRID_GAP = 4;
 const GRID_PADDING = 4;
@@ -692,22 +695,31 @@ function calcCellH(cols, availH, count) {
   return (availH - (rows + 1) * GRID_GAP) / rows - CELL_HEADER_H;
 }
 
+// 获取当前环境的最小 cell 宽度
+function getMinCellW() { return isMobile.value ? MOBILE_MIN_CELL_WIDTH : MIN_CELL_WIDTH; }
+function getMinIframeH() { return isMobile.value ? MOBILE_MIN_IFRAME_HEIGHT : MIN_IFRAME_HEIGHT; }
+
 const autoCols = computed(() => {
   const availW = gridWidth.value - SCROLLBAR_W - GRID_PADDING * 2;
-  const availH = Math.max(300, gridHeight.value - 40 - GRID_PADDING * 2);
+  const toolbarReserve = isMobile.value ? 80 : 40; // 移动端工具栏+tab bar 占更多空间
+  const availH = Math.max(200, gridHeight.value - toolbarReserve - GRID_PADDING * 2);
   const count = iframeList.value.length;
   if (count <= 0) return 1;
   if (count === 1) return 1;
+  const minW = getMinCellW();
+  const minH = getMinIframeH();
+  // 移动端限制最大列数
+  const maxCols = isMobile.value ? Math.min(count, 3) : Math.min(count, 12);
 
   let bestCols = 1;
   let bestScore = -Infinity;
 
-  for (let cols = 1; cols <= Math.min(count, 12); cols++) {
+  for (let cols = 1; cols <= maxCols; cols++) {
     const cellW = calcCellW(cols, availW);
     const iframeH = calcCellH(cols, availH, count);
 
-    if (cellW < MIN_CELL_WIDTH) continue;
-    if (iframeH < MIN_IFRAME_HEIGHT) continue;
+    if (cellW < minW) continue;
+    if (iframeH < minH) continue;
 
     // 理想宽度 = iframeH * 游戏宽高比
     const idealW = iframeH * GAME_ASPECT_RATIO;
@@ -728,7 +740,7 @@ const autoCols = computed(() => {
   }
 
   if (bestScore === -Infinity) {
-    bestCols = Math.max(1, Math.min(count, Math.floor(availW / (MIN_CELL_WIDTH + GRID_GAP))));
+    bestCols = Math.max(1, Math.min(count, Math.floor(availW / (minW + GRID_GAP))));
   }
   return bestCols;
 });
@@ -748,17 +760,19 @@ const gridStyle = computed(() => {
   const count = iframeList.value.length;
   if (count === 0) return {};
 
+  const toolbarReserve = isMobile.value ? 80 : 40;
   const availW = gridWidth.value - SCROLLBAR_W - GRID_PADDING * 2;
-  const availH = Math.max(300, gridHeight.value - 40 - GRID_PADDING * 2);
+  const availH = Math.max(200, gridHeight.value - toolbarReserve - GRID_PADDING * 2);
 
+  const minW = getMinCellW();
   const cellW = calcCellW(cols, availW);
   const iframeH = calcCellH(cols, availH, count);
   const cellH = iframeH + CELL_HEADER_H;
 
   // 理想宽度（按游戏比例）
   const idealW = iframeH * GAME_ASPECT_RATIO;
-  // 取较小值确保不溢出，但不低于 MIN_CELL_WIDTH
-  const finalW = Math.max(MIN_CELL_WIDTH, Math.min(cellW, idealW));
+  // 取较小值确保不溢出，但不低于移动端/桌面端最小宽度
+  const finalW = Math.max(minW, Math.min(cellW, idealW));
   // 最终高度按实际宽度反算（保持游戏比例）
   const finalIframeH = finalW / GAME_ASPECT_RATIO;
   const finalH = finalIframeH + CELL_HEADER_H;
@@ -1762,11 +1776,11 @@ onBeforeUnmount(() => {
   /* 移动端列选择器简化 */
   .grid-col-selector {
     display: flex;
-    gap: 3px;
+    gap: 2px;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
-  .col-label { font-size: 11px; color: #666; }
+  .col-label { display: none; }
   /* 移动端增强面板单列 */
   .enhance-grid {
     grid-template-columns: 1fr;
@@ -1778,15 +1792,46 @@ onBeforeUnmount(() => {
   .log-list {
     max-height: 60px;
   }
-  /* 移动端工具栏简化 */
+  /* 移动端工具栏紧凑化 */
   .grid-toolbar {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 4px;
-    padding: 4px 8px;
+    padding: 2px 6px;
+    min-height: 28px;
+  }
+  .grid-toolbar > span:first-child {
+    font-size: 10px;
+    white-space: nowrap;
+  }
+  .grid-sync-toggle {
+    font-size: 10px;
+    padding: 1px 5px;
   }
   /* 移动端账号名称不截断 */
   .token-name {
     max-width: 120px;
+  }
+  /* 移动端 token 列表触摸优化 */
+  .token-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .token-item {
+    touch-action: pan-y;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  /* 移动端 cell header 缩小 */
+  .cell-header {
+    height: 22px;
+    padding: 2px 6px;
+  }
+  .cell-name { font-size: 10px; }
+  .cell-btn { font-size: 9px; }
+  /* 移动端网格间距缩小 */
+  .game-grid {
+    gap: 2px;
+    padding: 2px;
   }
 }
 
