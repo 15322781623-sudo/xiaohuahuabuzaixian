@@ -222,6 +222,7 @@ import { ref, computed, watch } from 'vue';
 import { useTokenStore } from '@/stores/tokenStore';
 import { useMessage } from 'naive-ui';
 import { NUpload } from 'naive-ui';
+import { downloadFile } from '@/utils/imageExport';
 
 const props = defineProps({
   captainTokenId: { type: String, default: '' },
@@ -596,19 +597,17 @@ const toggleAllPresetTeam = (val) => {
 };
 
 // ====== 导入/导出 ======
-const exportPresets = () => {
+const exportPresets = async () => {
   if (presets.value.length === 0) { message.warning('暂无预设可导出'); return; }
   const data = JSON.stringify(presets.value, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `nightmare-presets_${new Date().toISOString().slice(0, 10)}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  message.success(`已导出 ${presets.value.length} 个十殿预设`);
+  // ✅ 使用通用下载函数：APK环境走 Capacitor Filesystem + Share 分享，Web/EXE 走 <a> 下载
+  const ok = await downloadFile(blob, `nightmare-presets_${new Date().toISOString().slice(0, 10)}.json`);
+  if (ok) {
+    message.success(`已导出 ${presets.value.length} 个十殿预设`);
+  } else {
+    message.error('导出失败');
+  }
 };
 
 const handleImportPresets = async ({ file }) => {

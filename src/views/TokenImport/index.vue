@@ -5,7 +5,7 @@
       <div class="page-header">
         <div class="header-content">
           <div class="header-top">
-            <img alt="XYZW" class="brand-logo" src="/icons/xiaoyugan.png">
+            <img alt="XYZW" class="brand-logo" src="/icons/gangzhongwang.png">
             <!-- 主题切换按钮 -->
             <ThemeToggle></ThemeToggle>
           </div>
@@ -13,16 +13,16 @@
         </div>
       </div>
 
-      <!-- Token导入区域 -->
-      <a-modal
+      <!-- Token导入区域（n-modal 替代 a-modal，兼容 Android 10 WebView） -->
+      <n-modal
         class="token-import-modal"
-        width="40rem"
-        v-model:visible="showImportForm"
-        :default-visible="!tokenStore.hasTokens"
-        :footer="false"
+        preset="card"
+        closable
+        style="width: 40rem; max-width: 92vw"
+        v-model:show="showImportForm"
       >
-        <template #title>
-          <h2>
+        <template #header>
+          <h2 style="margin: 0; display: flex; align-items: center; gap: 6px">
             <NIcon>
               <Add></Add>
             </NIcon>
@@ -70,7 +70,7 @@
             @ok="() => (showImportForm = false)"
           ></single-bin-token-form>
         </div>
-      </a-modal>
+      </n-modal>
 
       <!-- Token列表 -->
       <div v-if="tokenStore.hasTokens" class="tokens-section">
@@ -614,15 +614,15 @@ const message = useMessage();
 const dialog = useDialog();
 const tokenStore = useTokenStore();
 
-// 响应式数据
-const showImportForm = ref(false);
+// 响应式数据（无Token时自动弹出导入窗口，对齐原 a-modal 的 default-visible 行为）
+const showImportForm = ref(!tokenStore.hasTokens);
 const isImporting = ref(false);
 const showEditModal = ref(false);
 const importFormRef = ref(null);
 const urlFormRef = ref(null);
 const editFormRef = ref(null);
 const editingToken = ref(null);
-const importMethod = ref("manual");
+const importMethod = ref("singlebin");
 const refreshingTokens = ref(new Set());
 const connectingTokens = ref(new Set());
 // 多选状态管理
@@ -2808,33 +2808,46 @@ onMounted(async () => {
   margin-top: var(--spacing-xs);
 }
 
-:global([data-theme="dark"] .token-import-modal .arco-modal) {
+:global([data-theme="dark"] .n-modal.token-import-modal) {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
 }
 
-/* 弹窗移动端自适应 */
-:global(.token-import-modal .arco-modal) {
+/* 弹窗移动端自适应（Naive UI：class 直接应用在 .n-modal 卡片元素上） */
+:global(.n-modal.token-import-modal) {
   width: 44rem !important;
   max-width: calc(100vw - 32px) !important;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  z-index: 9999;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 内容区内滚动，避免表单超高时底部按钮不可见 */
+:global(.n-modal.token-import-modal .n-card__content) {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (max-width: 768px) {
-  :global(.token-import-modal .arco-modal) {
+  :global(.n-modal.token-import-modal) {
     width: calc(100vw - 24px) !important;
     max-width: 100% !important;
-    margin: 12px !important;
   }
 }
 
 @media (max-width: 600px) {
-  :global(.token-import-modal .arco-modal) {
+  :global(.n-modal.token-import-modal) {
     width: calc(100vw - 16px) !important;
-    margin: 8px !important;
   }
 
-  :global(.token-import-modal .arco-modal-body) {
+  :global(.n-modal.token-import-modal .n-card-header) {
+    padding: 12px 16px !important;
+  }
+
+  :global(.n-modal.token-import-modal .n-card__content) {
     max-height: calc(100vh - 120px) !important;
-    overflow-y: auto !important;
+    padding: 12px 16px !important;
   }
 }
 

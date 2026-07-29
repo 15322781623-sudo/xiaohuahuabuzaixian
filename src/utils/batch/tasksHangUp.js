@@ -795,6 +795,50 @@ export function createTasksHangUp(deps) {
   };
 
   /**
+   * 一键答题奖励领取（不做任何判断，直接领取1-10档全部奖励）
+   */
+  const batchStudyClaimReward = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+    try {
+      isRunning.value = true;
+      shouldStop.value = false;
+
+      selectedTokens.value.forEach((id) => {
+        tokenStatus.value[id] = "waiting";
+      });
+
+      const claimForToken = async (tokenId, token) => {
+        addLog({ time: new Date().toLocaleTimeString(), message: `=== 答题奖励领取: ${token.name} ===`, type: "info" });
+        let claimedCount = 0;
+        for (let rewardId = 1; rewardId <= 10; rewardId++) {
+          if (shouldStop.value)
+            break;
+          try {
+            await callWithRetry(tokenId, "study_claimreward", { rewardId });
+            claimedCount++;
+          } catch (e) {
+            const errMsg = e.message || '';
+            // 400340/200750/11800010 交由外层批量重试机制处理
+            if (errMsg.includes('400340') || errMsg.includes('200750') || errMsg.includes('11800010')) {
+              throw e;
+            }
+            // 其余错误（已领取/未达标等）静默跳过，继续下一档
+          }
+          await safeDelay(200);
+        }
+        addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${token.name} 答题奖励领取完成（成功 ${claimedCount}/10 档）`, type: "success" });
+      };
+
+      await batchWithRetry(selectedTokens.value, "答题奖励领取", claimForToken);
+    } finally {
+      isRunning.value = false;
+      currentRunningTokenId.value = null;
+      message.success("批量答题奖励领取结束");
+    }
+  };
+
+  /**
    * 一键挂机升级（循环发送 system_hangupupgrade 直到报错停止）
    */
   const batchHangUpUpgrade = async () => {
@@ -1025,6 +1069,7 @@ export function createTasksHangUp(deps) {
     claimHangUpRewards,
     batchAddHangUpTime,
     batchStudy,
+    batchStudyClaimReward,
     batchclubsign,
     batchLegionSignup,
     batchPayloadSignup,

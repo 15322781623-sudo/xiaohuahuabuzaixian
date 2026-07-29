@@ -63,39 +63,48 @@
     "\u95e8\u4f24",   // 16: 门伤（打门/宝箱暴击伤害倾斜）
   ];
 
-  // 飘字颜色配置 - 根据伤害类型设置不同颜色
-  // 使用 cc.color(r, g, b, a) 格式
-  const DAMAGE_TYPE_COLORS = [
-    cc.color(254, 245, 175, 255),   // 0: 普通伤害 - 浅黄色
-    cc.color(0, 255, 0, 255),       // 1: 治疗 - 绿色
-    cc.color(255, 0, 0, 255),       // 2: 暴击 - 红色
-    cc.color(255, 200, 0, 255),     // 3: 格挡 - 金黄色
-    cc.color(139, 0, 0, 255),       // 4: 流血 - 深红色
-    cc.color(128, 0, 128, 255),     // 5: 毒 - 紫色
-    cc.color(255, 140, 0, 255),     // 6: 灼烧 - 橙色
-    cc.color(75, 0, 130, 255),      // 7: 恐 - 靛蓝色
-    cc.color(255, 165, 0, 255),     // 8: 同心 - 橙色
-    cc.color(255, 200, 0, 255),     // 9: 协力 - 金黄色
-    cc.color(178, 34, 34, 255),     // 10: 铁血 - 耐火砖红
-    cc.color(0, 206, 209, 255),     // 11: 青囊 - 青色
-    cc.color(255, 192, 203, 255),   // 12: 仁德 - 粉色
-    cc.color(138, 43, 226, 255),    // 13: 玄机 - 蓝紫色
-    cc.color(255, 69, 0, 255),      // 14: 剑胆 - 红橙色
-    cc.color(0, 191, 255, 255),     // 15: 流离（普通伤害倾斜）- 深天蓝
-    cc.color(255, 20, 147, 255),    // 16: 流离（暴击倾斜）- 深粉色
-  ];
-
-  // 描边和阴影配置
-  const STROKE_CONFIG = {
-    width: 3,                           // 描边宽度 3px
-    color: cc.color(0, 0, 0, 255),  // 黑色描边（RGB： 0, 0, 0, 255）
-  };
-
-  const SHADOW_CONFIG = {
-    offset: cc.v2(4, -4),               // 阴影偏移 4px
-    color: cc.color(101, 67, 33, 180),  // 深棕色阴影 (RGB: 101, 67, 33)
-    blur: 4,                            // 模糊度 4px
-  };
+  // 飘字颜色配置 - 延迟初始化（等待 cc 引擎加载后再创建 cc.color 对象）
+  let DAMAGE_TYPE_COLORS = null;
+  
+  function ensureColors() {
+    if (DAMAGE_TYPE_COLORS) return;
+    DAMAGE_TYPE_COLORS = [
+      cc.color(254, 245, 175, 255),   // 0: 普通伤害 - 浅黄色
+      cc.color(0, 255, 0, 255),       // 1: 治疗 - 绿色
+      cc.color(255, 0, 0, 255),       // 2: 暴击 - 红色
+      cc.color(255, 200, 0, 255),     // 3: 格挡 - 金黄色
+      cc.color(139, 0, 0, 255),       // 4: 流血 - 深红色
+      cc.color(128, 0, 128, 255),     // 5: 毒 - 紫色
+      cc.color(255, 140, 0, 255),     // 6: 灼烧 - 橙色
+      cc.color(75, 0, 130, 255),      // 7: 恐 - 靖蓝色
+      cc.color(255, 165, 0, 255),     // 8: 同心 - 橙色
+      cc.color(255, 200, 0, 255),     // 9: 协力 - 金黄色
+      cc.color(178, 34, 34, 255),     // 10: 铁血 - 耐火砖红
+      cc.color(0, 206, 209, 255),     // 11: 青囊 - 青色
+      cc.color(255, 192, 203, 255),   // 12: 仁德 - 粉色
+      cc.color(138, 43, 226, 255),    // 13: 玄机 - 蓝紫色
+      cc.color(255, 69, 0, 255),      // 14: 剑胆 - 红橙色
+      cc.color(0, 191, 255, 255),     // 15: 流离（普通伤害倾斜）- 深天蓝
+      cc.color(255, 20, 147, 255),    // 16: 流离（暴击倾斜）- 深粉色
+    ];
+  }
+  
+  // 描边和阴影配置 - 延迟初始化
+  let STROKE_CONFIG = null;
+  let SHADOW_CONFIG = null;
+  
+  function ensureStrokeShadow() {
+    if (STROKE_CONFIG) return;
+    STROKE_CONFIG = {
+      width: 3,
+      color: cc.color(0, 0, 0, 255),
+    };
+    SHADOW_CONFIG = {
+      offset: cc.v2(4, -4),
+      color: cc.color(101, 67, 33, 180),
+      blur: 4,
+    };
+  }
 
   // 字体配置
   const FONT_CONFIG = {
@@ -174,6 +183,7 @@
 
   // 根据伤害类型获取颜色
   function getColorByDamageType(damageType) {
+    ensureColors();
     if (typeof damageType === "number" && damageType >= 0 && damageType < DAMAGE_TYPE_COLORS.length) {
       return DAMAGE_TYPE_COLORS[damageType];
     }
@@ -185,6 +195,8 @@
     if (!textField) return;
     
     try {
+      ensureColors();
+      ensureStrokeShadow();
       // 设置字体
       if (typeof textField.font !== "undefined") {
         textField.font = FONT_CONFIG.name;
@@ -424,7 +436,21 @@
 
   // ===== 启动入口（参考"鲨鱼之王扩展"轮询注入方式） =====
 
+  // 轮询间隔 500ms（降低 CPU 开销，游戏加载通常需数秒）
+  const POLL_INTERVAL = 500;
+  // 最长轮询 120 秒后自动停止
+  const POLL_TIMEOUT = 120000;
+  const pollStart = Date.now();
+
   window.battleFlyYiTimer = setInterval(() => {
+    // 超时安全网
+    if (Date.now() - pollStart > POLL_TIMEOUT) {
+      clearInterval(window.battleFlyYiTimer);
+      window.battleFlyYiTimer = null;
+      const totalModules = window.__battleYiState ? window.__battleYiState.patchedModules.size : 0;
+      log(`轮询超时停止（已patch ${totalModules} 个模块）`, "warning");
+      return;
+    }
     try {
       const requireFn =
         (window.__require && typeof window.__require === "function" && window.__require) ||
@@ -434,6 +460,9 @@
       if (!requireFn) {
         return;
       }
+
+      // 预初始化 cc 依赖配置（cc 引擎此时应已加载）
+      try { ensureColors(); ensureStrokeShadow(); } catch(_) {}
 
       // 用于决定何时停止轮询和记录已patch的模块
       window.__battleYiState = window.__battleYiState || { 
@@ -551,7 +580,7 @@
       // 出错时打印日志，但不清掉定时器，方便后续重试
       log("轮询注入出错: " + err, "error");
     }
-  }, 100);
+  }, POLL_INTERVAL);
 
   log("战斗飘字亿化助手已注入，等待游戏加载...", "info");
 })();

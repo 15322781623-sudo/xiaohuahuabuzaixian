@@ -1,23 +1,7 @@
-v2.34.0: 四层延迟架构 & 单账号智能加速 & 定时任务BUG修复
+v2.42.0 APK诊断与UI自适应修复
 
-feat: 单账号智能加速全链路覆盖
-- 四层延迟架构: commandDelay → dailySubtaskDelay → delayGroups → singleAccountMultiplier
-- dailySubtaskDelay 独立控制同模块子任务间延迟，单账号模式自动乘以加速倍率
-- rewardClaimDelay 奖励领取延迟接入单账号加速（3000ms→600ms）
-- 竞技场/扫荡/阵容切换等硬编码延迟统一接入 _accelerateDelay()
-
-fix: 定时任务BUG修复
-- 不上线时段: 恢复调度器层最早拦截检查，push_map任务也支持离线时段
-- 重复记录: 定时任务调用startBatch时跳过内部记录创建，避免2条记录
-- 400340限流: sendCommand移除内部30秒×3重试，直接向上抛出交由外层处理
-- 400340重试: 外层重试改为连接池滚动并发执行，支持超时保护
-
-fix: 活动时间检测修复
-- 换皮闯关: 定时检测增加actId时间范围校验（YYMMDD+7天），不再仅凭actEGameInfo非空判断
-- 怪异塔: isWeirdTowerActivityOpen独立周期计算，正确处理周五00:00-11:59间歇期
-
-improvements:
-- moduleDelay重叠修复: 模块级延迟仅在模块切换时加一次，9个领取任务提速4.2倍
-- API调用优化: 移除ensureConnection后冗余role_getroleinfo验证
-- 延迟配置UI: 子任务延迟/奖励领取/单账号加速合并为一行显示
-- 手动执行日常任务创建完成记录
+- APK 入站报文诊断：XyzwWebSocketClient 增加 debugInbound 标志，onmessage 入口捕获前 20 条报文（类型/长度/字节预览/未解决 Promise 数），用于定位"所有命令均超时"根因
+- APK 自动启用诊断：tokenStore 在 Capacitor 原生平台连接成功后自动开启 debugInbound，浏览器端不受影响
+- XyzwWebSocketClient 强制 binaryType=arraybuffer，与 WsAgent 保持一致，避免 Android WebView 默认 blob 模式的异步解析差异
+- BatchDailyTasks.vue 修复 Naive UI 卡片标题选择器：.n-card-header__title（无效）→ .n-card-header__main + flex:1 1 auto，解决移动端标题竖排错乱
+- BatchDailyTasks.vue 搜索账号防抖与 v-show 显隐优化，消除删除关键词时的重渲染卡顿

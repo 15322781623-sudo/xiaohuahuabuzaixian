@@ -157,6 +157,7 @@ export default defineConfig(async () => {
       },
     },
     build: {
+      target: 'es2017',
       minify: 'terser',
       terserOptions: {
         compress: {

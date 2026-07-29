@@ -2,7 +2,7 @@
 <html style="width:100%;height:100%;margin:0;padding:0;overflow:hidden;">
 <head>
   <meta charset="utf-8" />
-  <title>咸鱼之王</title>
+  <title>鍜搁奔涔嬬帇</title>
   <meta name="viewport" content="width=device-width,user-scalable=no,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="format-detection" content="telephone=no" />
@@ -19,42 +19,14 @@
     <div class="progress-bar stripes"><span style="width: 0%"></span></div>
   </div>
 
-  <!-- ===== -1. 恢复原始 fetch/XHR (绕过 CapacitorHttp 全局拦截) ===== -->
-  <script>
-  (function() {
-    // CapacitorHttp.enabled: true 会 patch window.fetch/XMLHttpRequest
-    // 原始版本保存在 window.CapacitorWebFetch / window.CapacitorWebXMLHttpRequest
-    // 游戏 iframe 不需要走拦截器，恢复原始版本避免请求被改写
-    try {
-      if (window.CapacitorWebFetch) {
-        window.fetch = window.CapacitorWebFetch;
-      }
-      if (window.CapacitorWebXMLHttpRequest) {
-        var orig = window.CapacitorWebXMLHttpRequest;
-        if (orig.fullObject) {
-          window.XMLHttpRequest = orig.fullObject;
-        } else {
-          var proto = XMLHttpRequest.prototype;
-          if (orig.open) proto.open = orig.open;
-          if (orig.send) proto.send = orig.send;
-          if (orig.abort) proto.abort = orig.abort;
-          if (orig.setRequestHeader) proto.setRequestHeader = orig.setRequestHeader;
-          if (orig.getResponseHeader) proto.getResponseHeader = orig.getResponseHeader;
-          if (orig.getAllResponseHeaders) proto.getAllResponseHeaders = orig.getAllResponseHeaders;
-        }
-      }
-    } catch(e) {}
-  })();
-  </script>
-
-  <!-- ===== 0. 登录数据初始化 (必须在所有其他脚本之前) ===== -->
+  <!-- ===== 0. 鐧诲綍鏁版嵁鍒濆鍖?(蹇呴』鍦ㄦ墍鏈夊叾浠栬剼鏈箣鍓? ===== -->
   <script>
   (function() {
     var TAG = '[GameLogin]';
     var loginData = null;
     var LOGIN_KEY = '__game_login_data__';
 
-    // ★ 0. 优先从 URL 参数读取 tokenId (批量登录模式)
+    // 鈽?0. 浼樺厛浠?URL 鍙傛暟璇诲彇 tokenId (鎵归噺鐧诲綍妯″紡)
     try {
       var urlParams = new URLSearchParams(window.location.search);
       var tokenId = urlParams.get('token');
@@ -63,44 +35,44 @@
         var raw0 = localStorage.getItem(tokenKey);
         if (raw0) {
           loginData = JSON.parse(raw0);
-          console.log(TAG, '✅ 从 URL token 参数读取登录数据成功, tokenId=' + tokenId);
+          console.log(TAG, '鉁?浠?URL token 鍙傛暟璇诲彇鐧诲綍鏁版嵁鎴愬姛, tokenId=' + tokenId);
           localStorage.removeItem(tokenKey);
         }
       }
-    } catch(e) { console.warn(TAG, 'URL token读取失败:', e.message); }
+    } catch(e) { console.warn(TAG, 'URL token璇诲彇澶辫触:', e.message); }
 
-    // ★ 1. 回退: 从 localStorage 通用 key 读取 (单账号登录, 跨标签页共享)
+    // 鈽?1. 鍥為€€: 浠?localStorage 閫氱敤 key 璇诲彇 (鍗曡处鍙风櫥褰? 璺ㄦ爣绛鹃〉鍏变韩)
     if (!loginData) {
       try {
         var raw = localStorage.getItem(LOGIN_KEY);
         if (raw) {
           loginData = JSON.parse(raw);
-          console.log(TAG, '✅ 从 localStorage 读取登录数据成功');
+          console.log(TAG, '鉁?浠?localStorage 璇诲彇鐧诲綍鏁版嵁鎴愬姛');
           localStorage.removeItem(LOGIN_KEY);
         }
-      } catch(e) { console.warn(TAG, 'localStorage读取失败:', e.message); }
+      } catch(e) { console.warn(TAG, 'localStorage璇诲彇澶辫触:', e.message); }
     }
 
-    // 回退2: 从 opener 的 sessionStorage 读取 (兼容旧逻辑)
+    // 鍥為€€2: 浠?opener 鐨?sessionStorage 璇诲彇 (鍏煎鏃ч€昏緫)
     if (!loginData) {
       try {
         if (window.opener && window.opener.sessionStorage) {
           var raw2 = window.opener.sessionStorage.getItem(LOGIN_KEY);
           if (raw2) {
             loginData = JSON.parse(raw2);
-            console.log(TAG, '从 opener sessionStorage 读取成功');
+            console.log(TAG, '浠?opener sessionStorage 璇诲彇鎴愬姛');
             window.opener.sessionStorage.removeItem(LOGIN_KEY);
           }
         }
-      } catch(e) { console.warn(TAG, 'opener读取失败:', e.message); }
+      } catch(e) { console.warn(TAG, 'opener璇诲彇澶辫触:', e.message); }
     }
 
-    // 回退2: 从自身 sessionStorage 读取
+    // 鍥為€€2: 浠庤嚜韬?sessionStorage 璇诲彇
     if (!loginData) {
       try { loginData = JSON.parse(sessionStorage.getItem(LOGIN_KEY)); } catch(e) {}
     }
 
-    // 回退3: 从 123项目格式的 localStorage 读取
+    // 鍥為€€3: 浠?123椤圭洰鏍煎紡鐨?localStorage 璇诲彇
     if (!loginData) {
       try {
         var pending = localStorage.getItem('_pending_login_data_');
@@ -113,36 +85,35 @@
               platformExt: pd.account.platformExt || 'mix',
               serverId: pd.account.serverId || '0'
             };
-            console.log(TAG, '从 _pending_login_data_ 读取成功');
+            console.log(TAG, '浠?_pending_login_data_ 璇诲彇鎴愬姛');
           }
         }
       } catch(e) {}
     }
 
     if (!loginData) {
-      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#fff;font-size:18px;background:#333;">登录数据不存在，请从助手页面跳转进入游戏</div>';
+      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#fff;font-size:18px;background:#333;">鐧诲綍鏁版嵁涓嶅瓨鍦紝璇蜂粠鍔╂墜椤甸潰璺宠浆杩涘叆娓告垙</div>';
       return;
     }
 
-    // ★ 设置全局登录数据 (供 1.js hook 读取)
-    // 匹配123项目的 __saveInfoData 格式
+    // 鈽?璁剧疆鍏ㄥ眬鐧诲綍鏁版嵁 (渚?1.js hook 璇诲彇)
+    // 鍖归厤123椤圭洰鐨?__saveInfoData 鏍煎紡
     window.__saveInfoData = loginData;
     window.__saveData = null;
-    // tokenId 从 URL 参数获取，可能未定义
-    window._gameTokenId = (typeof tokenId !== 'undefined' ? tokenId : '') || ''; // 不需要原始BIN字节，直接用解码后的数据
-    console.log(TAG, '登录数据已注入:',
+    // tokenId 浠?URL 鍙傛暟鑾峰彇锛屽彲鑳芥湭瀹氫箟
+    window._gameTokenId = (typeof tokenId !== 'undefined' ? tokenId : '') || ''; // 涓嶉渶瑕佸師濮婤IN瀛楄妭锛岀洿鎺ョ敤瑙ｇ爜鍚庣殑鏁版嵁
+    console.log(TAG, '鐧诲綍鏁版嵁宸叉敞鍏?',
       'platform=' + loginData.platform,
       'platformExt=' + loginData.platformExt,
       'serverId=' + loginData.serverId,
       'infoLen=' + (loginData.info ? loginData.info.length : 0));
 
-    // ★ 同步模块: UI事件转发 + 回放
+    // 鈽?鍚屾妯″潡: UI浜嬩欢杞彂 + 鍥炴斁
     window._syncEnabled = false;
     window._syncReplay = false;
 
-    // ★ 拦截 Canvas 事件监听器注册（必须在 Cocos2d 引擎加载前执行）
-    // 当 Cocos2d 注册 touch/pointer/mouse 监听时，保存其回调引用
-    var _cocosHandlers = {};
+    // 鈽?鎷︽埅 Canvas 浜嬩欢鐩戝惉鍣ㄦ敞鍐岋紙蹇呴』鍦?Cocos2d 寮曟搸鍔犺浇鍓嶆墽琛岋級
+    // 褰?Cocos2d 娉ㄥ唽 touch/pointer/mouse 鐩戝惉鏃讹紝淇濆瓨鍏跺洖璋冨紩鐢?    var _cocosHandlers = {};
     (function() {
       var _origAdd = HTMLCanvasElement.prototype.addEventListener;
       HTMLCanvasElement.prototype.addEventListener = function(type, fn, opts) {
@@ -156,32 +127,24 @@
       };
     })();
 
-    // ★ 通过保存的回调直接注入事件（完全绕过 isTrusted 检查）
-    function injectViaHandlers(type, cx, cy, extra) {
-      extra = extra || {};
-      // 构造与真实事件结构一致的假事件对象
-      var fakeEv = {
+    // 鈽?閫氳繃淇濆瓨鐨勫洖璋冪洿鎺ユ敞鍏ヤ簨浠讹紙瀹屽叏缁曡繃 isTrusted 妫€鏌ワ級
+    function injectViaHandlers(type, cx, cy) {
+      // 鏋勯€犱笌鐪熷疄浜嬩欢缁撴瀯涓€鑷寸殑鍋囦簨浠跺璞?      var fakeEv = {
         type: type,
         clientX: cx, clientY: cy, pageX: cx, pageY: cy,
         screenX: cx, screenY: cy,
-        offsetX: cx, offsetY: cy,
-        button: 0, buttons: type.indexOf('up') >= 0 ? 0 : 1, which: 1,
-        pointerId: extra.pointerId || 1,
-        pointerType: extra.pointerType || 'mouse',
-        isPrimary: true,
-        width: extra.width || 1, height: extra.height || 1,
-        pressure: extra.pressure != null ? extra.pressure : 0.5,
-        deltaX: extra.deltaX || 0, deltaY: extra.deltaY || 0,
-        deltaZ: extra.deltaZ || 0, deltaMode: extra.deltaMode || 0,
+        button: 0, buttons: 1, which: 1,
+        pointerId: 1, pointerType: 'mouse', isPrimary: true,
+        width: 1, height: 1, pressure: 0.5,
         target: document.getElementById('GameCanvas'),
         currentTarget: document.getElementById('GameCanvas'),
         preventDefault: function(){}, stopPropagation: function(){},
         stopImmediatePropagation: function(){},
+        touches: [], changedTouches: [], targetTouches: [],
         ctrlKey: false, shiftKey: false, altKey: false, metaKey: false,
         view: window, bubbles: true, cancelable: true, composed: true,
-        isTrusted: true // 伪装为可信事件
-      };
-      // 触摸事件添加 touches 数组
+        isTrusted: true // 浼涓哄彲淇′簨浠?      };
+      // 瑙︽懜浜嬩欢娣诲姞 touches 鏁扮粍
       if (type.indexOf('touch') >= 0) {
         var t = { identifier: 0, clientX: cx, clientY: cy, pageX: cx, pageY: cy, screenX: cx, screenY: cy, target: fakeEv.target, radiusX: 1, radiusY: 1, rotationAngle: 0, force: 1 };
         if (type === 'touchend') {
@@ -192,9 +155,8 @@
       }
 
       var fired = false;
-      // 查找并调用 Cocos2d 注册的对应回调
-      var searchTypes = [type];
-      // pointer 事件同时查找对应的 mouse/touch 回调
+      // 鏌ユ壘骞惰皟鐢?Cocos2d 娉ㄥ唽鐨勫搴斿洖璋?      var searchTypes = [type];
+      // pointer 浜嬩欢鍚屾椂鏌ユ壘瀵瑰簲鐨?mouse/touch 鍥炶皟
       if (type === 'pointerdown') searchTypes.push('mousedown', 'touchstart');
       if (type === 'pointermove') searchTypes.push('mousemove', 'touchmove');
       if (type === 'pointerup') searchTypes.push('mouseup', 'touchend');
@@ -204,12 +166,9 @@
         ['false', 'true'].forEach(function(captureKey) {
           var key = st + (captureKey === 'true' ? ':capture' : '');
           var handlers = _cocosHandlers[key];
-          if (handlers && handlers.length > 0) {
+          if (handlers) {
             for (var j = 0; j < handlers.length; j++) {
-              try {
-                handlers[j].call(fakeEv.target, fakeEv);
-                fired = true;
-              } catch(e) {}
+              try { handlers[j].call(fakeEv.target, fakeEv); fired = true; } catch(e) {}
             }
           }
         });
@@ -217,8 +176,7 @@
       return fired;
     }
 
-    // ★ 监听父窗口的同步指令和事件回放
-    window.addEventListener('message', function(e) {
+    // 鈽?鐩戝惉鐖剁獥鍙ｇ殑鍚屾鎸囦护鍜屼簨浠跺洖鏀?    window.addEventListener('message', function(e) {
       if (!e.data || !e.data.type) return;
       if (e.data.type === 'INPUT_EVENT' && e.data.event) {
         var ev = e.data.event;
@@ -227,177 +185,97 @@
           if (!canvas) return;
           window._syncReplay = true;
           var rect = canvas.getBoundingClientRect();
-          // ★ 优先使用 canvas 相对坐标（解决 canvas 不在视口原点时的坐标偏差）
-          var cx, cy;
-          if (ev.canvasX != null && ev.canvasW) {
-            cx = (ev.canvasX / ev.canvasW) * rect.width;
-            cy = (ev.canvasY / ev.canvasH) * rect.height;
-          } else {
-            var scaleX = rect.width / (ev.viewW || rect.width);
-            var scaleY = rect.height / (ev.viewH || rect.height);
-            cx = ev.clientX * scaleX;
-            cy = ev.clientY * scaleY;
-          }
+          var scaleX = rect.width / (ev.viewW || rect.width);
+          var scaleY = rect.height / (ev.viewH || rect.height);
+          var cx = ev.clientX * scaleX;
+          var cy = ev.clientY * scaleY;
 
-          // ★ 传递事件附加属性（wheel delta、pointer 属性等）
-          var extra = {
-            pointerId: ev.pointerId, pointerType: ev.pointerType,
-            width: ev.width, height: ev.height, pressure: ev.pressure,
-            deltaX: ev.deltaX, deltaY: ev.deltaY,
-            deltaZ: ev.deltaZ, deltaMode: ev.deltaMode
-          };
+          // 鈽?閫氳繃鎷︽埅鐨勫洖璋冪洿鎺ユ敞鍏?          var injected = injectViaHandlers(ev.eventType, cx, cy);
 
-          // ★ 通过拦截的回调直接注入
-          var injected = injectViaHandlers(ev.eventType, cx, cy, extra);
-
-          // ★ 回退: dispatchEvent（按事件类型创建对应的原生事件）
+          // 鈽?鍥為€€: dispatchEvent
           if (!injected) {
-            if (ev.eventType === 'wheel') {
-              var wheelEv = new WheelEvent('wheel', {
-                bubbles: true, cancelable: true, view: window,
-                clientX: cx, clientY: cy,
-                deltaX: ev.deltaX || 0, deltaY: ev.deltaY || 0,
-                deltaZ: ev.deltaZ || 0, deltaMode: ev.deltaMode || 0
-              });
-              canvas.dispatchEvent(wheelEv);
-            } else if (ev.eventType.indexOf('pointer') === 0 && typeof PointerEvent !== 'undefined') {
-              var ptrEv = new PointerEvent(ev.eventType, {
-                bubbles: true, cancelable: true, view: window,
-                clientX: cx, clientY: cy, button: 0,
-                pointerId: ev.pointerId || 1,
-                pointerType: ev.pointerType || 'mouse',
-                isPrimary: true, width: ev.width || 1, height: ev.height || 1,
-                pressure: ev.pressure != null ? ev.pressure : 0.5
-              });
-              canvas.dispatchEvent(ptrEv);
-            } else if (ev.eventType.indexOf('touch') >= 0) {
-              var touchObj = new Touch({ identifier: 0, target: canvas, clientX: cx, clientY: cy, pageX: cx, pageY: cy });
-              var touchInit = { bubbles: true, cancelable: true, view: window };
-              if (ev.eventType === 'touchend') {
-                touchInit.changedTouches = [touchObj];
-              } else {
-                touchInit.touches = [touchObj]; touchInit.targetTouches = [touchObj]; touchInit.changedTouches = [touchObj];
-              }
-              var tEv = new TouchEvent(ev.eventType, touchInit);
-              canvas.dispatchEvent(tEv);
-            } else {
-              var mouseEv = new MouseEvent(
-                ev.eventType.replace('pointer','mouse').replace('touch','mouse'),
-                { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 0 }
-              );
-              canvas.dispatchEvent(mouseEv);
-            }
+            var mouseEv = new MouseEvent(
+              ev.eventType.replace('pointer','mouse').replace('touch','mouse'),
+              { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 0 }
+            );
+            canvas.dispatchEvent(mouseEv);
           }
           window._syncReplay = false;
         } catch(err) {
           window._syncReplay = false;
-          console.warn(TAG, '事件回放失败:', err.message);
+          console.warn(TAG, '浜嬩欢鍥炴斁澶辫触:', err.message);
         }
       }
 
-      // ★ 脚本注入: 接收父窗口发送的JS脚本并执行
-      if (e.data.type === 'INJECT_SCRIPT' && e.data.code) {
+      // 鈽?鑴氭湰娉ㄥ叆: 鎺ユ敹鐖剁獥鍙ｅ彂閫佺殑JS鑴氭湰骞舵墽琛?      if (e.data.type === 'INJECT_SCRIPT' && e.data.code) {
         try {
           var fn = new Function(e.data.code);
           fn.call(window);
-          console.log('[Script] 已执行:', e.data.name || 'unnamed');
+          console.log('[Script] 宸叉墽琛?', e.data.name || 'unnamed');
         } catch(err) {
-          console.error('[Script] 执行失败:', e.data.name || 'unnamed', err.message);
+          console.error('[Script] 鎵ц澶辫触:', e.data.name || 'unnamed', err.message);
         }
       }
     });
 
-    // ★ 自注入: 独立窗口打开时自动从 localStorage 读取增强代码并执行
-    if (window.parent === window) {
+    // 鈽?鑷敞鍏? 鐙珛绐楀彛鎵撳紑鏃惰嚜鍔ㄤ粠 localStorage 璇诲彇澧炲己浠ｇ爜骞舵墽琛?    if (window.parent === window) {
       (function() {
         try {
           var cached = localStorage.getItem('__game_enhance_codes__');
           if (!cached) return;
           var codes = JSON.parse(cached);
           if (!Array.isArray(codes) || codes.length === 0) return;
-          console.log('[自注入] 发现 ' + codes.length + ' 项增强代码，等待游戏初始化...');
+          console.log('[鑷敞鍏 鍙戠幇 ' + codes.length + ' 椤瑰寮轰唬鐮侊紝绛夊緟娓告垙鍒濆鍖?..');
           setTimeout(function() {
             codes.forEach(function(item) {
               try {
                 var fn = new Function(item.code);
                 fn.call(window);
-                console.log('[自注入] 已执行:', item.name);
+                console.log('[鑷敞鍏 宸叉墽琛?', item.name);
               } catch(err) {
-                console.error('[自注入] 执行失败:', item.name, err.message);
+                console.error('[鑷敞鍏 鎵ц澶辫触:', item.name, err.message);
               }
             });
-            console.log('[自注入] 完成，共注入 ' + codes.length + ' 项功能');
+            console.log('[鑷敞鍏 瀹屾垚锛屽叡娉ㄥ叆 ' + codes.length + ' 椤瑰姛鑳?);
           }, 1500);
         } catch(e) {
-          console.warn('[自注入] 读取失败:', e.message);
+          console.warn('[鑷敞鍏 璇诲彇澶辫触:', e.message);
         }
       })();
     }
 
-    // ★ Canvas 事件捕获: 同步开启时将操作转发给父窗口
-    (function() {
+    // 鈽?Canvas 浜嬩欢鎹曡幏: 鍚屾寮€鍚椂灏嗘搷浣滆浆鍙戠粰鐖剁獥鍙?    (function() {
       var captured = false;
       var lastMoveTime = 0;
-      var MOVE_THROTTLE = 32; // 节流，避免过多 postMessage
-      // ★ 触摸去重: 移动端一次交互同时产生 touch+pointer+mouse 事件
-      // 记录 touch 时间戳，抑制后续冗余的 pointer/mouse 事件
-      var lastTouchTime = 0;
-      var TOUCH_DEDUP_MS = 100;
+      var MOVE_THROTTLE = 16; // ~60fps 鑺傛祦锛岄伩鍏嶈繃澶?postMessage
 
       var forwardEvent = function(type, e) {
-        // ★ 支持 iframe 模式和独立窗口模式（通过 opener 转发）
-        var isIframe = window.parent !== window;
-        var hasOpener = !isIframe && window.opener && !window.opener.closed;
-        if (window._syncReplay || !window._syncEnabled || (!isIframe && !hasOpener)) return;
+        if (window._syncReplay || !window._syncEnabled || window.parent === window) return;
 
-        // ★ 去重: 防止同一次交互的多种事件类型都被转发导致目标窗口抖动
-        var now = Date.now();
-        if (type.indexOf('touch') === 0) {
-          lastTouchTime = now;
-        } else if (type.indexOf('pointer') === 0 || type.indexOf('mouse') === 0) {
-          // pointer/mouse 事件: 如果近期有 touch 事件，说明 touch 已处理，跳过
-          if (now - lastTouchTime < TOUCH_DEDUP_MS) return;
-        }
-
-        // 移动/滚轮事件节流
-        if (type === 'mousemove' || type === 'pointermove' || type === 'touchmove' || type === 'wheel') {
+        // 绉诲姩浜嬩欢鑺傛祦
+        if (type === 'mousemove' || type === 'pointermove' || type === 'touchmove') {
+          var now = Date.now();
           if (now - lastMoveTime < MOVE_THROTTLE) return;
           lastMoveTime = now;
         }
 
         try {
-          var canvas = document.getElementById('GameCanvas');
-          var rect = canvas ? canvas.getBoundingClientRect() : null;
           var data = {
             eventType: type,
-            clientX: e.clientX || 0,
-            clientY: e.clientY || 0,
+            clientX: e.clientX,
+            clientY: e.clientY,
             button: e.button || 0,
             viewW: window.innerWidth,
-            viewH: window.innerHeight,
-            // ★ canvas 相对坐标（解决 canvas 不在视口原点时的坐标偏差）
-            canvasX: rect ? (e.clientX || 0) - rect.left : 0,
-            canvasY: rect ? (e.clientY || 0) - rect.top : 0,
-            canvasW: rect ? rect.width : 1,
-            canvasH: rect ? rect.height : 1
+            viewH: window.innerHeight
           };
-          // PointerEvent 特有属性
-          if (type.indexOf('pointer') === 0) {
+          // PointerEvent 鐗规湁灞炴€?          if (type.indexOf('pointer') === 0) {
             data.pointerId = e.pointerId || 1;
             data.pointerType = e.pointerType || 'mouse';
             data.width = e.width || 1;
             data.height = e.height || 1;
             data.pressure = e.pressure || 0.5;
           }
-          // WheelEvent 特有属性
-          if (type === 'wheel') {
-            data.deltaX = e.deltaX || 0;
-            data.deltaY = e.deltaY || 0;
-            data.deltaZ = e.deltaZ || 0;
-            data.deltaMode = e.deltaMode || 0;
-          }
-          var syncTarget = isIframe ? window.parent : window.opener;
-          syncTarget.postMessage({
+          window.parent.postMessage({
             type: 'GAME_INPUT_EVENT',
             tokenId: window._gameTokenId || '',
             event: data
@@ -411,29 +289,26 @@
         if (!canvas) return;
         captured = true;
 
-        // ★ PointerEvent (Cocos2d 现代版本主要使用)
+        // 鈽?PointerEvent (Cocos2d 鐜颁唬鐗堟湰涓昏浣跨敤)
         canvas.addEventListener('pointerdown', function(e) { forwardEvent('pointerdown', e); }, true);
         canvas.addEventListener('pointerup', function(e) { forwardEvent('pointerup', e); }, true);
         canvas.addEventListener('pointermove', function(e) { forwardEvent('pointermove', e); }, true);
         canvas.addEventListener('pointercancel', function(e) { forwardEvent('pointercancel', e); }, true);
 
-        // 触摸事件 (移动端游戏)
+        // 瑙︽懜浜嬩欢 (绉诲姩绔父鎴?
         canvas.addEventListener('touchstart', function(e) { forwardEvent('touchstart', e.touches[0] || e); }, true);
         canvas.addEventListener('touchend', function(e) { forwardEvent('touchend', e.changedTouches[0] || e); }, true);
         canvas.addEventListener('touchmove', function(e) { forwardEvent('touchmove', e.touches[0] || e); }, true);
 
-        // 鼠标事件 (桌面端兼容)
+        // 榧犳爣浜嬩欢 (妗岄潰绔吋瀹?
         canvas.addEventListener('mousedown', function(e) { forwardEvent('mousedown', e); }, true);
         canvas.addEventListener('mouseup', function(e) { forwardEvent('mouseup', e); }, true);
         canvas.addEventListener('mousemove', function(e) { forwardEvent('mousemove', e); }, true);
 
-        // ★ 滚轮事件（列表滑动等场景）
-        canvas.addEventListener('wheel', function(e) { forwardEvent('wheel', e); }, true);
-
-        console.log(TAG, '✅ Canvas事件捕获已安装 (pointer+touch+mouse+wheel)');
+        console.log(TAG, '鉁?Canvas浜嬩欢鎹曡幏宸插畨瑁?(pointer+touch+mouse)');
       }
 
-      // 等待Canvas加载
+      // 绛夊緟Canvas鍔犺浇
       if (document.getElementById('GameCanvas')) {
         setupCapture();
       } else {
@@ -507,15 +382,14 @@
     window.__HORTOR_SDK__.tga.tga = window.__HORTOR_SDK__.tga;
     window._hsdkInit = 1;
     window.checkUpdate = 1;
-    // 拦截阻塞对话框
-    window.alert = function(msg) { console.log('[Game] alert:', String(msg||'').substring(0,100)); };
+    // 鎷︽埅闃诲瀵硅瘽妗?    window.alert = function(msg) { console.log('[Game] alert:', String(msg||'').substring(0,100)); };
     window.confirm = function() { return true; };
     window.prompt = function(msg, def) { return def !== undefined ? String(def) : ''; };
-    console.log('[GameLogin] SDK Mock 初始化完成');
+    console.log('[GameLogin] SDK Mock 鍒濆鍖栧畬鎴?);
   })();
   </script>
 
-  <!-- ===== 2. LoginObserver Hook (必须在 cocos2d 引擎之前) ===== -->
+  <!-- ===== 2. LoginObserver Hook (蹇呴』鍦?cocos2d 寮曟搸涔嬪墠) ===== -->
   <script>
   (function() {
     'use strict';
@@ -576,13 +450,13 @@
           var result = orig.call(self, params);
           if (result && typeof result.then === 'function') {
             result.then(function(res) {
-              if (res && res.code) console.warn(TAG, 'authUser返回code=' + res.code);
-              else console.log(TAG, '✅ authUser 成功!');
+              if (res && res.code) console.warn(TAG, 'authUser杩斿洖code=' + res.code);
+              else console.log(TAG, '鉁?authUser 鎴愬姛!');
             });
           }
           return result;
         }
-        console.log(TAG, 'authUser 等待数据注入...');
+        console.log(TAG, 'authUser 绛夊緟鏁版嵁娉ㄥ叆...');
         return new Promise(function(resolve) {
           win.__authUserResolve = function() {
             applyOverride(params);
@@ -605,7 +479,7 @@
           return origSL.call(this, params);
         };
       }
-      console.log(TAG, 'authUser 已hook (' + name + ')');
+      console.log(TAG, 'authUser 宸瞙ook (' + name + ')');
     }
 
     function scanAndHook(mod) {
@@ -621,8 +495,7 @@
       } catch(e) {}
     }
 
-    // Hook __require 以拦截游戏模块加载
-    var _realRequire = null;
+    // Hook __require 浠ユ嫤鎴父鎴忔ā鍧楀姞杞?    var _realRequire = null;
     Object.defineProperty(win, '__require', {
       configurable: true,
       enumerable: true,
@@ -635,54 +508,53 @@
         };
         try { Object.assign(wrapped, fn); } catch(e) {}
         _realRequire = wrapped;
-        console.log(TAG, '__require 已包装');
+        console.log(TAG, '__require 宸插寘瑁?);
       }
     });
-    console.log(TAG, 'LoginObserver 已就绪');
+    console.log(TAG, 'LoginObserver 宸插氨缁?);
   })();
   </script>
 
-  <!-- ===== 3. Cocos2d 引擎 (本地文件) ===== -->
+  <!-- ===== 3. Cocos2d 寮曟搸 (鏈湴鏂囦欢) ===== -->
   <script src="game/cocos2d-js-min.a5841.js" charset="utf-8"></script>
 
-  <!-- ===== 3.5 Patch.js: SDK补丁 + Canvas方向修正 + Tampermonkey polyfill ===== -->
+  <!-- ===== 3.5 Patch.js: SDK琛ヤ竵 + Canvas鏂瑰悜淇 + Tampermonkey polyfill ===== -->
   <script src="game/patch.js" charset="utf-8"></script>
 
-  <!-- ===== 4. 游戏配置 (本地文件) ===== -->
+  <!-- ===== 4. 娓告垙閰嶇疆 (鏈湴鏂囦欢) ===== -->
   <script src="game/src/settings.js" charset="utf-8"></script>
   <script src="game/game-defines.a175e.js" charset="utf-8"></script>
-  <!-- ★ server指向本地: internal bundle和jsList从本地加载 -->
-  <!-- ★ 远程bundle(game/launcher等)由 installRemoteAssetLoader() 独立处理CDN -->
+  <!-- 鈽?server鎸囧悜鏈湴: internal bundle鍜宩sList浠庢湰鍦板姞杞?-->
+  <!-- 鈽?杩滅▼bundle(game/launcher绛?鐢?installRemoteAssetLoader() 鐙珛澶勭悊CDN -->
   <script>
   if (window._CCSettings) {
     window._CCSettings.server = window.location.origin + '/game/assets/';
-    console.log('[boot] server已设置:', window._CCSettings.server);
+    console.log('[boot] server宸茶缃?', window._CCSettings.server);
     console.log('[boot] jsList:', window._CCSettings.jsList);
   }
   </script>
 
-  <!-- ===== 5. 游戏入口 main.js (本地文件) ===== -->
+  <!-- ===== 5. 娓告垙鍏ュ彛 main.js (鏈湴鏂囦欢) ===== -->
   <script src="game/main.2a00e.js" charset="utf-8"></script>
 
-  <!-- ===== 5.5 boot.js: 覆盖 boot() — manifest获取 + 版本锁定 + CDN资源加载器 ===== -->
+  <!-- ===== 5.5 boot.js: 瑕嗙洊 boot() 鈥?manifest鑾峰彇 + 鐗堟湰閿佸畾 + CDN璧勬簮鍔犺浇鍣?===== -->
   <script src="game/boot.js" charset="utf-8"></script>
 
-  <!-- ===== 5.6 Bundle下载器修复: 确保bundle下载走自定义下载器而非Cocos默认 ===== -->
-  <!-- ★ 问题: Cocos任务管道将bundle名解析为绝对URL, downloadBundle直接用该绝对URL -->
-  <!-- ★ 这导致remote bundle(launcher/main)从本地加载而非CDN -->
-  <!-- ★ 解决: 在installRemoteAssetLoader之前注册bundle下载器, 用相对URL+convertAssets -->
+  <!-- ===== 5.6 Bundle涓嬭浇鍣ㄤ慨澶? 纭繚bundle涓嬭浇璧拌嚜瀹氫箟涓嬭浇鍣ㄨ€岄潪Cocos榛樿 ===== -->
+  <!-- 鈽?闂: Cocos浠诲姟绠￠亾灏哹undle鍚嶈В鏋愪负缁濆URL, downloadBundle鐩存帴鐢ㄨ缁濆URL -->
+  <!-- 鈽?杩欏鑷磖emote bundle(launcher/main)浠庢湰鍦板姞杞借€岄潪CDN -->
+  <!-- 鈽?瑙ｅ喅: 鍦╥nstallRemoteAssetLoader涔嬪墠娉ㄥ唽bundle涓嬭浇鍣? 鐢ㄧ浉瀵筓RL+convertAssets -->
   <script>
   (function() {
     var GAME_PREFIX = window.location.origin + '/game/';
     var _origInstall = window.installRemoteAssetLoader;
     window.installRemoteAssetLoader = function() {
       var dl = cc.assetManager.downloader;
-      // 保存原始下载器引用
-      var _origJsonDl = dl._downloaders['.json'];
+      // 淇濆瓨鍘熷涓嬭浇鍣ㄥ紩鐢?      var _origJsonDl = dl._downloaders['.json'];
       var _origScriptDl = dl._downloaders['.js'];
 
-      // ★ 关键: 先包装 convertAssets, 再调用 installRemoteAssetLoader
-      // installRemoteAssetLoader 内部的 toRemoteUrl 闭包会捕获包装后的 convertAssets
+      // 鈽?鍏抽敭: 鍏堝寘瑁?convertAssets, 鍐嶈皟鐢?installRemoteAssetLoader
+      // installRemoteAssetLoader 鍐呴儴鐨?toRemoteUrl 闂寘浼氭崟鑾峰寘瑁呭悗鐨?convertAssets
       var _origConvert = window.convertAssets;
       window.convertAssets = function(url) {
         var result = _origConvert(url);
@@ -694,11 +566,10 @@
         return result;
       };
 
-      // 调用原始 installRemoteAssetLoader (toRemoteUrl 将使用包装后的 convertAssets)
+      // 璋冪敤鍘熷 installRemoteAssetLoader (toRemoteUrl 灏嗕娇鐢ㄥ寘瑁呭悗鐨?convertAssets)
       _origInstall();
 
-      // ★ 在installRemoteAssetLoader之后覆盖bundle下载器
-      // 始终用相对URL, 让toRemoteUrl/convertAssets正确处理
+      // 鈽?鍦╥nstallRemoteAssetLoader涔嬪悗瑕嗙洊bundle涓嬭浇鍣?      // 濮嬬粓鐢ㄧ浉瀵筓RL, 璁﹖oRemoteUrl/convertAssets姝ｇ‘澶勭悊
       dl._downloaders['bundle'] = function(url, options, onComplete) {
         var bundleName = cc.path.basename(url);
         var base = 'assets/' + bundleName;
@@ -710,7 +581,7 @@
         var versionPart = version ? version + '.' : '';
         var configUrl = base + '/config.' + versionPart + 'json';
         var indexUrl = base + '/index.' + versionPart + 'js';
-        console.log('[BundleFix]', bundleName, '→ config:', configUrl, 'index:', indexUrl);
+        console.log('[BundleFix]', bundleName, '鈫?config:', configUrl, 'index:', indexUrl);
 
         var finished = 0, error = null, config = null;
         function done(err) {
@@ -727,24 +598,22 @@
           }
           done(err);
         });
-        // ★ index可能为.jsc加密文件, 用dl.download走downloadScript解密链
-        var convertedIndexUrl = window.convertAssets(indexUrl);
+        // 鈽?index鍙兘涓?jsc鍔犲瘑鏂囦欢, 鐢╠l.download璧癲ownloadScript瑙ｅ瘑閾?        var convertedIndexUrl = window.convertAssets(indexUrl);
         dl.download(bundleName + '-index', convertedIndexUrl, '.js', options, done);
       };
 
-      console.log('[BundleFix] 自定义bundle下载器已注册 + convertAssets已包装');
+      console.log('[BundleFix] 鑷畾涔塨undle涓嬭浇鍣ㄥ凡娉ㄥ唽 + convertAssets宸插寘瑁?);
     };
   })();
   </script>
 
-  <!-- ===== 6. 启动逻辑 ===== -->
+  <!-- ===== 6. 鍚姩閫昏緫 ===== -->
   <script>
   (function() {
     'use strict';
     var TAG = '[boot]';
 
-    // 尺寸初始化
-    document.documentElement.style.width = window.innerWidth + 'px';
+    // 灏哄鍒濆鍖?    document.documentElement.style.width = window.innerWidth + 'px';
     document.documentElement.style.height = window.innerHeight + 'px';
     document.body.style.width = window.innerWidth + 'px';
     document.body.style.height = window.innerHeight + 'px';
@@ -775,17 +644,17 @@
       }, 100);
     });
 
-    // Splash进度
+    // Splash杩涘害
     var splash = document.getElementById('splash');
     var bar = splash && splash.querySelector('.progress-bar span');
     if (bar) bar.style.width = '50%';
 
-    // 启动!
+    // 鍚姩!
     window.HtmlIsLoaded = true;
     if (typeof cc === 'undefined') {
-      console.error(TAG, '❌ cc 未定义，引擎加载失败!');
+      console.error(TAG, '鉂?cc 鏈畾涔夛紝寮曟搸鍔犺浇澶辫触!');
       if (splash) {
-        splash.innerHTML = '<div style="color:#ff6b6b;font-size:14px;text-align:center;padding:20px;">引擎加载失败，请刷新页面重试</div>';
+        splash.innerHTML = '<div style="color:#ff6b6b;font-size:14px;text-align:center;padding:20px;">寮曟搸鍔犺浇澶辫触锛岃鍒锋柊椤甸潰閲嶈瘯</div>';
         splash.style.opacity = '1';
         splash.style.display = 'flex';
         splash.style.alignItems = 'center';
@@ -793,15 +662,15 @@
       }
       return;
     }
-    console.log(TAG, '引擎加载成功, 等待 boot()...');
-    // boot.js 已覆盖 window.boot() (含manifest获取+CDN资源加载)
-    // main.js 也定义了 window.boot() 但 boot.js 后加载, 以 boot.js 为准
+    console.log(TAG, '寮曟搸鍔犺浇鎴愬姛, 绛夊緟 boot()...');
+    // boot.js 宸茶鐩?window.boot() (鍚玬anifest鑾峰彇+CDN璧勬簮鍔犺浇)
+    // main.js 涔熷畾涔変簡 window.boot() 浣?boot.js 鍚庡姞杞? 浠?boot.js 涓哄噯
     if (typeof window.boot === 'function') {
-      console.log(TAG, '调用 boot.js boot() (完整启动流程)...');
+      console.log(TAG, '璋冪敤 boot.js boot() (瀹屾暣鍚姩娴佺▼)...');
       window.boot().catch(function(err) {
-        console.error(TAG, 'boot失败:', err.message, err.stack);
+        console.error(TAG, 'boot澶辫触:', err.message, err.stack);
         if (splash) {
-          splash.innerHTML = '<div style="color:#ff6b6b;font-size:14px;text-align:center;padding:20px;line-height:1.8;">游戏启动失败<br>' + err.message + '<br><br><span style="font-size:12px;color:#999;">请检查网络连接, CDN资源需要可访问</span></div>';
+          splash.innerHTML = '<div style="color:#ff6b6b;font-size:14px;text-align:center;padding:20px;line-height:1.8;">娓告垙鍚姩澶辫触<br>' + err.message + '<br><br><span style="font-size:12px;color:#999;">璇锋鏌ョ綉缁滆繛鎺? CDN璧勬簮闇€瑕佸彲璁块棶</span></div>';
           splash.style.opacity = '1';
           splash.style.display = 'flex';
           splash.style.alignItems = 'center';
@@ -809,7 +678,7 @@
         }
       });
     } else {
-      console.error(TAG, 'window.boot 未定义! boot.js 可能未加载');
+      console.error(TAG, 'window.boot 鏈畾涔? boot.js 鍙兘鏈姞杞?);
     }
   })();
   </script>

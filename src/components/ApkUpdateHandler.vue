@@ -72,6 +72,12 @@ const showUpdateDialog = (info) => {
                 h('p', downloadError.value),
               ]),
               positiveText: '知道了',
+              closable: !isForce,
+              maskClosable: !isForce,
+              // 强制更新时重新弹出更新弹窗，不允许继续使用
+              onPositiveClick: () => {
+                if (isForce) showUpdateDialog(info);
+              },
             });
             return;
           }
@@ -81,9 +87,17 @@ const showUpdateDialog = (info) => {
             content: () => h('div', [
               h('p', '已打开浏览器下载，请在浏览器中完成下载后手动安装。'),
               h('p', { style: 'color: #e67e22; font-size: 12px; margin-top: 8px;' }, '下载完成后，打开 APK 文件即可安装'),
-            ]),
+              isForce
+                ? h('p', { style: 'color: #e74c3c; font-size: 12px; margin-top: 8px; font-weight: bold;' }, '此版本为强制更新，安装新版本前无法继续使用')
+                : null,
+            ].filter(Boolean)),
             positiveText: '知道了',
-            onPositiveClick: () => {},
+            closable: !isForce,
+            maskClosable: !isForce,
+            onPositiveClick: () => {
+              // 强制更新时重新弹出更新弹窗，确保必须更新后才能继续使用
+              if (isForce) showUpdateDialog(info);
+            },
           });
         })
         .catch((err) => {
@@ -93,6 +107,12 @@ const showUpdateDialog = (info) => {
             title: ' 下载失败',
             content: 'APK下载过程中出现错误，请手动访问官网下载最新版本。',
             positiveText: '知道了',
+            closable: !isForce,
+            maskClosable: !isForce,
+            // 强制更新时重新弹出更新弹窗，不允许继续使用
+            onPositiveClick: () => {
+              if (isForce) showUpdateDialog(info);
+            },
           });
         });
     },

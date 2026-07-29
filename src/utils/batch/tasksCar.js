@@ -252,14 +252,15 @@ export function createTasksCar(deps) {
             closeConnection(tokenId, token.name);
           } catch (error) {
             const errorMsg = error.message || "";
-            if (errorMsg.includes("400340") || errorMsg.includes("200750") || errorMsg.includes("11800010") || errorMsg.includes("12000030")) {
-              // 服务器错误/限流，加入重试队列（关闭连接释放槽位，重试时重新连接）
+            if (errorMsg.includes("400340") || errorMsg.includes("200750") || errorMsg.includes("11800010") || errorMsg.includes("12000030") || errorMsg.includes("请求超时") || errorMsg.includes("timeout")) {
+              // 服务器错误/限流/超时，加入重试队列（关闭连接释放槽位，重试时重新连接）
+              const isTimeout = errorMsg.includes("请求超时") || errorMsg.includes("timeout");
               closeConnection(tokenId, token.name);
               retry400340Tokens.push(tokenId);
               tokenStatus.value[tokenId] = "waiting_retry";
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `⚠️ ${token.name} 遇到${extractErrorCode(errorMsg)}错误，已加入重试队列（等待本批完成后重试）`,
+                message: `⚠️ ${token.name} 遇到${isTimeout ? "请求超时" : extractErrorCode(errorMsg)}错误，已加入重试队列（等待本批完成后重试）`,
                 type: "warning",
               });
             } else {
@@ -341,12 +342,13 @@ export function createTasksCar(deps) {
                 });
               } catch (retryError) {
                 const errorMsg = retryError.message || "";
-                if (errorMsg.includes("400340") || errorMsg.includes("200750") || errorMsg.includes("11800010") || errorMsg.includes("12000030")) {
+                if (errorMsg.includes("400340") || errorMsg.includes("200750") || errorMsg.includes("11800010") || errorMsg.includes("12000030") || errorMsg.includes("请求超时") || errorMsg.includes("timeout")) {
+                  const isTimeout = errorMsg.includes("请求超时") || errorMsg.includes("timeout");
                   stillFailed.push(tokenId);
                   tokenStatus.value[tokenId] = "waiting_retry";
                   addLog({
                     time: new Date().toLocaleTimeString(),
-                    message: `⚠️ ${token.name} 重试仍遇到${extractErrorCode(errorMsg)}错误，等待下次重试`,
+                    message: `⚠️ ${token.name} 重试仍遇到${isTimeout ? "请求超时" : extractErrorCode(errorMsg)}错误，等待下次重试`,
                     type: "warning",
                   });
                 } else {

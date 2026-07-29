@@ -85,15 +85,15 @@
       <p style="margin-bottom: 12px; color: #666; font-size: 14px;">感谢您的支持！扫码赞助作者 ❤️</p>
       <div style="background: #fff8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; text-align: left;">
         <p style="margin-bottom: 8px; color: #e67e22; font-size: 14px; font-weight: bold;">📌 激活码赞助方案</p>
-        <p style="margin-bottom: 4px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">5元</b> = 1个激活码</p>
-        <p style="margin-bottom: 4px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">10元</b> = 3个激活码</p>
-        <p style="margin-bottom: 8px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">20元</b> = 10个激活码</p>
-        <p style="margin-bottom: 8px; color: #999; font-size: 12px;">（每人最高10个激活码，避免倒卖）</p>
-        <p style="margin-bottom: 4px; color: #333; font-size: 13px;">🔄 激活码可重置：在另一台设备输入激活码点击「重置卡密」即可</p>
+        <p style="margin-bottom: 4px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">10元</b> = 1个激活码</p>
+        <p style="margin-bottom: 4px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">20元</b> = 3个激活码</p>
+        <p style="margin-bottom: 8px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">30元</b> = 5个激活码</p>
+        <p style="margin-bottom: 8px; color: #999; font-size: 12px;">（每人最高5个激活码，避免倒卖）</p>
+        <p style="margin-bottom: 4px; color: #333; font-size: 13px;">🔄 激活码永久有效，可重置：在另一台设备输入激活码点击「重置卡密」即可</p>
         <p style="color: #333; font-size: 13px;">🎁 残卷赠送ID：<b style="color:#e74c3c;">83203221</b></p>
       </div>
       <p style="margin-bottom: 12px; color: #e67e22; font-size: 13px; font-weight: 500;">赞助后请在QQ联系我领取激活码<br/>联系方式：<span style="font-weight: bold; color: #c0392b; letter-spacing: 1px;">1607863356</span></p>
-      <p style="margin-bottom: 12px; color: #999; font-size: 12px;">网页版目前太多人使用，暂时不再免费提供</p>
+      <p style="margin-bottom: 12px; color: #999; font-size: 12px;">网页版目前太多人使用，暂时不再免费提供，赞助30以上可联系获取</p>
       <img :src="sponsorQrcode" alt="赞助二维码" style="max-width: 280px; width: 100%; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1);" />
     </div>
   </n-modal>
@@ -115,6 +115,9 @@ const props = defineProps({
 const emit = defineEmits(['success', 'close']);
 
 const WORKER_BASE = 'https://apk.xiaohuaxyzw.top';
+
+// ✅ 卡密版本验证：上报构建时注入的版本号（旧版本 2.32.0-2.37.0 不上报该字段，服务端据此拦截）
+const APP_VERSION_CODE = typeof __APK_VERSION_CODE__ !== 'undefined' && __APK_VERSION_CODE__ ? Number(__APK_VERSION_CODE__) : 23800;
 
 const inputCardKey = ref('');
 const loading = ref(false);
@@ -194,7 +197,7 @@ const handleActivate = async () => {
     const resp = await fetch(`${WORKER_BASE}/api/card/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cardKey, deviceId }),
+      body: JSON.stringify({ cardKey, deviceId, appVersionCode: APP_VERSION_CODE }),
     });
     const data = await resp.json();
 

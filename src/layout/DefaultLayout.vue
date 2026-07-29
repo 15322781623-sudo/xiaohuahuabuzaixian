@@ -4,7 +4,7 @@
     <nav class="dashboard-nav">
       <div class="nav-container">
         <div class="nav-brand">
-          <img alt="XYZW" class="brand-logo" src="/icons/xiaoyugan.png">
+          <img alt="XYZW" class="brand-logo" src="/icons/gangzhongwang.png">
           <div class="brand-toggle" @click="isMobileMenuOpen = true">
             <n-icon>
               <Menu></Menu>

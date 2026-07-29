@@ -2063,7 +2063,10 @@ export function createTasksStore(deps) {
 
       if (retryableTokens.length) {
         addLog({ time: new Date().toLocaleTimeString(), message: `\n最终失败 ${retryableTokens.length} 个账号`, type: "error" });
-        retryableTokens.forEach((i) => addLog({ time: new Date().toLocaleTimeString(), message: `- ${i.tokenName}`, type: "error" }));
+        retryableTokens.forEach((i) => {
+          addLog({ time: new Date().toLocaleTimeString(), message: `- ${i.tokenName}`, type: "error" });
+          tokenStatus.value[i.tokenId] = "failed"; // ✅ 标记为失败，确保执行记录进度统计正确
+        });
       }
     }
 
@@ -2429,6 +2432,183 @@ export function createTasksStore(deps) {
     currentRunningTokenId.value = null;
     isRunning.value = false;
     shouldStop.value = false;
+  };
+
+  /**
+   * 批量逐鹿盐山竞猜
+   * @param {number} scheduleId - 赛程ID (20=64强, 21=32强, 22=16强, 23=8强, 24=4强, 25=季军赛, 26=决赛)
+   * @param {string[]} teamIds - 按选中顺序的队伍ID列表
+   */
+  const batchApexGuess = async (scheduleId, teamIds) => {
+    if (selectedTokens.value.length === 0) {
+      message.warning("请先选择账号");
+      return;
+    }
+    if (!Array.isArray(teamIds) || teamIds.length === 0) {
+      message.warning("请先选择竞猜队伍");
+      return;
+    }
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    await runStreaming(selectedTokens.value, async (tokenId) => {
+      if (shouldStop.value) return;
+
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({ time: new Date().toLocaleTimeString(), message: `=== 逐鹿盐山竞猜: ${token.name} ===`, type: "info" });
+
+        await ensureConnection(tokenId);
+
+        let successCount = 0;
+        let failCount = 0;
+        for (const teamId of teamIds) {
+          if (shouldStop.value) break;
+
+          try {
+            const result = await tokenStore.sendMessageWithPromise(tokenId, "apex_guess", { teamId }, 5000);
+            if (result?.error) {
+              const errMsg = String(result.error);
+              if (errMsg.includes('12800040')) {
+                successCount++;
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ⚠️ 已参与竞猜(${teamId})，无需重复参与`, type: "warning" });
+              } else {
+                failCount++;
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜失败(${teamId}): ${result.error}`, type: "error" });
+              }
+            } else {
+              successCount++;
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜成功: ${teamId}`, type: "success" });
+            }
+          } catch (e) {
+            const errMsg = String(e.message || '');
+            if (errMsg.includes('12800040')) {
+              successCount++;
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ⚠️ 已参与竞猜(${teamId})，无需重复参与`, type: "warning" });
+            } else {
+              failCount++;
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜异常(${teamId}): ${e.message}`, type: "error" });
+            }
+          }
+
+          await new Promise(r => setTimeout(r, _getModuleDelay('club')));
+        }
+
+        tokenStatus.value[tokenId] = successCount > 0 ? "completed" : "failed";
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜完成: 成功${successCount}场, 失败${failCount}场`, type: "info" });
+      } catch (error) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜异常: ${error.message}`, type: "error" });
+        tokenStatus.value[tokenId] = "failed";
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 连接已关闭 (队列: ${connectionQueue.active}/${batchSettings.maxActive})`, type: "info" });
+      }
+    });
+
+    currentRunningTokenId.value = null;
+    isRunning.value = false;
+    shouldStop.value = false;
+    message.success("批量逐鹿盐山竞猜结束");
+  };
+
+  /**
+   * 批量领取逐鹿盐山竞猜奖励
+   * 从 apex_getroleinfo 的 guessClaimMap 中收集猜中且未领奖的队伍（名称不以下划线开头且值为 false），
+   * 循环发送 apex_guessclaim {scheduleId, teamId} 领取
+   */
+  const batchApexGuessClaim = async () => {
+    if (selectedTokens.value.length === 0) {
+      message.warning("请先选择账号");
+      return;
+    }
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    await runStreaming(selectedTokens.value, async (tokenId) => {
+      if (shouldStop.value) return;
+
+      tokenStatus.value[tokenId] = "running";
+      const token = tokens.value.find((t) => t.id === tokenId);
+
+      try {
+        addLog({ time: new Date().toLocaleTimeString(), message: `=== 逐鹿盐山竞猜领奖: ${token.name} ===`, type: "info" });
+
+        await ensureConnection(tokenId);
+
+        // 获取角色信息，解析 guessClaimMap
+        const roleInfo = await tokenStore.sendMessageWithPromise(tokenId, "apex_getroleinfo", {}, 5000);
+        await new Promise(r => setTimeout(r, _getModuleDelay('club')));
+        const guessClaimMap = roleInfo?.apexRoleInfo?.guessClaimMap || roleInfo?.guessClaimMap || {};
+
+        // 收集猜中且未领奖的队伍：名称不以下划线开头且值为 false
+        const claimList = [];
+        for (const scheduleId of Object.keys(guessClaimMap)) {
+          const teamMap = guessClaimMap[scheduleId];
+          if (!teamMap || typeof teamMap !== 'object') continue;
+          for (const teamId of Object.keys(teamMap)) {
+            if (!teamId.startsWith('_') && teamMap[teamId] === false) {
+              claimList.push({ scheduleId: Number(scheduleId), teamId });
+            }
+          }
+        }
+
+        if (claimList.length === 0) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 奖励已全部领取或未猜中任何对局。`, type: "warning" });
+          tokenStatus.value[tokenId] = "completed";
+          return;
+        }
+
+        let successCount = 0;
+        let failCount = 0;
+        for (const { scheduleId, teamId } of claimList) {
+          if (shouldStop.value) break;
+
+          try {
+            const result = await tokenStore.sendMessageWithPromise(tokenId, "apex_guessclaim", { scheduleId, teamId }, 5000);
+            if (result?.error) {
+              failCount++;
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领奖失败(${scheduleId}/${teamId}): ${result.error}`, type: "error" });
+            } else {
+              successCount++;
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领奖成功: 赛程${scheduleId} 队伍${teamId}`, type: "success" });
+            }
+          } catch (e) {
+            failCount++;
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领奖异常(${scheduleId}/${teamId}): ${e.message}`, type: "error" });
+          }
+
+          await new Promise(r => setTimeout(r, _getModuleDelay('club')));
+        }
+
+        tokenStatus.value[tokenId] = successCount > 0 ? "completed" : "failed";
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领奖完成: 成功${successCount}个, 失败${failCount}个`, type: "info" });
+      } catch (error) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领奖异常: ${error.message}`, type: "error" });
+        tokenStatus.value[tokenId] = "failed";
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 连接已关闭 (队列: ${connectionQueue.active}/${batchSettings.maxActive})`, type: "info" });
+      }
+    });
+
+    currentRunningTokenId.value = null;
+    isRunning.value = false;
+    shouldStop.value = false;
+    message.success("批量逐鹿盐山竞猜领奖结束");
   };
 
   /**
@@ -5811,8 +5991,8 @@ export function createTasksStore(deps) {
 
         if (result?.error) {
           const errorMsg = String(result.error);
-          if (errorMsg.includes('2300080')) {
-            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ⚠️ 天宫助威：已对该军团助威过（错误 2300080）`, type: "warning" });
+          if (errorMsg.includes('2300080') || errorMsg.includes('200020')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ⚠️ 天宫助威：已助威，无法重复助威`, type: "warning" });
             tokenStatus.value[tokenId] = "completed";
           } else {
             addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ❌ 天宫助威失败：${result.error}`, type: "error" });
@@ -5824,8 +6004,8 @@ export function createTasksStore(deps) {
         }
       } catch (e) {
         const errorMsg = String(e.message || '');
-        if (errorMsg.includes('2300080')) {
-          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ⚠️ 天宫助威：当前账号已对该军团助威过`, type: "warning" });
+        if (errorMsg.includes('2300080') || errorMsg.includes('200020')) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ⚠️ 天宫助威：已助威，无法重复助威`, type: "warning" });
           tokenStatus.value[tokenId] = "completed";
         } else {
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ❌ 天宫助威异常：${e.message}`, type: "error" });
@@ -5881,6 +6061,8 @@ export function createTasksStore(deps) {
     saltcup26_openstarpack_use,
     batchSaltCupBet,
     getSaltCupBetInfo,
+    batchApexGuess,
+    batchApexGuessClaim,
     batchSaltRoadCheer,
   };
 }

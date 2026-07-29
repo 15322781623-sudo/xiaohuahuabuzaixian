@@ -1382,6 +1382,20 @@ export const useTokenStore = defineStore("tokens", () => {
           wsConnections.value[tokenId].lastRandomSeedSource = null;
           wsConnections.value[tokenId].lastRandomSeed = null;
         }
+        // APK 环境自动开启入站报文诊断：捕获前 20 条报文以便定位“所有命令均超时”的根因
+        // 仅在 Capacitor 原生平台下生效，浏览器端不受影响
+        try {
+          if (
+            (typeof window !== 'undefined')
+            && (window as any).Capacitor
+            && typeof (window as any).Capacitor.isNativePlatform === 'function'
+            && (window as any).Capacitor.isNativePlatform()
+          ) {
+            (wsClient as any).debugInbound = true;
+            (wsClient as any).debugInboundCount = 0;
+            wsLogger.info(`[APK] 已启用入站报文诊断（前20条）: ${tokenId}`);
+          }
+        } catch (_e) { /* 诊断启用失败不影响正常流程 */ }
         // 连接成功，重置断开刷新计数
         disconnectRefreshCount.value[tokenId] = 0;
         updateCrossTabConnectionState(tokenId, "connected");

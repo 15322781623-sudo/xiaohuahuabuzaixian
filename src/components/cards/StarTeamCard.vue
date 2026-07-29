@@ -69,7 +69,7 @@
             :class="{ 'team-completed': team.memberCount >= 5 && team.allLocked, 'team-expanded': expandedTeamId === team.teamId }"
           >
             <div class="team-card-header clickable" @click="toggleTeamExpand(team.teamId)" title="点击展开/收起成员详情">
-              <span class="team-captain">👑 {{ team.captainName }}</span>
+              <span class="team-captain" @click.stop="openTeamCaptain(team)" title="点击打开该队队长（切换为当前队长）">👑 {{ team.captainName }}</span>
               <n-tag size="tiny" :type="team.memberCount >= 5 ? 'success' : 'warning'">
                 {{ team.memberCount }}/5 {{ team.memberCount >= 5 ? '满员' : '未满' }}
               </n-tag>
@@ -178,11 +178,15 @@
 
     <!-- 操作按钮区 -->
     <div class="action-section">
-      <n-button type="primary" @click="createTeam" :loading="isCreating" :disabled="!!teamId || !captainTokenId">
-        {{ teamId ? '队伍已创建' : '创建队伍' }}
+      <n-button type="primary" @click="createTeam" :loading="isCreating" :disabled="!captainTokenId && selectedAccountIds.length === 0" :title="teamId && !teamLocked ? '存在未锁定的旧队伍，点击后会自动解散残留队伍并新建' : '以勾选的第一个账号作为队长创建队伍（未勾选时用顶部队长）'">
+        创建队伍
       </n-button>
       <n-button type="info" @click="joinAndPrepare" :loading="isJoining" :disabled="!teamId || selectedAccountIds.length === 0">
         加入并准备 ({{ selectedAccountIds.length }}人)
+      </n-button>
+      <!-- 新添：单独触发全部未准备成员依次准备（不含加入） -->
+      <n-button v-if="teamMembers.length > 1" type="success" @click="prepareAllMembers" :loading="isPreparingAll" :disabled="!teamId || teamLocked || allPrepared" :title="allPrepared ? '所有成员已准备' : '让队伍中所有未准备的本地账号成员依次执行准备（不执行加入）'">
+        全部准备
       </n-button>
       <n-button type="success" @click="lockTeam" :loading="isLocking" :disabled="!teamId">
         录用锁定
@@ -190,6 +194,10 @@
       <!-- 新添：补齐队伍内未准备成员的星数 -->
       <n-button v-if="teamMembers.length > 0" type="warning" @click="prepareTeamMembersToTargetStars" :loading="isJoining" title="为队伍中所有成员补齐到目标星数后自动加入并准备">
         补齐凑星
+      </n-button>
+      <!-- 新添：踢掉本周最低星队员并自动补齐替补 -->
+      <n-button v-if="teamMembers.length > 1" type="warning" @click="replaceLowestStarMember" :loading="isReplacing" :disabled="!teamId || teamLocked" :title="teamLocked ? '队伍已录用锁定，无法踢人' : '识别本周星数，踢掉最低星队员，踢出后可手动点击补齐凑星补充替补'">
+        换最低星
       </n-button>
       <n-button type="warning" @click="continueNextTeam" :disabled="!teamId || !teamLocked" title="录用锁定后继续创建下一队">
         下一队
@@ -226,6 +234,10 @@
         <div class="status-item">
           <span class="status-label">目标</span>
           <span class="status-value">{{ targetStars }}</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">还需</span>
+          <span class="status-value" :class="teamTotalStars >= targetStars ? 'star-enough' : 'star-lack'">{{ Math.max(targetStars - teamTotalStars, 0) }}</span>
         </div>
         <div class="status-item">
           <span class="status-label">准备</span>
@@ -296,6 +308,7 @@
             </div>
           </div>
           <div v-if="!isTeamCaptain(member) && !teamLocked" class="member-actions">
+            <n-button v-if="!isMemberPrepared(member)" size="tiny" type="success" :loading="preparingRoleId === String(member.roleId)" @click="prepareSingleMember(member)" title="单独让该成员执行准备（仅限本地账号）">准备</n-button>
             <n-button size="tiny" type="error" @click="kickMember(member)">踢出</n-button>
           </div>
         </div>
@@ -420,6 +433,8 @@ const saveScanData = () => {
       captainId: captainTokenId.value,
       captainRId: captainRoleId.value,
       targetStars: targetStars.value,
+      // 持久化队伍完整成员缓存（含外部成员），避免重新打开后汇总中外部成员丢失
+      teamDetails: Array.from(teamDetailsCache.value.entries()),
       weekStart: getWeekStartMs(),
       savedAt: Date.now(),
     }));
@@ -440,6 +455,10 @@ const loadScanData = () => {
       // if (data.captainId) captainTokenId.value = data.captainId;
       // if (data.captainRId) captainRoleId.value = data.captainRId;
       if (data.targetStars) targetStars.value = data.targetStars;
+      // 恢复队伍完整成员缓存（含外部成员）
+      if (Array.isArray(data.teamDetails)) {
+        teamDetailsCache.value = new Map(data.teamDetails);
+      }
       return true;
     }
   } catch {}
@@ -525,6 +544,7 @@ const switchCaptain = async (newId) => {
     teamMembers.value = [];
     captainRoleId.value = "";
     teamLeaderId.value = "";
+    teamLocked.value = false;
     addLog("队长已清空，请重新选择");
     return;
   }
@@ -550,6 +570,24 @@ const switchCaptain = async (newId) => {
   } catch (err) {
     addLog(`切换队长失败: ${err.message || err}`, "error");
   }
+};
+
+// 点击队伍状态汇总中的队长名称，切换为该队队长并打开该队伍
+const openTeamCaptain = async (team) => {
+  // 优先从队伍成员中找队长的本地 tokenId，找不到再从扫描数据兜底
+  const leader = (team.members || []).find((m) => m.isLeader);
+  const tid = leader?.tokenId
+    || accountStarData.value.find((a) => a.isLeader && String(a.teamId || '') === String(team.teamId))?.tokenId;
+  if (!tid) {
+    message.warning(`${team.captainName} 不是本地账号，无法打开该队长`);
+    return;
+  }
+  if (tid === captainTokenId.value) {
+    message.info("该队长已是当前队长");
+    return;
+  }
+  addLog(`打开队伍 ${team.teamId} 的队长 [${team.captainName}]...`);
+  await switchCaptain(tid);
 };
 
 // ====== 连接管理 ======
@@ -627,8 +665,8 @@ const displayAccountData = computed(() => {
     if (a.starCount < MIN_DISPLAY_STARS) return false;
     // 无队伍的显示
     if (!a.hasTeam || !a.teamId) return true;
-    // 当前队伍成员显示（方便查看状态）
-    if (a.inCurrentTeam) return true;
+    // 当前队伍成员显示（方便查看状态）；队伍已录用锁定（组完）或已切到其他队伍后不再显示
+    if (a.inCurrentTeam && String(a.teamId) === String(teamId.value) && !teamLocked.value) return true;
     // 其他有队伍的账号不显示（已在其他队伍中）
     return false;
   });
@@ -665,8 +703,9 @@ const completedTeams = computed(() => {
   const teamMap = new Map();
   for (const acc of accountStarData.value) {
     if (acc.hasTeam && acc.teamId) {
-      if (!teamMap.has(acc.teamId)) {
-        teamMap.set(acc.teamId, {
+      const tid = String(acc.teamId); // 统一为字符串，避免 Number/String 混用导致同队被拆成两条
+      if (!teamMap.has(tid)) {
+        teamMap.set(tid, {
           teamId: acc.teamId,
           captainName: acc.teamCaptainName || acc.name,
           members: [],
@@ -675,7 +714,7 @@ const completedTeams = computed(() => {
           allLocked: (String(acc.teamId) === String(teamId.value) && teamLocked.value) || acc.teamAllLocked || false,
         });
       }
-      const team = teamMap.get(acc.teamId);
+      const team = teamMap.get(tid);
       team.members.push(acc);
     }
   }
@@ -846,9 +885,14 @@ const allPrepared = computed(() => {
 const teamLocked = ref(false); // 队伍是否已录用锁定
 
 // 辅助函数：检测成员是否已准备
-// prepared 是时间戳，> 0 表示已准备
+// prepared 是时间戳，队伍跨周保留会残留上周的准备时间，必须在本周起始之后才算本周已准备
 const isMemberPrepared = (m) => {
-  return typeof m.prepared === 'number' ? m.prepared > 0 : !!m.prepared;
+  const pt = m.prepared;
+  if (typeof pt !== 'number') return !!pt;
+  if (pt <= 0) return false;
+  // 兼容秒级/毫秒级时间戳
+  const preparedMs = pt > 1e12 ? pt : pt * 1000;
+  return preparedMs >= getWeekStartMs();
 };
 
 // 队伍阶段状态
@@ -1733,6 +1777,14 @@ const continueNextTeam = async () => {
   } else {
     // 无剩余计划，重新计算
     addLog("无剩余计划队伍，重新计算...", "info");
+    // 当前队伍已锁定时先重置引用（锁定队伍保留），否则会被 fullAutoTeamBuilding 的锁定检查拦截
+    if (teamId.value && teamLocked.value) {
+      addLog("当前队伍已录用锁定（保留），重置引用后继续...", "info");
+      teamId.value = "";
+      teamMembers.value = [];
+      teamLeaderId.value = "";
+      teamLocked.value = false;
+    }
     await fullAutoTeamBuilding();
   }
 };
@@ -1742,6 +1794,19 @@ const toggleAccount = (id, val) => {
     if (!selectedAccountIds.value.includes(id)) selectedAccountIds.value.push(id);
   } else {
     selectedAccountIds.value = selectedAccountIds.value.filter((x) => x !== id);
+  }
+  // 无进行中队伍（或旧队已锁定）时，勾选联动队长选择器：取勾选中第一个无队伍账号
+  if (!teamId.value || teamLocked.value) {
+    const firstAvailable = selectedAccountIds.value.find((sid) => {
+      const acc = accountStarData.value.find((a) => a.tokenId === sid);
+      return acc && (!acc.hasTeam || !acc.teamId);
+    });
+    if (firstAvailable && firstAvailable !== captainTokenId.value) {
+      captainTokenId.value = firstAvailable;
+      captainRoleId.value = ""; // 旧队长的 roleId 作废，创建时重新获取
+      const accName = accountStarData.value.find((a) => a.tokenId === firstAvailable)?.name || '';
+      addLog(`已根据勾选自动选择队长: ${accName}`, "info");
+    }
   }
   saveScanData();
 };
@@ -1768,6 +1833,7 @@ const isJoining = ref(false);
 const isLocking = ref(false);
 const isRefreshing = ref(false);
 const isDismissing = ref(false);
+const isReplacing = ref(false);
 
 const getMemberStars = (member) => {
   return getMemberStarCount(member);
@@ -1828,11 +1894,22 @@ const checkExistingTeam = async () => {
 
 // 创建队伍
 const createTeam = async () => {
+  // 先清理勾选中已在队伍的残留账号（组完队后列表隐藏但勾选记录还在，会导致误选队长报 7100020）
+  const availableIds = selectedAccountIds.value.filter((id) => {
+    const acc = accountStarData.value.find((a) => a.tokenId === id);
+    return acc && (!acc.hasTeam || !acc.teamId);
+  });
+  if (availableIds.length !== selectedAccountIds.value.length) {
+    addLog(`已自动剔除 ${selectedAccountIds.value.length - availableIds.length} 个已在队伍中的残留勾选账号`, "warning");
+    selectedAccountIds.value = availableIds;
+    saveScanData();
+  }
+
   // 使用已选账号的第一个作为队长，如果没有则用顶部选择器
-  const createCaptainId = selectedAccountIds.value.length > 0
-    ? selectedAccountIds.value[0]
+  const createCaptainId = availableIds.length > 0
+    ? availableIds[0]
     : captainTokenId.value;
-  if (!createCaptainId) { message.warning("请先选择队长"); return; }
+  if (!createCaptainId) { message.warning("请先选择队长或勾选可用账号"); return; }
 
   // 更新顶部队长选择器为当前创建队长
   captainTokenId.value = createCaptainId;
@@ -1850,20 +1927,18 @@ const createTeam = async () => {
         await refreshTeam();
         if (teamLocked.value) {
           // 旧队伍已录用锁定（已完成），只需重置当前引用即可
-          const oldTeamId = teamId.value;
           addLog("旧队伍已录用锁定（保留），切换到新队伍创建...", "info");
           teamId.value = "";
           teamMembers.value = [];
           teamLeaderId.value = "";
           // teamLocked 延迟到 matchteam_create 成功后重置，避免失败时锁定信息丢失
-          // 清理旧队伍的 teamDetailsCache
-          if (oldTeamId) {
-            teamDetailsCache.value.delete(String(oldTeamId));
-          }
+          // 保留旧队伍的 teamDetailsCache，队伍状态汇总仍需展示其完整成员（含外部成员）
         } else {
           // 旧队伍未锁定，可能是中断的残留，解散它
           addLog("旧队伍未锁定（残留），自动解散...", "warning");
+          const keepSelection = [...selectedAccountIds.value]; // dismissTeam 会清空勾选，先保存
           await dismissTeam();
+          selectedAccountIds.value = keepSelection; // 恢复勾选，保证创建后自动加入
           await delay(500);
         }
       }
@@ -1989,10 +2064,11 @@ const joinAndPrepare = async () => {
         // 第一步：检查账号是否已经在其他房间（需要有效的 roleId）
         if (resolvedRoleId) {
           try {
-            const checkRes = await tokenStore.sendMessageWithPromise(tokenId, "matchteam_getroleteaminfo", { roleID: resolvedRoleId }, 5000);
-            const teamInfo = checkRes?.teamInfo || checkRes?.body?.teamInfo || {};
-            if (teamInfo.teamId && String(teamInfo.teamId) !== String(teamId.value)) {
-              addLog(`[${name}] 已在其他队伍 (${teamInfo.teamId})，无法加入`, "error");
+            const checkRes = await tokenStore.sendMessageWithPromise(tokenId, "matchteam_getroleteaminfo", { roleID: Number(resolvedRoleId) }, 5000);
+            // 响应结构为 roleMTData.gDMTData，用 findStarTeamId 解析（原 teamInfo 路径永远为空，检查失效）
+            const otherTeamId = findStarTeamId(checkRes);
+            if (otherTeamId && String(otherTeamId) !== String(teamId.value)) {
+              addLog(`[${name}] 已在其他队伍 (${otherTeamId})，无法加入`, "error");
               return false;
             }
           } catch (checkErr) {
@@ -2061,7 +2137,7 @@ const joinAndPrepare = async () => {
                     
             // 分析返回值：可能有的格式
             const hasSuccessFlag = prepResult?.success === true || prepResult?.body?.success === true;
-            const hasTeamId = prepResult?.teamId && String(prepResult.teamId).startsWith("N");
+            const hasTeamId = !!prepResult?.teamId; // 兼容纯数字 teamId（原仅认 N 前缀会把准备成功误判为失败）
             const hasErrorCode = prepResult?.code !== undefined && prepResult.code !== null;
                     
             if (hasSuccessFlag || (hasTeamId && !hasErrorCode)) {
@@ -2139,6 +2215,95 @@ const joinAndPrepare = async () => {
     }
   } finally {
     isJoining.value = false;
+  }
+};
+
+// 单个成员单独准备（仅限本地账号）
+const preparingRoleId = ref(null);
+const prepareSingleMember = async (member) => {
+  if (!teamId.value || teamLocked.value || preparingRoleId.value) return;
+  const rid = String(member.roleId || '');
+  const name = member.name || `成员${rid.slice(-4)}`;
+  // 通过 roleId 在扫描数据中找到对应 token，找不到再按 名称+区服 兜底
+  const acc = accountStarData.value.find((a) => String(a.roleId || '') === rid);
+  let tid = acc?.tokenId;
+  if (!tid) {
+    const t = tokenStore.gameTokens.find((x) => x.name === member.name && String(x.server || '') === String(member.serverId || ''));
+    tid = t?.id;
+  }
+  if (!tid) {
+    addLog(`[${name}] 非本地账号（外部成员），无法代为准备`, "error");
+    message.warning(`${name} 不是本地账号，无法代为准备`);
+    return;
+  }
+  preparingRoleId.value = rid;
+  try {
+    addLog(`[${name}] 单独准备 (matchteam_memberprepare)...`);
+    const success = await connectAndDo(tid, name, async (tokenId) => {
+      try {
+        const prepResult = await tokenStore.sendMessageWithPromise(
+          tokenId, "matchteam_memberprepare",
+          { teamId: toTeamIdParam(teamId.value) }, 15000
+        );
+        const hasSuccessFlag = prepResult?.success === true || prepResult?.body?.success === true;
+        const hasTeamId = !!prepResult?.teamId;
+        const hasErrorCode = prepResult?.code !== undefined && prepResult.code !== null;
+        if (hasSuccessFlag || (hasTeamId && !hasErrorCode)) return true;
+        addLog(`[${name}] 准备返回异常结果: ${JSON.stringify(prepResult).slice(0, 100)}`, "error");
+        return false;
+      } catch (prepErr) {
+        const errMsg = String(prepErr?.message || prepErr);
+        // 7100054/7100150 通常表示已经准备好了，视为成功
+        if (errMsg.includes('7100054') || errMsg.includes('7100150')) {
+          addLog(`[${name}] 准备状态码 ${errMsg.includes('7100054') ? '7100054' : '7100150'}，视为已就绪`, "info");
+          return true;
+        }
+        throw prepErr;
+      }
+    });
+    if (success) {
+      addLog(`[${name}] 单独准备成功`, "success");
+    } else {
+      addLog(`[${name}] 单独准备失败`, "error");
+    }
+    // 断开队员连接释放资源
+    if (tokenStore.getWebSocketStatus(tid) === "connected") {
+      await disconnectToken(tid);
+    }
+    await refreshTeam();
+  } catch (err) {
+    addLog(`[${name}] 单独准备失败: ${err.message || err}`, "error");
+  } finally {
+    preparingRoleId.value = null;
+  }
+};
+
+// 全部准备：让队伍中所有未准备的本地账号成员依次执行准备（不含加入）
+const isPreparingAll = ref(false);
+const prepareAllMembers = async () => {
+  if (!teamId.value) { message.warning("请先创建队伍"); return; }
+  if (teamLocked.value) { message.warning("队伍已录用锁定，无需准备"); return; }
+  if (isPreparingAll.value) return;
+  isPreparingAll.value = true;
+  try {
+    // 先刷新获取最新准备状态
+    await refreshTeam();
+    const captainRid = String(teamLeaderId.value || '');
+    const pending = teamMembers.value.filter((m) => String(m.roleId) !== captainRid && !isMemberPrepared(m));
+    if (pending.length === 0) {
+      addLog("所有成员均已准备，无需操作", "info");
+      return;
+    }
+    addLog(`开始全部准备，共 ${pending.length} 名未准备成员...`);
+    for (const m of pending) {
+      await prepareSingleMember(m);
+      await delay(500);
+    }
+    addLog("全部准备流程完成", "success");
+  } catch (err) {
+    addLog(`全部准备失败: ${err.message || err}`, "error");
+  } finally {
+    isPreparingAll.value = false;
   }
 };
 
@@ -2541,11 +2706,13 @@ const sendRecruitBroadcast = async (needStars) => {
     const memberCnt = teamMembers.value.length || selectedAccountIds.value.length || 1;
     const missingCount = Math.max(5 - memberCnt, 0);
     const hasTeam = !!teamId.value;
+    // needStars 未传时按当前缺口计算，避免消息显示 "≥undefined星"
+    const needText = needStars || Math.max(targetStars.value - teamTotalStars.value, 1);
 
     // 有房号时用队伍邀请格式，无房号时用普通消息
     const msg = hasTeam
-      ? `星级挑战：${teamId.value}，目标${targetStars.value}星，缺${missingCount}人≥${needStars}星，求高星队友！`
-      : `星级挑战招募！目标${targetStars.value}星，缺${missingCount}人≥${needStars}星队友！`;
+      ? `星级挑战：${teamId.value}，目标${targetStars.value}星，缺${missingCount}人≥${needText}星，求高星队友！`
+      : `星级挑战招募！目标${targetStars.value}星，缺${missingCount}人≥${needText}星队友！`;
 
     const params = hasTeam ? {
       channel: 1, msgType: 12, msg,
@@ -2768,17 +2935,56 @@ const kickMember = async (member) => {
   const name = member.name || String(member.roleId);
   addLog(`正在踢出: ${name}...`);
   try {
+    const connected = await ensureConnected(captainTokenId.value);
+    if (!connected) return;
     await tokenStore.sendMessageWithPromise(
       captainTokenId.value, "matchteam_kick",
       { teamId: toTeamIdParam(teamId.value), kickRoleId: Number(member.roleId) }, 10000
     );
     addLog(`已踢出: ${name}`, "success");
     await refreshTeam();
-    // 踢出后自动补充：重新计算星数缺口并找替补
-    await delay(500);
-    await prepareTeamMembersToTargetStars();
+    // 补齐凑星不自动触发，需手动点击"补齐凑星"按钮
   } catch (err) {
     addLog(`踢出失败: ${err.message || err}`, "error");
+  }
+};
+
+// 换掉最低星成员：识别当前队伍本周星数，踢掉最低星的非队长成员，再自动补齐一名满足目标星数的替补
+const replaceLowestStarMember = async () => {
+  if (!teamId.value) { message.warning("请先创建队伍"); return; }
+  if (teamLocked.value) {
+    message.warning("队伍已录用锁定，无法踢人");
+    addLog("队伍已录用锁定，无法踢人", "warning");
+    return;
+  }
+  if (isReplacing.value) return;
+  isReplacing.value = true;
+  try {
+    const connected = await ensureConnected(captainTokenId.value);
+    if (!connected) return;
+    // 刷新队伍，获取本周最新星数（队伍跨周保留，星数按本周键重新识别）
+    await refreshTeam();
+    const nonCaptainMembers = teamMembers.value.filter((m) => !isTeamCaptain(m));
+    if (nonCaptainMembers.length === 0) {
+      message.info("队伍中无可替换的队员（仅队长）");
+      return;
+    }
+    // 识别本周星数，找出最低星成员
+    let lowest = nonCaptainMembers[0];
+    let lowestStars = getMemberStarCount(lowest);
+    for (const m of nonCaptainMembers) {
+      const s = getMemberStarCount(m);
+      if (s < lowestStars) { lowest = m; lowestStars = s; }
+    }
+    addLog(`当前队伍本周星数：${nonCaptainMembers.map((m) => `${m.name}(${getMemberStarCount(m)}星)`).join('、')}，总星数 ${teamTotalStars.value}/${targetStars.value}`);
+    addLog(`最低星队员：${lowest.name || lowest.roleId} (${lowestStars}星)，将踢出`, "warning");
+    // 踢出后不自动补齐，需手动点击"补齐凑星"按钮找替补
+    await kickMember(lowest);
+    addLog(`已踢出最低星队员，可点击"补齐凑星"手动补充替补`, "info");
+  } catch (err) {
+    addLog(`换最低星失败: ${err.message || err}`, "error");
+  } finally {
+    isReplacing.value = false;
   }
 };
 
@@ -2917,7 +3123,11 @@ onMounted(async () => {
 }
 .team-card-header {
   display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex-wrap: wrap;
-  .team-captain { font-weight: 600; font-size: 13px; }
+  .team-captain {
+    font-weight: 600; font-size: 13px;
+    cursor: pointer;
+    &:hover { color: #18a058; text-decoration: underline; }
+  }
   &.clickable {
     cursor: pointer;
     &:hover { background: rgba(24, 160, 88, 0.08); border-radius: 4px; }
@@ -2977,11 +3187,11 @@ onMounted(async () => {
 .action-section { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
 
 .members-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 6px; margin-bottom: 8px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 8px; margin-bottom: 8px;
 }
 .member-card {
-  display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
   border: 1px solid var(--n-border-color, #e8e8e8); border-radius: 8px;
   &.captain { border-color: #18a058; background: rgba(24, 160, 88, 0.04); }
   &.prepared { border-color: #67c23a; }
@@ -3009,7 +3219,7 @@ onMounted(async () => {
   display: flex; flex-direction: column; align-items: center; min-width: 50px;
 }
 .status-label { font-size: 11px; color: #999; }
-.status-value { font-size: 14px; font-weight: 700; &.star-enough { color: #18a058; } }
+.status-value { font-size: 14px; font-weight: 700; &.star-enough { color: #18a058; } &.star-lack { color: #d03050; } }
 .member-status-list {
   display: flex; gap: 6px; flex-wrap: wrap;
 }
@@ -3028,9 +3238,9 @@ onMounted(async () => {
 .text-orange { color: #e6a23c; }
 .text-gray { color: #999; }
 .member-info { flex: 1; min-width: 0; }
-.member-name { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 4px; }
-.member-meta { font-size: 11px; color: #888; display: flex; gap: 6px; }
-.member-actions { flex-shrink: 0; }
+.member-name { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.member-meta { font-size: 11px; color: #888; display: flex; gap: 8px; flex-wrap: wrap; span { white-space: nowrap; } }
+.member-actions { flex-shrink: 0; display: flex; gap: 4px; align-items: center; }
 
 .log-section { margin-top: 8px; }
 .log-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }

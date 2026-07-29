@@ -176,6 +176,7 @@ import { allianceincludes } from "@/utils/clubWarrankUtils";
 import { isLegionWarAccessible } from "@/utils/clubBattleUtils";
 import { storeToRefs } from "pinia";
 import html2canvas from "html2canvas";
+import { downloadCanvasAsImage } from "@/utils/imageExport";
 
 const message = useMessage();
 const tokenStore = useTokenStore();
@@ -242,10 +243,8 @@ const exportImage = async () => {
     element.style.width = originalWidth;
     element.style.maxWidth = originalMaxWidth;
 
-    const link = document.createElement("a");
-    link.download = `盐场地图_${getCurrentTimeByFormat("yyyyMMdd_HHmmss")}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+    // ✅ 使用通用导出函数：APK环境走 Capacitor Filesystem + Share 分享，Web/EXE 走普通下载
+    await downloadCanvasAsImage(canvas, `盐场地图_${getCurrentTimeByFormat("yyyyMMdd_HHmmss")}.png`);
     message.success("导出成功");
   } catch (error) {
     console.error("导出失败:", error);

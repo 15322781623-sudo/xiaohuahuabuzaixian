@@ -382,13 +382,6 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="executeManualTaskWithRecord('batchStudyClaimReward', '答题奖励领取', batchStudyClaimReward)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  答题奖励领取
-                </n-button>
-                <n-button
-                  size="small"
                   @click="executeManualTaskWithRecord('batcharenafight', '一键竞技场战斗3次', batcharenafight)"
                   :disabled="
                     isRunning || selectedTokens.length === 0 || !isarenaActivityOpen
@@ -446,13 +439,6 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="showSimplifiedDailyModal = true"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  日常精简补齐
-                </n-button>
-                <n-button
-                  size="small"
                   :type="isAnyPushRunning ? 'error' : 'warning'"
                   @click="showPushMapModal = true"
                 >
@@ -460,42 +446,6 @@
                 </n-button>
 
               </n-space>
-
-              <!-- 日常精简补齐 - 任务项勾选弹窗 -->
-              <n-modal
-                v-model:show="showSimplifiedDailyModal"
-                preset="card"
-                title="日常精简补齐"
-                style="width: 92%; max-width: 480px"
-              >
-                <n-alert type="info" size="small" style="margin-bottom: 12px;">
-                  不判断活跃度，直接对选中账号执行勾选的精简补齐任务项
-                </n-alert>
-                <n-checkbox-group v-model:value="simplifiedDailySelectedItems">
-                  <n-space vertical>
-                    <n-checkbox
-                      v-for="item in SIMPLIFIED_TASK_ITEMS"
-                      :key="item.key"
-                      :value="item.key"
-                    >
-                      {{ item.label }}
-                    </n-checkbox>
-                  </n-space>
-                </n-checkbox-group>
-                <template #footer>
-                  <n-space justify="end">
-                    <n-button size="small" @click="showSimplifiedDailyModal = false">取消</n-button>
-                    <n-button
-                      size="small"
-                      type="primary"
-                      @click="startSimplifiedDaily"
-                      :disabled="isRunning || simplifiedDailySelectedItems.length === 0"
-                    >
-                      执行
-                    </n-button>
-                  </n-space>
-                </template>
-              </n-modal>
             </n-tab-pane>
             <n-tab-pane name="welfare" tab="福利">
               <n-space>
@@ -869,15 +819,6 @@
                 </n-button>
                 <n-button
                   size="small"
-                  type="warning"
-                  secondary
-                  @click="executeManualTaskWithRecord('egg_merge_cycle', '点蛋+合成', egg_merge_cycle)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  🥚 点蛋+合成
-                </n-button>
-                <n-button
-                  size="small"
                   @click="executeManualTaskWithRecord('batch_pet_upgrade', '宠物一键升级', batch_pet_upgrade)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
@@ -1089,27 +1030,6 @@
                 >
                   助威商店多选购买
                 </n-button>
-                <n-button
-                  size="small"
-                  @click="openSaltRoadCheerModal"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  天宫助威
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="openApexGuessModal"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  逐鹿盐山竞猜
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('batchApexGuessClaim', '逐鹿盐山竞猜领奖', batchApexGuessClaim)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  逐鹿盐山竞猜领奖
-                </n-button>
               </n-space>
             </n-tab-pane>
             <n-tab-pane name="consumeActivity" tab="消耗活动">
@@ -1203,12 +1123,9 @@
               {{ isTokenListExpanded ? '收起' : '展开' }}
             </n-button>
           </template>
-          <div>
-            <!-- 分组管理和选择（分组选择区在收起时也保持显示） -->
-            <div
-              v-if="isTokenListExpanded || tokenGroups.length > 0"
-              style="background: #f7f8fa; border-radius: 6px; padding: 8px; margin-bottom: 12px;"
-            >
+          <div v-if="isTokenListExpanded">
+            <!-- 分组管理和选择 -->
+            <div style="background: #f7f8fa; border-radius: 6px; padding: 8px; margin-bottom: 12px;">
               <n-space vertical style="width: 100%">
               <!-- 分组选择部分 -->
               <div
@@ -1262,9 +1179,8 @@
                 </div>
               </div>
 
-              <!-- 分组管理按钮（仅展开时显示） -->
+              <!-- 分组管理按钮 -->
               <div
-                v-if="isTokenListExpanded"
                 style="
                   display: flex;
                   justify-content: space-between;
@@ -1342,8 +1258,8 @@
             </div>
           </div>
 
-          <!-- 排序按钮组（仅展开时显示） -->
-          <div v-if="isTokenListExpanded" class="sort-buttons" style="margin-top: 16px; margin-bottom: 12px">
+          <!-- 排序按钮组 -->
+          <div class="sort-buttons" style="margin-top: 16px; margin-bottom: 12px">
             <n-space align="center">
               <n-button-group size="small">
                 <n-button
@@ -1394,16 +1310,10 @@
                   :step="1" 
                   size="small" 
                   style="width: 80px" 
-                  :disabled="batchSettings.autoColumns"
+                  :disabled="!isMaximizedWindow"
                   @update:value="handleManualColumnChange"
                 />
-                <n-checkbox
-                  :checked="batchSettings.autoColumns"
-                  size="small"
-                  @update:checked="handleAutoColumnsToggle"
-                >
-                  <span style="font-size: 12px; color: #666;">自动</span>
-                </n-checkbox>
+                <span v-if="!isMaximizedWindow" style="font-size: 12px; color: #999;">(自动)</span>
               </div>
               
               <!-- 账号搜索框 -->
@@ -1457,11 +1367,11 @@
                   <n-divider vertical />
                   <n-tooltip :show-arrow="true">
                     <template #trigger>
-                      <n-button size="small" :type="performanceMode ? 'warning' : 'default'" @click="togglePerformanceMode">
-                        {{ performanceMode ? '⚡性能模式·开' : '⚡性能模式' }}
+                      <n-button size="small" :type="showCardSections ? 'primary' : 'default'" @click="toggleCardSections">
+                        {{ showCardSections ? '隐藏卡片详情' : '显示卡片详情' }}
                       </n-button>
                     </template>
-                    一键关闭卡片详情、收起所有展开区、日志仅渲染最近200条，大幅降低渲染压力（日志数据仍完整保留）
+                    隐藏卡片详情可减少页面渲染压力，提升流畅度
                   </n-tooltip>
                 </div>
               </div>
@@ -1470,12 +1380,7 @@
                 :y-gap="12"
                 :cols="responsiveColumns"
               >
-                <!-- 搜索用 v-show 控制显隐，保持卡片挂载，避免删除关键词时整列表重新挂载卡顿 -->
-                <n-grid-item
-                  v-for="token in sortedAllTokens"
-                  v-show="searchVisibleTokenIds.has(token.id)"
-                  :key="token.id"
-                >
+                <n-grid-item v-for="token in sortedTokens" :key="token.id">
                   <TokenCard
                     :token="token"
                     :is-selected="selectedTokens.includes(token.id)"
@@ -1565,11 +1470,6 @@
             processing
           />
           <div class="log-container" ref="logContainer" @scroll="handleLogScroll">
-            <!-- ✅ 性能模式日志截断提示 -->
-            <div v-if="performanceMode && logs.length > 200" class="log-item info" style="opacity: 0.7">
-              <span class="time">⚡</span>
-              <span class="message">性能模式：仅渲染最近 200 条日志（共 {{ logs.length }} 条，复制日志仍为完整内容）</span>
-            </div>
             <div
               v-for="(log, index) in filteredLogs"
               :key="index"
@@ -1588,7 +1488,7 @@
     <n-modal
       v-model:show="showTaskRecordsModal"
       preset="card"
-      :title="`定时任务执行完成情况 (${sortedTaskRecords.length})`"
+      :title="`定时任务执行完成情况 (${taskExecutionRecords.length})`"
       style="width: 90%; max-width: 580px"
     >
       <!-- 头部操作栏 -->
@@ -1603,19 +1503,19 @@
       <!-- 汇总统计卡片 -->
       <div class="tr-summary-bar">
         <div class="tr-stat-card tr-stat-success">
-          <span class="tr-stat-num">{{ sortedTaskRecords.filter(r => r.status === 'success').length }}</span>
+          <span class="tr-stat-num">{{ taskExecutionRecords.filter(r => r.status === 'success').length }}</span>
           <span class="tr-stat-label">已完成</span>
         </div>
         <div class="tr-stat-card tr-stat-partial">
-          <span class="tr-stat-num">{{ sortedTaskRecords.filter(r => r.status === 'partial').length }}</span>
+          <span class="tr-stat-num">{{ taskExecutionRecords.filter(r => r.status === 'partial').length }}</span>
           <span class="tr-stat-label">部分完成</span>
         </div>
         <div class="tr-stat-card tr-stat-fail">
-          <span class="tr-stat-num">{{ sortedTaskRecords.filter(r => r.status === 'fail').length }}</span>
+          <span class="tr-stat-num">{{ taskExecutionRecords.filter(r => r.status === 'fail').length }}</span>
           <span class="tr-stat-label">失败</span>
         </div>
         <div class="tr-stat-card tr-stat-running">
-          <span class="tr-stat-num">{{ sortedTaskRecords.filter(r => r.status === 'running').length }}</span>
+          <span class="tr-stat-num">{{ taskExecutionRecords.filter(r => r.status === 'running').length }}</span>
           <span class="tr-stat-label">执行中</span>
         </div>
       </div>
@@ -1623,8 +1523,8 @@
       <!-- 任务列表 -->
       <div class="tr-list">
         <div
-          v-for="(record, index) in sortedTaskRecords"
-          :key="`${record.startTime}-${record.name}`"
+          v-for="(record, index) in taskExecutionRecords"
+          :key="index"
           class="tr-item"
           :class="`tr-item-${record.status}`"
         >
@@ -1699,7 +1599,7 @@
             </div>
           </div>
         </div>
-        <div v-if="sortedTaskRecords.length === 0" class="tr-empty">
+        <div v-if="taskExecutionRecords.length === 0" class="tr-empty">
           暂无执行记录
         </div>
       </div>
@@ -1709,158 +1609,99 @@
     <n-modal
       v-model:show="showSettingsModal"
       preset="card"
-      style="width: 92%; max-width: 600px;"
-      :segmented="{ content: true, footer: 'soft' }"
+      :title="`任务设置 - ${currentSettingsTokenName}`"
+      style="width: 90%; max-width: 560px"
     >
-      <template #header>
-        <div class="st-modal-header">
-          <span class="st-modal-icon">⚙️</span>
-          <span>任务设置</span>
-          <span class="st-modal-subtitle">{{ currentSettingsTokenName }}</span>
-        </div>
-      </template>
-
-      <div class="st-settings-body">
-        <!-- 阵容配置 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">🎯</span>阵容配置</div>
-          <div class="st-section-grid">
-            <div class="st-field">
-              <label class="st-label">竞技场</label>
-              <n-select v-model:value="currentSettings.arenaFormation" :options="formationOptions" size="small" />
+      <div class="settings-content">
+        <div class="settings-grid">
+          <div class="setting-item">
+            <label class="setting-label">竞技场阵容</label>
+            <n-select
+              v-model:value="currentSettings.arenaFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">爬塔阵容</label>
+            <n-select
+              v-model:value="currentSettings.towerFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">BOSS阵容</label>
+            <n-select
+              v-model:value="currentSettings.bossFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">十殿阵容</label>
+            <n-select
+              v-model:value="currentSettings.nightmareFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">盐场蟠桃阵容</label>
+            <n-select
+              v-model:value="currentSettings.saltFieldPeachFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">俱乐部BOSS次数</label>
+            <n-select
+              v-model:value="currentSettings.bossTimes"
+              :options="bossTimesOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">每日BOSS次数</label>
+            <n-select
+              v-model:value="currentSettings.dailyBossTimes"
+              :options="dailyBossTimesOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-switches">
+            <div class="switch-row">
+              <span class="switch-label">领罐子</span
+              ><n-switch v-model:value="currentSettings.claimBottle" />
             </div>
-            <div class="st-field">
-              <label class="st-label">爬塔</label>
-              <n-select v-model:value="currentSettings.towerFormation" :options="formationOptions" size="small" />
+            <div class="switch-row">
+              <span class="switch-label">领挂机</span
+              ><n-switch v-model:value="currentSettings.claimHangUp" />
             </div>
-            <div class="st-field">
-              <label class="st-label">BOSS</label>
-              <n-select v-model:value="currentSettings.bossFormation" :options="formationOptions" size="small" />
+            <div class="switch-row">
+              <span class="switch-label">竞技场</span
+              ><n-switch v-model:value="currentSettings.arenaEnable" />
             </div>
-            <div class="st-field">
-              <label class="st-label">十殿</label>
-              <n-select v-model:value="currentSettings.nightmareFormation" :options="formationOptions" size="small" />
+            <div class="switch-row">
+              <span class="switch-label">开宝箱</span
+              ><n-switch v-model:value="currentSettings.openBox" />
             </div>
-            <div class="st-field">
-              <label class="st-label">盐场蟠桃</label>
-              <n-select v-model:value="currentSettings.saltFieldPeachFormation" :options="formationOptions" size="small" />
+            <div class="switch-row">
+              <span class="switch-label">领取邮件奖励</span
+              ><n-switch v-model:value="currentSettings.claimEmail" />
+            </div>
+            <div class="switch-row">
+              <span class="switch-label">黑市购买物品</span
+              ><n-switch v-model:value="currentSettings.blackMarketPurchase" />
+            </div>
+            <div class="switch-row">
+              <span class="switch-label">付费招募</span
+              ><n-switch v-model:value="currentSettings.payRecruit" />
             </div>
           </div>
-        </div>
-
-        <!-- 战斗次数 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">⚔️</span>战斗次数</div>
-          <div class="st-section-grid st-grid-2">
-            <div class="st-field">
-              <label class="st-label">俱乐部BOSS</label>
-              <n-select v-model:value="currentSettings.bossTimes" :options="bossTimesOptions" size="small" />
-            </div>
-            <div class="st-field">
-              <label class="st-label">每日BOSS</label>
-              <n-select v-model:value="currentSettings.dailyBossTimes" :options="dailyBossTimesOptions" size="small" />
-            </div>
-          </div>
-        </div>
-
-        <!-- 功能开关 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">🔔</span>功能开关</div>
-          <div class="st-switch-grid">
-            <div class="st-switch-item">
-              <span class="st-switch-text">领罐子</span>
-              <n-switch v-model:value="currentSettings.claimBottle" size="small" />
-            </div>
-            <div class="st-switch-item">
-              <span class="st-switch-text">领挂机</span>
-              <n-switch v-model:value="currentSettings.claimHangUp" size="small" />
-            </div>
-            <div class="st-switch-item">
-              <span class="st-switch-text">竞技场</span>
-              <n-switch v-model:value="currentSettings.arenaEnable" size="small" />
-            </div>
-            <div class="st-switch-item">
-              <span class="st-switch-text">开宝箱</span>
-              <n-switch v-model:value="currentSettings.openBox" size="small" />
-            </div>
-            <div class="st-switch-item">
-              <span class="st-switch-text">邮件奖励</span>
-              <n-switch v-model:value="currentSettings.claimEmail" size="small" />
-            </div>
-            <div class="st-switch-item">
-              <span class="st-switch-text">黑市购买</span>
-              <n-switch v-model:value="currentSettings.blackMarketPurchase" size="small" />
-            </div>
-            <div class="st-switch-item">
-              <span class="st-switch-text">付费招募</span>
-              <n-switch v-model:value="currentSettings.payRecruit" size="small" />
-            </div>
-          </div>
-        </div>
-
-        <!-- 黑市采购清单 -->
-        <div class="st-section">
-          <div
-            class="st-section-title st-section-title-collapsible"
-            @click="purchaseListCollapsed = !purchaseListCollapsed"
-          >
-            <div class="st-section-title-left">
-              <span class="st-section-icon">🛒</span>
-              <span>黑市采购清单</span>
-              <span class="st-section-badge">
-                已选 {{ (currentSettings.purchaseList || []).length }} 项
-              </span>
-            </div>
-            <span class="st-section-toggle">{{ purchaseListCollapsed ? '▼' : '▲' }}</span>
-          </div>
-          <div v-show="!purchaseListCollapsed" class="purchase-list-content">
-            <div class="purchase-config-bar">
-              <div class="purchase-config-field">
-                <label class="st-label">采购次数</label>
-                <n-input-number v-model:value="currentSettings.purchaseCnt" :min="1" :max="15" :step="1" size="small" style="width: 80px;" />
-              </div>
-              <div class="purchase-config-actions">
-                <n-button size="tiny" @click="currentSettings.purchaseList = purchaseItemOptions.map(i => i.itemId)">全选</n-button>
-                <n-button size="tiny" @click="currentSettings.purchaseList = []">清空</n-button>
-                <n-button size="tiny" type="primary" :loading="syncPurchaseBusy" @click="syncPurchaseToGame" :disabled="(currentSettings.purchaseList || []).length === 0">
-                  同步到游戏
-                </n-button>
-              </div>
-            </div>
-            <div class="purchase-list-grid">
-              <label
-                v-for="item in purchaseItemOptions"
-                :key="item.itemId"
-                class="purchase-item-label"
-                :class="{ 'is-checked': (currentSettings.purchaseList || []).includes(item.itemId) }"
-              >
-                <input
-                  type="checkbox"
-                  :checked="(currentSettings.purchaseList || []).includes(item.itemId)"
-                  @change="togglePurchaseItem(currentSettings.purchaseList, currentSettings.purchaseDiscounts, item.itemId)"
-                />
-                <span>{{ item.name }}</span>
-                <input
-                  type="number"
-                  class="discount-input"
-                  :value="getDiscount(currentSettings.purchaseDiscounts, item.itemId)"
-                  @input="(e) => setDiscount(currentSettings.purchaseDiscounts, item.itemId, e.target.value)"
-                  min="1"
-                  max="10"
-                  :disabled="!(currentSettings.purchaseList || []).includes(item.itemId)"
-                />
-                <span class="discount-unit">折</span>
-              </label>
-            </div>
-            <div class="purchase-config-hint">勾选商品并设置折扣，保存设置后可在黑市购买任务中自动采购</div>
-          </div>
-        </div>
-
-        <!-- 安全设置 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">🔐</span>安全设置</div>
-          <div class="st-field st-field-full">
-            <label class="st-label">功法赠送验证密码</label>
+          <div class="setting-item">
+            <label class="setting-label">功法赠送验证密码</label>
             <n-input
               v-model:value="currentSettings.legacyGiftPassword"
               placeholder="留空则使用手动输入"
@@ -1869,151 +1710,147 @@
               size="small"
             />
           </div>
+          <!-- 智能发车预设护卫成员 -->
+          <div class="setting-item" style="grid-column: 1 / -1;">
+            <label class="setting-label">智能发车预设护卫成员</label>
+            <div style="margin-bottom: 8px;">
+              <n-button size="small" :loading="settingsHelperLoading" @click="loadSettingsHelperMembers">
+                {{ settingsHelperMembers.length > 0 ? '刷新成员列表' : '加载俱乐部成员' }}
+              </n-button>
+              <span v-if="settingsHelperMembers.length > 0" style="margin-left: 8px; font-size: 12px; color: #86909c;">
+                已选 {{ (currentSettings.helperPresets || []).length }} / {{ settingsHelperMembers.length }} 人
+              </span>
+            </div>
+            <div v-if="settingsHelperMembers.length > 0" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 150px; overflow-y: auto; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fafafa;">
+              <n-tag
+                v-for="member in settingsHelperMembers"
+                :key="member.id"
+                :type="(currentSettings.helperPresets || []).includes(member.id) ? 'success' : 'default'"
+                :bordered="false"
+                size="small"
+                style="cursor: pointer;"
+                @click="toggleSettingsHelper(member.id)"
+              >
+                {{ member.name }}
+              </n-tag>
+            </div>
+            <div v-else style="font-size: 12px; color: #86909c;">
+              点击"加载俱乐部成员"后勾选预设护卫，智能发车时优先使用预设成员，未设定时回退自动分配
+            </div>
+          </div>
         </div>
-
-        <!-- 智能发车预设护卫成员 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">🚢</span>智能发车预设护卫</div>
-          <div class="st-helper-bar">
-            <n-button size="tiny" :loading="settingsHelperLoading" @click="loadSettingsHelperMembers">
-              {{ settingsHelperMembers.length > 0 ? '刷新成员' : '加载成员' }}
-            </n-button>
-            <span v-if="settingsHelperMembers.length > 0" class="st-helper-count">
-              已选 {{ (currentSettings.helperPresets || []).length }} / {{ settingsHelperMembers.length }} 人
-            </span>
-          </div>
-          <div v-if="settingsHelperMembers.length > 0" class="st-helper-tags">
-            <n-tag
-              v-for="member in settingsHelperMembers"
-              :key="member.id"
-              :type="(currentSettings.helperPresets || []).includes(member.id) ? 'success' : 'default'"
-              :bordered="false"
-              size="small"
-              style="cursor: pointer;"
-              @click="toggleSettingsHelper(member.id)"
-            >
-              {{ member.name }}
-            </n-tag>
-          </div>
-          <div v-else class="st-helper-hint">
-            加载俱乐部成员后勾选预设护卫，智能发车时优先使用
-          </div>
+        <div class="modal-actions" style="margin-top: 20px; text-align: right">
+          <n-button type="primary" @click="saveSettings">保存设置</n-button>
         </div>
       </div>
-
-      <template #footer>
-        <div class="st-modal-footer">
-          <n-button type="primary" block @click="saveSettings">保存设置</n-button>
-        </div>
-      </template>
     </n-modal>
 
     <!-- Task Template Modal -->
     <n-modal
       v-model:show="showTaskTemplateModal"
       preset="card"
-      style="width: 92%; max-width: 600px;"
-      :segmented="{ content: true, footer: 'soft' }"
+      :title="currentTemplateId ? '编辑任务模板' : '任务模板设置'"
+      style="width: 90%; max-width: 560px"
     >
-      <template #header>
-        <div class="st-modal-header">
-          <span class="st-modal-icon">📋</span>
-          <span>{{ currentTemplateId ? '编辑任务模板' : '任务模板设置' }}</span>
-        </div>
-      </template>
-
-      <div class="st-settings-body">
-        <!-- 模板名称 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">📝</span>模板信息</div>
-          <div class="st-field st-field-full">
-            <label class="st-label">模板名称</label>
-            <n-input v-model:value="currentTemplateName" placeholder="请输入模板名称" size="small" />
+      <div class="settings-content">
+        <div class="settings-grid">
+          <div class="setting-item">
+            <label class="setting-label">模板名称</label>
+            <n-input
+              v-model:value="currentTemplateName"
+              placeholder="请输入模板名称"
+              size="small"
+            />
           </div>
-        </div>
+          <div class="setting-item">
+            <label class="setting-label">竞技场阵容</label>
+            <n-select
+              v-model:value="currentTemplate.arenaFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">爬塔阵容</label>
+            <n-select
+              v-model:value="currentTemplate.towerFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">BOSS阵容</label>
+            <n-select
+              v-model:value="currentTemplate.bossFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">十殿阵容</label>
+            <n-select
+              v-model:value="currentTemplate.nightmareFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">盐场蟠桃阵容</label>
+            <n-select
+              v-model:value="currentTemplate.saltFieldPeachFormation"
+              :options="formationOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">俱乐部BOSS次数</label>
+            <n-select
+              v-model:value="currentTemplate.bossTimes"
+              :options="bossTimesOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">每日BOSS次数</label>
+            <n-select
+              v-model:value="currentTemplate.dailyBossTimes"
+              :options="dailyBossTimesOptions"
+              size="small"
+            />
+          </div>
+          <div class="setting-switches">
+            <div class="switch-row">
+              <span class="switch-label">领罐子</span
+              ><n-switch v-model:value="currentTemplate.claimBottle" />
+            </div>
+            <div class="switch-row">
+              <span class="switch-label">领挂机</span
+              ><n-switch v-model:value="currentTemplate.claimHangUp" />
+            </div>
+            <div class="switch-row">
+              <span class="switch-label">竞技场</span
+              ><n-switch v-model:value="currentTemplate.arenaEnable" />
+            </div>
+            <div class="switch-row">
+              <span class="switch-label">开宝箱</span
+              ><n-switch v-model:value="currentTemplate.openBox" />
+            </div>
+            <div class="switch-row">
+              <span class="switch-label">领取邮件奖励</span
+              ><n-switch v-model:value="currentTemplate.claimEmail" />
+            </div>
+            <div class="switch-row">
+              <span class="switch-label">黑市购买物品</span
+              ><n-switch v-model:value="currentTemplate.blackMarketPurchase" />
+            </div>
 
-        <!-- 阵容配置 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">🎯</span>阵容配置</div>
-          <div class="st-section-grid">
-            <div class="st-field">
-              <label class="st-label">竞技场</label>
-              <n-select v-model:value="currentTemplate.arenaFormation" :options="formationOptions" size="small" />
-            </div>
-            <div class="st-field">
-              <label class="st-label">爬塔</label>
-              <n-select v-model:value="currentTemplate.towerFormation" :options="formationOptions" size="small" />
-            </div>
-            <div class="st-field">
-              <label class="st-label">BOSS</label>
-              <n-select v-model:value="currentTemplate.bossFormation" :options="formationOptions" size="small" />
-            </div>
-            <div class="st-field">
-              <label class="st-label">十殿</label>
-              <n-select v-model:value="currentTemplate.nightmareFormation" :options="formationOptions" size="small" />
-            </div>
-            <div class="st-field">
-              <label class="st-label">盐场蟠桃</label>
-              <n-select v-model:value="currentTemplate.saltFieldPeachFormation" :options="formationOptions" size="small" />
+            <div class="switch-row">
+              <span class="switch-label">付费招募</span
+              ><n-switch v-model:value="currentTemplate.payRecruit" />
             </div>
           </div>
-        </div>
-
-        <!-- 战斗次数 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">⚔️</span>战斗次数</div>
-          <div class="st-section-grid st-grid-2">
-            <div class="st-field">
-              <label class="st-label">俱乐部BOSS</label>
-              <n-select v-model:value="currentTemplate.bossTimes" :options="bossTimesOptions" size="small" />
-            </div>
-            <div class="st-field">
-              <label class="st-label">每日BOSS</label>
-              <n-select v-model:value="currentTemplate.dailyBossTimes" :options="dailyBossTimesOptions" size="small" />
-            </div>
-          </div>
-        </div>
-
-        <!-- 功能开关 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">🔔</span>功能开关</div>
-          <div class="st-switch-grid">
-            <div class="st-switch-item">
-              <span class="st-switch-text">领罐子</span>
-              <n-switch v-model:value="currentTemplate.claimBottle" size="small" />
-            </div>
-            <div class="st-switch-item">
-              <span class="st-switch-text">领挂机</span>
-              <n-switch v-model:value="currentTemplate.claimHangUp" size="small" />
-            </div>
-            <div class="st-switch-item">
-              <span class="st-switch-text">竞技场</span>
-              <n-switch v-model:value="currentTemplate.arenaEnable" size="small" />
-            </div>
-            <div class="st-switch-item">
-              <span class="st-switch-text">开宝箱</span>
-              <n-switch v-model:value="currentTemplate.openBox" size="small" />
-            </div>
-            <div class="st-switch-item">
-              <span class="st-switch-text">邮件奖励</span>
-              <n-switch v-model:value="currentTemplate.claimEmail" size="small" />
-            </div>
-            <div class="st-switch-item">
-              <span class="st-switch-text">黑市购买</span>
-              <n-switch v-model:value="currentTemplate.blackMarketPurchase" size="small" />
-            </div>
-            <div class="st-switch-item">
-              <span class="st-switch-text">付费招募</span>
-              <n-switch v-model:value="currentTemplate.payRecruit" size="small" />
-            </div>
-          </div>
-        </div>
-
-        <!-- 安全设置 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">🔐</span>安全设置</div>
-          <div class="st-field st-field-full">
-            <label class="st-label">功法赠送验证密码</label>
+          <div class="setting-item">
+            <label class="setting-label">功法赠送验证密码</label>
             <n-input
               v-model:value="currentTemplate.legacyGiftPassword"
               placeholder="留空则使用手动输入"
@@ -2023,35 +1860,28 @@
             />
           </div>
         </div>
-      </div>
-
-      <template #footer>
-        <div class="st-modal-footer">
-          <n-button @click="showTaskTemplateModal = false" style="flex: 1;">取消</n-button>
-          <n-button @click="saveTaskTemplate" type="primary" style="flex: 1;">保存模板</n-button>
+        <div class="modal-actions" style="margin-top: 20px; text-align: right">
+          <n-button
+            @click="showTaskTemplateModal = false"
+            style="margin-right: 12px"
+            >取消</n-button
+          >
+          <n-button @click="saveTaskTemplate" type="primary">保存模板</n-button>
         </div>
-      </template>
+      </div>
     </n-modal>
 
     <!-- Apply Template Modal -->
     <n-modal
       v-model:show="showApplyTemplateModal"
       preset="card"
-      style="width: 92%; max-width: 600px"
-      :segmented="{ content: true, footer: 'soft' }"
+      title="应用任务模板"
+      style="width: 90%; max-width: 600px"
     >
-      <template #header>
-        <div class="st-modal-header">
-          <span class="st-modal-icon">📌</span>
-          <span>应用任务模板</span>
-        </div>
-      </template>
-
-      <div class="st-settings-body">
-        <!-- 选择模板 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">📋</span>选择模板</div>
-          <div class="st-field st-field-full">
+      <div class="settings-content">
+        <div class="settings-grid">
+          <div class="setting-item">
+            <label class="setting-label">选择模板</label>
             <n-select
               v-model:value="selectedTemplateId"
               :options="taskTemplates"
@@ -2059,100 +1889,125 @@
               value-field="id"
               placeholder="请选择要应用的模板"
               size="small"
+              style="width: 100%"
             />
           </div>
-        </div>
-
-        <!-- 选择账号 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">👤</span>选择账号</div>
-
-          <!-- 分组快速选择 -->
-          <div class="apply-group-bar">
-            <span class="apply-group-label">快速选择分组</span>
-            <div class="apply-group-tags">
-              <n-button
-                v-for="group in tokenGroups"
-                :key="group.id"
-                size="tiny"
-                @click="() => { const groupTokenIds = getValidGroupTokenIds(group.id); groupTokenIds.forEach((id) => { if (!selectedTokensForApply.includes(id)) selectedTokensForApply.push(id); }); }"
-                :style="{ borderColor: group.color, color: group.color }"
-                ghost
-              >
-                {{ group.name }}
-              </n-button>
-              <div v-if="tokenGroups.length === 0" class="apply-group-empty">暂无分组</div>
+          <div class="setting-item">
+            <label class="setting-label">选择账号</label>
+            
+            <!-- 分组快速选择 -->
+            <div style="margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
+              <div style="font-size: 12px; color: #86909c; margin-bottom: 8px">
+                快速选择分组：
+              </div>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap">
+                <n-button
+                  v-for="group in tokenGroups"
+                  :key="group.id"
+                  size="small"
+                  @click="
+                    () => {
+                      const groupTokenIds = getValidGroupTokenIds(group.id);
+                      groupTokenIds.forEach((id) => {
+                        if (!selectedTokensForApply.includes(id)) {
+                          selectedTokensForApply.push(id);
+                        }
+                      });
+                    }
+                  "
+                  :style="{
+                    borderColor: group.color,
+                    color: group.color
+                  }"
+                  ghost
+                >
+                  {{ group.name }}
+                </n-button>
+                <div v-if="tokenGroups.length === 0" style="font-size: 12px; color: #ccc;">
+                  暂无分组
+                </div>
+              </div>
             </div>
-          </div>
 
-          <div class="apply-select-all">
             <n-checkbox
               :checked="isAllSelectedForApply"
               :indeterminate="isIndeterminateForApply"
               @update:checked="handleSelectAllForApply"
-            >全选</n-checkbox>
+            >
+              全选
+            </n-checkbox>
+            <n-checkbox-group
+              v-model:value="selectedTokensForApply"
+              style="margin-top: 8px"
+            >
+              <n-grid :cols="2" :x-gap="12" :y-gap="8">
+                <n-grid-item v-for="token in sortedTokens" :key="token.id">
+                  <n-checkbox :value="token.id">{{ token.name }}</n-checkbox>
+                </n-grid-item>
+              </n-grid>
+            </n-checkbox-group>
           </div>
-          <n-checkbox-group v-model:value="selectedTokensForApply" class="apply-token-grid">
-            <n-grid :cols="2" :x-gap="8" :y-gap="6">
-              <n-grid-item v-for="token in sortedTokens" :key="token.id">
-                <n-checkbox :value="token.id" class="apply-token-item">{{ token.name }}</n-checkbox>
-              </n-grid-item>
-            </n-grid>
-          </n-checkbox-group>
         </div>
-      </div>
-
-      <template #footer>
-        <div class="st-modal-footer">
-          <n-button @click="showApplyTemplateModal = false" style="flex: 1;">取消</n-button>
+        <div class="modal-actions" style="margin-top: 20px; text-align: right">
+          <n-button @click="showApplyTemplateModal = false">取消</n-button>
           <n-button
             @click="applyTemplate"
             type="success"
-            style="flex: 1;"
-            :disabled="!selectedTemplateId || selectedTokensForApply.length === 0"
-          >应用模板</n-button>
+            :disabled="
+              !selectedTemplateId || selectedTokensForApply.length === 0
+            "
+            >应用模板</n-button
+          >
         </div>
-      </template>
+      </div>
     </n-modal>
 
     <!-- Template Manager Modal -->
     <n-modal
       v-model:show="showTemplateManagerModal"
       preset="card"
-      style="width: 92%; max-width: 920px"
-      :segmented="{ content: true, footer: 'soft' }"
+      title="任务模板管理"
+      :bordered="false"
+      style="width: 900px"
     >
-      <template #header>
-        <div class="st-modal-header">
-          <span class="st-modal-icon">📋</span>
-          <span>任务模板管理</span>
-          <span class="st-modal-subtitle">共 {{ filteredTaskTemplates.length }} 个模板</span>
-        </div>
-      </template>
-
       <div class="template-manager">
         <!-- 操作栏 -->
         <div class="template-toolbar">
-          <n-space wrap>
-            <n-button type="primary" size="small" @click="openNewTemplateModal">
-              <template #icon><n-icon><AddCircleOutline /></n-icon></template>
-              新增
+          <n-space>
+            <n-button type="primary" @click="openNewTemplateModal">
+              <template #icon>
+                <n-icon><AddCircleOutline /></n-icon>
+              </template>
+              新增模板
             </n-button>
-            <n-button type="success" size="small" @click="openApplyTemplateModal">
-              <template #icon><n-icon><CheckmarkCircleOutline /></n-icon></template>
-              应用
+            <n-button type="success" @click="openApplyTemplateModal">
+              <template #icon>
+                <n-icon><CheckmarkCircleOutline /></n-icon>
+              </template>
+              应用模板
             </n-button>
-            <n-button type="info" size="small" @click="openAccountTemplateModal">
-              <template #icon><n-icon><ListOutline /></n-icon></template>
-              引用
+            <n-button type="info" @click="openAccountTemplateModal">
+              <template #icon>
+                <n-icon><ListOutline /></n-icon>
+              </template>
+              引用统计
             </n-button>
-            <n-button size="small" @click="exportTaskTemplates" :loading="isExporting">
-              <template #icon><n-icon><CloudDownloadOutline /></n-icon></template>
+            <n-divider vertical />
+            <n-button @click="exportTaskTemplates" :loading="isExporting">
+              <template #icon>
+                <n-icon><CloudDownloadOutline /></n-icon>
+              </template>
               导出
             </n-button>
-            <n-upload :show-file-list="false" accept=".json" :custom-request="importTaskTemplates">
-              <n-button size="small" :loading="isImporting">
-                <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
+            <n-upload
+              :show-file-list="false"
+              accept=".json"
+              :custom-request="importTaskTemplates"
+            >
+              <n-button :loading="isImporting">
+                <template #icon>
+                  <n-icon><CloudUploadOutline /></n-icon>
+                </template>
                 导入
               </n-button>
             </n-upload>
@@ -2162,9 +2017,11 @@
             placeholder="搜索模板名称..."
             clearable
             size="small"
-            style="width: 180px"
+            style="width: 220px"
           >
-            <template #prefix><n-icon><SearchOutline /></n-icon></template>
+            <template #prefix>
+              <n-icon><SearchOutline /></n-icon>
+            </template>
           </n-input>
         </div>
 
@@ -2176,7 +2033,9 @@
             style="padding: 60px 0"
           >
             <template #icon>
-              <n-icon :size="48" color="#c0c4cc"><DocumentTextOutline /></n-icon>
+              <n-icon :size="48" color="#c0c4cc">
+                <DocumentTextOutline />
+              </n-icon>
             </template>
           </n-empty>
 
@@ -2198,13 +2057,30 @@
               </template>
               <template #footer>
                 <div class="template-card-footer">
-                  <span class="template-time">{{ formatDate(template.updatedAt || template.createdAt) }}</span>
+                  <span class="template-time">
+                    {{ formatDate(template.updatedAt || template.createdAt) }}
+                  </span>
                   <n-space>
-                    <n-button size="small" text @click.stop="openEditTemplateModal(template)">
-                      <template #icon><n-icon><CreateOutline /></n-icon></template>编辑
+                    <n-button
+                      size="small"
+                      text
+                      @click.stop="openEditTemplateModal(template)"
+                    >
+                      <template #icon>
+                        <n-icon><CreateOutline /></n-icon>
+                      </template>
+                      编辑
                     </n-button>
-                    <n-button size="small" text type="error" @click.stop="deleteTaskTemplate(template.id)">
-                      <template #icon><n-icon><TrashOutline /></n-icon></template>删除
+                    <n-button
+                      size="small"
+                      text
+                      type="error"
+                      @click.stop="deleteTaskTemplate(template.id)"
+                    >
+                      <template #icon>
+                        <n-icon><TrashOutline /></n-icon>
+                      </template>
+                      删除
                     </n-button>
                   </n-space>
                 </div>
@@ -2214,10 +2090,11 @@
         </div>
       </div>
 
+      <!-- 底部操作栏 -->
       <template #footer>
-        <div class="st-modal-footer">
-          <n-button @click="showTemplateManagerModal = false" style="margin-left: auto;">关闭</n-button>
-        </div>
+        <n-space justify="end">
+          <n-button @click="showTemplateManagerModal = false">关闭</n-button>
+        </n-space>
       </template>
     </n-modal>
 
@@ -2225,75 +2102,97 @@
     <n-modal
       v-model:show="showAccountTemplateModal"
       preset="card"
-      style="width: 92%; max-width: 800px"
-      :segmented="{ content: true, footer: 'soft' }"
+      title="账号模板引用查看"
+      style="width: 90%; max-width: 800px"
     >
-      <template #header>
-        <div class="st-modal-header">
-          <span class="st-modal-icon">📊</span>
-          <span>账号模板引用查看</span>
-          <span class="st-modal-subtitle">共 {{ filteredAccountTemplates.length }} 个账号</span>
-        </div>
-      </template>
-
-      <div class="st-settings-body">
-        <!-- 筛选与操作 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">🔍</span>筛选与操作</div>
-          <div class="account-ref-bar">
-            <div class="account-ref-actions">
-              <n-button @click="exportAccountReferences" type="default" size="small" :loading="isExporting">
-                导出引用
-              </n-button>
-              <n-upload :show-file-list="false" accept=".json" :custom-request="importAccountReferences">
-                <n-button type="default" size="small" :loading="isImporting">导入引用</n-button>
-              </n-upload>
-            </div>
-            <div class="account-ref-filter">
-              <label class="st-label">按模板筛选</label>
-              <n-select
-                v-model:value="selectedTemplateForFilter"
-                :options="taskTemplates"
-                label-field="name"
-                value-field="id"
-                placeholder="全部模板"
-                size="small"
-                @update:value="filterAccountTemplates"
-                style="width: 180px"
-              />
-            </div>
+      <div class="settings-content">
+        <div
+          class="modal-header-actions"
+          style="
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          "
+        >
+          <div style="display: flex; gap: 8px; align-items: center">
+            <span>共 {{ filteredAccountTemplates.length }} 个账号</span>
+            <n-button
+              @click="exportAccountReferences"
+              type="default"
+              size="small"
+              :loading="isExporting"
+              >导出引用</n-button
+            >
+            <n-upload
+              :show-file-list="false"
+              accept=".json"
+              :custom-request="importAccountReferences"
+            >
+              <n-button type="default" size="small" :loading="isImporting">导入引用</n-button>
+            </n-upload>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center">
+            <label style="font-size: 12px; color: #86909c">按模板筛选:</label>
+            <n-select
+              v-model:value="selectedTemplateForFilter"
+              :options="taskTemplates"
+              label-field="name"
+              value-field="id"
+              placeholder="全部模板"
+              size="small"
+              @update:value="filterAccountTemplates"
+              style="width: 180px"
+            />
           </div>
         </div>
 
-        <!-- 账号列表 -->
-        <div class="st-section">
-          <div class="st-section-title"><span class="st-section-icon">👤</span>账号列表</div>
-          <div class="account-template-list" style="max-height: 400px; overflow-y: auto;">
-            <n-card
-              v-for="item in filteredAccountTemplates"
-              :key="item.tokenId"
-              size="small"
-              class="account-ref-card"
+        <!-- Account Template List -->
+        <div
+          class="account-template-list"
+          style="max-height: 400px; overflow-y: auto; margin-bottom: 16px"
+        >
+          <n-card
+            v-for="item in filteredAccountTemplates"
+            :key="item.tokenId"
+            size="small"
+            style="margin-bottom: 12px"
+          >
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
             >
-              <div class="account-ref-row">
-                <span class="account-ref-name">{{ item.tokenName }}</span>
-                <n-tag :type="item.templateId ? 'success' : 'default'" size="small">
+              <div>
+                <h4 style="margin: 0; margin-bottom: 4px">
+                  {{ item.tokenName }}
+                </h4>
+              </div>
+              <div>
+                <n-tag
+                  :type="item.templateId ? 'success' : 'default'"
+                  size="small"
+                >
                   {{ item.templateName }}
                 </n-tag>
               </div>
-            </n-card>
-            <div v-if="filteredAccountTemplates.length === 0" class="account-ref-empty">
-              暂无账号数据
             </div>
+          </n-card>
+          <div
+            v-if="filteredAccountTemplates.length === 0"
+            style="text-align: center; padding: 24px; color: #86909c"
+          >
+            暂无账号数据
           </div>
         </div>
-      </div>
 
-      <template #footer>
-        <div class="st-modal-footer">
-          <n-button @click="showAccountTemplateModal = false" style="margin-left: auto;">关闭</n-button>
+        <!-- Actions -->
+        <div class="modal-actions" style="margin-top: 20px; text-align: right">
+          <n-button @click="showAccountTemplateModal = false">关闭</n-button>
         </div>
-      </template>
+      </div>
     </n-modal>
 
     <!-- Legacy Gift Modal -->
@@ -3108,14 +3007,6 @@
                       </n-tag>
                     </span>
                   </div>
-                  <div class="task-info-item" v-if="task.maxActive > 0">
-                    <span class="info-label">并发执行</span>
-                    <span class="info-value">
-                      <n-tag size="small" type="warning" :bordered="false">
-                        {{ task.maxActive }} 个并发
-                      </n-tag>
-                    </span>
-                  </div>
 
                 <div class="task-info-item">
                   <span class="info-label">选中任务</span>
@@ -3227,21 +3118,6 @@
                 </template><!-- end v-else normal task -->
               </div>
             </div><!-- end task-card-body -->
-
-            <!-- 快捷并发控制（独立行） -->
-            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-top: 1px solid #e8eaed; background: #fafbfc;">
-              <span style="font-size: 12px; opacity: 0.65; white-space: nowrap;">⚡ 并发数</span>
-              <n-input-number
-                :value="task.maxActive || 0"
-                @update:value="(val) => updateTaskMaxActive(task, val)"
-                :min="0"
-                :max="50"
-                :step="1"
-                size="tiny"
-                style="width: 90px;"
-              />
-              <span style="font-size: 11px; opacity: 0.5;">0=全局</span>
-            </div>
 
             <!-- 任务操作 -->
             <div class="task-card-footer">
@@ -3372,28 +3248,6 @@
             </template><!-- end normal runType -->
           </div>
         </div>
-        <!-- 任务级并发控制 -->
-        <div class="form-section" v-if="taskForm.taskType !== 'push_map'">
-          <div class="section-title">⚡ 并发控制</div>
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <span style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;">并发数：</span>
-            <n-input-number
-              v-model:value="taskForm.maxActive"
-              :min="0"
-              :max="50"
-              :step="1"
-              size="small"
-              style="width: 140px;"
-              placeholder="0"
-            />
-            <span style="font-size: 12px; color: var(--text-tertiary); line-height: 1.4;">
-              {{ taskForm.maxActive > 0 ? `使用 ${taskForm.maxActive} 个并发执行此任务` : '使用全局设置（当前 ' + batchSettings.maxActive + '）' }}
-            </span>
-          </div>
-          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px; opacity: 0.8;">
-            设置为 0 则跟随全局「最大并发数」设置，适用于希望某个定时任务单独控制执行速度的场景
-          </div>
-        </div>
         <div class="form-section" v-if="taskForm.taskType !== 'push_map'">
           <div class="section-title">👥 选择账号</div>
           
@@ -3501,25 +3355,6 @@
             </n-tabs>
           </n-checkbox-group>
           
-          <!-- 日常精简补齐配置 -->
-          <div v-if="taskForm.selectedTasks.includes('batchSimplifiedDaily')" class="task-config-card">
-            <div class="config-card-header">
-              <span class="config-card-title">⚡ 日常精简补齐 - 勾选执行任务项（不判断活跃度）</span>
-            </div>
-            <div class="config-card-content">
-              <n-checkbox-group v-model:value="taskForm.simplifiedDailyItems">
-                <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8">
-                  <n-grid-item v-for="item in SIMPLIFIED_TASK_ITEMS" :key="item.key">
-                    <n-checkbox :value="item.key" size="large">{{ item.label }}</n-checkbox>
-                  </n-grid-item>
-                </n-grid>
-              </n-checkbox-group>
-              <n-alert v-if="!taskForm.simplifiedDailyItems || taskForm.simplifiedDailyItems.length === 0" type="warning" size="small" style="margin-top: 12px;">
-                请至少勾选一个任务项
-              </n-alert>
-            </div>
-          </div>
-
           <!-- 助威商店购买配置 -->
           <div v-if="taskForm.selectedTasks.includes('legion_buy_store_items')" class="task-config-card">
             <div class="config-card-header">
@@ -4004,95 +3839,6 @@
               </n-radio-group>
             </div>
           </div>
-
-          <!-- 逐鹿盐山竞猜选项 -->
-          <div v-if="taskForm.selectedTasks.includes('batchApexGuess')" class="task-config-card">
-            <div class="config-card-header">
-              <span class="config-card-title">⚔️ 逐鹿盐山竞猜 - 配置竞猜参数</span>
-            </div>
-            <div class="config-card-content">
-              <n-alert type="info" size="small" style="margin-bottom: 12px;">
-                执行时自动拉取所选赛程全部对阵，并按策略自动择队竞猜（已参与的场次自动跳过）
-              </n-alert>
-              <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
-                <div style="display: flex; align-items: center;">
-                  <span style="font-size: 14px; margin-right: 8px;">赛程：</span>
-                  <n-select
-                    v-model:value="taskForm.apexGuessScheduleId"
-                    :options="[{ label: '64强', value: 20 }, { label: '32强', value: 21 }, { label: '16强', value: 22 }, { label: '8强', value: 23 }, { label: '4强', value: 24 }, { label: '季军赛', value: 25 }, { label: '决赛', value: 26 }]"
-                    size="small"
-                    style="width: 120px;"
-                  />
-                </div>
-                <div>
-                  <span style="font-size: 14px; margin-right: 8px;">策略：</span>
-                  <n-radio-group v-model:value="taskForm.apexGuessStrategy" size="small">
-                    <n-radio value="left">全押蓝方</n-radio>
-                    <n-radio value="right">全押红方</n-radio>
-                    <n-radio value="power">押高战力</n-radio>
-                    <n-radio value="cheer">押多助威</n-radio>
-                  </n-radio-group>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 天宫助威选项 -->
-          <div v-if="taskForm.selectedTasks.includes('batchSaltRoadCheer')" class="task-config-card">
-            <div class="config-card-header">
-              <span class="config-card-title">🏆 天宫助威 - 配置助威参数</span>
-            </div>
-            <div class="config-card-content">
-              <n-alert type="info" size="small" style="margin-bottom: 12px;">
-                点击“获取对阵”拉取当前对阵列表，然后勾选要助威的俱乐部队伍
-              </n-alert>
-              <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;">
-                <n-button size="small" :loading="taskSaltRoadLoading" @click="fetchTaskSaltRoadOpponents">
-                  获取对阵
-                </n-button>
-                <span v-if="taskForm.saltRoadLegionName" style="font-size: 14px; color: #18a058; font-weight: bold;">
-                  ✅ 已选：{{ taskForm.saltRoadLegionName }}
-                </span>
-                <span v-else-if="taskSaltRoadOpponents.length === 0" style="font-size: 13px; color: #888;">
-                  未获取对阵，将自动按左/右军助威
-                </span>
-              </div>
-              <!-- 对阵列表 -->
-              <div v-if="taskSaltRoadOpponents.length > 0" style="margin-bottom: 12px;">
-                <div v-for="(match, idx) in taskSaltRoadOpponents" :key="match.groupId || idx" 
-                  style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid #eee; flex-wrap: wrap;">
-                  <span style="font-size: 13px; color: #666; min-width: 40px;">组{{ match.groupId || (idx+1) }}</span>
-                  <n-button 
-                    size="tiny" 
-                    :type="taskForm.saltRoadLegionId === match.leftLegion?.id ? 'primary' : 'default'"
-                    @click="taskForm.saltRoadLegionId = match.leftLegion?.id; taskForm.saltRoadLegionName = match.leftLegion?.name || ''">
-                    ← {{ match.leftLegion?.name || '左军' }}
-                  </n-button>
-                  <span style="font-size: 12px; color: #999;">VS</span>
-                  <n-button 
-                    size="tiny" 
-                    :type="taskForm.saltRoadLegionId === match.rightLegion?.id ? 'primary' : 'default'"
-                    @click="taskForm.saltRoadLegionId = match.rightLegion?.id; taskForm.saltRoadLegionName = match.rightLegion?.name || ''">
-                    {{ match.rightLegion?.name || '右军' }} →
-                  </n-button>
-                </div>
-              </div>
-              <!-- 兑底：左右军选择 -->
-              <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
-                <div>
-                  <span style="font-size: 14px; margin-right: 8px;">未选队伍时按方向助威：</span>
-                  <n-radio-group v-model:value="taskForm.saltRoadSide" size="small">
-                    <n-radio :value="1">左军</n-radio>
-                    <n-radio :value="2">右军</n-radio>
-                  </n-radio-group>
-                </div>
-                <div>
-                  <span style="font-size: 14px; margin-right: 8px;">助威次数：</span>
-                  <n-input-number v-model:value="taskForm.saltRoadVoteCount" :min="1" :max="999" style="width: 120px;" size="small" />
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
         
         <!-- 不上线时段开关 -->
@@ -4161,8 +3907,8 @@
                 <n-select v-model:value="batchSettings.defaultFishType" :options="fishTypeOptions" size="small" class="input-responsive" />
               </div>
               <div class="setting-item-responsive">
-                <label class="setting-label-responsive">宝箱周目标轮数(每轮8000分)</label>
-                <n-input-number v-model:value="batchSettings.targetBoxRounds" :min="1" :max="4" :step="1" size="small" class="input-responsive" />
+                <label class="setting-label-responsive">一键宝箱周开箱目标</label>
+                <n-input-number v-model:value="batchSettings.targetBoxPoints" :min="1" :max="1000000" :step="100" size="small" class="input-responsive" />
               </div>
               <div class="setting-item-responsive">
                 <label class="setting-label-responsive">梦境商品购买配置</label>
@@ -4433,7 +4179,7 @@
               <div class="setting-item-responsive" style="flex-direction: column; align-items: stretch;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                   <label class="setting-label-responsive" style="flex: 1;">列表每行数量</label>
-                  <n-switch :value="batchSettings.autoColumns" size="small" style="margin-right: 8px;" @update:value="handleAutoColumnsToggle" />
+                  <n-switch v-model:value="batchSettings.autoColumns" size="small" style="margin-right: 8px;" @update:value="autoSaveBatchSettings" />
                   <span style="font-size: 12px; color: #666;">自动</span>
                 </div>
                 <n-input-number 
@@ -4443,11 +4189,12 @@
                   :step="1" 
                   size="small" 
                   style="width: 100%" 
-                  :disabled="batchSettings.autoColumns"
+                  :disabled="batchSettings.autoColumns || !isMaximizedWindow"
                   @update:value="handleManualColumnChange"
                 />
                 <div style="font-size: 11px; color: #999; margin-top: 4px;">
                   {{ batchSettings.autoColumns ? `自动: ${responsiveColumns}列` : `手动: ${batchSettings.tokenListColumns}列` }}
+                  {{ !isMaximizedWindow && !batchSettings.autoColumns ? ' (窗口<1400px，已自动切换为自动模式)' : '' }}
                 </div>
               </div>
               <div class="setting-item-responsive">
@@ -4547,6 +4294,11 @@
                   <div style="font-size: 12px; color: #999;">战力: {{ formatPower(match.leftTotalPower || 0) }}</div>
                 </div>
               </div>
+              <div style="text-align: center; font-size: 18px; font-weight: bold; padding: 0 16px;">
+                <span style="color: #ff6b6b;">{{ match.leftRole?.newScore || 0 }}</span>
+                <span style="color: #999; margin: 0 4px;">:</span>
+                <span style="color: #4dabf7;">{{ match.rightRole?.newScore || 0 }}</span>
+              </div>
               <div style="display: flex; align-items: center; gap: 12px; flex: 1; justify-content: flex-end;">
                 <div style="text-align: right;">
                   <div style="font-weight: bold; font-size: 14px;">{{ match.rightRole?.name || '未知' }}</div>
@@ -4589,79 +4341,6 @@
       </div>
     </n-modal>
 
-    <!-- Apex Guess Modal (逐鹿盐山竞猜) -->
-    <n-modal
-      v-model:show="showApexGuessModal"
-      preset="card"
-      title="逐鹿盐山竞猜"
-      style="width: 90%; max-width: 900px"
-    >
-      <div class="settings-content">
-        <div class="settings-grid" style="display: block;">
-          <!-- 顶部操作栏：赛程选择 + 批量操作 -->
-          <div style="margin-bottom: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <n-select
-              v-model:value="apexGuessScheduleId"
-              :options="[{ label: '64强', value: 20 }, { label: '32强', value: 21 }, { label: '16强', value: 22 }, { label: '8强', value: 23 }, { label: '4强', value: 24 }, { label: '季军赛', value: 25 }, { label: '决赛', value: 26 }]"
-              style="width: 110px"
-              size="small"
-            />
-            <n-button type="primary" size="small" @click="fetchApexGuessList" :loading="apexGuessLoading">
-              获取对阵列表
-            </n-button>
-            <span v-if="apexGuessLoading" style="color: #999; font-size: 12px;">加载中...</span>
-            <div style="flex: 1; min-width: 8px;"></div>
-            <n-button size="tiny" :type="'info'" ghost :disabled="apexGuessMatchList.length === 0" @click="apexGuessPickAll('left')">全押蓝方</n-button>
-            <n-button size="tiny" :type="'error'" ghost :disabled="apexGuessMatchList.length === 0" @click="apexGuessPickAll('right')">全押红方</n-button>
-            <n-button size="tiny" :type="'warning'" ghost :disabled="apexGuessMatchList.length === 0" @click="apexGuessPickAll('power')">押高战力</n-button>
-            <n-button size="tiny" :type="'success'" ghost :disabled="apexGuessMatchList.length === 0" @click="apexGuessPickAll('cheer')">押多助威</n-button>
-          </div>
-
-          <!-- 空状态 -->
-          <div v-if="apexGuessMatchList.length === 0 && !apexGuessLoading" style="text-align: center; color: #b0b0b0; padding: 48px 0; font-size: 13px;">
-            暂无对阵数据，请选择赛程后点击获取
-          </div>
-
-          <!-- 对阵列表（固定高度滚动） -->
-          <div v-if="apexGuessMatchList.length > 0" style="max-height: 52vh; overflow-y: auto; padding-right: 4px;">
-            <div v-for="(match, idx) in apexGuessMatchList" :key="idx" style="display: flex; align-items: center; gap: 6px; border: 1px solid var(--n-border-color, #eaeaea); border-radius: 8px; padding: 4px 8px; margin-bottom: 6px;">
-              <span style="width: 24px; flex-shrink: 0; font-size: 11px; color: #bbb; text-align: center;">{{ idx + 1 }}</span>
-              <!-- 左队 -->
-              <div
-                style="flex: 1; min-width: 0; cursor: pointer; border-radius: 6px; padding: 4px 8px; border: 1.5px solid transparent; transition: all 0.15s ease; display: flex; align-items: center; gap: 8px;"
-                :style="match.picked === 'left' ? 'border-color: #2080f0; background: rgba(32, 128, 240, 0.08);' : ''"
-                @click="match.picked = 'left'"
-              >
-                <span v-if="match.picked === 'left'" style="display: inline-flex; width: 14px; height: 14px; border-radius: 50%; background: #2080f0; color: #fff; font-size: 10px; align-items: center; justify-content: center; flex-shrink: 0;">✓</span>
-                <span style="font-weight: 600; font-size: 13px; color: var(--n-text-color, #222); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ match.left?.name || '未知' }}</span>
-                <span style="font-size: 11px; color: #888; white-space: nowrap; margin-left: auto;">战力 {{ formatPower(match.left?.power || 0) }} · 助威 {{ match.left?.cheerCnt || 0 }}</span>
-              </div>
-              <span style="flex-shrink: 0; font-size: 10px; font-weight: 700; color: #999;">VS</span>
-              <!-- 右队 -->
-              <div
-                style="flex: 1; min-width: 0; cursor: pointer; border-radius: 6px; padding: 4px 8px; border: 1.5px solid transparent; transition: all 0.15s ease; display: flex; align-items: center; gap: 8px;"
-                :style="match.picked === 'right' ? 'border-color: #d03050; background: rgba(208, 48, 80, 0.08);' : ''"
-                @click="match.picked = 'right'"
-              >
-                <span style="font-size: 11px; color: #888; white-space: nowrap;">战力 {{ formatPower(match.right?.power || 0) }} · 助威 {{ match.right?.cheerCnt || 0 }}</span>
-                <span style="font-weight: 600; font-size: 13px; color: var(--n-text-color, #222); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: auto;">{{ match.right?.name || '未知' }}</span>
-                <span v-if="match.picked === 'right'" style="display: inline-flex; width: 14px; height: 14px; border-radius: 50%; background: #d03050; color: #fff; font-size: 10px; align-items: center; justify-content: center; flex-shrink: 0;">✓</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="modal-actions" style="margin-top: 20px; display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
-          <n-text v-if="apexGuessMatchList.length > 0" depth="3" style="font-size: 13px;">
-            已选择 <b style="color: var(--n-color, #18a058);">{{ apexGuessPickedCount }}</b> / {{ apexGuessMatchList.length }} 场
-          </n-text>
-          <n-button type="primary" @click="handleApexGuess" :disabled="isRunning || apexGuessPickedCount === 0">
-            开始竞猜
-          </n-button>
-          <n-button @click="showApexGuessModal = false">关闭</n-button>
-        </div>
-      </div>
-    </n-modal>
-
     <!-- Apex Cheer Modal (竞技大厅助威) -->
     <n-modal
       v-model:show="showApexCheerModal"
@@ -4672,7 +4351,7 @@
       <div class="settings-content">
         <div class="settings-grid" style="display: block;">
           <!-- 获取列表区域 -->
-          <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
             <n-button type="primary" @click="fetchApexVoteList" :loading="apexCheerLoading" style="width: 200px; margin-bottom: 0;">
               {{ apexCheerLoading ? '加载中...' : '获取可助威俱乐部列表' }}
             </n-button>
@@ -4683,12 +4362,6 @@
               style="width: 120px"
               size="small"
             />
-            <n-button size="small" :loading="apexRoundDetecting" @click="detectCurrentApexRound" :disabled="apexRoundDetecting">
-              {{ apexRoundDetecting ? '探测中...' : '🔍 自动探测期次' }}
-            </n-button>
-            <n-tag v-if="apexRoundDetected" size="small" type="success" :bordered="false">
-              当前活跃：第{{ apexRoundDetected }}期
-            </n-tag>
             <span style="font-size: 16px;">分组：</span>
             <n-select
               v-model:value="selectedApexGroupId"
@@ -4742,67 +4415,6 @@
             {{ selectedApexTeamId ? `对队伍"${getSelectedTeamName()}"${apexVoteCount === 0 ? '全部赠送' : `赠送 ${apexVoteCount} 次`}` : '请先选择一个俱乐部' }}
           </n-button>
           <n-button @click="closeApexCheerModal">关闭</n-button>
-        </div>
-      </div>
-    </n-modal>
-
-    <!-- SaltRoad Cheer Modal (天宫助威) -->
-    <n-modal
-      v-model:show="showSaltRoadCheerModal"
-      preset="card"
-      title="天宫助威（盐道淘汰赛）"
-      style="width: 90%; max-width: 1000px"
-    >
-      <div class="settings-content">
-        <div class="settings-grid" style="display: block;">
-          <!-- 获取列表区域 -->
-          <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-            <span style="font-size: 14px;">日期(phase)：</span>
-            <n-input v-model:value="saltRoadPhaseInput" placeholder="如 260718，留空自动获取" style="width: 180px;" size="small" />
-            <n-button type="primary" @click="fetchSaltRoadOpponents" :loading="saltRoadCheerLoading" style="width: 200px; margin-bottom: 0;">
-              {{ saltRoadCheerLoading ? '加载中...' : '获取对阵列表' }}
-            </n-button>
-            <n-text type="info" style="font-size: 14px;">
-              期次：{{ saltRoadPhase || '-' }} | 共 {{ saltRoadOpponentList.length }} 场对阵
-            </n-text>
-          </div>
-
-          <!-- 助威数量设置 -->
-          <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
-            <span style="font-size: 16px;">助威次数：</span>
-            <n-input-number 
-              v-model:value="saltRoadVoteCount" 
-              placeholder="助威次数" 
-              :min="1" 
-              :max="999" 
-              style="width: 200px"
-            />
-          </div>
-
-          <!-- 对阵列表 -->
-          <n-data-table
-            :columns="saltRoadOpponentColumns"
-            :data="saltRoadOpponentList"
-            :loading="saltRoadCheerLoading"
-            :row-key="row => row.battlefieldId"
-            :checked-row-keys="selectedSaltRoadBattlefieldId ? [selectedSaltRoadBattlefieldId] : []"
-            @update:checked-row-keys="(keys) => onSaltRoadRowSelect(keys)"
-            :row-props="saltRoadRowProps"
-            style="height: 500px; flex: 1;"
-            flex-height
-          />
-        </div>
-        <div class="modal-actions" style="margin-top: 20px; text-align: right">
-          <n-button 
-            @click="applySaltRoadCheer" 
-            type="primary" 
-            :disabled="!selectedSaltRoadBattlefieldId || !selectedSaltRoadWinSid || isRunning"
-          >
-            {{ selectedSaltRoadBattlefieldId && selectedSaltRoadWinSid 
-              ? `对 ${selectedSaltRoadSideValue === 1 ? '左军' : '右军'} 助威 ${saltRoadVoteCount} 次` 
-              : '请先选择对阵和方向' }}
-          </n-button>
-          <n-button @click="closeSaltRoadCheerModal">关闭</n-button>
         </div>
       </div>
     </n-modal>
@@ -5382,15 +4994,15 @@
         <p style="margin-bottom: 12px; color: #666; font-size: 14px;">感谢您的支持！扫码赞助作者 ❤️</p>
         <div style="background: #fff8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; text-align: left;">
           <p style="margin-bottom: 8px; color: #e67e22; font-size: 14px; font-weight: bold;">📌 激活码赞助方案</p>
-          <p style="margin-bottom: 4px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">10元</b> = 1个激活码</p>
-          <p style="margin-bottom: 4px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">20元</b> = 3个激活码</p>
-          <p style="margin-bottom: 8px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">30元</b> = 5个激活码</p>
-          <p style="margin-bottom: 8px; color: #999; font-size: 12px;">（每人最高5个激活码，避免倒卖）</p>
-          <p style="margin-bottom: 4px; color: #333; font-size: 13px;">🔄 激活码永久有效，可重置：在另一台设备输入激活码点击「重置卡密」即可</p>
+          <p style="margin-bottom: 4px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">5元</b> = 1个激活码</p>
+          <p style="margin-bottom: 4px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">10元</b> = 3个激活码</p>
+          <p style="margin-bottom: 8px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">20元</b> = 10个激活码</p>
+          <p style="margin-bottom: 8px; color: #999; font-size: 12px;">（每人最高10个激活码，避免倒卖）</p>
+          <p style="margin-bottom: 4px; color: #333; font-size: 13px;">🔄 激活码可重置：在另一台设备输入激活码点击「重置卡密」即可</p>
           <p style="color: #333; font-size: 13px;">🎁 残卷赠送ID：<b style="color:#e74c3c;">83203221</b></p>
         </div>
         <p style="margin-bottom: 12px; color: #e67e22; font-size: 13px; font-weight: 500;">赞助后请在QQ联系我领取激活码<br/>联系方式：<span style="font-weight: bold; color: #c0392b; letter-spacing: 1px;">1607863356</span></p>
-        <p style="margin-bottom: 12px; color: #999; font-size: 12px;">网页版目前太多人使用，暂时不再免费提供，赞助30以上可联系获取</p>
+        <p style="margin-bottom: 12px; color: #999; font-size: 12px;">网页版目前太多人使用，暂时不再免费提供</p>
         <img :src="sponsorQrcode" alt="赞助二维码" style="max-width: 280px; width: 100%; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1);" />
       </div>
     </n-modal>
@@ -5839,7 +5451,6 @@
         </div>
       </div>
     </n-modal>
-    <GameWindowToolbar />
   </div>
 </template>
 
@@ -5857,13 +5468,11 @@ import {
 } from "vue";
 import { useTokenStore, gameTokens, tokenGroups } from "@/stores/tokenStore";
 import { useRouter, useRoute } from "vue-router";
-import { DailyTaskRunner, SIMPLIFIED_TASK_ITEMS } from "@/utils/dailyTaskRunner";
+import { DailyTaskRunner } from "@/utils/dailyTaskRunner";
 import { preloadQuestions } from "@/utils/studyQuestionsFromJSON.js";
 import { useMessage } from "naive-ui";
 import { Settings, AddCircleOutline, CheckmarkCircleOutline, CloseCircleOutline, ListOutline, CloudDownloadOutline, CloudUploadOutline, SearchOutline, DocumentTextOutline, CreateOutline, TrashOutline, SettingsOutline, PlayOutline, Add, CopyOutline } from "@vicons/ionicons5";
-import { getFirstSaturdayOfMonth, getLastSaturday } from "@/utils/clubBattleUtils";
 import TokenCard from "@/components/TokenCard.vue";
-import GameWindowToolbar from "@/components/GameWindowToolbar.vue";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { storage } from "@/utils/crossPlatformStorage";
 import sponsorQrcode from "@/assets/sponsor-qrcode.png";
@@ -5992,9 +5601,19 @@ const towerEnergy = computed(() => {
   return weirdTowerData.value?.energy || 0;
 });
 
-// 排序后的全部Token列表（不含搜索过滤，主卡片网格通过 v-show 控制显隐，避免删除关键词时重新挂载卡顿）
-const sortedAllTokens = computed(() => {
+// 排序后的游戏角色Token列表
+const sortedTokens = computed(() => {
   let tokens = [...tokenStore.gameTokens];
+  
+  // 搜索过滤
+  if (tokenSearchKeyword.value.trim()) {
+    const keyword = tokenSearchKeyword.value.trim().toLowerCase();
+    tokens = tokens.filter(token => 
+      token.name?.toLowerCase().includes(keyword) ||
+      token.server?.toLowerCase().includes(keyword) ||
+      token.id?.toLowerCase().includes(keyword)
+    );
+  }
   
   // 检查是否有自定义排序
   const customOrder = tokenOrder.value;
@@ -6126,20 +5745,6 @@ const sortedAllTokens = computed(() => {
   
   return tokens;
 });
-
-// 排序 + 搜索过滤后的Token列表（使用防抖后的关键词，供弹窗账号列表与全选等逻辑使用）
-const sortedTokens = computed(() => {
-  if (!debouncedTokenSearchKeyword.value.trim()) return sortedAllTokens.value;
-  const keyword = debouncedTokenSearchKeyword.value.trim().toLowerCase();
-  return sortedAllTokens.value.filter(token => 
-    token.name?.toLowerCase().includes(keyword) ||
-    token.server?.toLowerCase().includes(keyword) ||
-    token.id?.toLowerCase().includes(keyword)
-  );
-});
-
-// 搜索命中的Token ID集合（主卡片网格 v-show 显隐判断用）
-const searchVisibleTokenIds = computed(() => new Set(sortedTokens.value.map(t => t.id)));
 
 // 分组管理弹窗中账号搜索过滤
 const filteredGroupTokens = computed(() => {
@@ -6431,15 +6036,6 @@ const saltCupMatchList = ref([]);
 const saltCupBetLoading = ref(false);
 
 // ======================
-// Apex Guess Feature (逐鹿盐山竞猜)
-// ======================
-const showApexGuessModal = ref(false);
-const apexGuessLoading = ref(false);
-const apexGuessScheduleId = ref(21); // 20=64强 21=32强 22=16强 23=8强 24=4强 25=季军赛 26=决赛
-const apexGuessMatchList = ref([]); // [{ left, right, picked: 'left'|'right'|null }]
-const apexGuessPickedCount = computed(() => apexGuessMatchList.value.filter(m => m.picked).length);
-
-// ======================
 // Apex Cheering Feature (竞技大厅助威)
 // ======================
 const showApexCheerModal = ref(false);
@@ -6451,8 +6047,6 @@ const selectedApexTeamId = ref(null);
 const selectedApexRound = ref(1); // 场次选择（1-7）
 const selectedApexGroupId = ref(1); // 分组选择（1-32）
 const apexClubSearch = ref(''); // 俱乐部搜索关键词
-const apexRoundDetecting = ref(false); // 期次自动探测中
-const apexRoundDetected = ref(null); // 探测到的当前期次（null=未探测）
 
 // 分组切换时自动刷新俱乐部列表
 watch(selectedApexGroupId, () => {
@@ -6478,90 +6072,6 @@ watch(apexClubSearch, (newVal) => {
     }, 300);
   }
 });
-
-// 期次切换时自动刷新俱乐部列表
-watch(selectedApexRound, () => {
-  if (showApexCheerModal.value && !apexClubSearch.value.trim()) {
-    fetchApexVoteList();
-  }
-});
-
-// 自动探测当前活跃期次：从第7期到第1期逆序试探，第一个返回数据的期次即为当前活跃期
-const detectCurrentApexRound = async () => {
-  if (selectedTokens.value.length === 0) {
-    message.warning("请先选择一个账号用于探测期次");
-    return;
-  }
-
-  const tokenId = selectedTokens.value[0];
-  const token = tokens.value.find(t => t.id === tokenId);
-
-  apexRoundDetecting.value = true;
-  apexRoundDetected.value = null;
-  try {
-    // Ensure connection
-    const status = tokenStore.getWebSocketStatus(tokenId);
-    if (status !== "connected") {
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `正在连接 ${token.name} 以探测当前期次...`,
-        type: "info",
-      });
-      await tokenStore.createWebSocketConnection(tokenId, token.token, token.wsUrl);
-      let retries = 0;
-      while (tokenStore.getWebSocketStatus(tokenId) !== "connected" && retries < 20) {
-        await new Promise(r => setTimeout(r, 1000));
-        retries++;
-      }
-      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
-        throw new Error(`连接 ${token.name} 超时`);
-      }
-    }
-
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `正在探测当前活跃期次（从第7期到第1期）...`,
-      type: "info",
-    });
-
-    // 从高到低探测，第一个有数据的期次即为当前活跃期
-    for (let round = 7; round >= 1; round--) {
-      try {
-        const response = await tokenStore.sendMessageWithPromise(
-          tokenId,
-          "apex_getvotelist",
-          { groupId: 1, idx: 0, round },
-          8000
-        );
-        if (response && response.apexVoteList && response.apexVoteList.length > 0) {
-          selectedApexRound.value = round;
-          apexRoundDetected.value = round;
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `✅ 探测到当前活跃期次：第${round}期（${response.apexVoteList.length} 支队伍）`,
-            type: "success",
-          });
-          message.success(`已自动切换到当前活跃期次：第${round}期`);
-          return;
-        }
-      } catch (e) {
-        console.warn(`探测第${round}期失败:`, e.message);
-      }
-    }
-
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `⚠️ 所有期次均无数据，保持当前选择：第${selectedApexRound.value}期`,
-      type: "warning",
-    });
-    message.warning("未能探测到活跃期次，请手动选择");
-  } catch (error) {
-    console.error("Detect apex round error:", error);
-    message.error("探测期次失败：" + error.message);
-  } finally {
-    apexRoundDetecting.value = false;
-  }
-};
 
 // 弹窗关闭时释放连接槽（处理点击X按钮关闭的情况）
 watch(showApexCheerModal, (newVal) => {
@@ -6713,8 +6223,7 @@ const apexVoteRowProps = (row) => {
 
 const openApexCheerModal = async () => {
   showApexCheerModal.value = true;
-  // 先自动探测当前活跃期次，再获取列表（探测会自动切换到活跃期次）
-  await detectCurrentApexRound();
+  // 先获取列表，再获取助威币数量（避免同时创建连接导致锁冲突）
   await fetchApexVoteList();
   await getMaxApexVoteCount();
 };
@@ -6725,7 +6234,6 @@ const closeApexCheerModal = () => {
     tokenStore.closeWebSocketConnection(tokenId);
   }
   showApexCheerModal.value = false;
-  apexRoundDetected.value = null; // 重置探测状态
 };
 
 const fetchApexVoteList = async (fetchAllGroups = false) => {
@@ -7032,282 +6540,6 @@ const applyApexVote = async () => {
   message.success(`所有账号助威完成`);
 };
 
-// ======================
-// SaltRoad Cheering Feature (天宫助威)
-// ======================
-const showSaltRoadCheerModal = ref(false);
-const saltRoadOpponentList = ref([]);
-const saltRoadCheerLoading = ref(false);
-const saltRoadPhase = ref('');
-const saltRoadPhaseInput = ref(''); // 用户输入的phase，留空则自动获取
-const saltRoadVoteCount = ref(1);
-const selectedSaltRoadBattlefieldId = ref(null);
-const selectedSaltRoadGroupId = ref(null); // 选择的 groupId
-const selectedSaltRoadSideValue = ref(null); // 1=leftLegion, 2=rightLegion
-const selectedSaltRoadWinSid = ref(null); // 实际的 winSid
-
-const saltRoadRowProps = (row) => {
-  return {
-    style: "cursor: pointer",
-    onClick: () => {
-      selectedSaltRoadBattlefieldId.value = row.battlefieldId;
-    },
-  };
-};
-
-const onSaltRoadRowSelect = (keys) => {
-  selectedSaltRoadBattlefieldId.value = keys[0] || null;
-  // 选中对阵后默认左军
-  if (keys[0] && !selectedSaltRoadSideValue.value) {
-    selectedSaltRoadSideValue.value = 1;
-    // 找到对应数据，设置 winSid
-    const row = saltRoadOpponentList.value.find(r => r.groupId === keys[0]);
-    if (row && row.leftLegion?.id) {
-      selectedSaltRoadWinSid.value = row.leftLegion.id;
-    }
-  }
-};
-
-// 列定义
-const saltRoadOpponentColumns = [
-  { type: 'selection', multiple: false },
-  { title: '组别', key: 'groupId', width: 70 },
-  {
-    title: '左军', key: 'leftLegion', width: 280,
-    render(row) {
-      const leg = row.leftLegion;
-      return h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
-        h('img', { src: leg?.logo || '', style: { width: '32px', height: '32px', borderRadius: '4px' } }),
-        h('div', null, [
-          h('div', { style: 'font-weight: bold;' }, leg?.name || '-'),
-          h('div', { style: 'font-size: 12px; color: #888;' }, `战力: ${formatPower(leg?.power || 0)}`),
-        ]),
-      ]);
-    }
-  },
-  {
-    title: '助威方向', key: 'side', width: 140,
-    render(row) {
-      return h('div', { style: 'display: flex; gap: 8px;' }, [
-        h('button', {
-          style: selectedSaltRoadBattlefieldId.value === row.battlefieldId && selectedSaltRoadSideValue.value === 1
-            ? 'padding: 4px 12px; background: #18a058; color: white; border: none; border-radius: 4px; cursor: pointer;'
-            : 'padding: 4px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;',
-          onClick: (e) => {
-            e.stopPropagation();
-            selectedSaltRoadBattlefieldId.value = row.battlefieldId;
-            selectedSaltRoadGroupId.value = row.groupId;
-            selectedSaltRoadSideValue.value = 1;
-            selectedSaltRoadWinSid.value = row.leftLegion?.id || null;
-          }
-        }, '← 左军'),
-        h('button', {
-          style: selectedSaltRoadBattlefieldId.value === row.battlefieldId && selectedSaltRoadSideValue.value === 2
-            ? 'padding: 4px 12px; background: #2080f0; color: white; border: none; border-radius: 4px; cursor: pointer;'
-            : 'padding: 4px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;',
-          onClick: (e) => {
-            e.stopPropagation();
-            selectedSaltRoadBattlefieldId.value = row.battlefieldId;
-            selectedSaltRoadGroupId.value = row.groupId;
-            selectedSaltRoadSideValue.value = 2;
-            selectedSaltRoadWinSid.value = row.rightLegion?.id || null;
-          }
-        }, '右军 →'),
-      ]);
-    }
-  },
-  {
-    title: '右军', key: 'rightLegion', width: 280,
-    render(row) {
-      const leg = row.rightLegion;
-      return h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
-        h('img', { src: leg?.logo || '', style: { width: '32px', height: '32px', borderRadius: '4px' } }),
-        h('div', null, [
-          h('div', { style: 'font-weight: bold;' }, leg?.name || '-'),
-          h('div', { style: 'font-size: 12px; color: #888;' }, `战力: ${formatPower(leg?.power || 0)}`),
-        ]),
-      ]);
-    }
-  },
-];
-
-const openSaltRoadCheerModal = async () => {
-  showSaltRoadCheerModal.value = true;
-  selectedSaltRoadBattlefieldId.value = null;
-  selectedSaltRoadGroupId.value = null;
-  selectedSaltRoadSideValue.value = null;
-  selectedSaltRoadWinSid.value = null;
-  saltRoadOpponentList.value = [];
-  await fetchSaltRoadOpponents();
-};
-
-const closeSaltRoadCheerModal = () => {
-  for (const tokenId of selectedTokens.value) {
-    tokenStore.closeWebSocketConnection(tokenId);
-  }
-  showSaltRoadCheerModal.value = false;
-};
-
-const fetchSaltRoadOpponents = async () => {
-  if (selectedTokens.value.length === 0) {
-    message.warning("请先选择一个账号");
-    return;
-  }
-
-  const tokenId = selectedTokens.value[0];
-  const token = tokens.value.find(t => t.id === tokenId);
-
-  saltRoadCheerLoading.value = true;
-  try {
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `正在使用 ${token.name} 获取天宫助威对阵列表...`,
-      type: "info",
-    });
-
-    // Ensure connection
-    const status = tokenStore.getWebSocketStatus(tokenId);
-    if (status === "connecting") {
-      let retries = 0;
-      while (tokenStore.getWebSocketStatus(tokenId) !== "connected" && retries < 20) {
-        await new Promise(r => setTimeout(r, 1000));
-        retries++;
-      }
-      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
-        throw new Error(`连接 ${token.name} 超时`);
-      }
-    } else if (status !== "connected") {
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `正在连接 ${token.name}...`,
-        type: "info",
-      });
-      const result = await tokenStore.createWebSocketConnection(tokenId, token.token, token.wsUrl);
-      if (!result) {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token.name} 连接由其他进程处理，等待...`,
-          type: "info",
-        });
-      }
-      let retries = 0;
-      while (tokenStore.getWebSocketStatus(tokenId) !== "connected" && retries < 20) {
-        await new Promise(r => setTimeout(r, 1000));
-        retries++;
-      }
-      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
-        throw new Error(`连接 ${token.name} 失败`);
-      }
-    }
-
-    // 获取 phase 参数
-    let phase = saltRoadPhaseInput.value.trim();
-    
-    // 如果没有手动输入 phase，先尝试通过 saltroad_getwartype 自动获取
-    if (!phase) {
-      try {
-        const firstSaturday = getFirstSaturdayOfMonth();
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `正在获取当前盐战信息 (date=${firstSaturday})...`,
-          type: "info",
-        });
-        const warTypeResp = await tokenStore.sendMessageWithPromise(tokenId, "saltroad_getwartype", { date: firstSaturday }, 10000);
-        if (warTypeResp) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `盐战信息: ${JSON.stringify(warTypeResp).substring(0, 300)}`,
-            type: "info",
-          });
-          // 尝试从响应中提取 phase/date 信息
-          if (warTypeResp.phase) {
-            phase = String(warTypeResp.phase);
-          } else if (warTypeResp.date) {
-            phase = String(warTypeResp.date);
-          } else if (warTypeResp.currentPhase) {
-            phase = String(warTypeResp.currentPhase);
-          }
-        }
-      } catch (e) {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `获取盐战信息失败: ${e.message}，继续尝试直接获取对阵...`,
-          type: "warning",
-        });
-      }
-    }
-
-    // 如果仍然没有 phase，使用上周六的日期 (YYMMDD格式) 作为兜底
-    if (!phase) {
-      const lastSat = getLastSaturday(); // YYYY/MM/DD
-      // 转换为 YYMMDD 格式
-      const parts = lastSat.split('/');
-      if (parts.length === 3) {
-        phase = parts[0].slice(2) + parts[1] + parts[2];
-      }
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `使用兜底 phase: ${phase} (上周六: ${lastSat})`,
-        type: "info",
-      });
-    }
-
-    const requestParams = { phase };
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `请求参数: ${JSON.stringify(requestParams)}`,
-      type: "info",
-    });
-
-    const response = await tokenStore.sendMessageWithPromise(tokenId, "saltroad_getoutopponent", requestParams, 10000);
-    if (response && response.opponentList) {
-      saltRoadPhase.value = response.phase || '';
-      saltRoadOpponentList.value = response.opponentList.map(item => ({
-        battlefieldId: item.battlefieldId,
-        groupId: item.groupId,
-        winSid: item.winSid,
-        leftLegion: item.leftLegion,
-        rightLegion: item.rightLegion,
-      }));
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `获取到 ${saltRoadOpponentList.value.length} 场对阵`,
-        type: "success",
-      });
-    } else {
-      message.warning("获取对阵列表为空");
-      saltRoadOpponentList.value = [];
-    }
-  } catch (error) {
-    console.error("Fetch saltroad opponents error:", error);
-    message.error("获取对阵列表失败：" + error.message);
-  } finally {
-    saltRoadCheerLoading.value = false;
-  }
-};
-
-const applySaltRoadCheer = async () => {
-  if (!selectedSaltRoadSideValue.value) {
-    message.warning("请选择助威方向（左军/右军）");
-    return;
-  }
-
-  // 调用批量助威任务（自动获取 phase 和对阵列表）
-  await batchSaltRoadCheer(selectedSaltRoadSideValue.value, saltRoadVoteCount.value);
-
-  // 关闭弹窗
-  closeSaltRoadCheerModal();
-};
-
-// 弹窗关闭时释放连接槽
-watch(showSaltRoadCheerModal, (newVal) => {
-  if (!newVal) {
-    for (const tokenId of selectedTokens.value) {
-      tokenStore.closeWebSocketConnection(tokenId);
-    }
-  }
-});
-
 const getRemainingTimeText = () => {
   // 剩余时间文本（月度任务类似的逻辑）
   // 这里可以计算距离月底/月底的具体时间
@@ -7563,101 +6795,9 @@ const handleSaltCupBet = async (matchId, pick) => {
   await batchSaltCupBet(matchId, pick);
 };
 
-// Apex Guess Functions (逐鹿盐山竞猜)
-const openApexGuessModal = () => {
-  showApexGuessModal.value = true;
-  apexGuessMatchList.value = [];
-};
-
-const fetchApexGuessList = async () => {
-  if (selectedTokens.value.length === 0) {
-    message.warning("请先选择一个账号用于获取对阵数据");
-    return;
-  }
-
-  const tokenId = selectedTokens.value[0];
-  const token = tokens.value.find(t => t.id === tokenId);
-
-  apexGuessLoading.value = true;
-  apexGuessMatchList.value = [];
-  try {
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `正在使用 ${token.name} 获取逐鹿盐山对阵列表...`,
-      type: "info",
-    });
-
-    const status = tokenStore.getWebSocketStatus(tokenId);
-    if (status !== "connected") {
-      tokenStore.createWebSocketConnection(tokenId, token.token, token.wsUrl);
-      await new Promise(r => setTimeout(r, 2000));
-    }
-
-    const matches = [];
-    let idx = 0;
-    for (let page = 0; page < 40; page++) {
-      const res = await tokenStore.sendMessageWithPromise(tokenId, "apex_getguesslist", { scheduleId: apexGuessScheduleId.value, idx }, 5000);
-      const list = res?.apexGuessList;
-      if (!Array.isArray(list) || list.length === 0) break;
-      for (const pair of list) {
-        if (Array.isArray(pair) && pair.length >= 2) {
-          matches.push({ left: pair[0], right: pair[1], picked: null });
-        }
-      }
-      if (res?.last === true) break;
-      idx += 5;
-    }
-
-    apexGuessMatchList.value = matches;
-    if (matches.length === 0) {
-      message.warning("获取对阵数据为空");
-    }
-  } catch (error) {
-    console.error("Fetch apex guess list error:", error);
-    message.error("获取对阵数据失败: " + error.message);
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `获取对阵数据失败: ${error.message}`,
-      type: "error",
-    });
-  } finally {
-    apexGuessLoading.value = false;
-  }
-};
-
-const apexGuessPickAll = (mode) => {
-  apexGuessMatchList.value.forEach((match) => {
-    if (mode === 'left') {
-      match.picked = 'left';
-    } else if (mode === 'right') {
-      match.picked = 'right';
-    } else if (mode === 'power') {
-      match.picked = (match.right?.power || 0) > (match.left?.power || 0) ? 'right' : 'left';
-    } else if (mode === 'cheer') {
-      match.picked = (match.right?.cheerCnt || 0) > (match.left?.cheerCnt || 0) ? 'right' : 'left';
-    }
-  });
-};
-
-const handleApexGuess = async () => {
-  const teamIds = apexGuessMatchList.value
-    .filter(m => m.picked)
-    .map(m => (m.picked === 'left' ? m.left?.teamId : m.right?.teamId))
-    .filter(Boolean);
-  if (teamIds.length === 0) {
-    message.warning("请先选择竞猜队伍");
-    return;
-  }
-  showApexGuessModal.value = false;
-  await batchApexGuess(apexGuessScheduleId.value, teamIds);
-};
-
 // 预设护卫成员状态（账号单独设置弹窗）
 const settingsHelperLoading = ref(false);
 const settingsHelperMembers = ref([]);
-
-// 黑市采购清单区块折叠状态（默认收起）
-const purchaseListCollapsed = ref(true);
 
 // Settings Modal State
 const showSettingsModal = ref(false);
@@ -7813,7 +6953,7 @@ const heroOptions = [
   { label: "姜维", value: 114 },
   { label: "公孙瓒", value: 116 },
   { label: "典韦", value: 117 },
-  { label: "赵云", value: 118 },
+  { label: "超云", value: 118 },
   { label: "张角", value: 120 },
   { label: "鲁肃", value: 121 },
 ];
@@ -8100,7 +7240,7 @@ const batchSettings = reactive({
   recruitCount: 100,
   defaultBoxType: 2001,
   defaultFishType: 1,
-  targetBoxRounds: 1,  // 定时按积分开箱目标轮数（每轮8000分，最多4轮）
+  targetBoxPoints: 1000,
   receiverId: "",
   tokenListColumns: 4,  // 默认4列
   autoColumns: true,    // 默认启用自动列数
@@ -8180,21 +7320,13 @@ const batchSettings = reactive({
   skinChallengeMaxFail: 5,          // 换皮闯关连续失败次数上限，默认5次
 });
 
-// 账号搜索关键词（输入框实时绑定）
+// 账号搜索关键词
 const tokenSearchKeyword = ref("");
-// 防抖后的搜索关键词（实际过滤使用，停止输入300ms后才更新）
-const debouncedTokenSearchKeyword = ref("");
-let tokenSearchDebounceTimer = null;
 
-// 处理账号搜索（300ms防抖，避免每敲一个字符就触发全量过滤渲染）
+// 处理账号搜索
 const handleTokenSearch = () => {
-  if (tokenSearchDebounceTimer) {
-    clearTimeout(tokenSearchDebounceTimer);
-  }
-  tokenSearchDebounceTimer = setTimeout(() => {
-    debouncedTokenSearchKeyword.value = tokenSearchKeyword.value;
-    tokenSearchDebounceTimer = null;
-  }, 300);
+  // 搜索逻辑已在 sortedTokens 计算属性中实现
+  // 这里可以添加额外的搜索逻辑，如高亮显示等
 };
 
 // Load batch settings from localStorage
@@ -8295,19 +7427,12 @@ const saveBatchSettings = () => {
 // 开关切换时自动保存（不弹窗提示）
 const autoSaveBatchSettings = () => {
   try {
-    console.log('🔧 [AutoSave] 当前设置:', { 
-      maxLevelEnabled: batchSettings.petMergeMaxLevelEnabled,
-      maxLevel: batchSettings.petMergeMaxLevel
-    }); // 🔍 调试日志
     // 剥离运行时标志
     const wasSingleMode = batchSettings.singleAccountMode;
     batchSettings.singleAccountMode = false;
     localStorage.setItem("batchSettings", JSON.stringify(batchSettings));
-    console.log('💾 [AutoSave] 已保存到 localStorage'); // 🔍 调试日志
     batchSettings.singleAccountMode = wasSingleMode;
-  } catch (e) {
-    console.error('❌ [AutoSave] 保存失败:', e); // 🔍 错误日志
-  }
+  } catch (e) { /* ignore */ }
 };
 
 // 恢复模块延迟默认值（现在为延迟分组）
@@ -8553,97 +7678,22 @@ const taskForm = reactive({
   nightmarePresetIds: [], // 十殿阎罗挑战预设ID列表
   nightmarePresetDelay: 10, // 预设间执行间隔（秒），默认10秒
   saltCupBetPick: 1, // 比赛竞猜选项: 1=主胜, 2=平局, 3=客胜
-  apexGuessScheduleId: 21, // 逐鹿盐山竞猜赛程: 20=64强 21=32强 22=16强 23=8强 24=4强 25=季军赛 26=决赛
-  apexGuessStrategy: 'power', // 逐鹿盐山竞猜策略: left=全押蓝方 right=全押红方 power=押高战力 cheer=押多助威
-  saltRoadBattlefieldId: '', // 天宫助威战场ID（已废弃，保留兼容）
-  saltRoadSide: 1, // 天宫助威方向: 1=左军, 2=右军
-  saltRoadVoteCount: 1, // 天宫助威次数
-  saltRoadLegionId: null, // 天宫助威预选军团ID
-  saltRoadLegionName: '', // 天宫助威预选军团名（显示用）
   bookUpgradeTypes: ['hero', 'fish', 'skin'], // 图鉴升星类型: hero=英雄, fish=鱼灵, skin=皮肤
-  simplifiedDailyItems: SIMPLIFIED_TASK_ITEMS.map(item => item.key), // 日常精简补齐勾选的任务项（默认全选）
-  maxActive: 0, // 任务级并发控制：0=使用全局设置，>0=使用此任务的并发数
 });
-
-// 定时任务配置 - 天宫助威对阵列表获取
-const taskSaltRoadOpponents = ref([]);
-const taskSaltRoadLoading = ref(false);
-
-const fetchTaskSaltRoadOpponents = async () => {
-  const formTokens = taskForm.selectedTokens;
-  if (!formTokens || formTokens.length === 0) {
-    message.warning("请先在定时任务中选择至少一个账号");
-    return;
-  }
-  const tokenId = formTokens[0];
-  const token = tokens.value.find(t => t.id === tokenId);
-  taskSaltRoadLoading.value = true;
-  try {
-    // 确保连接
-    const status = tokenStore.getWebSocketStatus(tokenId);
-    if (status !== 'connected') {
-      addLog({ time: new Date().toLocaleTimeString(), message: `正在连接 ${token.name} 以获取对阵列表...`, type: "info" });
-      await tokenStore.createWebSocketConnection(tokenId, token.token, token.wsUrl);
-      let retries = 0;
-      while (tokenStore.getWebSocketStatus(tokenId) !== 'connected' && retries < 15) {
-        await new Promise(r => setTimeout(r, 1000));
-        retries++;
-      }
-      if (tokenStore.getWebSocketStatus(tokenId) !== 'connected') {
-        throw new Error(`连接 ${token.name} 超时`);
-      }
-    }
-
-    // 获取 phase
-    let phase = null;
-    try {
-      const firstSaturday = getFirstSaturdayOfMonth();
-      const warTypeResp = await tokenStore.sendMessageWithPromise(tokenId, "saltroad_getwartype", { date: firstSaturday }, 10000);
-      if (warTypeResp) {
-        if (warTypeResp.phase) phase = String(warTypeResp.phase);
-        else if (warTypeResp.date) phase = String(warTypeResp.date);
-        else if (warTypeResp.currentPhase) phase = String(warTypeResp.currentPhase);
-      }
-    } catch (e) { /* ignore */ }
-    if (!phase) {
-      const lastSat = getLastSaturday();
-      const parts = lastSat.split('/');
-      if (parts.length === 3) phase = parts[0].slice(2) + parts[1] + parts[2];
-    }
-
-    const opponentResp = await tokenStore.sendMessageWithPromise(tokenId, "saltroad_getoutopponent", { phase }, 10000);
-    if (opponentResp && opponentResp.opponentList && opponentResp.opponentList.length > 0) {
-      taskSaltRoadOpponents.value = opponentResp.opponentList.map(item => ({
-        groupId: item.groupId,
-        leftLegion: item.leftLegion,
-        rightLegion: item.rightLegion,
-      }));
-      addLog({ time: new Date().toLocaleTimeString(), message: `获取到 ${taskSaltRoadOpponents.value.length} 场对阵`, type: "success" });
-    } else {
-      message.warning("获取对阵列表为空");
-      taskSaltRoadOpponents.value = [];
-    }
-  } catch (error) {
-    message.error("获取对阵列表失败：" + error.message);
-    taskSaltRoadOpponents.value = [];
-  } finally {
-    taskSaltRoadLoading.value = false;
-  }
-};
 
 // 任务分组定义
 const taskGroupDefinitions = [
-  { name: 'daily', label: '日常', tasks: ['startBatch', 'batchSimplifiedDaily', 'claimHangUpRewards', 'batchAddHangUpTime', 'batchHangUpUpgrade', 'resetBottles', 'batchlingguanzi', 'batchclubsign', 'batchLegionSignup', 'batchPayloadSignup', 'switchSaltFieldPeachFormation', 'batchStudy', 'batcharenafight', 'batchSmartSendCar', 'batchClaimCars', 'batchCarResearchUpgrade', 'store_purchase', 'batch_mail_claim_and_cleanup'] },
+  { name: 'daily', label: '日常', tasks: ['startBatch', 'claimHangUpRewards', 'batchAddHangUpTime', 'batchHangUpUpgrade', 'resetBottles', 'batchlingguanzi', 'batchclubsign', 'batchLegionSignup', 'batchPayloadSignup', 'switchSaltFieldPeachFormation', 'batchStudy', 'batcharenafight', 'batchSmartSendCar', 'batchClaimCars', 'batchCarResearchUpgrade', 'store_purchase', 'batch_mail_claim_and_cleanup'] },
   { name: 'welfare', label: '福利', tasks: ['charge_claimaddup_rewards', 'collection_claimfreereward', 'gacha_drawreward', 'claim_recruit_welfare', 'pkroom_appoint', 'saltcup26_openstarpack_use'] },
   { name: 'dungeon', label: '副本', tasks: ['climbTower', 'batchmengjing', 'skinChallenge', 'skinTreasure', 'batchClaimPeachTasks', 'batchBuyDreamItems'] },
   { name: 'baoku', label: '宝库', tasks: ['batchbaoku13', 'batchbaoku45'] },
   { name: 'weirdTower', label: '怪异塔', tasks: ['climbWeirdTower', 'batchUseItems', 'batchMergeItems', 'batchClaimFreeEnergy', 'claim_weird_tower_all', 'claim_weird_tower_pass'] },
   { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
-  { name: 'pet', label: '宠物', tasks: ['legion_buy_spotted_egg', 'use_spotted_egg', 'claim_pet_book', 'batch_pet_merge', 'egg_merge_cycle', 'batch_pet_upgrade'] },
+  { name: 'pet', label: '宠物', tasks: ['legion_buy_spotted_egg', 'use_spotted_egg', 'claim_pet_book', 'batch_pet_merge', 'batch_pet_upgrade'] },
   { name: 'nightmare', label: '十殿', tasks: ['batchNightmareChallengePresets', 'nightmare_draw_lottery', 'nightmare_claim_book_reward', 'star_drawturntable', 'batch_star_challenge'] },
   { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchAutumnUseItem', 'batchClaimCdkReward', 'batchClaimApexRewards', 'batchSaltCupBet'] },
   { name: 'legacy', label: '功法', tasks: ['batchLegacyHangup', 'batchLegacyClaim', 'batchLegacyGiftSendEnhanced', 'batchLegacyClaimGiftTask'] },
-  { name: 'monthly', label: '月度', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items', 'batchSaltRoadCheer', 'batchApexGuess', 'batchApexGuessClaim'] },
+  { name: 'monthly', label: '月度', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items'] },
   { name: 'consumeActivity', label: '消耗活动', tasks: ['batchConsumeActivity', 'batchClaimConsumeRewards', 'batchApexCheer', 'batchUseActivityItem', 'batchActivityExchange'] }
 ];
 
@@ -8939,17 +7989,8 @@ const cancelTaskEdit = () => {
     taskForm.nightmarePresetIds = [];
     taskForm.nightmarePresetDelay = 10;
     taskForm.saltCupBetPick = 1;
-    taskForm.apexGuessScheduleId = 21;
-    taskForm.apexGuessStrategy = 'power';
-    taskForm.saltRoadBattlefieldId = '';
-    taskForm.saltRoadSide = 1;
-    taskForm.saltRoadVoteCount = 1;
-    taskForm.saltRoadLegionId = null;
-    taskForm.saltRoadLegionName = '';
     taskForm.bookUpgradeTypes = ['hero', 'fish', 'skin'];
-    taskForm.maxActive = 0;
     taskForm.fragmentPackItems = [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005];
-    taskSaltRoadOpponents.value = [];
     taskScheduleSelectedGroupIds.value = [];
   }, 300);
 };
@@ -9062,15 +8103,7 @@ const openTaskModal = () => {
   taskForm.nightmarePresetIds = [];
   taskForm.nightmarePresetDelay = 10;
   taskForm.saltCupBetPick = 1;
-  taskForm.apexGuessScheduleId = 21;
-  taskForm.apexGuessStrategy = 'power';
-  taskForm.saltRoadBattlefieldId = '';
-  taskForm.saltRoadSide = 1;
-  taskForm.saltRoadVoteCount = 1;
-  taskForm.saltRoadLegionId = null;
-  taskForm.saltRoadLegionName = '';
   taskForm.bookUpgradeTypes = ['hero', 'fish', 'skin'];
-  taskForm.maxActive = 0;
   
   // 碎片礼包配置（默认全选）
   taskForm.fragmentPackItems = [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005];
@@ -9079,7 +8112,6 @@ const openTaskModal = () => {
   console.log('[新增任务] weeklyMarketItems:', taskForm.weeklyMarketItems);
   console.log('[新增任务] legionStoreItems:', taskForm.legionStoreItems);
   
-  taskSaltRoadOpponents.value = [];
   taskScheduleSelectedGroupIds.value = [];
   showTaskModal.value = true;
 };
@@ -9261,16 +8293,7 @@ const editTask = (task) => {
     nightmarePresetIds: task.nightmarePresetIds || [],
     nightmarePresetDelay: task.nightmarePresetDelay || 10,
     saltCupBetPick: task.saltCupBetPick !== undefined ? task.saltCupBetPick : 1,
-    apexGuessScheduleId: task.apexGuessScheduleId !== undefined ? task.apexGuessScheduleId : 21,
-    apexGuessStrategy: task.apexGuessStrategy || 'power',
-    saltRoadBattlefieldId: task.saltRoadBattlefieldId || '',
-    saltRoadSide: task.saltRoadSide !== undefined ? task.saltRoadSide : 1,
-    saltRoadVoteCount: task.saltRoadVoteCount || 1,
-    saltRoadLegionId: task.saltRoadLegionId || null,
-    saltRoadLegionName: task.saltRoadLegionName || '',
     bookUpgradeTypes: task.bookUpgradeTypes && task.bookUpgradeTypes.length > 0 ? [...task.bookUpgradeTypes] : ['hero', 'fish', 'skin'],
-    simplifiedDailyItems: task.simplifiedDailyItems && task.simplifiedDailyItems.length > 0 ? [...task.simplifiedDailyItems] : SIMPLIFIED_TASK_ITEMS.map(item => item.key),
-    maxActive: task.maxActive !== undefined ? task.maxActive : 0, // 任务级并发控制：0=使用全局
     pushStartTime: task.pushStartTime ? (() => {
       const [h, m] = task.pushStartTime.split(':').map(Number);
       const d = new Date();
@@ -9539,16 +8562,7 @@ const saveTask = () => {
     nightmarePresetIds: [...(taskForm.nightmarePresetIds || [])],
     nightmarePresetDelay: taskForm.nightmarePresetDelay || 10,
     saltCupBetPick: taskForm.saltCupBetPick || 1,
-    apexGuessScheduleId: taskForm.apexGuessScheduleId || 21,
-    apexGuessStrategy: taskForm.apexGuessStrategy || 'power',
-    saltRoadBattlefieldId: taskForm.saltRoadBattlefieldId || '',
-    saltRoadSide: taskForm.saltRoadSide || 1,
-    saltRoadVoteCount: taskForm.saltRoadVoteCount || 1,
-    saltRoadLegionId: taskForm.saltRoadLegionId || null,
-    saltRoadLegionName: taskForm.saltRoadLegionName || '',
     bookUpgradeTypes: [...(taskForm.bookUpgradeTypes || ['hero', 'fish', 'skin'])],
-    simplifiedDailyItems: [...(taskForm.simplifiedDailyItems || SIMPLIFIED_TASK_ITEMS.map(item => item.key))],
-    maxActive: taskForm.maxActive || 0, // 任务级并发控制：0=使用全局设置
   };
 
   let isNew = !editingTask.value;
@@ -9587,18 +8601,6 @@ const deleteTask = (taskId) => {
       type: "info",
     });
     message.success("定时任务已删除");
-  }
-};
-
-// 快捷修改任务并发数（任务卡片外部控件）
-const updateTaskMaxActive = (task, val) => {
-  const newVal = val || 0;
-  const idx = scheduledTasks.value.findIndex(t => t.id === task.id);
-  if (idx !== -1) {
-    scheduledTasks.value[idx].maxActive = newVal;
-    saveScheduledTasks();
-    const label = newVal > 0 ? `${newVal} 个并发` : '全局设置';
-    message.success(`${task.name} 并发已设为: ${label}`);
   }
 };
 
@@ -10187,7 +9189,7 @@ const getFullBatchSettings = () => ({
   recruitCount: batchSettings.recruitCount,
   defaultBoxType: batchSettings.defaultBoxType,
   defaultFishType: batchSettings.defaultFishType,
-  targetBoxRounds: batchSettings.targetBoxRounds,
+  targetBoxPoints: batchSettings.targetBoxPoints,
   receiverId: batchSettings.receiverId || "",
   carMinColor: batchSettings.carMinColor,
   tokenListColumns: batchSettings.tokenListColumns,
@@ -10195,8 +9197,6 @@ const getFullBatchSettings = () => ({
   useGoldRefreshFallback: batchSettings.useGoldRefreshFallback,
   commandDelay: batchSettings.commandDelay,
   taskDelay: batchSettings.taskDelay,
-  dailySubtaskDelay: batchSettings.dailySubtaskDelay,
-  rewardClaimDelay: batchSettings.rewardClaimDelay,
   actionDelay: batchSettings.actionDelay,
   battleDelay: batchSettings.battleDelay,
   refreshDelay: batchSettings.refreshDelay,
@@ -10227,9 +9227,6 @@ const getFullBatchSettings = () => ({
   petMergeMaxLevelEnabled: batchSettings.petMergeMaxLevelEnabled,
   petMergeMaxLevel: batchSettings.petMergeMaxLevel,
   dreamPurchaseList: batchSettings.dreamPurchaseList,
-  singleAccountSpeedUp: batchSettings.singleAccountSpeedUp,
-  singleAccountMultiplier: batchSettings.singleAccountMultiplier,
-  delayGroups: { ...batchSettings.delayGroups },
   moduleDelays: { ...batchSettings.moduleDelays },
   manualBuyItems: batchSettings.manualBuyItems || [],
   collectionExchangeItems: batchSettings.collectionExchangeItems || [],
@@ -10642,13 +9639,6 @@ const exportConfig = async () => {
       if (saved) nightmarePresetsData = JSON.parse(saved);
     } catch (e) { /* ignore */ }
 
-    // 游戏登录页分组数据
-    let loginGroupsData = null;
-    try {
-      const saved = localStorage.getItem('loginGroups');
-      if (saved) loginGroupsData = JSON.parse(saved);
-    } catch (e) { /* ignore */ }
-
     // 阵容助手保存数据（按 token.id 收集）
     const lineupDataMap = {};
     tokens.value.forEach((token) => {
@@ -10664,7 +9654,7 @@ const exportConfig = async () => {
     });
 
     const exportData = {
-      version: "2.5",
+      version: "2.4",
       exportTime: new Date().toISOString(),
       configType: "full",
       tokens: mapTokensForExport(tokens.value),
@@ -10677,7 +9667,6 @@ const exportConfig = async () => {
       taskTemplates: taskTemplates.value || [],
       nightmarePresets: nightmarePresetsData || [],
       lineups: lineupDataMap,
-      loginGroups: loginGroupsData || [],
     };
 
     const filename = `xyzw_full_config_${new Date().toISOString().slice(0, 10)}.json`;
@@ -10724,7 +9713,7 @@ const importConfig = async ({ file }) => {
       return;
     }
 
-    const stats = { tokens: 0, tasks: 0, bin: 0, settings: 0, groups: 0, templates: 0, nightmare: 0, lineups: 0, loginGroups: 0 };
+    const stats = { tokens: 0, tasks: 0, bin: 0, settings: 0, groups: 0, templates: 0, nightmare: 0, lineups: 0 };
     const tokenIdMapping = {};
 
     // 导入tokens
@@ -10797,19 +9786,10 @@ const importConfig = async ({ file }) => {
 
     // 导入批量设置
     if (importData.batchSettings && typeof importData.batchSettings === 'object') {
-      const importedBatch = { ...importData.batchSettings };
-      // 深度合并 moduleDelays / delayGroups，保留新增模块的默认值
-      if (importedBatch.moduleDelays && batchSettings.moduleDelays) {
-        Object.assign(batchSettings.moduleDelays, importedBatch.moduleDelays);
-        delete importedBatch.moduleDelays;
+      if (importData.batchSettings.moduleDelays && batchSettings.moduleDelays) {
+        Object.assign(batchSettings.moduleDelays, importData.batchSettings.moduleDelays);
       }
-      if (importedBatch.delayGroups && batchSettings.delayGroups) {
-        Object.assign(batchSettings.delayGroups, importedBatch.delayGroups);
-        delete importedBatch.delayGroups;
-      }
-      Object.assign(batchSettings, importedBatch);
-      // 运行时标志不导入
-      batchSettings.singleAccountMode = false;
+      Object.assign(batchSettings, importData.batchSettings);
       try { localStorage.setItem("batchSettings", JSON.stringify(batchSettings)); } catch (e) { /* ignore */ }
     }
 
@@ -10915,41 +9895,6 @@ const importConfig = async ({ file }) => {
       }
     }
 
-    // 导入游戏登录页分组
-    if (Array.isArray(importData.loginGroups) && importData.loginGroups.length > 0) {
-      try {
-        const existingLoginGroups = JSON.parse(localStorage.getItem('loginGroups') || '[]');
-        const existingLgIds = new Set(existingLoginGroups.map((g) => g.id));
-        const localTokenIdsForLg = new Set(gameTokens.value.map((t) => t.id));
-        importData.loginGroups.forEach((group) => {
-          if (!group.id || !group.name) return;
-          // 映射跨设备ID并过滤本地不存在的账号
-          const validTokenIds = (group.tokenIds || [])
-            .map((id) => tokenIdMapping[id] || id)
-            .filter((id) => localTokenIdsForLg.has(id));
-          if (existingLgIds.has(group.id)) {
-            // 已存在的分组：合并tokenIds（去重）
-            const existing = existingLoginGroups.find((g) => g.id === group.id);
-            if (existing) {
-              existing.tokenIds = [...new Set([...(existing.tokenIds || []), ...validTokenIds])];
-              stats.loginGroups++;
-            }
-          } else {
-            existingLoginGroups.push({
-              id: group.id,
-              name: group.name,
-              color: group.color || '#1677ff',
-              tokenIds: validTokenIds,
-            });
-            stats.loginGroups++;
-          }
-        });
-        if (stats.loginGroups > 0) {
-          localStorage.setItem('loginGroups', JSON.stringify(existingLoginGroups));
-        }
-      } catch (e) { /* ignore */ }
-    }
-
     // 构建消息
     const parts = [];
     if (stats.tokens > 0) parts.push(`${stats.tokens} 个新账号`);
@@ -10958,7 +9903,6 @@ const importConfig = async ({ file }) => {
     if (stats.templates > 0) parts.push(`${stats.templates} 个任务模板`);
     if (stats.nightmare > 0) parts.push(`${stats.nightmare} 个十殿预设`);
     if (stats.lineups > 0) parts.push(`${stats.lineups} 个阵容`);
-    if (stats.loginGroups > 0) parts.push(`${stats.loginGroups} 个登录分组`);
     if (stats.bin > 0) parts.push(`${stats.bin} 个BIN数据`);
     if (stats.settings > 0) parts.push(`${stats.settings} 个任务配置`);
     if (parts.length === 0) parts.push('无新增数据（已存在）');
@@ -11097,19 +10041,6 @@ const isScheduledTaskRunning = ref(false);
 const taskExecutionRecords = ref([]);
 const showTaskRecordsModal = ref(false);
 
-// 展示用记录：去重（startTime+name）后按开始时间倒序（最新在前），避免合并历史记录后顺序错乱和重复项
-const sortedTaskRecords = computed(() => {
-  const seen = new Set();
-  const unique = [];
-  for (const r of taskExecutionRecords.value) {
-    const id = `${r.startTime}-${r.name}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    unique.push(r);
-  }
-  return unique.sort((a, b) => (b.startTime || 0) - (a.startTime || 0));
-});
-
 // 打开任务完成情况Modal（重新加载数据）
 const openTaskRecordsModal = () => {
   // ✅ 从 localStorage 加载历史记录
@@ -11227,13 +10158,6 @@ const saveTaskExecutionRecordsToStorage = () => {
 
 // 清空任务执行情况（内存 + localStorage + 折叠状态）
 const clearTaskExecutionRecords = () => {
-  // ✅ 执行中禁止清空：记录通过数组下标引用更新，清空会导致后续更新写入错误记录（时间/进度错乱）
-  const hasRunning = taskExecutionRecords.value.some(r => r.status === 'running');
-  if (hasRunning || isScheduledTaskRunning.value) {
-    message.warning('有任务正在执行，请等待执行完成后再清空记录');
-    return;
-  }
-
   taskExecutionRecords.value = [];
   
   // 清除 localStorage
@@ -11347,6 +10271,21 @@ const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) =>
     // 执行任务函数
     await taskFunction();
     
+    // ✅ 修复：任务完成后，检查所有账号的 status，将仍然 running/waiting 的账号标记为 failed
+    availableTokens.forEach(tokenId => {
+      const status = tokenStatus.value[tokenId];
+      if (status === 'running' || status === 'waiting' || status === 'waiting_retry') {
+        tokenStatus.value[tokenId] = "failed";
+        tokenFailReasons.value[tokenId] = '任务完成但状态未更新，可能执行卡住';
+        const token = tokens.value.find(t => t.id === tokenId);
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `⚠️ ${token?.name || '未知账号'} 任务完成但状态为 ${status}，标记为失败`,
+          type: "warning",
+        });
+      }
+    });
+    
     // 最后一次更新进度
     updateProgressFromTokenStatus();
     
@@ -11380,10 +10319,10 @@ const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) =>
       type: "success",
     });
   } catch (error) {
-    // ✅ 修复：任务异常时，检查所有账号的 status，将仍未完成的账号标记为 failed
+    // ✅ 修复：任务异常时，检查所有账号的 status，将仍然 running/waiting 的账号标记为 failed
     availableTokens.forEach(tokenId => {
       const status = tokenStatus.value[tokenId];
-      if (status !== 'completed' && status !== 'failed') {
+      if (status === 'running' || status === 'waiting' || status === 'waiting_retry') {
         tokenStatus.value[tokenId] = "failed";
         tokenFailReasons.value[tokenId] = `任务异常: ${error.message?.substring(0, 50) || '未知错误'}`;
       }
@@ -11427,12 +10366,6 @@ const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) =>
     clearInterval(progressTimer);
     // 重置单账号加速标志
     batchSettings.singleAccountMode = false;
-    
-    // ✅ 修复 Bug #1: 手动任务结束后，尝试消费 pendingTaskQueue
-    // 防止定时任务被"静默丢失"
-    setTimeout(() => {
-      processPendingQueue();
-    }, 1000); // 延迟 1 秒确保状态完全释放
   }
 };
 
@@ -11516,40 +10449,6 @@ const getDelayClass = (record) => {
 };
 
 // Health check for the scheduler
-// ✅ 刷新安全检查：判断当前是否可以安全刷新页面（不会中断/丢失定时任务）
-// 刷新页面会导致任务中断，必须等待定时任务执行完之后再刷新
-const isSafeToRefreshPage = () => {
-  // 1. 有任务正在执行或排队等待
-  if (isRunning.value || isScheduledTaskRunning.value || pendingTaskQueue.length > 0) {
-    const reason = isRunning.value ? '批量任务执行中' : isScheduledTaskRunning.value ? `定时任务[${currentScheduledTask?.name || '未知'}]执行中` : `队列中有${pendingTaskQueue.length}个待执行任务`;
-    return { safe: false, reason };
-  }
-  // 2. 底层仍有账号任务在跑（防止 stale 检测误释放 isScheduledTaskRunning 后刷新中断真实任务）
-  const runningSet = tokenStore.runningTokens?.value;
-  if (runningSet && typeof runningSet.size === 'number' && runningSet.size > 0) {
-    return { safe: false, reason: `仍有${runningSet.size}个账号任务活跃` };
-  }
-  // 3. 未来2分钟内有定时任务即将触发（daily 为精确分钟匹配，刷新跨过触发分钟会导致任务被静默丢失）
-  const now = new Date();
-  for (const task of scheduledTasks.value) {
-    if (!task.enabled) continue;
-    for (let i = 0; i <= 2; i++) {
-      const t = new Date(now.getTime() + i * 60000);
-      let willRun = false;
-      if (task.runType === 'daily') {
-        const tStr = t.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' });
-        willRun = tStr === task.runTime;
-      } else if (task.runType === 'cron') {
-        try { willRun = matchesCronExpression(task.cronExpression, t); } catch (e) { /* 解析失败不阻塞刷新 */ }
-      }
-      if (willRun) {
-        return { safe: false, reason: `定时任务[${task.name}]将在${i}分钟内触发` };
-      }
-    }
-  }
-  return { safe: true, reason: '' };
-};
-
 const healthCheck = () => {
   // If interval is not running, restart it
   if (!intervalId.value) {
@@ -11583,22 +10482,24 @@ const healthCheck = () => {
           type: "warning",
         });
       } else {
-        // ✅ 定时任务超 2 小时仍运行 → 直接终止并清理 (Bug #2)
-        console.error(`[${new Date().toISOString()}] 定时任务卡住超过 2 小时，强制结束`);
-        shouldStop.value = true;
+        // ✅ 定时任务超2小时仍运行，强制结束
+        console.error(
+          `[${new Date().toISOString()}] 定时任务卡住超过2小时，强制结束`,
+        );
+        shouldStop.value = true; // 通知正在执行的任务停止
         isScheduledTaskRunning.value = false;
         currentScheduledTask = null;
         scheduledTaskStartTime = null;
         isRunning.value = false;
         currentRunningTokenId.value = null;
-        tokenStore.runningTokens?.value.forEach(tokenId => {
+        // 清理所有 runningTokens 状态并关闭 WebSocket 连接
+        tokenStore.runningTokens.value.forEach(tokenId => {
           tokenStore.closeWebSocketConnection(tokenId);
           tokenStore.setTokenRunning(tokenId, false);
         });
-        updateLastTaskExecution();
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: "=== 检测到定时任务执行已超过 2 小时，已强制结束 ===",
+          message: "=== 检测到定时任务执行已超过2小时，已强制结束当前任务 ===",
           type: "warning",
         });
       }
@@ -11608,97 +10509,19 @@ const healthCheck = () => {
   // 兜底检查：isRunning=false 但 isScheduledTaskRunning 仍为 true（异常情况，如子任务 finally 已重置 isRunning 但外层未清理）
   if (!isRunning.value && isScheduledTaskRunning.value && scheduledTaskStartTime) {
     const elapsed = Date.now() - scheduledTaskStartTime;
-    // ✅ Bug #2: 阈值从 15 分钟进一步降低到 5 分钟
-    if (elapsed > 5 * 60 * 1000) {
-      const taskName = currentScheduledTask?.name || '未知任务';
+    if (elapsed > 260 * 60 * 1000) {
       console.error(
-        `[${new Date().toISOString()}] isRunning=false 但定时任务 [${taskName}] 已持续${Math.round(elapsed/60000)}分钟，重置状态`,
+        `[${new Date().toISOString()}] isRunning=false 但 isScheduledTaskRunning 已持续${Math.round(elapsed/60000)}分钟，重置状态`,
       );
-      // ✅ 通知旧任务停止（防止 stale 清理后旧实例仍在后台跑）
-      shouldStop.value = true;
-      // ✅ 标记孤儿 running 记录为 timeout（用于下次启动前的去重检测）
-      let orphanCount = 0;
-      taskExecutionRecords.value.forEach(r => {
-        if (r.status === 'running' && r.name === taskName) {
-          r.status = 'timeout';
-          r.elapsedStr = `超时 (${Math.round(elapsed/60000)}分钟强制清理)`;
-          r.endTime = Date.now();
-          orphanCount++;
-        }
-      });
       isScheduledTaskRunning.value = false;
       currentScheduledTask = null;
       scheduledTaskStartTime = null;
-      tokenStore.runningTokens?.value.forEach(tokenId => {
+      tokenStore.runningTokens.value.forEach(tokenId => {
         tokenStore.setTokenRunning(tokenId, false);
       });
-      updateLastTaskExecution();
       addLog({
         time: new Date().toLocaleTimeString(),
-        message: `=== 检测到 isRunning=false 但定时任务 [${taskName}] 状态未清理（持续${Math.round(elapsed/60000)}分钟），已兜底重置${orphanCount ? `，标记${orphanCount}条孤儿记录为 timeout` : ''} ===`,
-        type: "warning",
-      });
-    }
-  }
-
-  // ✅ 三层递进式 stale 检测（针对"用户感知无任务执行但队列卡住"场景）
-  // 层 1: 60 秒超激进（基于 tokenStatus 全部完成）
-  // 层 2: 3 分钟常规（基于 runningTokens 无活跃）
-  if (!isRunning.value && isScheduledTaskRunning.value && scheduledTaskStartTime) {
-    const elapsed = Date.now() - scheduledTaskStartTime;
-    const taskName = currentScheduledTask?.name || '未知任务';
-  
-    // 公共：判断 runningTokens 是否还有活跃子任务
-    const runningTokenSet = tokenStore.runningTokens?.value;
-    const hasActiveChildTask = runningTokenSet && typeof runningTokenSet.size === 'number' ? runningTokenSet.size > 0 : false;
-  
-    // 公共：判断 tokenStatus 是否全部为终态（completed/failed）
-    // 仅当选中的账号数>0 且全部有状态时才认为"全部完成"（避免空数组误判）
-    const selectedList = selectedTokens.value || [];
-    const hasTokens = selectedList.length > 0;
-    const allTerminal = hasTokens && selectedList.every(id => {
-      const s = tokenStatus.value?.[id];
-      return s === 'completed' || s === 'failed';
-    });
-  
-    // ✅ 层 1：60 秒超激进（所有账号均已完成/失败 → 说明异步链断裂，任务主体已停摆）
-    // 给任务 60 秒的连接建立/初始 setup 宽容期
-    let triggerLayer = 0;
-    if (!hasActiveChildTask && elapsed > 60 * 1000 && allTerminal) {
-      triggerLayer = 1;
-    }
-    // ✅ 层 2：3 分钟常规（无活跃子账号但 tokenStatus 未全部完成，可能部分账号 waiting_retry）
-    else if (!hasActiveChildTask && elapsed > 3 * 60 * 1000) {
-      triggerLayer = 2;
-    }
-      
-    // ✅ 新增：防止"假执行"导致的误判
-    // 场景：任务依赖验证失败等场景下，scheduledStartTime 刚设置不久（<3 秒），但没有子任务真正执行
-    // 这不是卡死，而是正常提前退出
-    const isVeryEarlyStage = elapsed < 3000 && !hasActiveChildTask;
-  
-    if (triggerLayer > 0 && !isVeryEarlyStage) {
-      console.warn(
-        `[${new Date().toISOString()}] 调度器侧 stale 层${triggerLayer} 触发：定时任务[${taskName}]已持续${Math.round(elapsed/1000)}秒，强制释放`,
-      );
-      // ✅ 通知旧任务停止
-      shouldStop.value = true;
-      // ✅ 标记孤儿 running 记录为 timeout
-      let orphanCount = 0;
-      taskExecutionRecords.value.forEach(r => {
-        if (r.status === 'running' && r.name === taskName) {
-          r.status = 'timeout';
-          r.elapsedStr = `超时（stale层${triggerLayer}清理，${Math.round(elapsed/1000)}秒）`;
-          r.endTime = Date.now();
-          orphanCount++;
-        }
-      });
-      isScheduledTaskRunning.value = false;
-      currentScheduledTask = null;
-      scheduledTaskStartTime = null;
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `⚠️ 定时任务[${taskName}]已无活跃进度达${Math.round(elapsed/1000)}秒（层${triggerLayer}），调度器已强制释放${orphanCount ? `（标记${orphanCount}条孤儿记录）` : ''}`,
+        message: `=== 检测到 isRunning=false 但定时任务状态未清理（持续${Math.round(elapsed/60000)}分钟），已兜底重置 ===`,
         type: "warning",
       });
     }
@@ -11708,13 +10531,14 @@ const healthCheck = () => {
   if (batchSettings.enableRefresh && batchSettings.refreshInterval > 0) {
     const elapsedMinutes = (Date.now() - pageLoadTime) / 1000 / 60;
     if (elapsedMinutes >= batchSettings.refreshInterval) {
-      // ✅ 统一走刷新安全检查：任务执行中/队列非空/账号任务活跃/定时任务即将触发 均推迟刷新
-      const refreshCheck = isSafeToRefreshPage();
-      if (refreshCheck.safe) {
+      // 必须同时检查批量任务、定时任务、以及队列中是否有待执行任务
+      const hasRunningTask = isRunning.value || isScheduledTaskRunning.value || pendingTaskQueue.length > 0;
+      if (!hasRunningTask) {
         console.log(`[${new Date().toISOString()}] Refreshing page as scheduled (Interval: ${batchSettings.refreshInterval}m, Elapsed: ${elapsedMinutes.toFixed(1)}m)`);
         window.location.reload();
       } else {
-         console.log(`[${new Date().toISOString()}] Scheduled refresh postponed: ${refreshCheck.reason}, will refresh after task completion`);
+         const reason = isRunning.value ? '批量任务' : isScheduledTaskRunning.value ? '定时任务' : '队列任务';
+         console.log(`[${new Date().toISOString()}] Scheduled refresh postponed due to running ${reason}, will refresh after task completion`);
          // 标记需要在任务完成后刷新
          shouldRefreshAfterTask.value = true;
       }
@@ -11785,6 +10609,15 @@ const startScheduler = () => {
         }
 
         if (shouldRun) {
+            // ✅ 防重复执行：检查此任务是否在最近1分钟内已触发
+            const lastExecStr = localStorage.getItem(`lastTaskExecution_${task.id}`);
+            if (lastExecStr) {
+              const elapsed = now.getTime() - new Date(lastExecStr).getTime();
+              if (elapsed < 60000) { // 1分钟内已执行过
+                return;
+              }
+            }
+
             // ✅ 不上线时段检查（调度器层：最早拦截，避免任何副作用执行）
             if (task.offlineTimeEnabled && isInOfflineTime()) {
               addLog({
@@ -11794,7 +10627,7 @@ const startScheduler = () => {
               });
               return;
             }
-        
+
             // ✅ 定时任务仅与其他定时任务互斥，不参与日常任务的互斥排队
             // 定时任务绝对优先：日常任务正在执行时，定时任务直接执行，日常任务自动暂停
             if (isScheduledTaskRunning.value && currentScheduledTask) {
@@ -11807,14 +10640,20 @@ const startScheduler = () => {
                 pendingTaskQueue.push(task);
                 addLog({
                   time: currentTime,
-                  message: `⏸️ 定时任务 ${task.name} 加入待执行队列（当前：${currentScheduledTask.name} 执行中，队列：${pendingTaskQueue.length}）`,
+                  message: `⏸️ 定时任务 ${task.name} 加入待执行队列（当前: ${currentScheduledTask.name} 执行中，队列: ${pendingTaskQueue.length}）`,
                   type: "info",
                 });
               }
               return;
             }
-                    
-            // ✅ 启动前安全检查：防止 stale 清理后旧实例仍在运行时启动新实例
+            
+            // Update last execution time with timestamp
+            localStorage.setItem(
+              `lastTaskExecution_${task.id}`,
+              now.toString(),
+            );
+
+            // ===== 推图任务：直接调用 pushStartAll，不走 executeScheduledTask 流程 =====
             if (task.taskType === 'push_map') {
               addLog({
                 time: new Date().toLocaleTimeString(),
@@ -11826,35 +10665,6 @@ const startScheduler = () => {
               return; // 快速返回，不销耗调度器的“正在运行”状态
             }
             // ======================================================
-
-            // ✅ 启动前安全检查：防止 stale 清理后旧实例仍在运行时启动新实例
-            // 1. 检查队列中是否已有相同任务（避免“启动 + 排队”同时发生）
-            if (pendingTaskQueue.some(t => t.id === task.id)) {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⏭️ 定时任务 ${task.name} 已在待执行队列中，跳过本次启动`,
-                type: "info",
-              });
-              return;
-            }
-            // 2. 检查是否有同名孤儿 running 记录（说明旧实例被 stale 强制清理但可能仍在跑）
-            const orphanRunningRecords = taskExecutionRecords.value.filter(
-              r => r.status === 'running' && r.name === task.name
-            );
-            if (orphanRunningRecords.length > 0) {
-              // 标记为 timeout，避免并发执行
-              orphanRunningRecords.forEach(r => {
-                r.status = 'timeout';
-                r.elapsedStr = '超时（启动前孤儿清理）';
-                r.endTime = Date.now();
-              });
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⚠️ 定时任务 ${task.name} 检测到${orphanRunningRecords.length}条孤儿 running 记录，等待健康检查清理后再试`,
-                type: "warning",
-              });
-              return; // ✅ Bug #3 修复：立即返回，等待 healthCheck 清理孤儿后重试
-            }
 
             // 设置任务执行状态并立即更新lastTaskExecution
             isScheduledTaskRunning.value = true;
@@ -11871,36 +10681,10 @@ const startScheduler = () => {
                 type: "error",
               });
             }).finally(() => {
-              // ✅ 确保任务完成后更新 lastTaskExecution
+              // ✅ 确保任务完成后更新lastTaskExecution
               lastTaskExecution = Date.now();
-              
-              // ✅ 修复 Bug #1: 队列消费时绕过 lastTaskExecution 防重检查
-              if (pendingTaskQueue.length > 0) {
-                setTimeout(() => {
-                  const nextTask = pendingTaskQueue.shift();
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `▶️ 定时任务 [${currentScheduledTask.name}] 完成，开始执行队列任务：${nextTask.name}`,
-                    type: "info",
-                  });
-                              
-                  // ✅ 启动新任务（直接设置状态，不经过 scheduler tick 的防重检查）
-                  isScheduledTaskRunning.value = true;
-                  currentScheduledTask = nextTask;
-                  scheduledTaskStartTime = Date.now();
-                  // ✅ 写入 localStorage 防止浏览器崩溃
-                  localStorage.setItem(
-                    `lastTaskExecution_${nextTask.id}`,
-                    now.toString()
-                  );
-                                  
-                  executeScheduledTask(nextTask).catch(error => {
-                    console.error(`队列任务执行错误:`, error);
-                  }).finally(() => {
-                    lastTaskExecution = Date.now();
-                  });
-                }, 1000);
-              }
+              // ✅ 队列处理由 executeScheduledTask 自身的 finally 统一负责，此处不再重复处理
+              // 避免双重队列处理导致竞态条件（同一任务被重复入队或状态冲突）
             });
         }
       });
@@ -11945,22 +10729,6 @@ const startScheduler = () => {
 
           // 找到有效任务，正式出队并执行
           const nextTask = pendingTaskQueue.shift();
-          // ✅ 启动前安全检查：检测孤儿 running 记录
-          const orphanRecords = taskExecutionRecords.value.filter(
-            r => r.status === 'running' && r.name === nextTask.name
-          );
-          if (orphanRecords.length > 0) {
-            orphanRecords.forEach(r => {
-              r.status = 'timeout';
-              r.elapsedStr = '超时（兜底启动前孤儿清理）';
-              r.endTime = Date.now();
-            });
-            addLog({
-              time: currentTime,
-              message: `⚠️ 兜底启动 ${nextTask.name} 前检测到${orphanRecords.length}条孤儿 running 记录，已标记为 timeout`,
-              type: "warning",
-            });
-          }
           addLog({
             time: currentTime,
             message: `▶️ 调度器兜底：从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
@@ -11974,11 +10742,6 @@ const startScheduler = () => {
             console.error(`兜底队列任务执行错误:`, error);
           }).finally(() => {
             lastTaskExecution = Date.now();
-            // ✅ 写入 localStorage
-            localStorage.setItem(
-              `lastTaskExecution_${nextTask.id}`,
-              now.toString()
-            );
           });
           return; // 已找到有效任务并执行，退出兜底逻辑
         }
@@ -11994,8 +10757,8 @@ const startScheduler = () => {
       }
     
       // ✅ 调度器统一处理延迟刷新：在所有任务处理和队列处理完毕后，检查是否需要刷新页面
-      // ✅ 使用统一的刷新安全检查（含账号任务活跃度与即将触发的定时任务）
-      if (shouldRefreshAfterTask.value && isSafeToRefreshPage().safe) {
+      // 这样可以确保当前没有运行中的任务，且队列中没有待执行的任务
+      if (shouldRefreshAfterTask.value && !isRunning.value && !isScheduledTaskRunning.value && pendingTaskQueue.length === 0) {
         console.log(`[${new Date().toISOString()}] All tasks completed, executing postponed page refresh from scheduler tick`);
         shouldRefreshAfterTask.value = false;
         addLog({
@@ -12005,7 +10768,7 @@ const startScheduler = () => {
         });
         setTimeout(() => {
           // 再次确认没有新任务启动
-          if (isSafeToRefreshPage().safe) {
+          if (!isRunning.value && !isScheduledTaskRunning.value && pendingTaskQueue.length === 0) {
             window.location.reload();
           } else {
             shouldRefreshAfterTask.value = true; // 重新标记，等待下次调度器检查
@@ -12057,19 +10820,25 @@ watch(responsiveColumns, (newCols) => {
   }
 });
 
-// 处理手动调节每行数量（仅取消勾选自动时可编辑）
-const handleManualColumnChange = () => {
-  autoSaveBatchSettings();
-};
+// 判断是否是最大化窗口（≥1400px）
+const isMaximizedWindow = computed(() => {
+  return windowWidth.value >= 1400;
+});
 
-// 切换「自动」勾选：勾选后禁用手动输入并立即按窗口宽度自适应，取消勾选后可手动修改
-const handleAutoColumnsToggle = (checked) => {
-  batchSettings.autoColumns = checked;
-  if (checked) {
-    // 立即同步为自动计算的列数
-    batchSettings.tokenListColumns = responsiveColumns.value;
+// 处理手动调节每行数量
+const handleManualColumnChange = () => {
+  // 只有在最大化窗口时才允许手动调节
+  if (isMaximizedWindow.value) {
+    // 用户手动调节时，关闭自动模式
+    if (batchSettings.autoColumns) {
+      batchSettings.autoColumns = false;
+    }
+  } else {
+    // 如果不是最大化窗口，恢复自动模式
+    if (!batchSettings.autoColumns) {
+      batchSettings.autoColumns = true;
+    }
   }
-  autoSaveBatchSettings();
 };
 
 // 窗口大小变化监听
@@ -12080,7 +10849,13 @@ const handleResize = () => {
   resizeTimer = setTimeout(() => {
     const newWidth = window.innerWidth;
     windowWidth.value = newWidth;
-    // 列数模式由「自动」勾选框控制，窗口大小变化不再强制切换
+    
+    // 当窗口缩小到小于1400px时，自动开启自适应模式
+    if (newWidth < 1400 && !batchSettings.autoColumns) {
+      batchSettings.autoColumns = true;
+    }
+    // 当窗口放大到≥1400px时，如果之前是手动模式，保持手动模式
+    // （用户可以通过输入框手动调节）
   }, 100);
 };
 
@@ -12357,38 +11132,10 @@ const verifyTaskDependencies = async (task) => {
   if (hasBoxWeeklyTask && !isBoxWeeklyActivityOpen.value) {
     addLog({
       time: new Date().toLocaleTimeString(),
-      message: `⚠️  当前不是宝箱周，跳过宝箱周任务：${task.selectedTasks.filter(t => boxWeeklyTasks.includes(t)).join(', ')}`,
+      message: `⚠️  当前不是宝箱周，跳过宝箱周任务: ${task.selectedTasks.filter(t => boxWeeklyTasks.includes(t)).join(', ')}`,
       type: "warning",
     });
-    // 返回 false，因为任务无法在当前条件下执行
-    return false;
-  }
-  
-  // 验证黑市周任务是否在黑市周执行
-  const weirdTowerTasks = [
-    'climbWeirdTower',
-    'batchUseItems', 
-    'batchMergeItems',
-    'batchClaimFreeEnergy',
-    'claim_weird_tower_all',
-    'claim_weird_tower_pass',
-    'weekly_market_buy'
-  ];
-  const hasWeirdTowerTask = task.selectedTasks.some(t => weirdTowerTasks.includes(t));
-  if (hasWeirdTowerTask && !isWeirdTowerActivityOpen.value) {
-    // 原逻辑：只有全部任务都是黑市周任务时才阻止启动；
-    // 混合任务放行验证，由执行阶段过滤并记录“跳过不在活动周的任务”
-    const otherTasks = task.selectedTasks.filter(t => !weirdTowerTasks.includes(t));
-    if (otherTasks.length === 0) {
-      // 只显示简化的警告信息，不显示详细周期说明
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `当前不是黑市周，${task.name} 任务需要在黑市周开放期间才能执行`,
-        type: "warning",
-      });
-      // 返回 false，阻止任务启动
-      return false;
-    }
+    // 返回true，但会在执行阶段跳过这些任务
   }
 
   // 直接使用所有选中的token，WebSocket连接由具体任务函数内部管理
@@ -12472,20 +11219,12 @@ const isTaskTimeStillValid = (task, toleranceMinutes = 2) => {
 const executeScheduledTask = async (task) => {
   // ✅ 在函数开始处就定义 availableTokens，确保 catch 块可以访问
   let availableTokens = [];
-  // ✅ originalMaxActive 提升到函数级作用域，确保 finally 块能访问
-  let originalMaxActive = batchSettings.maxActive;
   
   // ✅ 在函数开始处就设置状态(调用者已设置,这里做防御性检查)
   if (!isScheduledTaskRunning.value) {
     isScheduledTaskRunning.value = true;
     currentScheduledTask = task;
   }
-
-  // ✅ 防重复执行：无论从调度器还是队列/兜底路径进入，统一写入触发时间戳
-  // 修复队列执行路径未写入 lastTaskExecution_ 导致同一分钟内重复执行的问题
-  try {
-    localStorage.setItem(`lastTaskExecution_${task.id}`, new Date().toString());
-  } catch (e) { /* ignore */ }
   
   // ✅ 重置停止标志，防止用户手动停止后影响定时任务执行
   shouldStop.value = false;
@@ -12513,9 +11252,9 @@ const executeScheduledTask = async (task) => {
       addLog({
         time: new Date().toLocaleTimeString(),
         message: `=== 定时任务 ${task.name} 依赖验证失败，取消执行 ===`,
-        type: "warning",
+        type: "error",
       });
-      return;  // ✅ finally 块会清理状态
+      return;  // ✅ finally块会清理状态
     }
 
     availableTokens = (
@@ -12670,7 +11409,6 @@ const executeScheduledTask = async (task) => {
     // ✅ 换皮闯关活动检测：在执行前检测，未开启就跳过整个任务
     const skinChallengeTasks = ["skinChallenge", "skinTreasure"];
     const hasSkinChallengeTask = activeTasks.some(t => skinChallengeTasks.includes(t));
-    let skinChallengeConfirmedOpen = false; // ✅ 服务器确认活动已开启标记
     
     if (hasSkinChallengeTask && availableTokens.length > 0) {
       // 需要连接一个Token来检测活动是否开启
@@ -12709,7 +11447,6 @@ const executeScheduledTask = async (task) => {
           // ✅ 严格校验：actEGameInfo 非空 + 活动时间范围内
           isActivityOpen = isActivityTimeValid(rawActId);
           if (isActivityOpen) {
-            skinChallengeConfirmedOpen = true; // ✅ 服务器确认活动开启
             validActId = rawActId;
             // ✅ 成功检测，缓存结果
             try {
@@ -12724,8 +11461,6 @@ const executeScheduledTask = async (task) => {
               type: "success",
             });
           } else {
-            // ✅ 活动已过期，清除缓存防止后续任务误用旧缓存
-            try { localStorage.removeItem('skinChallenge_activityCache'); } catch {}
             addLog({
               time: new Date().toLocaleTimeString(),
               message: `🚫 换皮闯关活动已过期（actId: ${rawActId}，已不在7天周期内）`,
@@ -12733,13 +11468,28 @@ const executeScheduledTask = async (task) => {
             });
           }
         } else {
-          // ✅ actEGameInfo 为空：服务器明确返回无活动，清除缓存防止后续任务误判
-          try { localStorage.removeItem('skinChallenge_activityCache'); } catch {}
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `🚫 服务器返回活动信息为空，活动未开启`,
-            type: "warning",
-          });
+          // ✅ actEGameInfo 为空，检查缓存并校验时间范围
+          try {
+            const cache = JSON.parse(localStorage.getItem('skinChallenge_activityCache') || 'null');
+            if (cache?.actId && cache?.timestamp && (Date.now() - cache.timestamp) < 24 * 60 * 60 * 1000) {
+              if (isActivityTimeValid(cache.actId)) {
+                const hoursAgo = Math.round((Date.now() - cache.timestamp) / 3600000);
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `⚠️ 活动检测返回空，但 ${hoursAgo}小时前缓存显示活动已开启(actId:${cache.actId})且时间未过期，继续执行`,
+                  type: "warning",
+                });
+                isActivityOpen = true;
+                validActId = cache.actId;
+              } else {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `🚫 活动检测返回空，缓存 actId:${cache.actId} 已过期，活动未开启`,
+                  type: "warning",
+                });
+              }
+            }
+          } catch {}
         }
         
         if (!isActivityOpen) {
@@ -12749,13 +11499,11 @@ const executeScheduledTask = async (task) => {
             type: "warning",
           });
           tokenStore.closeWebSocketConnection(testTokenId);
-          releaseConnectionSlot(); // ✅ 修复：预检测获取的连接槽位必须释放，否则并发1时后续任务永久卡死
           return;  // ✅ finally块会清理状态
         }
         
         // 关闭测试连接，后续任务会按需连接
         tokenStore.closeWebSocketConnection(testTokenId);
-        releaseConnectionSlot(); // ✅ 修复：释放连接槽位
       } catch (err) {
         console.error('[换皮闯关检测] 检测失败:', err);
         // ✅ 回退：请求失败时检查缓存并校验时间范围
@@ -12788,12 +11536,10 @@ const executeScheduledTask = async (task) => {
             type: "warning",
           });
           try { tokenStore.closeWebSocketConnection(testTokenId); } catch {}
-          try { releaseConnectionSlot(); } catch {} // ✅ 修复：释放连接槽位
           return;  // ✅ 无法确认活动状态，取消执行
         }
         // 关闭测试连接
         try { tokenStore.closeWebSocketConnection(testTokenId); } catch {}
-        try { releaseConnectionSlot(); } catch {} // ✅ 修复：释放连接槽位
       }
     }
 
@@ -12845,9 +11591,15 @@ const executeScheduledTask = async (task) => {
     for (const taskName of activeTasks) {
       if (shouldStop.value) break;
 
-      // ✅ 移除免费扭蛋的跳过逻辑，允许独立执行（不再受日常任务判断控制）
-      // 原逻辑：免费扭蛋已内置在日常任务的 buildActivityTasks 中（周二/四/六自动执行+累抽），无需独立执行
-      // 现逻辑：允许用户手动点击免费扭蛋按钮独立执行，不受日常任务是否包含的影响
+      // 免费扭蛋已内置在日常任务的 buildActivityTasks 中（周二/四/六自动执行+累抽），无需独立执行
+      if (taskName === "gacha_drawreward") {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `跳过任务: 免费扭蛋 (已包含在日常任务中，无需独立执行)`,
+          type: "info",
+        });
+        continue;
+      }
 
       if (
         ["batchbaoku45", "batchbaoku13"].includes(taskName) &&
@@ -12923,7 +11675,6 @@ const executeScheduledTask = async (task) => {
 
       if (
         ["skinChallenge"].includes(taskName) &&
-        !skinChallengeConfirmedOpen && // ✅ 服务器已确认活动开启则不再做本地周期判断
         !["招募周", "黑市周"].includes(getCurrentActivityWeek.value)
       ) {
         addLog({
@@ -13059,8 +11810,7 @@ const executeScheduledTask = async (task) => {
       if (typeof taskFunction === "function") {
         // ✅ 优化：不再预先分批，直接传递所有账号给任务函数
         // runStreaming 内部会根据 maxActive 自动控制并发数
-        // 定时任务优先使用任务级并发数，否则使用全局设置
-        const maxConcurrent = (task.maxActive > 0) ? task.maxActive : (batchSettings.maxActive || 5);
+        const maxConcurrent = batchSettings.maxActive || 5;
         // 同步连接池大小，确保与当前设置一致
         wsPool.setPoolSize(maxConcurrent);
         const totalAccounts = availableTokens.length;
@@ -13073,13 +11823,6 @@ const executeScheduledTask = async (task) => {
         
         // ✅ 设置当前批次的账号（所有账号）
         selectedTokens.value = [...availableTokens];
-        
-        // ✅ 临时修改 batchSettings.maxActive 为任务级并发数，确保内部 runStreaming 使用正确
-        originalMaxActive = batchSettings.maxActive;
-        if (task.maxActive > 0) {
-          batchSettings.maxActive = task.maxActive;
-          console.log(`[定时任务] 临时设置 batchSettings.maxActive = ${task.maxActive}（任务级并发控制）`);
-        }
         
         // 执行任务函数（带超时保护，防止单个任务卡死导致整个定时任务挂起）
         // ✅ BUG 修复：十殿挑战内部有 2 小时超时保护，外层超时需适配
@@ -13316,7 +12059,7 @@ const executeScheduledTask = async (task) => {
                   message: `⚔️ 十殿阎罗挑战：执行 ${presetIds.length} 个预设`,
                   type: "info",
                 });
-                await batchNightmareChallengePresets(true, taskRecordIndex);
+                await batchNightmareChallengePresets(taskRecordIndex);
               } else {
                 addLog({
                   time: new Date().toLocaleTimeString(),
@@ -13345,91 +12088,6 @@ const executeScheduledTask = async (task) => {
                 type: "info",
               });
               await taskFunction(null, pickVal);
-            } else if (taskName === 'batchApexGuess') {
-              // 逐鹿盐山竞猜：自动拉取对阵并按策略择队
-              const scheduleId = task.apexGuessScheduleId || 21;
-              const strategy = task.apexGuessStrategy || 'power';
-              const strategyLabels = { left: '全押蓝方', right: '全押红方', power: '押高战力', cheer: '押多助威' };
-              const scheduleLabels = { 20: '64强', 21: '32强', 22: '16强', 23: '8强', 24: '4强', 25: '季军赛', 26: '决赛' };
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⚔️ 逐鹿盐山竞猜：${scheduleLabels[scheduleId] || scheduleId} 按【${strategyLabels[strategy] || strategy}】自动择队`,
-                type: "info",
-              });
-              // 用第一个账号拉取对阵列表
-              const fetchTokenId = availableTokens[0];
-              const fetchToken = tokens.value.find(t => t.id === fetchTokenId);
-              if (tokenStore.getWebSocketStatus(fetchTokenId) !== 'connected') {
-                tokenStore.createWebSocketConnection(fetchTokenId, fetchToken.token, fetchToken.wsUrl);
-                await new Promise(r => setTimeout(r, 2000));
-              }
-              const guessTeamIds = [];
-              let guessIdx = 0;
-              for (let page = 0; page < 40; page++) {
-                const res = await tokenStore.sendMessageWithPromise(fetchTokenId, "apex_getguesslist", { scheduleId, idx: guessIdx }, 5000);
-                const list = res?.apexGuessList;
-                if (!Array.isArray(list) || list.length === 0) break;
-                for (const pair of list) {
-                  if (Array.isArray(pair) && pair.length >= 2) {
-                    const left = pair[0];
-                    const right = pair[1];
-                    let pickRight = false;
-                    if (strategy === 'right') pickRight = true;
-                    else if (strategy === 'power') pickRight = (right?.power || 0) > (left?.power || 0);
-                    else if (strategy === 'cheer') pickRight = (right?.cheerCnt || 0) > (left?.cheerCnt || 0);
-                    const pickedTeamId = pickRight ? right?.teamId : left?.teamId;
-                    if (pickedTeamId) guessTeamIds.push(pickedTeamId);
-                  }
-                }
-                if (res?.last === true) break;
-                guessIdx += 5;
-              }
-              if (guessTeamIds.length === 0) {
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `⚠️ 逐鹿盐山竞猜未获取到对阵数据（赛程可能未开放），跳过`,
-                  type: "warning",
-                });
-              } else {
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `⚔️ 已择队 ${guessTeamIds.length} 场，开始批量竞猜`,
-                  type: "info",
-                });
-                await taskFunction(scheduleId, guessTeamIds);
-              }
-            } else if (taskName === 'batchSaltRoadCheer') {
-              // 天宫助威：支持预选军团ID或自动按方向获取
-              const side = task.saltRoadSide || 1;
-              const voteCnt = task.saltRoadVoteCount || 1;
-              const legionId = task.saltRoadLegionId || null;
-              const legionName = task.saltRoadLegionName || '';
-              if (legionId) {
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `🏆 天宫助威：对 ${legionName}(${legionId}) 助威 ${voteCnt} 次`,
-                  type: "info",
-                });
-              } else {
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `🏆 天宫助威：对 ${side === 1 ? '左军' : '右军'} 助威 ${voteCnt} 次（自动获取对阵）`,
-                  type: "info",
-                });
-              }
-              await taskFunction(side, voteCnt, legionId || undefined, legionName || undefined);
-            } else if (taskName === 'batchSimplifiedDaily') {
-              // 日常精简补齐：不判断活跃度，按任务配置勾选的任务项执行
-              const keys = (task.simplifiedDailyItems && task.simplifiedDailyItems.length > 0)
-                ? task.simplifiedDailyItems
-                : SIMPLIFIED_TASK_ITEMS.map(item => item.key);
-              const keyLabels = keys.map(k => SIMPLIFIED_TASK_ITEMS.find(item => item.key === k)?.label || k).join('、');
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⚡ 日常精简补齐：${keyLabels}（不判断活跃度）`,
-                type: "info",
-              });
-              await taskFunction(keys);
             } else {
               await taskFunction();
             }
@@ -13744,27 +12402,6 @@ saveTaskExecutionRecordsToStorage();
       }
     });
   } finally {
-    // ✅ 恢复原始的 batchSettings.maxActive（确保无论成功还是失败都恢复）
-    // ✅ 原判断 if (originalMaxActive !== undefined) 有缺陷，已在函数开头初始化解决
-    if (originalMaxActive !== undefined && task.maxActive > 0) {
-      batchSettings.maxActive = originalMaxActive;
-      console.log(`[定时任务] 已恢复 batchSettings.maxActive = ${originalMaxActive}`);
-    } else if (task.maxActive <= 0) {
-      // 如果任务本身没有设置 maxActive，确保使用全局配置（防止其他模块修改）
-      // ✅ 这个 else 分支是防御性编程，确保全局并发数不会被意外修改
-    }
-    
-    // ✅ 关键修复：检查任务是否"假执行"（依赖验证失败等早期返回场景）
-    // 场景：任务还未真正开始就提前返回，但 scheduledStartTime 已被设置
-    // 导致 runningTokens.size === 0，被 stale 检测误判为卡死
-    const elapsedSinceStart = scheduledTaskStartTime ? Date.now() - scheduledTaskStartTime : 0;
-    const hasActiveChildTask = tokenStore.runningTokens?.value?.size || 0 > 0;
-    if (!hasActiveChildTask && elapsedSinceStart < 3000) {
-      console.warn(
-        `[${new Date().toISOString()}] 检测到任务可能未真正执行（elapsed=${elapsedSinceStart}ms, runningTokens=${tokenStore.runningTokens?.value?.size || 0}）`
-      );
-    }
-    
     // 清除任务执行状态
     isScheduledTaskRunning.value = false;
     currentScheduledTask = null;
@@ -13778,102 +12415,60 @@ saveTaskExecutionRecordsToStorage();
     }
 
     // ✅ 任务完成后，同步处理待执行队列（不再用 nextTick，避免与调度器兖底竞态）
-    // ✅ 用 try-catch 包裹，防止队列处理抛出同步错误导致整个 finally 提前退出
-    try {
-      if (pendingTaskQueue.length > 0) {
-        // 循环清理已过期任务，找到第一个仍然有效的任务执行
-        while (pendingTaskQueue.length > 0) {
-          const nextTask = pendingTaskQueue[0]; // 只peek，不先shift
-          const timeCheck = isTaskTimeStillValid(nextTask, 60);
+    if (pendingTaskQueue.length > 0) {
+      // 循环清理已过期任务，找到第一个仍然有效的任务执行
+      while (pendingTaskQueue.length > 0) {
+        const nextTask = pendingTaskQueue[0]; // 只peek，不先shift
+        const timeCheck = isTaskTimeStillValid(nextTask, 60);
 
-          if (!timeCheck.valid) {
-            pendingTaskQueue.shift(); // 移除过期任务
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `⏰ 跳过已过期的队列任务: ${nextTask.name}（${timeCheck.reason}，剩余队列: ${pendingTaskQueue.length}）`,
-              type: "warning",
-            });
-            continue; // 继续检查下一个
-          }
-
-          // 找到了时间有效的任务
-          pendingTaskQueue.shift(); // 正式出队
-          // ✅ 定时任务仅与其他定时任务互斥，日常任务执行中也可以启动定时任务
-          if (!isScheduledTaskRunning.value) {
-            // ✅ 启动前孤儿检查
-            const orphanRecs = taskExecutionRecords.value.filter(
-              r => r.status === 'running' && r.name === nextTask.name
-            );
-            if (orphanRecs.length > 0) {
-              orphanRecs.forEach(r => {
-                r.status = 'timeout';
-                r.elapsedStr = '超时（finally 启动前孤儿清理）';
-                r.endTime = Date.now();
-              });
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⚠️ 队列启动 ${nextTask.name} 前检测到${orphanRecs.length}条孤儿记录，已标记为 timeout`,
-                type: "warning",
-              });
-            }
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `▶️ 从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
-              type: "info",
-            });
-            isScheduledTaskRunning.value = true; // 立即锁定，防止兖底逻辑竞态
-            currentScheduledTask = nextTask;
-            scheduledTaskStartTime = Date.now();
-            executeScheduledTask(nextTask).catch(error => {
-              console.error(`队列任务执行错误:`, error);
-            }).finally(() => {
-              lastTaskExecution = Date.now();
-              // ✅ Bug #5: 写入 localStorage
-              localStorage.setItem(
-                `lastTaskExecution_${nextTask.id}`,
-                Date.now().toString()
-              );
-            });
-          } else {
-            // 另一个定时任务正在执行，放回队列等待
-            pendingTaskQueue.unshift(nextTask);
-          }
-          return; // 已处理，退出
-        }
-
-        // 队列已全部清空（全部过期）
-        if (pendingTaskQueue.length === 0) {
+        if (!timeCheck.valid) {
+          pendingTaskQueue.shift(); // 移除过期任务
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `✅ 队列中所有任务均已过期，已清空`,
+            message: `⏰ 跳过已过期的队列任务: ${nextTask.name}（${timeCheck.reason}，剩余队列: ${pendingTaskQueue.length}）`,
+            type: "warning",
+          });
+          continue; // 继续检查下一个
+        }
+
+        // 找到了时间有效的任务
+        pendingTaskQueue.shift(); // 正式出队
+        // ✅ 定时任务仅与其他定时任务互斥，日常任务执行中也可以启动定时任务
+        if (!isScheduledTaskRunning.value) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `▶️ 从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
             type: "info",
           });
+          isScheduledTaskRunning.value = true; // 立即锁定，防止兖底逻辑竞态
+          currentScheduledTask = nextTask;
+          scheduledTaskStartTime = Date.now();
+          executeScheduledTask(nextTask).catch(error => {
+            console.error(`队列任务执行错误:`, error);
+          }).finally(() => {
+            lastTaskExecution = Date.now();
+          });
+        } else {
+          // 另一个定时任务正在执行，放回队列等待
+          pendingTaskQueue.unshift(nextTask);
         }
+        return; // 已处理，退出
       }
-    } catch (queueError) {
-      console.error(`[定时任务 finally] 队列处理异常:`, queueError);
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `⚠️ 定时任务结束后队列处理异常: ${queueError.message}，调度器将在下次 tick 继续处理`,
-        type: "warning",
-      });
+
+      // 队列已全部清空（全部过期）
+      if (pendingTaskQueue.length === 0) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `✅ 队列中所有任务均已过期，已清空`,
+          type: "info",
+        });
+      }
     }
 
     // ✅ 不在 finally 块中立即触发刷新
     // 改为由调度器 10 秒 tick 统一检查 shouldRefreshAfterTask 并在无任务运行时刷新
     // 这样可以确保所有队列任务都被处理完毕后，才真正刷新页面
   }
-};
-
-// ====================
-// Bug #5: 统一的 lastTaskExecution 更新函数
-// ====================
-const updateLastTaskExecution = () => {
-  const nowMs = Date.now();
-  lastTaskExecution = nowMs;
-  // ✅ 使用 currentScheduledTask.id 或 fallback
-  const taskId = currentScheduledTask?.id || 'unknown';
-  localStorage.setItem(`lastTaskExecution_${taskId}`, nowMs.toString());
 };
 
 // 注: boxTypeOptions, fishTypeOptions 已从 @/utils/batch 导入
@@ -14578,20 +13173,9 @@ const loadSettingsHelperMembers = async () => {
     const tokenId = currentSettingsTokenId.value;
     if (!tokenId) {
       message.warning("请先选择账号");
+      settingsHelperLoading.value = false;
       return;
     }
-
-    // 未连接时自动连接该账号
-    const wsStatus = tokenStore.getWebSocketStatus(tokenId);
-    if (wsStatus !== "connected") {
-      message.info("正在连接账号，请稍候...");
-      const connected = await ensureConnection(tokenId, 2);
-      if (!connected) {
-        message.error("账号连接失败，请检查网络或 token 有效性");
-        return;
-      }
-    }
-
     const legionRes = await tokenStore.sendMessageWithPromise(tokenId, "legion_getinfo", {}, 10000);
     const membersMap = legionRes?.body?.info?.members || legionRes?.info?.members || {};
     const members = Object.values(membersMap).map((m) => ({
@@ -14599,7 +13183,6 @@ const loadSettingsHelperMembers = async () => {
       name: m.name || m.nickname || String(m.roleId),
     }));
     settingsHelperMembers.value = members;
-    message.success(`已加载 ${members.length} 名俱乐部成员`);
   } catch (e) {
     message.error(`获取俱乐部成员失败: ${e.message || "未知错误"}`);
   } finally {
@@ -15135,17 +13718,10 @@ const handleLogScroll = () => {
 };
 
 const filteredLogs = computed(() => {
-  let result;
   if (filterErrorsOnly.value) {
-    result = logs.value.filter((log) => log.type === "error");
-  } else {
-    result = logs.value;
+    return logs.value.filter((log) => log.type === "error");
   }
-  // ✅ 性能模式：渲染层仅保留最近200条，降低DOM节点数量与列表diff开销（完整日志仍在 logs 中保留）
-  if (performanceMode.value && result.length > 200) {
-    return result.slice(-200);
-  }
-  return result;
+  return logs.value;
 });
 
 const currentRunningTokenName = computed(() => {
@@ -15156,7 +13732,7 @@ const currentRunningTokenName = computed(() => {
 // Selection logic
 const isAllSelected = computed(() => {
   // 如果有搜索关键词，基于搜索结果判断
-  if (debouncedTokenSearchKeyword.value.trim()) {
+  if (tokenSearchKeyword.value.trim()) {
     return (
       selectedTokens.value.length === sortedTokens.value.length &&
       sortedTokens.value.length > 0 &&
@@ -15172,7 +13748,7 @@ const isAllSelected = computed(() => {
 
 const isIndeterminate = computed(() => {
   // 如果有搜索关键词，基于搜索结果判断
-  if (debouncedTokenSearchKeyword.value.trim()) {
+  if (tokenSearchKeyword.value.trim()) {
     const selectedInSearch = sortedTokens.value.filter((t) =>
       selectedTokens.value.includes(t.id)
     ).length;
@@ -15217,26 +13793,32 @@ const isCarExpandedForAll = ref(false);
 const isClimbTowerExpandedForAll = ref(false);
 const isWeirdTowerExpandedForAll = ref(false);
 
-// ✅ 卡片区域显隐由性能模式统一驱动（原「隐藏卡片详情」独立开关已合并进性能模式）
-const performanceMode = ref(localStorage.getItem('batchPerformanceMode') === 'true');
-const showCardSections = computed(() => !performanceMode.value);
+// 卡片区域显隐控制（默认全部显示，合并为一个开关）
+const showCardSections = ref(true);
 const showStatusTags = computed(() => showCardSections.value);
 const showModuleGrid = computed(() => showCardSections.value);
+
+// 卡片区域显隐状态持久化
+const STORAGE_KEY_SHOW_CARD_SECTIONS = 'showCardSections';
+if (typeof localStorage !== 'undefined') {
+  const savedState = localStorage.getItem(STORAGE_KEY_SHOW_CARD_SECTIONS);
+  if (savedState !== null) {
+    showCardSections.value = JSON.parse(savedState);
+  }
+}
+
+// 监听变化并保存到 localStorage
+watch(showCardSections, (newValue) => {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY_SHOW_CARD_SECTIONS, JSON.stringify(newValue));
+  }
+});
 const showDailyProgress = computed(() => showCardSections.value);
 const showMonthlyProgress = computed(() => showCardSections.value);
-
-// ✅ 一键性能模式：同时关闭卡片详情、收起所有展开区、限制日志渲染条数，降低渲染压力
-const togglePerformanceMode = () => {
-  performanceMode.value = !performanceMode.value;
-  localStorage.setItem('batchPerformanceMode', String(performanceMode.value));
-  if (performanceMode.value) {
-    isTowerExpandedForAll.value = false;
-    isCarExpandedForAll.value = false;
-    isClimbTowerExpandedForAll.value = false;
-    isWeirdTowerExpandedForAll.value = false;
-    message.success('⚡ 性能模式已开启：卡片详情已隐藏，日志仅渲染最近200条');
-  } else {
-    message.info('性能模式已关闭，已恢复卡片详情显示');
+const toggleCardSections = () => {
+  showCardSections.value = !showCardSections.value;
+  if (!showCardSections.value) {
+    message.info('已隐藏卡片详情，可减少渲染压力');
   }
 };
 
@@ -15306,7 +13888,7 @@ const handleWakeLockToggle = async (enabled) => {
 const handleSelectAll = (checked) => {
   if (checked) {
     // 如果有搜索关键词，只选中搜索出来的账号
-    if (debouncedTokenSearchKeyword.value.trim()) {
+    if (tokenSearchKeyword.value.trim()) {
       selectedTokens.value = sortedTokens.value.map((t) => t.id);
     } else {
       // 没有搜索时，选中所有账号
@@ -15332,38 +13914,6 @@ const handleTokenSelect = (tokenId, checked) => {
 };
 
 // 处理TokenCard连接切换事件
-// ✅ 仅单独连接按钮触发：获取游戏采购清单并同步到本地设置（其他连接路径不获取）
-const syncPurchaseFromGame = (tokenId) => {
-  setTimeout(async () => {
-    try {
-      const conn = tokenStore.wsConnections[tokenId];
-      if (conn?.status !== 'connected') return;
-      const result = await tokenStore.sendMessageWithPromise(tokenId, 'store_getpurchase', {}, 8000);
-      // 兼容多种响应结构：直接 purchaseItemList 或嵌套在 store 子对象中
-      const purchaseItems = result?.purchaseItemList
-        || result?.store?.purchaseItemList
-        || result?.data?.purchaseItemList;
-      if (purchaseItems?.length > 0) {
-        let settings = {};
-        try {
-          const raw = localStorage.getItem(`daily-settings:${tokenId}`);
-          if (raw) settings = JSON.parse(raw);
-        } catch (e) {}
-        settings.purchaseList = purchaseItems.map(i => i.itemId);
-        const discounts = {};
-        purchaseItems.forEach(i => { if (i.discount != null) discounts[i.itemId] = i.discount; });
-        settings.purchaseDiscounts = discounts;
-        const purchaseCnt = result?.purchaseCnt ?? result?.store?.purchaseCnt;
-        if (purchaseCnt != null) settings.purchaseCnt = purchaseCnt;
-        localStorage.setItem(`daily-settings:${tokenId}`, JSON.stringify(settings));
-        console.log(`[采购清单] 单独连接已同步 [${tokenId}]: ${purchaseItems.length}项, 次数${purchaseCnt ?? '未设置'}`);
-      }
-    } catch (e) {
-      console.warn(`[采购清单] 单独连接同步失败 [${tokenId}]: ${e?.message || e}`);
-    }
-  }, 2000);
-};
-
 const handleToggleConnection = async (tokenId) => {
   const connection = tokenStore.wsConnections[tokenId];
   const isConnected = connection?.status === 'connected';
@@ -15400,8 +13950,6 @@ const handleToggleConnection = async (tokenId) => {
           
           // 连接成功后自动获取角色信息
           tokenStore.sendGetRoleInfo(tokenId);
-          // 单独连接按钮触发：同步采购清单
-          syncPurchaseFromGame(tokenId);
         } else {
           message.destroyAll();
           if (conn?.status === 'error') {
@@ -15415,8 +13963,6 @@ const handleToggleConnection = async (tokenId) => {
                 const reConn = tokenStore.wsConnections[tokenId];
                 if (reConn?.status === 'connected') {
                   tokenStore.sendGetRoleInfo(tokenId);
-                  // 单独连接按钮触发（刷新Token后重连成功）：同步采购清单
-                  syncPurchaseFromGame(tokenId);
                 }
               } else {
                 message.error(`Token刷新失败, 请手动重新导入: ${token.name}`);
@@ -15717,7 +14263,7 @@ const deleteSelectedTokens = async () => {
 
 // 添加Token弹窗状态
 const showAddTokenModal = ref(false);
-const addTokenImportMethod = ref("singlebin");
+const addTokenImportMethod = ref("manual");
 
 // 打开添加Token弹窗（替代跳转）
 const navigateToAddToken = () => {
@@ -16268,13 +14814,11 @@ const releaseConnectionSlot = () => {
  * 当一个任务完成时立即启动下一个，避免所有任务同时排队等待连接槽
  * @param {string[]} tokenIds - Token ID 列表
  * @param {Function} processFn - 处理函数 (tokenId) => Promise
- * @param {number} [maxConcurrent] - 可选，指定并发数（定时任务级并发控制）
  */
 const ACCOUNT_STUCK_TIMEOUT = 25 * 60 * 1000; // 25分钟单账号超时
 
-const runStreaming = async (tokenIds, processFn, maxConcurrent) => {
-  // ✅ 优先使用传入的并发数（定时任务级），否则使用全局设置
-  const effectiveMaxConcurrent = maxConcurrent || batchSettings.maxActive || 5;
+const runStreaming = async (tokenIds, processFn) => {
+  const maxConcurrent = batchSettings.maxActive || 5;
   const queue = [...tokenIds];
   const running = new Set();
   let completedCount = 0;
@@ -16320,7 +14864,7 @@ const runStreaming = async (tokenIds, processFn, maxConcurrent) => {
   };
 
   // 启动初始批次
-  for (let i = 0; i < Math.min(effectiveMaxConcurrent, queue.length); i++) {
+  for (let i = 0; i < Math.min(maxConcurrent, queue.length); i++) {
     launchNext();
   }
 
@@ -16411,9 +14955,33 @@ const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
         const connectionDelay = 3000 + Math.random() * 2000; // 3-5秒随机延迟
         await new Promise(resolve => setTimeout(resolve, connectionDelay));
 
-        // ✅ 深度精简：不再在连接时统一获取 role_getroleinfo / fight_startlevel
-        // 战斗命令所需的 randomSeed/battleVersion 已改为在 tokenStore.sendMessageWithPromise 中懒加载，
-        // 各功能只产生自身需要的API调用
+        // Initialize Game Data (Critical for Battle Version and Session)
+        try {
+          // Fetch Role Info first (Standard flow)
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "role_getroleinfo",
+            {},
+            20000,
+          );
+
+          // Fetch Battle Version
+          const res = await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "fight_startlevel",
+            {},
+            20000,
+          );
+          if (res?.battleData?.version) {
+            tokenStore.setBattleVersion(res.battleData.version);
+          }
+        } catch (e) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `初始化数据失败: ${e.message}`,
+            type: "warning",
+          });
+        }
 
         return true;
       }
@@ -16596,7 +15164,7 @@ const wrapTaskFunctions = (obj) => {
 
 // 初始化任务模块
 const tasksHangUp = wrapTaskFunctions(createTasksHangUp(createTaskDeps()));
-const { claimHangUpRewards, batchAddHangUpTime, batchStudy, batchStudyClaimReward, batchclubsign, batchLegionSignup, batchPayloadSignup, batchWarGuessCheer, batchHangUpUpgrade } = tasksHangUp;
+const { claimHangUpRewards, batchAddHangUpTime, batchStudy, batchclubsign, batchLegionSignup, batchPayloadSignup, batchWarGuessCheer, batchHangUpUpgrade } = tasksHangUp;
 
 const tasksBottle = wrapTaskFunctions(createTasksBottle(createTaskDeps()));
 const { resetBottles, batchlingguanzi } = tasksBottle;
@@ -17122,7 +15690,7 @@ const tasksArena = wrapTaskFunctions(createTasksArena(createTaskDeps()));
 const { batcharenafight, batchTopUpFish, batchTopUpArena } = tasksArena;
 
 const tasksStore = wrapTaskFunctions(createTasksStore(createTaskDeps()));
-const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, egg_merge_cycle, batch_pet_upgrade, gacha_drawreward, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, batch_mail_claim_and_cleanup, saltcup26_openstarpack_use, batchSaltCupBet, getSaltCupBetInfo, batchApexGuess, batchApexGuessClaim, batchSaltRoadCheer } = tasksStore;
+const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, batch_mail_claim_and_cleanup, saltcup26_openstarpack_use, batchSaltCupBet, getSaltCupBetInfo } = tasksStore;
 
 // ====== 采购清单配置 ======
 // 采购清单可选项（用于任务模板中多选）
@@ -17536,22 +16104,18 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
   const presets = allPresets.filter(p => presetIds.includes(p.id));
   if (presets.length === 0) {
     addLog({ time: new Date().toLocaleTimeString(), message: '十殿挑战：选中的预设不存在，跳过', type: 'warning' });
-    // ✅ BUG修复：预设不存在时清零 runningCount，避免任务记录进度永远无法完成
-    if (taskRecordIndex >= 0 && taskExecutionRecords.value[taskRecordIndex]) {
-      taskExecutionRecords.value[taskRecordIndex].runningCount = 0;
-    }
     return;
   }
 
   addLog({ time: new Date().toLocaleTimeString(), message: `=== 十殿阎罗挑战：开始执行 ${presets.length} 个预设 ===`, type: 'info' });
 
-  // 计算所有预设的成员总数（用于任务完成度统计）
-  // ✅ BUG修复：改为按预设累加计数，与 onComplete/onError 的按预设计数口径一致
-  // （原先用唯一成员数，共享队员会被每个预设重复计入 success/fail，导致进度超过100%、runningCount 变负）
-  let totalMembers = 0;
+  // 计算所有预设的唯一成员总数（用于任务完成度统计）
+  const allMemberIds = new Set();
   for (const p of presets) {
-    totalMembers += (p.captainTokenId ? 1 : 0) + (p.memberTokenIds || []).length;
+    if (p.captainTokenId) allMemberIds.add(p.captainTokenId);
+    (p.memberTokenIds || []).forEach(id => allMemberIds.add(id));
   }
+  const totalMembers = allMemberIds.size;
 
   // 更新任务记录：设置正确的总成员数
   if (taskRecordIndex >= 0 && taskExecutionRecords.value[taskRecordIndex]) {
@@ -17619,13 +16183,11 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
   const retryCountMap = new Map(); // presetId → 重试次数
 
   // ====== 跨标签页协调机制 ======
-  // ✅ BUG修复：与 NightmareChallengeCard 保持一致，tabId 存入 sessionStorage（页面刷新后不变），
-  // 避免刷新后自己残留的运行标记被误判为"其他标签页运行中"而阻塞执行
   const getTabId = () => {
-    if (!sessionStorage.getItem('__nightmare_tab_id')) {
-      sessionStorage.setItem('__nightmare_tab_id', `tab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+    if (!window.__nightmareTabId) {
+      window.__nightmareTabId = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     }
-    return sessionStorage.getItem('__nightmare_tab_id');
+    return window.__nightmareTabId;
   };
 
   const isPresetRunningInOtherTab = (presetId) => {
@@ -17633,9 +16195,7 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
       const key = `nightmare-running-${presetId}`;
       const data = JSON.parse(localStorage.getItem(key) || '{}');
       if (!data.tabId || !data.timestamp) return false;
-      // ✅ BUG修复：过期窗口由 10 分钟改为 3 小时（与卡片端及战斗最长时长对齐），
-      // 原 10 分钟窗口在战斗进行 10 分钟后即失效，其他标签页会重复启动同一预设
-      if (Date.now() - data.timestamp > 3 * 60 * 60 * 1000) {
+      if (Date.now() - data.timestamp > 10 * 60 * 1000) {
         localStorage.removeItem(key);
         return false;
       }
@@ -17660,19 +16220,6 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
       const key = `nightmare-running-${presetId}`;
       localStorage.removeItem(key);
     } catch { /* ignore */ }
-  };
-
-  // ✅ BUG修复：预设未实际启动（跳过/启动失败）时同步任务统计，
-  // 避免 runningCount 卡住导致任务记录进度永远无法到 100%
-  const countPresetAsFailed = (preset) => {
-    if (taskRecordIndex >= 0 && taskExecutionRecords.value[taskRecordIndex]) {
-      const rec = taskExecutionRecords.value[taskRecordIndex];
-      const memberCount = (preset.memberTokenIds || []).length + (preset.captainTokenId ? 1 : 0);
-      rec.failCount += memberCount;
-      rec.runningCount = Math.max(0, rec.runningCount - memberCount);
-      const completed = rec.successCount + rec.failCount;
-      rec.progressPercent = rec.totalAccounts > 0 ? Math.round((completed / rec.totalAccounts) * 100) : 0;
-    }
   };
 
   // 初始化 sessionStorage（清除上次的批量数据）
@@ -17710,7 +16257,6 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
     }
     if (tokenStore.getWebSocketStatus(captainTokenId) !== 'connected') {
       addLog({ time: new Date().toLocaleTimeString(), message: `队长 ${captainToken.name} 连接失败，跳过预设`, type: 'error' });
-      clearPresetRunning(preset.id); // ✅ BUG修复：提前退出时清除跨标签页运行标记
       return null;
     }
 
@@ -17721,12 +16267,10 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
       captainRoleId = String(roleInfo?.role?.roleId || '');
       if (!captainRoleId) {
         addLog({ time: new Date().toLocaleTimeString(), message: `获取队长 roleId 失败，跳过预设`, type: 'error' });
-        clearPresetRunning(preset.id);
         return null;
       }
     } catch (err) {
       addLog({ time: new Date().toLocaleTimeString(), message: `获取队长 roleId 异常: ${err.message || err}，跳过`, type: 'error' });
-      clearPresetRunning(preset.id);
       return null;
     }
 
@@ -17742,7 +16286,6 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
     );
     if (alreadyRunning) {
       addLog({ time: new Date().toLocaleTimeString(), message: `队长 ${captainToken.name} 已有后台战斗「${alreadyRunning.preset.name}」运行中，跳过`, type: 'warning' });
-      clearPresetRunning(preset.id);
       return null;
     }
 
@@ -17785,7 +16328,6 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
         const errMsg = dismissErr.message || String(dismissErr);
         if (!errMsg.includes('200020') && !errMsg.includes('6100020')) {
           addLog({ time: new Date().toLocaleTimeString(), message: `解散失败: ${errMsg}，跳过`, type: 'error' });
-          clearPresetRunning(preset.id);
           return null;
         }
       }
@@ -17810,13 +16352,11 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
         teamId = String(createResp?.teamInfo?.teamId || '');
         if (!teamId) {
           addLog({ time: new Date().toLocaleTimeString(), message: '创建房间失败，跳过预设', type: 'error' });
-          clearPresetRunning(preset.id);
           return null;
         }
         addLog({ time: new Date().toLocaleTimeString(), message: `房间创建成功 TeamId: ${teamId}`, type: 'success' });
       } catch (err) {
         addLog({ time: new Date().toLocaleTimeString(), message: `创建房间异常: ${err.message || err}，跳过`, type: 'error' });
-        clearPresetRunning(preset.id);
         return null;
       }
       await delay(3000);
@@ -17915,7 +16455,6 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
         roomId = openResp?.roomId || openResp?.roomid || openResp?.roomInfo?.roomId || null;
       } catch (err) {
         addLog({ time: new Date().toLocaleTimeString(), message: `开启房间失败: ${err.message || err}`, type: 'error' });
-        clearPresetRunning(preset.id);
         return null;
       }
 
@@ -17936,7 +16475,6 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
 
     if (!roomId) {
       addLog({ time: new Date().toLocaleTimeString(), message: '无法获取 RoomId，跳过预设', type: 'error' });
-      clearPresetRunning(preset.id);
       return null;
     }
 
@@ -18040,12 +16578,11 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
     // ✅ 跳过重复队长的后续预设
     if (skipDuplicateCaptainPresets.has(i)) {
       addLog({ time: new Date().toLocaleTimeString(), message: `⏭ 预设「${presets[i].name}」队长与其他预设重复，自动跳过`, type: 'warning' });
-      countPresetAsFailed(presets[i]); // ✅ BUG修复：跳过的预设同步计入统计，避免 runningCount 卡住
       continue;
     }
     const preset = presets[i];
     const entry = await executeOnePreset(preset, `执行预设「${preset.name}」(${i + 1}/${presets.length})`, i);
-    if (!entry) { countPresetAsFailed(preset); continue; }
+    if (!entry) continue;
 
     // 预设间错开延迟（避免服务器压力）
     if (i < presets.length - 1) {
@@ -18112,16 +16649,6 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
             fb.originalIndex >= 0 ? fb.originalIndex : retryPresetIndex
           );
           if (newEntry) {
-            // ✅ BUG修复：重试启动成功后回退上次失败已计入的统计（onError 已 failCount += memberCount），
-            // 否则重试完成后再次计数会导致 success+fail 超过总数、runningCount 变负、进度超过100%
-            if (taskRecordIndex >= 0 && taskExecutionRecords.value[taskRecordIndex]) {
-              const rec = taskExecutionRecords.value[taskRecordIndex];
-              const memberCount = (fb.preset.memberTokenIds || []).length + (fb.preset.captainTokenId ? 1 : 0);
-              rec.failCount = Math.max(0, rec.failCount - memberCount);
-              rec.runningCount += memberCount;
-              const completed = rec.successCount + rec.failCount;
-              rec.progressPercent = rec.totalAccounts > 0 ? Math.round((completed / rec.totalAccounts) * 100) : 0;
-            }
             addLog({ time: new Date().toLocaleTimeString(), message: `✅ 预设「${fb.preset.name}」重试已启动`, type: 'success' });
             await delay(5000); // 重试后等待一会再检测
           } else {
@@ -18156,17 +16683,6 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
       }
     }
     
-    // ✅ BUG修复：收到停止信号时同步停止所有后台战斗
-    // （原逻辑仅退出等待循环，已启动的战斗会继续在后台挂机最长 2 小时）
-    if (shouldStop.value) {
-      for (const b of activeBattles) {
-        if (b.battle && (b.status === 'running' || b.status === 'cooling' || b.status === 'waiting_midnight' || b.status === 'retrying')) {
-          try { b.battle.stop(); } catch { /* ignore */ }
-          clearPresetRunning(b.preset.id); // stop() 不触发 onComplete/onError，需手动清除运行标记
-        }
-      }
-    }
-
     // 最终汇总
     const completed = activeBattles.filter(b => b.status === 'completed');
     const failed = activeBattles.filter(b => b.status === 'failed');
@@ -18193,103 +16709,6 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
     try { sessionStorage.removeItem('nightmare-batch-battles'); } catch { /* ignore */ }
     _activeNightmareBattles = []; // ✅ 清理模块级引用
   }
-};
-
-// ==================== 日常精简补齐 ====================
-// 手动执行弹窗状态与勾选项（默认全选）
-const showSimplifiedDailyModal = ref(false);
-const simplifiedDailySelectedItems = ref(SIMPLIFIED_TASK_ITEMS.map(item => item.key));
-
-// 日常精简补齐：不受任何活跃度判断，按勾选任务项直接执行
-const batchSimplifiedDaily = async (selectedKeys = null) => {
-  if (selectedTokens.value.length === 0) return;
-
-  const keys = (Array.isArray(selectedKeys) && selectedKeys.length > 0)
-    ? selectedKeys
-    : [...simplifiedDailySelectedItems.value];
-  if (keys.length === 0) {
-    message.warning('请至少勾选一个精简补齐任务项');
-    return;
-  }
-  const keyLabels = keys.map(k => SIMPLIFIED_TASK_ITEMS.find(item => item.key === k)?.label || k).join('、');
-
-  try {
-    isRunning.value = true;
-    shouldStop.value = false;
-
-    selectedTokens.value.forEach((id) => {
-      tokenStatus.value[id] = "waiting";
-    });
-
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `=== 开始日常精简补齐（不判断活跃度）：${keyLabels} ===`,
-      type: "info",
-    });
-
-    wsPool.setPoolSize(batchSettings.maxActive);
-
-    await runStreaming([...selectedTokens.value], async (tokenId) => {
-      if (shouldStop.value) return;
-      tokenStatus.value[tokenId] = "running";
-      const token = tokens.value.find((t) => t.id === tokenId);
-      try {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `=== 开始精简补齐: ${token.name} ===`,
-          type: "info",
-        });
-        await ensureConnection(tokenId);
-
-        const runner = new DailyTaskRunner(tokenStore, {
-          commandDelay: batchSettings.commandDelay,
-          taskDelay: batchSettings.taskDelay,
-        }, batchSettings);
-
-        await runner.runSimplifiedTasks(tokenId, {
-          onLog: (log) => addLog(log),
-        }, keys);
-
-        tokenStatus.value[tokenId] = "completed";
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `=== ${token.name} 精简补齐完成 ===`,
-          type: "success",
-        });
-      } catch (error) {
-        console.error(error);
-        tokenStatus.value[tokenId] = "failed";
-        tokenFailReasons.value[tokenId] = error?.message || '执行异常';
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token?.name || tokenId} 精简补齐失败: ${error.message}`,
-          type: "error",
-        });
-      } finally {
-        tokenStore.closeWebSocketConnection(tokenId);
-        releaseConnectionSlot();
-      }
-    });
-
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `=== 日常精简补齐结束 ===`,
-      type: "success",
-    });
-    message.success("日常精简补齐结束");
-  } finally {
-    isRunning.value = false;
-  }
-};
-
-// 手动弹窗执行入口（带任务完成情况记录）
-const startSimplifiedDaily = async () => {
-  if (simplifiedDailySelectedItems.value.length === 0) {
-    message.warning('请至少勾选一个精简补齐任务项');
-    return;
-  }
-  showSimplifiedDailyModal.value = false;
-  await executeManualTaskWithRecord('batchSimplifiedDaily', '日常精简补齐', () => batchSimplifiedDaily([...simplifiedDailySelectedItems.value]));
 };
 
 const startBatch = async () => {
@@ -18386,12 +16805,9 @@ const startBatch = async () => {
   const TOKEN_EXECUTION_TIMEOUT = (batchSettings.taskTimeout || 30) * 60 * 1000;
 
   // ========== 连接池滚动执行 ==========
-  // 同步连接池大小：定时任务优先使用任务级并发数，否则使用全局设置
-  const _effectiveMaxActive = (isScheduledTaskRunning.value && currentScheduledTask?.maxActive > 0)
-    ? currentScheduledTask.maxActive
-    : batchSettings.maxActive;
-  wsPool.setPoolSize(_effectiveMaxActive);
-  const maxConcurrent = _effectiveMaxActive;
+  // 同步连接池大小与当前设置
+  wsPool.setPoolSize(batchSettings.maxActive);
+  const maxConcurrent = batchSettings.maxActive;
   const tokenQueue = [...selectedTokens.value];
   const activeTokens = new Set();
   const completionMap = new Map(); // tokenId -> Promise
@@ -18959,22 +17375,6 @@ const startBatch = async () => {
       
       // 找到有效任务，出队并执行
       pendingTaskQueue.shift();
-      // ✅ 启动前孤儿检查
-      const orphanRecs = taskExecutionRecords.value.filter(
-        r => r.status === 'running' && r.name === nextTask.name
-      );
-      if (orphanRecs.length > 0) {
-        orphanRecs.forEach(r => {
-          r.status = 'timeout';
-          r.elapsedStr = '超时（日常任务结束后启动前孤儿清理）';
-          r.endTime = Date.now();
-        });
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `⚠️ 日常任务结束后启动 ${nextTask.name} 前检测到${orphanRecs.length}条孤儿记录，已标记为 timeout`,
-          type: "warning",
-        });
-      }
       addLog({
         time: new Date().toLocaleTimeString(),
         message: `▶️ 日常任务结束后，从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
@@ -18994,14 +17394,14 @@ const startBatch = async () => {
   }
   
   // 检查是否需要在任务完成后刷新页面
-  // ✅ 使用统一的刷新安全检查，避免刷新中断任务或丢失即将触发的定时任务
-  if (shouldRefreshAfterTask.value && isSafeToRefreshPage().safe) {
+  // 注意：需同时确认定时任务和队列中没有待执行任务，避免刷新中断
+  if (shouldRefreshAfterTask.value && !isScheduledTaskRunning.value && pendingTaskQueue.length === 0) {
     console.log(`[${new Date().toISOString()}] Task completed, executing postponed page refresh`);
     shouldRefreshAfterTask.value = false; // 重置标记
     // 稍等片刻再刷新，让用户看到任务完成的消息
     setTimeout(() => {
       // ✅ 二次确认：防止 1.5 秒内调度器启动了新任务
-      if (isSafeToRefreshPage().safe) {
+      if (!isRunning.value && !isScheduledTaskRunning.value && pendingTaskQueue.length === 0) {
         window.location.reload();
       } else {
         shouldRefreshAfterTask.value = true; // 重新标记，等待下次调度器检查
@@ -20379,354 +18779,6 @@ html[data-theme="dark"] .tr-failed-name { color: #ddd; }
   color: #666;
 }
 
-/* ========== Task Settings Modal - New Design ========== */
-.st-modal-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 600;
-}
-.st-modal-icon { font-size: 18px; }
-.st-modal-subtitle {
-  font-size: 13px;
-  font-weight: 400;
-  color: #86909c;
-  margin-left: auto;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.st-settings-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.st-section {
-  padding: 12px 0 8px;
-}
-.st-section + .st-section {
-  border-top: 1px solid #f0f0f0;
-}
-.st-section-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 10px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.st-section-icon { font-size: 14px; }
-.st-section-title-collapsible {
-  cursor: pointer;
-  user-select: none;
-  justify-content: space-between;
-}
-.st-section-title-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.st-section-badge {
-  font-size: 11px;
-  font-weight: 400;
-  color: #fff;
-  background: #18a058;
-  padding: 1px 6px;
-  border-radius: 10px;
-}
-.st-section-toggle {
-  font-size: 12px;
-  color: #86909c;
-  transition: transform 0.2s;
-}
-.st-section-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-.st-section-grid.st-grid-2 {
-  grid-template-columns: repeat(2, 1fr);
-}
-.st-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.st-field-full {
-  width: 100%;
-}
-.st-label {
-  font-size: 12px;
-  color: #86909c;
-  line-height: 1;
-}
-.st-switch-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0;
-}
-.st-switch-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 10px;
-  border-radius: 6px;
-  transition: background 0.15s;
-}
-.st-switch-item:hover {
-  background: #f5f7fa;
-}
-.st-switch-text {
-  font-size: 13px;
-  color: #4e5969;
-}
-.st-helper-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-.st-helper-count {
-  font-size: 12px;
-  color: #86909c;
-}
-.st-helper-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-height: 140px;
-  overflow-y: auto;
-  padding: 8px 10px;
-  border: 1px solid #f0f0f0;
-  border-radius: 6px;
-  background: #fafbfc;
-}
-.st-helper-hint {
-  font-size: 12px;
-  color: #c0c4cc;
-  padding: 6px 0;
-}
-.st-modal-footer {
-  display: flex;
-  gap: 12px;
-}
-
-/* Settings Modal - Responsive */
-@media (max-width: 768px) {
-  .st-section-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .st-section-grid.st-grid-2 {
-    grid-template-columns: 1fr;
-  }
-  .st-switch-grid {
-    grid-template-columns: 1fr;
-  }
-  .st-switch-item {
-    padding: 10px 8px;
-    min-height: 40px;
-  }
-  .st-modal-subtitle {
-    max-width: 120px;
-  }
-}
-
-/* Settings Modal - Dark Mode */
-html.dark .st-section + .st-section,
-html[data-theme="dark"] .st-section + .st-section {
-  border-top-color: rgba(255,255,255,0.08);
-}
-html.dark .st-label,
-html[data-theme="dark"] .st-label {
-  color: #a0a4b8;
-}
-html.dark .st-switch-item:hover,
-html[data-theme="dark"] .st-switch-item:hover {
-  background: rgba(255,255,255,0.06);
-}
-html.dark .st-helper-tags,
-html[data-theme="dark"] .st-helper-tags {
-  background: rgba(255,255,255,0.04);
-  border-color: rgba(255,255,255,0.08);
-}
-html.dark .st-modal-subtitle,
-html[data-theme="dark"] .st-modal-subtitle {
-  color: #a0a4b8;
-}
-html.dark .st-helper-count,
-html.dark .st-helper-hint,
-html[data-theme="dark"] .st-helper-count,
-html[data-theme="dark"] .st-helper-hint {
-  color: #86909c;
-}
-
-/* Purchase Config (Account Settings) */
-.purchase-config-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-.purchase-config-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.purchase-config-actions {
-  display: flex;
-  gap: 6px;
-}
-.purchase-config-hint {
-  font-size: 12px;
-  color: #86909c;
-  margin-top: 8px;
-}
-
-/* Apply Template Modal */
-.apply-group-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.apply-group-label {
-  font-size: 12px;
-  color: #86909c;
-}
-.apply-group-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.apply-group-empty {
-  font-size: 12px;
-  color: #c0c4cc;
-}
-.apply-select-all {
-  padding: 8px 0;
-  border-bottom: 1px solid #f0f0f0;
-  margin-bottom: 8px;
-}
-.apply-token-grid {
-  margin-top: 4px;
-}
-.apply-token-item {
-  padding: 4px 0;
-}
-
-/* Account Template References */
-.account-ref-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.account-ref-actions {
-  display: flex;
-  gap: 8px;
-}
-.account-ref-filter {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.account-ref-card {
-  margin-bottom: 10px;
-}
-.account-ref-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-.account-ref-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: #1f2937;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.account-ref-empty {
-  text-align: center;
-  padding: 24px;
-  color: #86909c;
-  font-size: 13px;
-}
-
-/* Purchase Config Responsive */
-@media (max-width: 768px) {
-  .purchase-config-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .purchase-config-actions {
-    justify-content: flex-end;
-  }
-  .purchase-list-grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  }
-}
-
-/* Template Manager Responsive */
-@media (max-width: 768px) {
-  .template-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-  }
-  .template-toolbar .n-input {
-    width: 100% !important;
-  }
-  .template-grid {
-    grid-template-columns: 1fr;
-  }
-  .account-ref-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .account-ref-filter {
-    width: 100%;
-  }
-  .account-ref-filter .n-select {
-    width: 100% !important;
-  }
-}
-
-/* Template Manager Dark Mode */
-html.dark .apply-group-label,
-html[data-theme="dark"] .apply-group-label {
-  color: #a0a4b8;
-}
-html.dark .apply-select-all,
-html[data-theme="dark"] .apply-select-all {
-  border-bottom-color: rgba(255,255,255,0.08);
-}
-html.dark .account-ref-name,
-html[data-theme="dark"] .account-ref-name {
-  color: #ffffff;
-}
-html.dark .account-ref-empty,
-html[data-theme="dark"] .account-ref-empty {
-  color: #86909c;
-}
-
-/* Purchase Config Dark Mode */
-html.dark .purchase-config-hint,
-html[data-theme="dark"] .purchase-config-hint {
-  color: #a0a4b8;
-}
-html.dark .st-section-toggle,
-html[data-theme="dark"] .st-section-toggle {
-  color: #a0a4b8;
-}
-
 /* Responsive Design */
 @media (max-width: 1200px) {
   .right-column {
@@ -20901,9 +18953,7 @@ html[data-theme="dark"] .st-section-toggle {
     gap: 6px;
   }
 
-  /* Naive UI 卡片标题真实类名为 __main（非 __title），flex:1 1 auto 防止标题被压缩成竖排 */
-  :deep(.n-card-header__main) {
-    flex: 1 1 auto;
+  :deep(.n-card-header__title) {
     white-space: nowrap;
     font-size: 15px;
   }

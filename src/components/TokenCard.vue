@@ -528,6 +528,8 @@ import { useRouter } from "vue-router";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { g_utils } from "@/utils/bonProtocol";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { useGameWindowManager } from "@/composables/useGameWindowManager";
+import { ensureEnhanceCodesCached } from "@/utils/gameEnhanceConfig";
 import { isTauri } from "@tauri-apps/api/core";
 
 const router = useRouter();
@@ -590,6 +592,7 @@ const emit = defineEmits(["select", "settings", "toggleConnection", "update:isCl
 
 const tokenStore = useTokenStore();
 const message = useMessage();
+const { registerWindow: registerGameWindow } = useGameWindowManager();
 
 // 拖动状态
 const isDragging = ref(false);
@@ -3013,7 +3016,10 @@ const jumpGame = async () => {
       infoLen: loginData.info.length
     });
 
-    // 5. 存入 localStorage (跨标签页共享, sessionStorage不跨标签页!)
+    // 5. 确保增强代码已缓存（供 game.html 自注入）
+    await ensureEnhanceCodesCached();
+
+    // 6. 存入 localStorage (跨标签页共享, sessionStorage不跨标签页!)
     // ★ 123项目也用 localStorage 传递登录数据
     const loginKey = '__game_login_data__';
     localStorage.setItem(loginKey, JSON.stringify(loginData));
@@ -3022,7 +3028,7 @@ const jumpGame = async () => {
       try { localStorage.removeItem(loginKey); } catch(e) {}
     }, 3000);
 
-    const gameUrl = `${window.location.origin}/game.html`;
+    const gameUrl = `${window.location.origin}/game.html?token=${encodeURIComponent(token.id)}`;
 
     // 6. 打开游戏界面
     const isApk = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
@@ -3057,11 +3063,13 @@ const jumpGame = async () => {
         });
       } catch (tauriErr) {
         console.warn('[jumpGame] Tauri窗口创建异常:', tauriErr);
-        window.open(gameUrl, '_blank', 'width=420,height=750');
+        const fallbackWin = window.open(gameUrl, '_blank', 'width=420,height=750,popup=yes');
+        if (fallbackWin) { fallbackWin.focus(); registerGameWindow(token.id, token.name, fallbackWin); }
       }
     } else {
       // 浏览器环境: 直接 window.open
-      window.open(gameUrl, '_blank', 'width=420,height=750');
+      const gameWin = window.open(gameUrl, '_blank', 'width=420,height=750,popup=yes');
+      if (gameWin) { gameWin.focus(); registerGameWindow(token.id, token.name, gameWin); }
     }
 
     addLog({
@@ -3069,6 +3077,12 @@ const jumpGame = async () => {
       type: "success",
     });
     message.success(`${token.name}: 游戏界面已打开`);
+    // 3秒后自动关闭日志
+    if (autoCloseTimer) clearTimeout(autoCloseTimer);
+    autoCloseTimer = setTimeout(() => {
+      showTaskLogs.value = false;
+      autoCloseTimer = null;
+    }, 3000);
 
   } catch (err) {
     console.error('[jumpGame] 错误:', err);
@@ -6923,8 +6937,9 @@ html.dark .summary-item .value.warning {
   }
 }
 
-// ====== 窄卡片容器查询适配（卡片宽度 < 220px 时整体缩小） ======
-@container (max-width: 220px) {
+// ====== 窄卡片适配（小屏时整体缩小） ======
+// 原 @container 查询改为 @media 以兼容 Android 9 WebView (Chrome 70)
+@media (max-width: 600px) {
   .token-card {
     padding: 6px;
     border-radius: 8px;
@@ -6942,7 +6957,7 @@ html.dark .summary-item .value.warning {
       }
 
       .token-name {
-        font-size: clamp(7px, 6cqi, 11px);
+        font-size: clamp(9px, 2.5vw, 11px);
       }
     }
 

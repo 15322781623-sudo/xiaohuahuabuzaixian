@@ -83,118 +83,94 @@
     <!-- 任务设置模态框 -->
     <n-modal
       preset="card"
-      style="width: 90%; max-width: 560px"
-      title="任务设置"
+      style="width: 92%; max-width: 600px"
       v-model:show="showSettings"
+      :segmented="{ content: true }"
     >
       <template #header>
-        <div class="modal-header">
-          <n-icon>
-            <Settings></Settings>
-          </n-icon>
+        <div class="st-modal-header">
+          <span class="st-modal-icon">⚙️</span>
           <span>任务设置</span>
         </div>
       </template>
 
-      <div class="settings-content">
-        <div class="settings-grid">
-          <!-- 竞技场设置 -->
-          <div class="setting-item">
-            <label class="setting-label">竞技场阵容</label>
-            <n-select
-              size="small"
-              v-model:value="settings.arenaFormation"
-              :options="formationOptions"
-            ></n-select>
-          </div>
-
-          <!-- BOSS设置 -->
-          <div class="setting-item">
-            <label class="setting-label">BOSS阵容</label>
-            <n-select
-              size="small"
-              v-model:value="settings.bossFormation"
-              :options="formationOptions"
-            ></n-select>
-          </div>
-
-          <!-- BOSS次数 -->
-          <div class="setting-item">
-            <label class="setting-label">BOSS次数</label>
-            <n-select
-              size="small"
-              v-model:value="settings.bossTimes"
-              :options="bossTimesOptions"
-            ></n-select>
-          </div>
-
-          <!-- 俱乐部BOSS次数 -->
-          <div class="setting-item">
-            <label class="setting-label">俱乐部BOSS次数</label>
-            <n-select
-              size="small"
-              v-model:value="settings.dailyBossTimes"
-              :options="dailyBossTimesOptions"
-            ></n-select>
-          </div>
-
-          <!-- 延迟设置 -->
-          <div class="setting-item">
-            <label class="setting-label">命令延迟 (毫秒)</label>
-            <n-input-number
-              size="small"
-              v-model:value="settings.commandDelay"
-              :max="5000"
-              :min="0"
-              :step="100"
-            ></n-input-number>
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label">任务延迟 (毫秒)</label>
-            <n-input-number
-              size="small"
-              v-model:value="settings.taskDelay"
-              :max="5000"
-              :min="0"
-              :step="100"
-            ></n-input-number>
-          </div>
-
-          <!-- 功能开关 -->
-          <div class="setting-switches">
-            <div class="switch-row">
-              <span class="switch-label">领罐子</span>
-              <n-switch v-model:value="settings.claimBottle"></n-switch>
+      <div class="st-settings-body">
+        <!-- 阵容配置 -->
+        <div class="st-section">
+          <div class="st-section-title"><span class="st-section-icon">🎯</span>阵容配置</div>
+          <div class="st-section-grid">
+            <div class="st-field">
+              <label class="st-label">竞技场</label>
+              <n-select size="small" v-model:value="settings.arenaFormation" :options="formationOptions" />
             </div>
-
-            <div class="switch-row">
-              <span class="switch-label">领挂机</span>
-              <n-switch v-model:value="settings.claimHangUp"></n-switch>
+            <div class="st-field">
+              <label class="st-label">BOSS</label>
+              <n-select size="small" v-model:value="settings.bossFormation" :options="formationOptions" />
             </div>
+          </div>
+        </div>
 
-            <div class="switch-row">
-              <span class="switch-label">竞技场</span>
-              <n-switch v-model:value="settings.arenaEnable"></n-switch>
+        <!-- 战斗次数 -->
+        <div class="st-section">
+          <div class="st-section-title"><span class="st-section-icon">⚔️</span>战斗次数</div>
+          <div class="st-section-grid st-grid-2">
+            <div class="st-field">
+              <label class="st-label">BOSS次数</label>
+              <n-select size="small" v-model:value="settings.bossTimes" :options="bossTimesOptions" />
             </div>
+            <div class="st-field">
+              <label class="st-label">俱乐部BOSS</label>
+              <n-select size="small" v-model:value="settings.dailyBossTimes" :options="dailyBossTimesOptions" />
+            </div>
+          </div>
+        </div>
 
-            <div class="switch-row">
-              <span class="switch-label">开宝箱</span>
-              <n-switch v-model:value="settings.openBox"></n-switch>
+        <!-- 延迟设置 -->
+        <div class="st-section">
+          <div class="st-section-title"><span class="st-section-icon">⏱️</span>延迟设置</div>
+          <div class="st-section-grid st-grid-2">
+            <div class="st-field">
+              <label class="st-label">命令延迟 (ms)</label>
+              <n-input-number size="small" v-model:value="settings.commandDelay" :max="5000" :min="0" :step="100" />
             </div>
+            <div class="st-field">
+              <label class="st-label">任务延迟 (ms)</label>
+              <n-input-number size="small" v-model:value="settings.taskDelay" :max="5000" :min="0" :step="100" />
+            </div>
+          </div>
+        </div>
 
-            <div class="switch-row">
-              <span class="switch-label">领取邮件奖励</span>
-              <n-switch v-model:value="settings.claimEmail"></n-switch>
+        <!-- 功能开关 -->
+        <div class="st-section">
+          <div class="st-section-title"><span class="st-section-icon">🔔</span>功能开关</div>
+          <div class="st-switch-grid">
+            <div class="st-switch-item">
+              <span class="st-switch-text">领罐子</span>
+              <n-switch v-model:value="settings.claimBottle" size="small" />
             </div>
-            <div class="switch-row">
-              <span class="switch-label">黑市购买物品</span>
-              <n-switch v-model:value="settings.blackMarketPurchase"></n-switch>
+            <div class="st-switch-item">
+              <span class="st-switch-text">领挂机</span>
+              <n-switch v-model:value="settings.claimHangUp" size="small" />
             </div>
-
-            <div class="switch-row">
-              <span class="switch-label">付费招募</span>
-              <n-switch v-model:value="settings.payRecruit"></n-switch>
+            <div class="st-switch-item">
+              <span class="st-switch-text">竞技场</span>
+              <n-switch v-model:value="settings.arenaEnable" size="small" />
+            </div>
+            <div class="st-switch-item">
+              <span class="st-switch-text">开宝箱</span>
+              <n-switch v-model:value="settings.openBox" size="small" />
+            </div>
+            <div class="st-switch-item">
+              <span class="st-switch-text">邮件奖励</span>
+              <n-switch v-model:value="settings.claimEmail" size="small" />
+            </div>
+            <div class="st-switch-item">
+              <span class="st-switch-text">黑市购买</span>
+              <n-switch v-model:value="settings.blackMarketPurchase" size="small" />
+            </div>
+            <div class="st-switch-item">
+              <span class="st-switch-text">付费招募</span>
+              <n-switch v-model:value="settings.payRecruit" size="small" />
             </div>
           </div>
         </div>
@@ -1021,6 +997,106 @@ onBeforeUnmount(() => {
 .switch-label {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
+}
+
+/* ========== Task Settings - New Design ========== */
+.st-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.st-modal-icon { font-size: 18px; }
+.st-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.st-section {
+  padding: 12px 0 8px;
+}
+.st-section + .st-section {
+  border-top: 1px solid #f0f0f0;
+}
+.st-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.st-section-icon { font-size: 14px; }
+.st-section-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.st-section-grid.st-grid-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+.st-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.st-label {
+  font-size: 12px;
+  color: #86909c;
+  line-height: 1;
+}
+.st-switch-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0;
+}
+.st-switch-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.st-switch-item:hover {
+  background: #f5f7fa;
+}
+.st-switch-text {
+  font-size: 13px;
+  color: #4e5969;
+}
+
+/* Settings - Responsive */
+@media (max-width: 768px) {
+  .st-section-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .st-section-grid.st-grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .st-switch-grid {
+    grid-template-columns: 1fr;
+  }
+  .st-switch-item {
+    padding: 10px 8px;
+    min-height: 40px;
+  }
+}
+
+/* Settings - Dark Mode */
+html.dark .st-section + .st-section,
+html[data-theme="dark"] .st-section + .st-section {
+  border-top-color: rgba(255,255,255,0.08);
+}
+html.dark .st-label,
+html[data-theme="dark"] .st-label {
+  color: #a0a4b8;
+}
+html.dark .st-switch-item:hover,
+html[data-theme="dark"] .st-switch-item:hover {
+  background: rgba(255,255,255,0.06);
 }
 
 .task-list {

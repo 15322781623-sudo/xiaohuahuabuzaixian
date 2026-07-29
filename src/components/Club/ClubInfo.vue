@@ -564,7 +564,7 @@ import ClubWeirdTowerInfo from "./ClubWeirdTowerInfo.vue";
 import CarScoreInfo from "./CarScoreInfo.vue";
 import { getLineupType, HERO_DICT, HeroFillInfo, legacycolor, LINEUP_RULES } from "@/utils/HeroList";
 import html2canvas from "html2canvas";
-import { downloadCanvasAsImage } from "@/utils/imageExport";
+import { downloadCanvasAsImage, downloadFile } from "@/utils/imageExport";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
@@ -877,7 +877,7 @@ const handleExportImage = async () => {
   }
 };
 
-const handleExportExcel = () => {
+const handleExportExcel = async () => {
   try {
     isExporting.value = true;
     message.loading("正在导出表格，请稍候...");
@@ -910,17 +910,15 @@ const handleExportExcel = () => {
 
     // 创建Blob并下载
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
     const dateStr = new Date().toLocaleDateString().replace(/\//g, "-");
-    link.setAttribute("download", `俱乐部成员信息_${dateStr}.csv`);
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // ✅ 使用通用下载函数：APK环境走 Capacitor Filesystem + Share 分享，Web/EXE 走 <a> 下载
+    const ok = await downloadFile(blob, `俱乐部成员信息_${dateStr}.csv`);
 
-    message.success("表格导出成功");
+    if (ok) {
+      message.success("表格导出成功");
+    } else {
+      message.error("表格导出失败，请重试");
+    }
   } catch (err) {
     console.error("导出表格失败：", err);
     message.error("导出表格失败，请重试");

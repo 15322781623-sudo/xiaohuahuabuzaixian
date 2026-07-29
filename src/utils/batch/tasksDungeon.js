@@ -406,6 +406,8 @@ export function createTasksDungeon(deps) {
         let winCount = 0;
         let loseCount = 0;
         let fightCount = 0;
+        let consecutiveLosses = 0; // 连续失败计数
+        const MAX_CONSECUTIVE_LOSSES = 15; // 连续失败上限
         const maxFights = 200; // 安全上限，防止无限循环
 
         while (fightCount < maxFights) {
@@ -448,15 +450,27 @@ export function createTasksDungeon(deps) {
 
             if (isWin) {
               winCount++;
+              consecutiveLosses = 0;
             } else {
               loseCount++;
+              consecutiveLosses++;
             }
 
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 第${fightCount}场${isWin ? "胜利" : "失败"}${star ? `（${star}星）` : ""}`,
+              message: `${token.name} 第${fightCount}场${isWin ? "胜利" : "失败"}${star ? `（${star}星）` : ""}${!isWin ? `（连续失败${consecutiveLosses}次）` : ""}`,
               type: isWin ? "success" : "warning",
             });
+
+            // 连续失败达到上限，停止该账号
+            if (consecutiveLosses >= MAX_CONSECUTIVE_LOSSES) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 连续失败${consecutiveLosses}次，自动停止梦境战斗`,
+                type: "warning",
+              });
+              break;
+            }
 
             await new Promise((r) => setTimeout(r, _getModuleDelay('treasure')));
 

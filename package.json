@@ -1,6 +1,6 @@
 {
   "name": "xyzw-token-manager",
-  "version": "2.36.0",
+  "version": "2.42.0",
   "type": "module",
   "description": "XYZW 游戏 Token 管理器 - 支持 Base64 导入和 WebSocket 连接管理",
   "main": "src/main.js",
@@ -88,6 +88,12 @@
   ],
   "author": "XYZW Team",
   "license": "CC-BY-NC-SA-4.0",
+  "browserslist": [
+    "Chrome >= 70",
+    "Android >= 7",
+    "iOS >= 12",
+    "not dead"
+  ],
   "packageManager": "pnpm@10.19.0",
   "pnpm": {
     "overrides": {

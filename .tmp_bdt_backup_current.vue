@@ -197,6 +197,7 @@
             @change="handleImportFullConfig"
           />
           <div
+            class="main-action-bar"
             style="
               display: flex;
               align-items: center;
@@ -869,15 +870,6 @@
                 </n-button>
                 <n-button
                   size="small"
-                  type="warning"
-                  secondary
-                  @click="executeManualTaskWithRecord('egg_merge_cycle', '点蛋+合成', egg_merge_cycle)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  🥚 点蛋+合成
-                </n-button>
-                <n-button
-                  size="small"
                   @click="executeManualTaskWithRecord('batch_pet_upgrade', '宠物一键升级', batch_pet_upgrade)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
@@ -1203,12 +1195,9 @@
               {{ isTokenListExpanded ? '收起' : '展开' }}
             </n-button>
           </template>
+          <!-- 分组管理和选择（独立于账号列表收起状态，始终显示） -->
           <div>
-            <!-- 分组管理和选择（分组选择区在收起时也保持显示） -->
-            <div
-              v-if="isTokenListExpanded || tokenGroups.length > 0"
-              style="background: #f7f8fa; border-radius: 6px; padding: 8px; margin-bottom: 12px;"
-            >
+            <div style="background: #f7f8fa; border-radius: 6px; padding: 8px; margin-bottom: 12px;">
               <n-space vertical style="width: 100%">
               <!-- 分组选择部分 -->
               <div
@@ -1265,6 +1254,7 @@
               <!-- 分组管理按钮（仅展开时显示） -->
               <div
                 v-if="isTokenListExpanded"
+                class="group-manage-actions"
                 style="
                   display: flex;
                   justify-content: space-between;
@@ -1394,16 +1384,10 @@
                   :step="1" 
                   size="small" 
                   style="width: 80px" 
-                  :disabled="batchSettings.autoColumns"
+                  :disabled="!isMaximizedWindow"
                   @update:value="handleManualColumnChange"
                 />
-                <n-checkbox
-                  :checked="batchSettings.autoColumns"
-                  size="small"
-                  @update:checked="handleAutoColumnsToggle"
-                >
-                  <span style="font-size: 12px; color: #666;">自动</span>
-                </n-checkbox>
+                <span v-if="!isMaximizedWindow" style="font-size: 12px; color: #999;">(自动)</span>
               </div>
               
               <!-- 账号搜索框 -->
@@ -1457,11 +1441,11 @@
                   <n-divider vertical />
                   <n-tooltip :show-arrow="true">
                     <template #trigger>
-                      <n-button size="small" :type="performanceMode ? 'warning' : 'default'" @click="togglePerformanceMode">
-                        {{ performanceMode ? '⚡性能模式·开' : '⚡性能模式' }}
+                      <n-button size="small" :type="showCardSections ? 'primary' : 'default'" @click="toggleCardSections">
+                        {{ showCardSections ? '隐藏卡片详情' : '显示卡片详情' }}
                       </n-button>
                     </template>
-                    一键关闭卡片详情、收起所有展开区、日志仅渲染最近200条，大幅降低渲染压力（日志数据仍完整保留）
+                    隐藏卡片详情可减少页面渲染压力，提升流畅度
                   </n-tooltip>
                 </div>
               </div>
@@ -1470,12 +1454,7 @@
                 :y-gap="12"
                 :cols="responsiveColumns"
               >
-                <!-- 搜索用 v-show 控制显隐，保持卡片挂载，避免删除关键词时整列表重新挂载卡顿 -->
-                <n-grid-item
-                  v-for="token in sortedAllTokens"
-                  v-show="searchVisibleTokenIds.has(token.id)"
-                  :key="token.id"
-                >
+                <n-grid-item v-for="token in sortedTokens" :key="token.id">
                   <TokenCard
                     :token="token"
                     :is-selected="selectedTokens.includes(token.id)"
@@ -1565,11 +1544,6 @@
             processing
           />
           <div class="log-container" ref="logContainer" @scroll="handleLogScroll">
-            <!-- ✅ 性能模式日志截断提示 -->
-            <div v-if="performanceMode && logs.length > 200" class="log-item info" style="opacity: 0.7">
-              <span class="time">⚡</span>
-              <span class="message">性能模式：仅渲染最近 200 条日志（共 {{ logs.length }} 条，复制日志仍为完整内容）</span>
-            </div>
             <div
               v-for="(log, index) in filteredLogs"
               :key="index"
@@ -2821,8 +2795,8 @@
                 <span class="manual-buy-label">{{ item.name }}</span>
               </n-checkbox>
               <n-input-number v-if="item._checked"
-                              v-model:value="item.count" :min="1" :max="99" size="tiny"
-                              style="width: 72px;"
+                              v-model:value="item.count" :min="1" :max="99" size="small"
+                              style="width: 80px; flex-shrink: 0;"
                               @update:value="(val) => { if (val <= 0) item._checked = false; }" />
             </div>
           </n-grid-item>
@@ -2856,8 +2830,8 @@
                 <span class="manual-buy-label">{{ item.label }}</span>
               </n-checkbox>
               <n-input-number v-if="item._checked"
-                              v-model:value="item.count" :min="1" :max="item.maxCount" size="tiny"
-                              style="width: 72px;"
+                              v-model:value="item.count" :min="1" :max="item.maxCount" size="small"
+                              style="width: 80px; flex-shrink: 0;"
                               @update:value="(val) => { if (val <= 0) item._checked = false; }" />
             </div>
           </n-grid-item>
@@ -3108,14 +3082,6 @@
                       </n-tag>
                     </span>
                   </div>
-                  <div class="task-info-item" v-if="task.maxActive > 0">
-                    <span class="info-label">并发执行</span>
-                    <span class="info-value">
-                      <n-tag size="small" type="warning" :bordered="false">
-                        {{ task.maxActive }} 个并发
-                      </n-tag>
-                    </span>
-                  </div>
 
                 <div class="task-info-item">
                   <span class="info-label">选中任务</span>
@@ -3227,21 +3193,6 @@
                 </template><!-- end v-else normal task -->
               </div>
             </div><!-- end task-card-body -->
-
-            <!-- 快捷并发控制（独立行） -->
-            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-top: 1px solid #e8eaed; background: #fafbfc;">
-              <span style="font-size: 12px; opacity: 0.65; white-space: nowrap;">⚡ 并发数</span>
-              <n-input-number
-                :value="task.maxActive || 0"
-                @update:value="(val) => updateTaskMaxActive(task, val)"
-                :min="0"
-                :max="50"
-                :step="1"
-                size="tiny"
-                style="width: 90px;"
-              />
-              <span style="font-size: 11px; opacity: 0.5;">0=全局</span>
-            </div>
 
             <!-- 任务操作 -->
             <div class="task-card-footer">
@@ -3370,28 +3321,6 @@
               </div>
             </div>
             </template><!-- end normal runType -->
-          </div>
-        </div>
-        <!-- 任务级并发控制 -->
-        <div class="form-section" v-if="taskForm.taskType !== 'push_map'">
-          <div class="section-title">⚡ 并发控制</div>
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <span style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;">并发数：</span>
-            <n-input-number
-              v-model:value="taskForm.maxActive"
-              :min="0"
-              :max="50"
-              :step="1"
-              size="small"
-              style="width: 140px;"
-              placeholder="0"
-            />
-            <span style="font-size: 12px; color: var(--text-tertiary); line-height: 1.4;">
-              {{ taskForm.maxActive > 0 ? `使用 ${taskForm.maxActive} 个并发执行此任务` : '使用全局设置（当前 ' + batchSettings.maxActive + '）' }}
-            </span>
-          </div>
-          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px; opacity: 0.8;">
-            设置为 0 则跟随全局「最大并发数」设置，适用于希望某个定时任务单独控制执行速度的场景
           </div>
         </div>
         <div class="form-section" v-if="taskForm.taskType !== 'push_map'">
@@ -4433,7 +4362,7 @@
               <div class="setting-item-responsive" style="flex-direction: column; align-items: stretch;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                   <label class="setting-label-responsive" style="flex: 1;">列表每行数量</label>
-                  <n-switch :value="batchSettings.autoColumns" size="small" style="margin-right: 8px;" @update:value="handleAutoColumnsToggle" />
+                  <n-switch v-model:value="batchSettings.autoColumns" size="small" style="margin-right: 8px;" @update:value="autoSaveBatchSettings" />
                   <span style="font-size: 12px; color: #666;">自动</span>
                 </div>
                 <n-input-number 
@@ -4443,11 +4372,12 @@
                   :step="1" 
                   size="small" 
                   style="width: 100%" 
-                  :disabled="batchSettings.autoColumns"
+                  :disabled="batchSettings.autoColumns || !isMaximizedWindow"
                   @update:value="handleManualColumnChange"
                 />
                 <div style="font-size: 11px; color: #999; margin-top: 4px;">
                   {{ batchSettings.autoColumns ? `自动: ${responsiveColumns}列` : `手动: ${batchSettings.tokenListColumns}列` }}
+                  {{ !isMaximizedWindow && !batchSettings.autoColumns ? ' (窗口<1400px，已自动切换为自动模式)' : '' }}
                 </div>
               </div>
               <div class="setting-item-responsive">
@@ -4672,7 +4602,7 @@
       <div class="settings-content">
         <div class="settings-grid" style="display: block;">
           <!-- 获取列表区域 -->
-          <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
             <n-button type="primary" @click="fetchApexVoteList" :loading="apexCheerLoading" style="width: 200px; margin-bottom: 0;">
               {{ apexCheerLoading ? '加载中...' : '获取可助威俱乐部列表' }}
             </n-button>
@@ -4683,12 +4613,6 @@
               style="width: 120px"
               size="small"
             />
-            <n-button size="small" :loading="apexRoundDetecting" @click="detectCurrentApexRound" :disabled="apexRoundDetecting">
-              {{ apexRoundDetecting ? '探测中...' : '🔍 自动探测期次' }}
-            </n-button>
-            <n-tag v-if="apexRoundDetected" size="small" type="success" :bordered="false">
-              当前活跃：第{{ apexRoundDetected }}期
-            </n-tag>
             <span style="font-size: 16px;">分组：</span>
             <n-select
               v-model:value="selectedApexGroupId"
@@ -5992,9 +5916,19 @@ const towerEnergy = computed(() => {
   return weirdTowerData.value?.energy || 0;
 });
 
-// 排序后的全部Token列表（不含搜索过滤，主卡片网格通过 v-show 控制显隐，避免删除关键词时重新挂载卡顿）
-const sortedAllTokens = computed(() => {
+// 排序后的游戏角色Token列表
+const sortedTokens = computed(() => {
   let tokens = [...tokenStore.gameTokens];
+  
+  // 搜索过滤（使用防抖后的关键词，避免输入/删除时频繁重渲染卡顿）
+  if (debouncedTokenSearchKeyword.value.trim()) {
+    const keyword = debouncedTokenSearchKeyword.value.trim().toLowerCase();
+    tokens = tokens.filter(token => 
+      token.name?.toLowerCase().includes(keyword) ||
+      token.server?.toLowerCase().includes(keyword) ||
+      token.id?.toLowerCase().includes(keyword)
+    );
+  }
   
   // 检查是否有自定义排序
   const customOrder = tokenOrder.value;
@@ -6126,20 +6060,6 @@ const sortedAllTokens = computed(() => {
   
   return tokens;
 });
-
-// 排序 + 搜索过滤后的Token列表（使用防抖后的关键词，供弹窗账号列表与全选等逻辑使用）
-const sortedTokens = computed(() => {
-  if (!debouncedTokenSearchKeyword.value.trim()) return sortedAllTokens.value;
-  const keyword = debouncedTokenSearchKeyword.value.trim().toLowerCase();
-  return sortedAllTokens.value.filter(token => 
-    token.name?.toLowerCase().includes(keyword) ||
-    token.server?.toLowerCase().includes(keyword) ||
-    token.id?.toLowerCase().includes(keyword)
-  );
-});
-
-// 搜索命中的Token ID集合（主卡片网格 v-show 显隐判断用）
-const searchVisibleTokenIds = computed(() => new Set(sortedTokens.value.map(t => t.id)));
 
 // 分组管理弹窗中账号搜索过滤
 const filteredGroupTokens = computed(() => {
@@ -6451,8 +6371,6 @@ const selectedApexTeamId = ref(null);
 const selectedApexRound = ref(1); // 场次选择（1-7）
 const selectedApexGroupId = ref(1); // 分组选择（1-32）
 const apexClubSearch = ref(''); // 俱乐部搜索关键词
-const apexRoundDetecting = ref(false); // 期次自动探测中
-const apexRoundDetected = ref(null); // 探测到的当前期次（null=未探测）
 
 // 分组切换时自动刷新俱乐部列表
 watch(selectedApexGroupId, () => {
@@ -6478,90 +6396,6 @@ watch(apexClubSearch, (newVal) => {
     }, 300);
   }
 });
-
-// 期次切换时自动刷新俱乐部列表
-watch(selectedApexRound, () => {
-  if (showApexCheerModal.value && !apexClubSearch.value.trim()) {
-    fetchApexVoteList();
-  }
-});
-
-// 自动探测当前活跃期次：从第7期到第1期逆序试探，第一个返回数据的期次即为当前活跃期
-const detectCurrentApexRound = async () => {
-  if (selectedTokens.value.length === 0) {
-    message.warning("请先选择一个账号用于探测期次");
-    return;
-  }
-
-  const tokenId = selectedTokens.value[0];
-  const token = tokens.value.find(t => t.id === tokenId);
-
-  apexRoundDetecting.value = true;
-  apexRoundDetected.value = null;
-  try {
-    // Ensure connection
-    const status = tokenStore.getWebSocketStatus(tokenId);
-    if (status !== "connected") {
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `正在连接 ${token.name} 以探测当前期次...`,
-        type: "info",
-      });
-      await tokenStore.createWebSocketConnection(tokenId, token.token, token.wsUrl);
-      let retries = 0;
-      while (tokenStore.getWebSocketStatus(tokenId) !== "connected" && retries < 20) {
-        await new Promise(r => setTimeout(r, 1000));
-        retries++;
-      }
-      if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
-        throw new Error(`连接 ${token.name} 超时`);
-      }
-    }
-
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `正在探测当前活跃期次（从第7期到第1期）...`,
-      type: "info",
-    });
-
-    // 从高到低探测，第一个有数据的期次即为当前活跃期
-    for (let round = 7; round >= 1; round--) {
-      try {
-        const response = await tokenStore.sendMessageWithPromise(
-          tokenId,
-          "apex_getvotelist",
-          { groupId: 1, idx: 0, round },
-          8000
-        );
-        if (response && response.apexVoteList && response.apexVoteList.length > 0) {
-          selectedApexRound.value = round;
-          apexRoundDetected.value = round;
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `✅ 探测到当前活跃期次：第${round}期（${response.apexVoteList.length} 支队伍）`,
-            type: "success",
-          });
-          message.success(`已自动切换到当前活跃期次：第${round}期`);
-          return;
-        }
-      } catch (e) {
-        console.warn(`探测第${round}期失败:`, e.message);
-      }
-    }
-
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `⚠️ 所有期次均无数据，保持当前选择：第${selectedApexRound.value}期`,
-      type: "warning",
-    });
-    message.warning("未能探测到活跃期次，请手动选择");
-  } catch (error) {
-    console.error("Detect apex round error:", error);
-    message.error("探测期次失败：" + error.message);
-  } finally {
-    apexRoundDetecting.value = false;
-  }
-};
 
 // 弹窗关闭时释放连接槽（处理点击X按钮关闭的情况）
 watch(showApexCheerModal, (newVal) => {
@@ -6713,8 +6547,7 @@ const apexVoteRowProps = (row) => {
 
 const openApexCheerModal = async () => {
   showApexCheerModal.value = true;
-  // 先自动探测当前活跃期次，再获取列表（探测会自动切换到活跃期次）
-  await detectCurrentApexRound();
+  // 先获取列表，再获取助威币数量（避免同时创建连接导致锁冲突）
   await fetchApexVoteList();
   await getMaxApexVoteCount();
 };
@@ -6725,7 +6558,6 @@ const closeApexCheerModal = () => {
     tokenStore.closeWebSocketConnection(tokenId);
   }
   showApexCheerModal.value = false;
-  apexRoundDetected.value = null; // 重置探测状态
 };
 
 const fetchApexVoteList = async (fetchAllGroups = false) => {
@@ -7813,7 +7645,7 @@ const heroOptions = [
   { label: "姜维", value: 114 },
   { label: "公孙瓒", value: 116 },
   { label: "典韦", value: 117 },
-  { label: "赵云", value: 118 },
+  { label: "超云", value: 118 },
   { label: "张角", value: 120 },
   { label: "鲁肃", value: 121 },
 ];
@@ -8180,20 +8012,18 @@ const batchSettings = reactive({
   skinChallengeMaxFail: 5,          // 换皮闯关连续失败次数上限，默认5次
 });
 
-// 账号搜索关键词（输入框实时绑定）
+// 账号搜索关键词
 const tokenSearchKeyword = ref("");
-// 防抖后的搜索关键词（实际过滤使用，停止输入300ms后才更新）
+
+// 防抖后的搜索关键词（sortedTokens 使用），避免每次按键立即重渲染全部账号卡片导致卡顿
 const debouncedTokenSearchKeyword = ref("");
 let tokenSearchDebounceTimer = null;
 
-// 处理账号搜索（300ms防抖，避免每敲一个字符就触发全量过滤渲染）
+// 处理账号搜索
 const handleTokenSearch = () => {
-  if (tokenSearchDebounceTimer) {
-    clearTimeout(tokenSearchDebounceTimer);
-  }
+  clearTimeout(tokenSearchDebounceTimer);
   tokenSearchDebounceTimer = setTimeout(() => {
     debouncedTokenSearchKeyword.value = tokenSearchKeyword.value;
-    tokenSearchDebounceTimer = null;
   }, 300);
 };
 
@@ -8295,19 +8125,12 @@ const saveBatchSettings = () => {
 // 开关切换时自动保存（不弹窗提示）
 const autoSaveBatchSettings = () => {
   try {
-    console.log('🔧 [AutoSave] 当前设置:', { 
-      maxLevelEnabled: batchSettings.petMergeMaxLevelEnabled,
-      maxLevel: batchSettings.petMergeMaxLevel
-    }); // 🔍 调试日志
     // 剥离运行时标志
     const wasSingleMode = batchSettings.singleAccountMode;
     batchSettings.singleAccountMode = false;
     localStorage.setItem("batchSettings", JSON.stringify(batchSettings));
-    console.log('💾 [AutoSave] 已保存到 localStorage'); // 🔍 调试日志
     batchSettings.singleAccountMode = wasSingleMode;
-  } catch (e) {
-    console.error('❌ [AutoSave] 保存失败:', e); // 🔍 错误日志
-  }
+  } catch (e) { /* ignore */ }
 };
 
 // 恢复模块延迟默认值（现在为延迟分组）
@@ -8562,7 +8385,6 @@ const taskForm = reactive({
   saltRoadLegionName: '', // 天宫助威预选军团名（显示用）
   bookUpgradeTypes: ['hero', 'fish', 'skin'], // 图鉴升星类型: hero=英雄, fish=鱼灵, skin=皮肤
   simplifiedDailyItems: SIMPLIFIED_TASK_ITEMS.map(item => item.key), // 日常精简补齐勾选的任务项（默认全选）
-  maxActive: 0, // 任务级并发控制：0=使用全局设置，>0=使用此任务的并发数
 });
 
 // 定时任务配置 - 天宫助威对阵列表获取
@@ -8639,7 +8461,7 @@ const taskGroupDefinitions = [
   { name: 'baoku', label: '宝库', tasks: ['batchbaoku13', 'batchbaoku45'] },
   { name: 'weirdTower', label: '怪异塔', tasks: ['climbWeirdTower', 'batchUseItems', 'batchMergeItems', 'batchClaimFreeEnergy', 'claim_weird_tower_all', 'claim_weird_tower_pass'] },
   { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
-  { name: 'pet', label: '宠物', tasks: ['legion_buy_spotted_egg', 'use_spotted_egg', 'claim_pet_book', 'batch_pet_merge', 'egg_merge_cycle', 'batch_pet_upgrade'] },
+  { name: 'pet', label: '宠物', tasks: ['legion_buy_spotted_egg', 'use_spotted_egg', 'claim_pet_book', 'batch_pet_merge', 'batch_pet_upgrade'] },
   { name: 'nightmare', label: '十殿', tasks: ['batchNightmareChallengePresets', 'nightmare_draw_lottery', 'nightmare_claim_book_reward', 'star_drawturntable', 'batch_star_challenge'] },
   { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchAutumnUseItem', 'batchClaimCdkReward', 'batchClaimApexRewards', 'batchSaltCupBet'] },
   { name: 'legacy', label: '功法', tasks: ['batchLegacyHangup', 'batchLegacyClaim', 'batchLegacyGiftSendEnhanced', 'batchLegacyClaimGiftTask'] },
@@ -8947,7 +8769,6 @@ const cancelTaskEdit = () => {
     taskForm.saltRoadLegionId = null;
     taskForm.saltRoadLegionName = '';
     taskForm.bookUpgradeTypes = ['hero', 'fish', 'skin'];
-    taskForm.maxActive = 0;
     taskForm.fragmentPackItems = [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005];
     taskSaltRoadOpponents.value = [];
     taskScheduleSelectedGroupIds.value = [];
@@ -9070,7 +8891,6 @@ const openTaskModal = () => {
   taskForm.saltRoadLegionId = null;
   taskForm.saltRoadLegionName = '';
   taskForm.bookUpgradeTypes = ['hero', 'fish', 'skin'];
-  taskForm.maxActive = 0;
   
   // 碎片礼包配置（默认全选）
   taskForm.fragmentPackItems = [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005];
@@ -9270,7 +9090,6 @@ const editTask = (task) => {
     saltRoadLegionName: task.saltRoadLegionName || '',
     bookUpgradeTypes: task.bookUpgradeTypes && task.bookUpgradeTypes.length > 0 ? [...task.bookUpgradeTypes] : ['hero', 'fish', 'skin'],
     simplifiedDailyItems: task.simplifiedDailyItems && task.simplifiedDailyItems.length > 0 ? [...task.simplifiedDailyItems] : SIMPLIFIED_TASK_ITEMS.map(item => item.key),
-    maxActive: task.maxActive !== undefined ? task.maxActive : 0, // 任务级并发控制：0=使用全局
     pushStartTime: task.pushStartTime ? (() => {
       const [h, m] = task.pushStartTime.split(':').map(Number);
       const d = new Date();
@@ -9548,7 +9367,6 @@ const saveTask = () => {
     saltRoadLegionName: taskForm.saltRoadLegionName || '',
     bookUpgradeTypes: [...(taskForm.bookUpgradeTypes || ['hero', 'fish', 'skin'])],
     simplifiedDailyItems: [...(taskForm.simplifiedDailyItems || SIMPLIFIED_TASK_ITEMS.map(item => item.key))],
-    maxActive: taskForm.maxActive || 0, // 任务级并发控制：0=使用全局设置
   };
 
   let isNew = !editingTask.value;
@@ -9587,18 +9405,6 @@ const deleteTask = (taskId) => {
       type: "info",
     });
     message.success("定时任务已删除");
-  }
-};
-
-// 快捷修改任务并发数（任务卡片外部控件）
-const updateTaskMaxActive = (task, val) => {
-  const newVal = val || 0;
-  const idx = scheduledTasks.value.findIndex(t => t.id === task.id);
-  if (idx !== -1) {
-    scheduledTasks.value[idx].maxActive = newVal;
-    saveScheduledTasks();
-    const label = newVal > 0 ? `${newVal} 个并发` : '全局设置';
-    message.success(`${task.name} 并发已设为: ${label}`);
   }
 };
 
@@ -11347,6 +11153,21 @@ const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) =>
     // 执行任务函数
     await taskFunction();
     
+    // ✅ 修复：任务完成后，检查所有账号的 status，将仍未完成的账号标记为 failed
+    availableTokens.forEach(tokenId => {
+      const status = tokenStatus.value[tokenId];
+      if (status !== 'completed' && status !== 'failed') {
+        tokenStatus.value[tokenId] = "failed";
+        tokenFailReasons.value[tokenId] = '任务完成但该账号未被处理';
+        const token = tokens.value.find(t => t.id === tokenId);
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `⚠️ ${token?.name || '未知账号'} 任务完成但状态为 ${status || '未处理'}，标记为失败`,
+          type: "warning",
+        });
+      }
+    });
+    
     // 最后一次更新进度
     updateProgressFromTokenStatus();
     
@@ -11427,12 +11248,6 @@ const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) =>
     clearInterval(progressTimer);
     // 重置单账号加速标志
     batchSettings.singleAccountMode = false;
-    
-    // ✅ 修复 Bug #1: 手动任务结束后，尝试消费 pendingTaskQueue
-    // 防止定时任务被"静默丢失"
-    setTimeout(() => {
-      processPendingQueue();
-    }, 1000); // 延迟 1 秒确保状态完全释放
   }
 };
 
@@ -11516,40 +11331,6 @@ const getDelayClass = (record) => {
 };
 
 // Health check for the scheduler
-// ✅ 刷新安全检查：判断当前是否可以安全刷新页面（不会中断/丢失定时任务）
-// 刷新页面会导致任务中断，必须等待定时任务执行完之后再刷新
-const isSafeToRefreshPage = () => {
-  // 1. 有任务正在执行或排队等待
-  if (isRunning.value || isScheduledTaskRunning.value || pendingTaskQueue.length > 0) {
-    const reason = isRunning.value ? '批量任务执行中' : isScheduledTaskRunning.value ? `定时任务[${currentScheduledTask?.name || '未知'}]执行中` : `队列中有${pendingTaskQueue.length}个待执行任务`;
-    return { safe: false, reason };
-  }
-  // 2. 底层仍有账号任务在跑（防止 stale 检测误释放 isScheduledTaskRunning 后刷新中断真实任务）
-  const runningSet = tokenStore.runningTokens?.value;
-  if (runningSet && typeof runningSet.size === 'number' && runningSet.size > 0) {
-    return { safe: false, reason: `仍有${runningSet.size}个账号任务活跃` };
-  }
-  // 3. 未来2分钟内有定时任务即将触发（daily 为精确分钟匹配，刷新跨过触发分钟会导致任务被静默丢失）
-  const now = new Date();
-  for (const task of scheduledTasks.value) {
-    if (!task.enabled) continue;
-    for (let i = 0; i <= 2; i++) {
-      const t = new Date(now.getTime() + i * 60000);
-      let willRun = false;
-      if (task.runType === 'daily') {
-        const tStr = t.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' });
-        willRun = tStr === task.runTime;
-      } else if (task.runType === 'cron') {
-        try { willRun = matchesCronExpression(task.cronExpression, t); } catch (e) { /* 解析失败不阻塞刷新 */ }
-      }
-      if (willRun) {
-        return { safe: false, reason: `定时任务[${task.name}]将在${i}分钟内触发` };
-      }
-    }
-  }
-  return { safe: true, reason: '' };
-};
-
 const healthCheck = () => {
   // If interval is not running, restart it
   if (!intervalId.value) {
@@ -11583,22 +11364,24 @@ const healthCheck = () => {
           type: "warning",
         });
       } else {
-        // ✅ 定时任务超 2 小时仍运行 → 直接终止并清理 (Bug #2)
-        console.error(`[${new Date().toISOString()}] 定时任务卡住超过 2 小时，强制结束`);
-        shouldStop.value = true;
+        // ✅ 定时任务超2小时仍运行，强制结束
+        console.error(
+          `[${new Date().toISOString()}] 定时任务卡住超过2小时，强制结束`,
+        );
+        shouldStop.value = true; // 通知正在执行的任务停止
         isScheduledTaskRunning.value = false;
         currentScheduledTask = null;
         scheduledTaskStartTime = null;
         isRunning.value = false;
         currentRunningTokenId.value = null;
-        tokenStore.runningTokens?.value.forEach(tokenId => {
+        // 清理所有 runningTokens 状态并关闭 WebSocket 连接
+        tokenStore.runningTokens.value.forEach(tokenId => {
           tokenStore.closeWebSocketConnection(tokenId);
           tokenStore.setTokenRunning(tokenId, false);
         });
-        updateLastTaskExecution();
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: "=== 检测到定时任务执行已超过 2 小时，已强制结束 ===",
+          message: "=== 检测到定时任务执行已超过2小时，已强制结束当前任务 ===",
           type: "warning",
         });
       }
@@ -11608,97 +11391,19 @@ const healthCheck = () => {
   // 兜底检查：isRunning=false 但 isScheduledTaskRunning 仍为 true（异常情况，如子任务 finally 已重置 isRunning 但外层未清理）
   if (!isRunning.value && isScheduledTaskRunning.value && scheduledTaskStartTime) {
     const elapsed = Date.now() - scheduledTaskStartTime;
-    // ✅ Bug #2: 阈值从 15 分钟进一步降低到 5 分钟
-    if (elapsed > 5 * 60 * 1000) {
-      const taskName = currentScheduledTask?.name || '未知任务';
+    if (elapsed > 260 * 60 * 1000) {
       console.error(
-        `[${new Date().toISOString()}] isRunning=false 但定时任务 [${taskName}] 已持续${Math.round(elapsed/60000)}分钟，重置状态`,
+        `[${new Date().toISOString()}] isRunning=false 但 isScheduledTaskRunning 已持续${Math.round(elapsed/60000)}分钟，重置状态`,
       );
-      // ✅ 通知旧任务停止（防止 stale 清理后旧实例仍在后台跑）
-      shouldStop.value = true;
-      // ✅ 标记孤儿 running 记录为 timeout（用于下次启动前的去重检测）
-      let orphanCount = 0;
-      taskExecutionRecords.value.forEach(r => {
-        if (r.status === 'running' && r.name === taskName) {
-          r.status = 'timeout';
-          r.elapsedStr = `超时 (${Math.round(elapsed/60000)}分钟强制清理)`;
-          r.endTime = Date.now();
-          orphanCount++;
-        }
-      });
       isScheduledTaskRunning.value = false;
       currentScheduledTask = null;
       scheduledTaskStartTime = null;
-      tokenStore.runningTokens?.value.forEach(tokenId => {
+      tokenStore.runningTokens.value.forEach(tokenId => {
         tokenStore.setTokenRunning(tokenId, false);
       });
-      updateLastTaskExecution();
       addLog({
         time: new Date().toLocaleTimeString(),
-        message: `=== 检测到 isRunning=false 但定时任务 [${taskName}] 状态未清理（持续${Math.round(elapsed/60000)}分钟），已兜底重置${orphanCount ? `，标记${orphanCount}条孤儿记录为 timeout` : ''} ===`,
-        type: "warning",
-      });
-    }
-  }
-
-  // ✅ 三层递进式 stale 检测（针对"用户感知无任务执行但队列卡住"场景）
-  // 层 1: 60 秒超激进（基于 tokenStatus 全部完成）
-  // 层 2: 3 分钟常规（基于 runningTokens 无活跃）
-  if (!isRunning.value && isScheduledTaskRunning.value && scheduledTaskStartTime) {
-    const elapsed = Date.now() - scheduledTaskStartTime;
-    const taskName = currentScheduledTask?.name || '未知任务';
-  
-    // 公共：判断 runningTokens 是否还有活跃子任务
-    const runningTokenSet = tokenStore.runningTokens?.value;
-    const hasActiveChildTask = runningTokenSet && typeof runningTokenSet.size === 'number' ? runningTokenSet.size > 0 : false;
-  
-    // 公共：判断 tokenStatus 是否全部为终态（completed/failed）
-    // 仅当选中的账号数>0 且全部有状态时才认为"全部完成"（避免空数组误判）
-    const selectedList = selectedTokens.value || [];
-    const hasTokens = selectedList.length > 0;
-    const allTerminal = hasTokens && selectedList.every(id => {
-      const s = tokenStatus.value?.[id];
-      return s === 'completed' || s === 'failed';
-    });
-  
-    // ✅ 层 1：60 秒超激进（所有账号均已完成/失败 → 说明异步链断裂，任务主体已停摆）
-    // 给任务 60 秒的连接建立/初始 setup 宽容期
-    let triggerLayer = 0;
-    if (!hasActiveChildTask && elapsed > 60 * 1000 && allTerminal) {
-      triggerLayer = 1;
-    }
-    // ✅ 层 2：3 分钟常规（无活跃子账号但 tokenStatus 未全部完成，可能部分账号 waiting_retry）
-    else if (!hasActiveChildTask && elapsed > 3 * 60 * 1000) {
-      triggerLayer = 2;
-    }
-      
-    // ✅ 新增：防止"假执行"导致的误判
-    // 场景：任务依赖验证失败等场景下，scheduledStartTime 刚设置不久（<3 秒），但没有子任务真正执行
-    // 这不是卡死，而是正常提前退出
-    const isVeryEarlyStage = elapsed < 3000 && !hasActiveChildTask;
-  
-    if (triggerLayer > 0 && !isVeryEarlyStage) {
-      console.warn(
-        `[${new Date().toISOString()}] 调度器侧 stale 层${triggerLayer} 触发：定时任务[${taskName}]已持续${Math.round(elapsed/1000)}秒，强制释放`,
-      );
-      // ✅ 通知旧任务停止
-      shouldStop.value = true;
-      // ✅ 标记孤儿 running 记录为 timeout
-      let orphanCount = 0;
-      taskExecutionRecords.value.forEach(r => {
-        if (r.status === 'running' && r.name === taskName) {
-          r.status = 'timeout';
-          r.elapsedStr = `超时（stale层${triggerLayer}清理，${Math.round(elapsed/1000)}秒）`;
-          r.endTime = Date.now();
-          orphanCount++;
-        }
-      });
-      isScheduledTaskRunning.value = false;
-      currentScheduledTask = null;
-      scheduledTaskStartTime = null;
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `⚠️ 定时任务[${taskName}]已无活跃进度达${Math.round(elapsed/1000)}秒（层${triggerLayer}），调度器已强制释放${orphanCount ? `（标记${orphanCount}条孤儿记录）` : ''}`,
+        message: `=== 检测到 isRunning=false 但定时任务状态未清理（持续${Math.round(elapsed/60000)}分钟），已兜底重置 ===`,
         type: "warning",
       });
     }
@@ -11708,13 +11413,14 @@ const healthCheck = () => {
   if (batchSettings.enableRefresh && batchSettings.refreshInterval > 0) {
     const elapsedMinutes = (Date.now() - pageLoadTime) / 1000 / 60;
     if (elapsedMinutes >= batchSettings.refreshInterval) {
-      // ✅ 统一走刷新安全检查：任务执行中/队列非空/账号任务活跃/定时任务即将触发 均推迟刷新
-      const refreshCheck = isSafeToRefreshPage();
-      if (refreshCheck.safe) {
+      // 必须同时检查批量任务、定时任务、以及队列中是否有待执行任务
+      const hasRunningTask = isRunning.value || isScheduledTaskRunning.value || pendingTaskQueue.length > 0;
+      if (!hasRunningTask) {
         console.log(`[${new Date().toISOString()}] Refreshing page as scheduled (Interval: ${batchSettings.refreshInterval}m, Elapsed: ${elapsedMinutes.toFixed(1)}m)`);
         window.location.reload();
       } else {
-         console.log(`[${new Date().toISOString()}] Scheduled refresh postponed: ${refreshCheck.reason}, will refresh after task completion`);
+         const reason = isRunning.value ? '批量任务' : isScheduledTaskRunning.value ? '定时任务' : '队列任务';
+         console.log(`[${new Date().toISOString()}] Scheduled refresh postponed due to running ${reason}, will refresh after task completion`);
          // 标记需要在任务完成后刷新
          shouldRefreshAfterTask.value = true;
       }
@@ -11785,6 +11491,15 @@ const startScheduler = () => {
         }
 
         if (shouldRun) {
+            // ✅ 防重复执行：检查此任务是否在最近1分钟内已触发
+            const lastExecStr = localStorage.getItem(`lastTaskExecution_${task.id}`);
+            if (lastExecStr) {
+              const elapsed = now.getTime() - new Date(lastExecStr).getTime();
+              if (elapsed < 60000) { // 1分钟内已执行过
+                return;
+              }
+            }
+
             // ✅ 不上线时段检查（调度器层：最早拦截，避免任何副作用执行）
             if (task.offlineTimeEnabled && isInOfflineTime()) {
               addLog({
@@ -11794,7 +11509,7 @@ const startScheduler = () => {
               });
               return;
             }
-        
+
             // ✅ 定时任务仅与其他定时任务互斥，不参与日常任务的互斥排队
             // 定时任务绝对优先：日常任务正在执行时，定时任务直接执行，日常任务自动暂停
             if (isScheduledTaskRunning.value && currentScheduledTask) {
@@ -11807,14 +11522,20 @@ const startScheduler = () => {
                 pendingTaskQueue.push(task);
                 addLog({
                   time: currentTime,
-                  message: `⏸️ 定时任务 ${task.name} 加入待执行队列（当前：${currentScheduledTask.name} 执行中，队列：${pendingTaskQueue.length}）`,
+                  message: `⏸️ 定时任务 ${task.name} 加入待执行队列（当前: ${currentScheduledTask.name} 执行中，队列: ${pendingTaskQueue.length}）`,
                   type: "info",
                 });
               }
               return;
             }
-                    
-            // ✅ 启动前安全检查：防止 stale 清理后旧实例仍在运行时启动新实例
+            
+            // Update last execution time with timestamp
+            localStorage.setItem(
+              `lastTaskExecution_${task.id}`,
+              now.toString(),
+            );
+
+            // ===== 推图任务：直接调用 pushStartAll，不走 executeScheduledTask 流程 =====
             if (task.taskType === 'push_map') {
               addLog({
                 time: new Date().toLocaleTimeString(),
@@ -11826,35 +11547,6 @@ const startScheduler = () => {
               return; // 快速返回，不销耗调度器的“正在运行”状态
             }
             // ======================================================
-
-            // ✅ 启动前安全检查：防止 stale 清理后旧实例仍在运行时启动新实例
-            // 1. 检查队列中是否已有相同任务（避免“启动 + 排队”同时发生）
-            if (pendingTaskQueue.some(t => t.id === task.id)) {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⏭️ 定时任务 ${task.name} 已在待执行队列中，跳过本次启动`,
-                type: "info",
-              });
-              return;
-            }
-            // 2. 检查是否有同名孤儿 running 记录（说明旧实例被 stale 强制清理但可能仍在跑）
-            const orphanRunningRecords = taskExecutionRecords.value.filter(
-              r => r.status === 'running' && r.name === task.name
-            );
-            if (orphanRunningRecords.length > 0) {
-              // 标记为 timeout，避免并发执行
-              orphanRunningRecords.forEach(r => {
-                r.status = 'timeout';
-                r.elapsedStr = '超时（启动前孤儿清理）';
-                r.endTime = Date.now();
-              });
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⚠️ 定时任务 ${task.name} 检测到${orphanRunningRecords.length}条孤儿 running 记录，等待健康检查清理后再试`,
-                type: "warning",
-              });
-              return; // ✅ Bug #3 修复：立即返回，等待 healthCheck 清理孤儿后重试
-            }
 
             // 设置任务执行状态并立即更新lastTaskExecution
             isScheduledTaskRunning.value = true;
@@ -11871,36 +11563,10 @@ const startScheduler = () => {
                 type: "error",
               });
             }).finally(() => {
-              // ✅ 确保任务完成后更新 lastTaskExecution
+              // ✅ 确保任务完成后更新lastTaskExecution
               lastTaskExecution = Date.now();
-              
-              // ✅ 修复 Bug #1: 队列消费时绕过 lastTaskExecution 防重检查
-              if (pendingTaskQueue.length > 0) {
-                setTimeout(() => {
-                  const nextTask = pendingTaskQueue.shift();
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `▶️ 定时任务 [${currentScheduledTask.name}] 完成，开始执行队列任务：${nextTask.name}`,
-                    type: "info",
-                  });
-                              
-                  // ✅ 启动新任务（直接设置状态，不经过 scheduler tick 的防重检查）
-                  isScheduledTaskRunning.value = true;
-                  currentScheduledTask = nextTask;
-                  scheduledTaskStartTime = Date.now();
-                  // ✅ 写入 localStorage 防止浏览器崩溃
-                  localStorage.setItem(
-                    `lastTaskExecution_${nextTask.id}`,
-                    now.toString()
-                  );
-                                  
-                  executeScheduledTask(nextTask).catch(error => {
-                    console.error(`队列任务执行错误:`, error);
-                  }).finally(() => {
-                    lastTaskExecution = Date.now();
-                  });
-                }, 1000);
-              }
+              // ✅ 队列处理由 executeScheduledTask 自身的 finally 统一负责，此处不再重复处理
+              // 避免双重队列处理导致竞态条件（同一任务被重复入队或状态冲突）
             });
         }
       });
@@ -11945,22 +11611,6 @@ const startScheduler = () => {
 
           // 找到有效任务，正式出队并执行
           const nextTask = pendingTaskQueue.shift();
-          // ✅ 启动前安全检查：检测孤儿 running 记录
-          const orphanRecords = taskExecutionRecords.value.filter(
-            r => r.status === 'running' && r.name === nextTask.name
-          );
-          if (orphanRecords.length > 0) {
-            orphanRecords.forEach(r => {
-              r.status = 'timeout';
-              r.elapsedStr = '超时（兜底启动前孤儿清理）';
-              r.endTime = Date.now();
-            });
-            addLog({
-              time: currentTime,
-              message: `⚠️ 兜底启动 ${nextTask.name} 前检测到${orphanRecords.length}条孤儿 running 记录，已标记为 timeout`,
-              type: "warning",
-            });
-          }
           addLog({
             time: currentTime,
             message: `▶️ 调度器兜底：从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
@@ -11974,11 +11624,6 @@ const startScheduler = () => {
             console.error(`兜底队列任务执行错误:`, error);
           }).finally(() => {
             lastTaskExecution = Date.now();
-            // ✅ 写入 localStorage
-            localStorage.setItem(
-              `lastTaskExecution_${nextTask.id}`,
-              now.toString()
-            );
           });
           return; // 已找到有效任务并执行，退出兜底逻辑
         }
@@ -11994,8 +11639,8 @@ const startScheduler = () => {
       }
     
       // ✅ 调度器统一处理延迟刷新：在所有任务处理和队列处理完毕后，检查是否需要刷新页面
-      // ✅ 使用统一的刷新安全检查（含账号任务活跃度与即将触发的定时任务）
-      if (shouldRefreshAfterTask.value && isSafeToRefreshPage().safe) {
+      // 这样可以确保当前没有运行中的任务，且队列中没有待执行的任务
+      if (shouldRefreshAfterTask.value && !isRunning.value && !isScheduledTaskRunning.value && pendingTaskQueue.length === 0) {
         console.log(`[${new Date().toISOString()}] All tasks completed, executing postponed page refresh from scheduler tick`);
         shouldRefreshAfterTask.value = false;
         addLog({
@@ -12005,7 +11650,7 @@ const startScheduler = () => {
         });
         setTimeout(() => {
           // 再次确认没有新任务启动
-          if (isSafeToRefreshPage().safe) {
+          if (!isRunning.value && !isScheduledTaskRunning.value && pendingTaskQueue.length === 0) {
             window.location.reload();
           } else {
             shouldRefreshAfterTask.value = true; // 重新标记，等待下次调度器检查
@@ -12057,19 +11702,25 @@ watch(responsiveColumns, (newCols) => {
   }
 });
 
-// 处理手动调节每行数量（仅取消勾选自动时可编辑）
-const handleManualColumnChange = () => {
-  autoSaveBatchSettings();
-};
+// 判断是否是最大化窗口（≥1400px）
+const isMaximizedWindow = computed(() => {
+  return windowWidth.value >= 1400;
+});
 
-// 切换「自动」勾选：勾选后禁用手动输入并立即按窗口宽度自适应，取消勾选后可手动修改
-const handleAutoColumnsToggle = (checked) => {
-  batchSettings.autoColumns = checked;
-  if (checked) {
-    // 立即同步为自动计算的列数
-    batchSettings.tokenListColumns = responsiveColumns.value;
+// 处理手动调节每行数量
+const handleManualColumnChange = () => {
+  // 只有在最大化窗口时才允许手动调节
+  if (isMaximizedWindow.value) {
+    // 用户手动调节时，关闭自动模式
+    if (batchSettings.autoColumns) {
+      batchSettings.autoColumns = false;
+    }
+  } else {
+    // 如果不是最大化窗口，恢复自动模式
+    if (!batchSettings.autoColumns) {
+      batchSettings.autoColumns = true;
+    }
   }
-  autoSaveBatchSettings();
 };
 
 // 窗口大小变化监听
@@ -12080,7 +11731,13 @@ const handleResize = () => {
   resizeTimer = setTimeout(() => {
     const newWidth = window.innerWidth;
     windowWidth.value = newWidth;
-    // 列数模式由「自动」勾选框控制，窗口大小变化不再强制切换
+    
+    // 当窗口缩小到小于1400px时，自动开启自适应模式
+    if (newWidth < 1400 && !batchSettings.autoColumns) {
+      batchSettings.autoColumns = true;
+    }
+    // 当窗口放大到≥1400px时，如果之前是手动模式，保持手动模式
+    // （用户可以通过输入框手动调节）
   }, 100);
 };
 
@@ -12357,38 +12014,10 @@ const verifyTaskDependencies = async (task) => {
   if (hasBoxWeeklyTask && !isBoxWeeklyActivityOpen.value) {
     addLog({
       time: new Date().toLocaleTimeString(),
-      message: `⚠️  当前不是宝箱周，跳过宝箱周任务：${task.selectedTasks.filter(t => boxWeeklyTasks.includes(t)).join(', ')}`,
+      message: `⚠️  当前不是宝箱周，跳过宝箱周任务: ${task.selectedTasks.filter(t => boxWeeklyTasks.includes(t)).join(', ')}`,
       type: "warning",
     });
-    // 返回 false，因为任务无法在当前条件下执行
-    return false;
-  }
-  
-  // 验证黑市周任务是否在黑市周执行
-  const weirdTowerTasks = [
-    'climbWeirdTower',
-    'batchUseItems', 
-    'batchMergeItems',
-    'batchClaimFreeEnergy',
-    'claim_weird_tower_all',
-    'claim_weird_tower_pass',
-    'weekly_market_buy'
-  ];
-  const hasWeirdTowerTask = task.selectedTasks.some(t => weirdTowerTasks.includes(t));
-  if (hasWeirdTowerTask && !isWeirdTowerActivityOpen.value) {
-    // 原逻辑：只有全部任务都是黑市周任务时才阻止启动；
-    // 混合任务放行验证，由执行阶段过滤并记录“跳过不在活动周的任务”
-    const otherTasks = task.selectedTasks.filter(t => !weirdTowerTasks.includes(t));
-    if (otherTasks.length === 0) {
-      // 只显示简化的警告信息，不显示详细周期说明
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `当前不是黑市周，${task.name} 任务需要在黑市周开放期间才能执行`,
-        type: "warning",
-      });
-      // 返回 false，阻止任务启动
-      return false;
-    }
+    // 返回true，但会在执行阶段跳过这些任务
   }
 
   // 直接使用所有选中的token，WebSocket连接由具体任务函数内部管理
@@ -12472,8 +12101,6 @@ const isTaskTimeStillValid = (task, toleranceMinutes = 2) => {
 const executeScheduledTask = async (task) => {
   // ✅ 在函数开始处就定义 availableTokens，确保 catch 块可以访问
   let availableTokens = [];
-  // ✅ originalMaxActive 提升到函数级作用域，确保 finally 块能访问
-  let originalMaxActive = batchSettings.maxActive;
   
   // ✅ 在函数开始处就设置状态(调用者已设置,这里做防御性检查)
   if (!isScheduledTaskRunning.value) {
@@ -12513,9 +12140,9 @@ const executeScheduledTask = async (task) => {
       addLog({
         time: new Date().toLocaleTimeString(),
         message: `=== 定时任务 ${task.name} 依赖验证失败，取消执行 ===`,
-        type: "warning",
+        type: "error",
       });
-      return;  // ✅ finally 块会清理状态
+      return;  // ✅ finally块会清理状态
     }
 
     availableTokens = (
@@ -12749,13 +12376,11 @@ const executeScheduledTask = async (task) => {
             type: "warning",
           });
           tokenStore.closeWebSocketConnection(testTokenId);
-          releaseConnectionSlot(); // ✅ 修复：预检测获取的连接槽位必须释放，否则并发1时后续任务永久卡死
           return;  // ✅ finally块会清理状态
         }
         
         // 关闭测试连接，后续任务会按需连接
         tokenStore.closeWebSocketConnection(testTokenId);
-        releaseConnectionSlot(); // ✅ 修复：释放连接槽位
       } catch (err) {
         console.error('[换皮闯关检测] 检测失败:', err);
         // ✅ 回退：请求失败时检查缓存并校验时间范围
@@ -12788,12 +12413,10 @@ const executeScheduledTask = async (task) => {
             type: "warning",
           });
           try { tokenStore.closeWebSocketConnection(testTokenId); } catch {}
-          try { releaseConnectionSlot(); } catch {} // ✅ 修复：释放连接槽位
           return;  // ✅ 无法确认活动状态，取消执行
         }
         // 关闭测试连接
         try { tokenStore.closeWebSocketConnection(testTokenId); } catch {}
-        try { releaseConnectionSlot(); } catch {} // ✅ 修复：释放连接槽位
       }
     }
 
@@ -12845,9 +12468,15 @@ const executeScheduledTask = async (task) => {
     for (const taskName of activeTasks) {
       if (shouldStop.value) break;
 
-      // ✅ 移除免费扭蛋的跳过逻辑，允许独立执行（不再受日常任务判断控制）
-      // 原逻辑：免费扭蛋已内置在日常任务的 buildActivityTasks 中（周二/四/六自动执行+累抽），无需独立执行
-      // 现逻辑：允许用户手动点击免费扭蛋按钮独立执行，不受日常任务是否包含的影响
+      // 免费扭蛋已内置在日常任务的 buildActivityTasks 中（周二/四/六自动执行+累抽），无需独立执行
+      if (taskName === "gacha_drawreward") {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `跳过任务: 免费扭蛋 (已包含在日常任务中，无需独立执行)`,
+          type: "info",
+        });
+        continue;
+      }
 
       if (
         ["batchbaoku45", "batchbaoku13"].includes(taskName) &&
@@ -13059,8 +12688,7 @@ const executeScheduledTask = async (task) => {
       if (typeof taskFunction === "function") {
         // ✅ 优化：不再预先分批，直接传递所有账号给任务函数
         // runStreaming 内部会根据 maxActive 自动控制并发数
-        // 定时任务优先使用任务级并发数，否则使用全局设置
-        const maxConcurrent = (task.maxActive > 0) ? task.maxActive : (batchSettings.maxActive || 5);
+        const maxConcurrent = batchSettings.maxActive || 5;
         // 同步连接池大小，确保与当前设置一致
         wsPool.setPoolSize(maxConcurrent);
         const totalAccounts = availableTokens.length;
@@ -13073,13 +12701,6 @@ const executeScheduledTask = async (task) => {
         
         // ✅ 设置当前批次的账号（所有账号）
         selectedTokens.value = [...availableTokens];
-        
-        // ✅ 临时修改 batchSettings.maxActive 为任务级并发数，确保内部 runStreaming 使用正确
-        originalMaxActive = batchSettings.maxActive;
-        if (task.maxActive > 0) {
-          batchSettings.maxActive = task.maxActive;
-          console.log(`[定时任务] 临时设置 batchSettings.maxActive = ${task.maxActive}（任务级并发控制）`);
-        }
         
         // 执行任务函数（带超时保护，防止单个任务卡死导致整个定时任务挂起）
         // ✅ BUG 修复：十殿挑战内部有 2 小时超时保护，外层超时需适配
@@ -13744,27 +13365,6 @@ saveTaskExecutionRecordsToStorage();
       }
     });
   } finally {
-    // ✅ 恢复原始的 batchSettings.maxActive（确保无论成功还是失败都恢复）
-    // ✅ 原判断 if (originalMaxActive !== undefined) 有缺陷，已在函数开头初始化解决
-    if (originalMaxActive !== undefined && task.maxActive > 0) {
-      batchSettings.maxActive = originalMaxActive;
-      console.log(`[定时任务] 已恢复 batchSettings.maxActive = ${originalMaxActive}`);
-    } else if (task.maxActive <= 0) {
-      // 如果任务本身没有设置 maxActive，确保使用全局配置（防止其他模块修改）
-      // ✅ 这个 else 分支是防御性编程，确保全局并发数不会被意外修改
-    }
-    
-    // ✅ 关键修复：检查任务是否"假执行"（依赖验证失败等早期返回场景）
-    // 场景：任务还未真正开始就提前返回，但 scheduledStartTime 已被设置
-    // 导致 runningTokens.size === 0，被 stale 检测误判为卡死
-    const elapsedSinceStart = scheduledTaskStartTime ? Date.now() - scheduledTaskStartTime : 0;
-    const hasActiveChildTask = tokenStore.runningTokens?.value?.size || 0 > 0;
-    if (!hasActiveChildTask && elapsedSinceStart < 3000) {
-      console.warn(
-        `[${new Date().toISOString()}] 检测到任务可能未真正执行（elapsed=${elapsedSinceStart}ms, runningTokens=${tokenStore.runningTokens?.value?.size || 0}）`
-      );
-    }
-    
     // 清除任务执行状态
     isScheduledTaskRunning.value = false;
     currentScheduledTask = null;
@@ -13778,102 +13378,60 @@ saveTaskExecutionRecordsToStorage();
     }
 
     // ✅ 任务完成后，同步处理待执行队列（不再用 nextTick，避免与调度器兖底竞态）
-    // ✅ 用 try-catch 包裹，防止队列处理抛出同步错误导致整个 finally 提前退出
-    try {
-      if (pendingTaskQueue.length > 0) {
-        // 循环清理已过期任务，找到第一个仍然有效的任务执行
-        while (pendingTaskQueue.length > 0) {
-          const nextTask = pendingTaskQueue[0]; // 只peek，不先shift
-          const timeCheck = isTaskTimeStillValid(nextTask, 60);
+    if (pendingTaskQueue.length > 0) {
+      // 循环清理已过期任务，找到第一个仍然有效的任务执行
+      while (pendingTaskQueue.length > 0) {
+        const nextTask = pendingTaskQueue[0]; // 只peek，不先shift
+        const timeCheck = isTaskTimeStillValid(nextTask, 60);
 
-          if (!timeCheck.valid) {
-            pendingTaskQueue.shift(); // 移除过期任务
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `⏰ 跳过已过期的队列任务: ${nextTask.name}（${timeCheck.reason}，剩余队列: ${pendingTaskQueue.length}）`,
-              type: "warning",
-            });
-            continue; // 继续检查下一个
-          }
-
-          // 找到了时间有效的任务
-          pendingTaskQueue.shift(); // 正式出队
-          // ✅ 定时任务仅与其他定时任务互斥，日常任务执行中也可以启动定时任务
-          if (!isScheduledTaskRunning.value) {
-            // ✅ 启动前孤儿检查
-            const orphanRecs = taskExecutionRecords.value.filter(
-              r => r.status === 'running' && r.name === nextTask.name
-            );
-            if (orphanRecs.length > 0) {
-              orphanRecs.forEach(r => {
-                r.status = 'timeout';
-                r.elapsedStr = '超时（finally 启动前孤儿清理）';
-                r.endTime = Date.now();
-              });
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⚠️ 队列启动 ${nextTask.name} 前检测到${orphanRecs.length}条孤儿记录，已标记为 timeout`,
-                type: "warning",
-              });
-            }
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `▶️ 从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
-              type: "info",
-            });
-            isScheduledTaskRunning.value = true; // 立即锁定，防止兖底逻辑竞态
-            currentScheduledTask = nextTask;
-            scheduledTaskStartTime = Date.now();
-            executeScheduledTask(nextTask).catch(error => {
-              console.error(`队列任务执行错误:`, error);
-            }).finally(() => {
-              lastTaskExecution = Date.now();
-              // ✅ Bug #5: 写入 localStorage
-              localStorage.setItem(
-                `lastTaskExecution_${nextTask.id}`,
-                Date.now().toString()
-              );
-            });
-          } else {
-            // 另一个定时任务正在执行，放回队列等待
-            pendingTaskQueue.unshift(nextTask);
-          }
-          return; // 已处理，退出
-        }
-
-        // 队列已全部清空（全部过期）
-        if (pendingTaskQueue.length === 0) {
+        if (!timeCheck.valid) {
+          pendingTaskQueue.shift(); // 移除过期任务
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `✅ 队列中所有任务均已过期，已清空`,
+            message: `⏰ 跳过已过期的队列任务: ${nextTask.name}（${timeCheck.reason}，剩余队列: ${pendingTaskQueue.length}）`,
+            type: "warning",
+          });
+          continue; // 继续检查下一个
+        }
+
+        // 找到了时间有效的任务
+        pendingTaskQueue.shift(); // 正式出队
+        // ✅ 定时任务仅与其他定时任务互斥，日常任务执行中也可以启动定时任务
+        if (!isScheduledTaskRunning.value) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `▶️ 从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
             type: "info",
           });
+          isScheduledTaskRunning.value = true; // 立即锁定，防止兖底逻辑竞态
+          currentScheduledTask = nextTask;
+          scheduledTaskStartTime = Date.now();
+          executeScheduledTask(nextTask).catch(error => {
+            console.error(`队列任务执行错误:`, error);
+          }).finally(() => {
+            lastTaskExecution = Date.now();
+          });
+        } else {
+          // 另一个定时任务正在执行，放回队列等待
+          pendingTaskQueue.unshift(nextTask);
         }
+        return; // 已处理，退出
       }
-    } catch (queueError) {
-      console.error(`[定时任务 finally] 队列处理异常:`, queueError);
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `⚠️ 定时任务结束后队列处理异常: ${queueError.message}，调度器将在下次 tick 继续处理`,
-        type: "warning",
-      });
+
+      // 队列已全部清空（全部过期）
+      if (pendingTaskQueue.length === 0) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `✅ 队列中所有任务均已过期，已清空`,
+          type: "info",
+        });
+      }
     }
 
     // ✅ 不在 finally 块中立即触发刷新
     // 改为由调度器 10 秒 tick 统一检查 shouldRefreshAfterTask 并在无任务运行时刷新
     // 这样可以确保所有队列任务都被处理完毕后，才真正刷新页面
   }
-};
-
-// ====================
-// Bug #5: 统一的 lastTaskExecution 更新函数
-// ====================
-const updateLastTaskExecution = () => {
-  const nowMs = Date.now();
-  lastTaskExecution = nowMs;
-  // ✅ 使用 currentScheduledTask.id 或 fallback
-  const taskId = currentScheduledTask?.id || 'unknown';
-  localStorage.setItem(`lastTaskExecution_${taskId}`, nowMs.toString());
 };
 
 // 注: boxTypeOptions, fishTypeOptions 已从 @/utils/batch 导入
@@ -15135,17 +14693,10 @@ const handleLogScroll = () => {
 };
 
 const filteredLogs = computed(() => {
-  let result;
   if (filterErrorsOnly.value) {
-    result = logs.value.filter((log) => log.type === "error");
-  } else {
-    result = logs.value;
+    return logs.value.filter((log) => log.type === "error");
   }
-  // ✅ 性能模式：渲染层仅保留最近200条，降低DOM节点数量与列表diff开销（完整日志仍在 logs 中保留）
-  if (performanceMode.value && result.length > 200) {
-    return result.slice(-200);
-  }
-  return result;
+  return logs.value;
 });
 
 const currentRunningTokenName = computed(() => {
@@ -15155,7 +14706,7 @@ const currentRunningTokenName = computed(() => {
 
 // Selection logic
 const isAllSelected = computed(() => {
-  // 如果有搜索关键词，基于搜索结果判断
+  // 如果有搜索关键词，基于搜索结果判断（与 sortedTokens 同步使用防抖值）
   if (debouncedTokenSearchKeyword.value.trim()) {
     return (
       selectedTokens.value.length === sortedTokens.value.length &&
@@ -15171,7 +14722,7 @@ const isAllSelected = computed(() => {
 });
 
 const isIndeterminate = computed(() => {
-  // 如果有搜索关键词，基于搜索结果判断
+  // 如果有搜索关键词，基于搜索结果判断（与 sortedTokens 同步使用防抖值）
   if (debouncedTokenSearchKeyword.value.trim()) {
     const selectedInSearch = sortedTokens.value.filter((t) =>
       selectedTokens.value.includes(t.id)
@@ -15217,26 +14768,32 @@ const isCarExpandedForAll = ref(false);
 const isClimbTowerExpandedForAll = ref(false);
 const isWeirdTowerExpandedForAll = ref(false);
 
-// ✅ 卡片区域显隐由性能模式统一驱动（原「隐藏卡片详情」独立开关已合并进性能模式）
-const performanceMode = ref(localStorage.getItem('batchPerformanceMode') === 'true');
-const showCardSections = computed(() => !performanceMode.value);
+// 卡片区域显隐控制（默认全部显示，合并为一个开关）
+const showCardSections = ref(true);
 const showStatusTags = computed(() => showCardSections.value);
 const showModuleGrid = computed(() => showCardSections.value);
+
+// 卡片区域显隐状态持久化
+const STORAGE_KEY_SHOW_CARD_SECTIONS = 'showCardSections';
+if (typeof localStorage !== 'undefined') {
+  const savedState = localStorage.getItem(STORAGE_KEY_SHOW_CARD_SECTIONS);
+  if (savedState !== null) {
+    showCardSections.value = JSON.parse(savedState);
+  }
+}
+
+// 监听变化并保存到 localStorage
+watch(showCardSections, (newValue) => {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY_SHOW_CARD_SECTIONS, JSON.stringify(newValue));
+  }
+});
 const showDailyProgress = computed(() => showCardSections.value);
 const showMonthlyProgress = computed(() => showCardSections.value);
-
-// ✅ 一键性能模式：同时关闭卡片详情、收起所有展开区、限制日志渲染条数，降低渲染压力
-const togglePerformanceMode = () => {
-  performanceMode.value = !performanceMode.value;
-  localStorage.setItem('batchPerformanceMode', String(performanceMode.value));
-  if (performanceMode.value) {
-    isTowerExpandedForAll.value = false;
-    isCarExpandedForAll.value = false;
-    isClimbTowerExpandedForAll.value = false;
-    isWeirdTowerExpandedForAll.value = false;
-    message.success('⚡ 性能模式已开启：卡片详情已隐藏，日志仅渲染最近200条');
-  } else {
-    message.info('性能模式已关闭，已恢复卡片详情显示');
+const toggleCardSections = () => {
+  showCardSections.value = !showCardSections.value;
+  if (!showCardSections.value) {
+    message.info('已隐藏卡片详情，可减少渲染压力');
   }
 };
 
@@ -15305,7 +14862,7 @@ const handleWakeLockToggle = async (enabled) => {
 
 const handleSelectAll = (checked) => {
   if (checked) {
-    // 如果有搜索关键词，只选中搜索出来的账号
+    // 如果有搜索关键词，只选中搜索出来的账号（与 sortedTokens 同步使用防抖值）
     if (debouncedTokenSearchKeyword.value.trim()) {
       selectedTokens.value = sortedTokens.value.map((t) => t.id);
     } else {
@@ -15332,38 +14889,6 @@ const handleTokenSelect = (tokenId, checked) => {
 };
 
 // 处理TokenCard连接切换事件
-// ✅ 仅单独连接按钮触发：获取游戏采购清单并同步到本地设置（其他连接路径不获取）
-const syncPurchaseFromGame = (tokenId) => {
-  setTimeout(async () => {
-    try {
-      const conn = tokenStore.wsConnections[tokenId];
-      if (conn?.status !== 'connected') return;
-      const result = await tokenStore.sendMessageWithPromise(tokenId, 'store_getpurchase', {}, 8000);
-      // 兼容多种响应结构：直接 purchaseItemList 或嵌套在 store 子对象中
-      const purchaseItems = result?.purchaseItemList
-        || result?.store?.purchaseItemList
-        || result?.data?.purchaseItemList;
-      if (purchaseItems?.length > 0) {
-        let settings = {};
-        try {
-          const raw = localStorage.getItem(`daily-settings:${tokenId}`);
-          if (raw) settings = JSON.parse(raw);
-        } catch (e) {}
-        settings.purchaseList = purchaseItems.map(i => i.itemId);
-        const discounts = {};
-        purchaseItems.forEach(i => { if (i.discount != null) discounts[i.itemId] = i.discount; });
-        settings.purchaseDiscounts = discounts;
-        const purchaseCnt = result?.purchaseCnt ?? result?.store?.purchaseCnt;
-        if (purchaseCnt != null) settings.purchaseCnt = purchaseCnt;
-        localStorage.setItem(`daily-settings:${tokenId}`, JSON.stringify(settings));
-        console.log(`[采购清单] 单独连接已同步 [${tokenId}]: ${purchaseItems.length}项, 次数${purchaseCnt ?? '未设置'}`);
-      }
-    } catch (e) {
-      console.warn(`[采购清单] 单独连接同步失败 [${tokenId}]: ${e?.message || e}`);
-    }
-  }, 2000);
-};
-
 const handleToggleConnection = async (tokenId) => {
   const connection = tokenStore.wsConnections[tokenId];
   const isConnected = connection?.status === 'connected';
@@ -15400,8 +14925,6 @@ const handleToggleConnection = async (tokenId) => {
           
           // 连接成功后自动获取角色信息
           tokenStore.sendGetRoleInfo(tokenId);
-          // 单独连接按钮触发：同步采购清单
-          syncPurchaseFromGame(tokenId);
         } else {
           message.destroyAll();
           if (conn?.status === 'error') {
@@ -15415,8 +14938,6 @@ const handleToggleConnection = async (tokenId) => {
                 const reConn = tokenStore.wsConnections[tokenId];
                 if (reConn?.status === 'connected') {
                   tokenStore.sendGetRoleInfo(tokenId);
-                  // 单独连接按钮触发（刷新Token后重连成功）：同步采购清单
-                  syncPurchaseFromGame(tokenId);
                 }
               } else {
                 message.error(`Token刷新失败, 请手动重新导入: ${token.name}`);
@@ -15717,7 +15238,7 @@ const deleteSelectedTokens = async () => {
 
 // 添加Token弹窗状态
 const showAddTokenModal = ref(false);
-const addTokenImportMethod = ref("singlebin");
+const addTokenImportMethod = ref("manual");
 
 // 打开添加Token弹窗（替代跳转）
 const navigateToAddToken = () => {
@@ -16268,13 +15789,11 @@ const releaseConnectionSlot = () => {
  * 当一个任务完成时立即启动下一个，避免所有任务同时排队等待连接槽
  * @param {string[]} tokenIds - Token ID 列表
  * @param {Function} processFn - 处理函数 (tokenId) => Promise
- * @param {number} [maxConcurrent] - 可选，指定并发数（定时任务级并发控制）
  */
 const ACCOUNT_STUCK_TIMEOUT = 25 * 60 * 1000; // 25分钟单账号超时
 
-const runStreaming = async (tokenIds, processFn, maxConcurrent) => {
-  // ✅ 优先使用传入的并发数（定时任务级），否则使用全局设置
-  const effectiveMaxConcurrent = maxConcurrent || batchSettings.maxActive || 5;
+const runStreaming = async (tokenIds, processFn) => {
+  const maxConcurrent = batchSettings.maxActive || 5;
   const queue = [...tokenIds];
   const running = new Set();
   let completedCount = 0;
@@ -16320,7 +15839,7 @@ const runStreaming = async (tokenIds, processFn, maxConcurrent) => {
   };
 
   // 启动初始批次
-  for (let i = 0; i < Math.min(effectiveMaxConcurrent, queue.length); i++) {
+  for (let i = 0; i < Math.min(maxConcurrent, queue.length); i++) {
     launchNext();
   }
 
@@ -16411,9 +15930,33 @@ const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
         const connectionDelay = 3000 + Math.random() * 2000; // 3-5秒随机延迟
         await new Promise(resolve => setTimeout(resolve, connectionDelay));
 
-        // ✅ 深度精简：不再在连接时统一获取 role_getroleinfo / fight_startlevel
-        // 战斗命令所需的 randomSeed/battleVersion 已改为在 tokenStore.sendMessageWithPromise 中懒加载，
-        // 各功能只产生自身需要的API调用
+        // Initialize Game Data (Critical for Battle Version and Session)
+        try {
+          // Fetch Role Info first (Standard flow)
+          await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "role_getroleinfo",
+            {},
+            20000,
+          );
+
+          // Fetch Battle Version
+          const res = await tokenStore.sendMessageWithPromise(
+            tokenId,
+            "fight_startlevel",
+            {},
+            20000,
+          );
+          if (res?.battleData?.version) {
+            tokenStore.setBattleVersion(res.battleData.version);
+          }
+        } catch (e) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `初始化数据失败: ${e.message}`,
+            type: "warning",
+          });
+        }
 
         return true;
       }
@@ -17122,7 +16665,7 @@ const tasksArena = wrapTaskFunctions(createTasksArena(createTaskDeps()));
 const { batcharenafight, batchTopUpFish, batchTopUpArena } = tasksArena;
 
 const tasksStore = wrapTaskFunctions(createTasksStore(createTaskDeps()));
-const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, egg_merge_cycle, batch_pet_upgrade, gacha_drawreward, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, batch_mail_claim_and_cleanup, saltcup26_openstarpack_use, batchSaltCupBet, getSaltCupBetInfo, batchApexGuess, batchApexGuessClaim, batchSaltRoadCheer } = tasksStore;
+const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, batch_pet_upgrade, gacha_drawreward, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, batch_mail_claim_and_cleanup, saltcup26_openstarpack_use, batchSaltCupBet, getSaltCupBetInfo, batchApexGuess, batchApexGuessClaim, batchSaltRoadCheer } = tasksStore;
 
 // ====== 采购清单配置 ======
 // 采购清单可选项（用于任务模板中多选）
@@ -18386,12 +17929,9 @@ const startBatch = async () => {
   const TOKEN_EXECUTION_TIMEOUT = (batchSettings.taskTimeout || 30) * 60 * 1000;
 
   // ========== 连接池滚动执行 ==========
-  // 同步连接池大小：定时任务优先使用任务级并发数，否则使用全局设置
-  const _effectiveMaxActive = (isScheduledTaskRunning.value && currentScheduledTask?.maxActive > 0)
-    ? currentScheduledTask.maxActive
-    : batchSettings.maxActive;
-  wsPool.setPoolSize(_effectiveMaxActive);
-  const maxConcurrent = _effectiveMaxActive;
+  // 同步连接池大小与当前设置
+  wsPool.setPoolSize(batchSettings.maxActive);
+  const maxConcurrent = batchSettings.maxActive;
   const tokenQueue = [...selectedTokens.value];
   const activeTokens = new Set();
   const completionMap = new Map(); // tokenId -> Promise
@@ -18959,22 +18499,6 @@ const startBatch = async () => {
       
       // 找到有效任务，出队并执行
       pendingTaskQueue.shift();
-      // ✅ 启动前孤儿检查
-      const orphanRecs = taskExecutionRecords.value.filter(
-        r => r.status === 'running' && r.name === nextTask.name
-      );
-      if (orphanRecs.length > 0) {
-        orphanRecs.forEach(r => {
-          r.status = 'timeout';
-          r.elapsedStr = '超时（日常任务结束后启动前孤儿清理）';
-          r.endTime = Date.now();
-        });
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `⚠️ 日常任务结束后启动 ${nextTask.name} 前检测到${orphanRecs.length}条孤儿记录，已标记为 timeout`,
-          type: "warning",
-        });
-      }
       addLog({
         time: new Date().toLocaleTimeString(),
         message: `▶️ 日常任务结束后，从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
@@ -18994,14 +18518,14 @@ const startBatch = async () => {
   }
   
   // 检查是否需要在任务完成后刷新页面
-  // ✅ 使用统一的刷新安全检查，避免刷新中断任务或丢失即将触发的定时任务
-  if (shouldRefreshAfterTask.value && isSafeToRefreshPage().safe) {
+  // 注意：需同时确认定时任务和队列中没有待执行任务，避免刷新中断
+  if (shouldRefreshAfterTask.value && !isScheduledTaskRunning.value && pendingTaskQueue.length === 0) {
     console.log(`[${new Date().toISOString()}] Task completed, executing postponed page refresh`);
     shouldRefreshAfterTask.value = false; // 重置标记
     // 稍等片刻再刷新，让用户看到任务完成的消息
     setTimeout(() => {
       // ✅ 二次确认：防止 1.5 秒内调度器启动了新任务
-      if (isSafeToRefreshPage().safe) {
+      if (!isRunning.value && !isScheduledTaskRunning.value && pendingTaskQueue.length === 0) {
         window.location.reload();
       } else {
         shouldRefreshAfterTask.value = true; // 重新标记，等待下次调度器检查
@@ -19210,10 +18734,19 @@ const sortByActivityAfterDailyTask = async () => {
 
   .scheduled-tasks-buttons {
     min-width: 100%;
+    width: 100% !important;
   }
 
   .button-row {
-    flex-wrap: wrap;
+    /* 统一两列网格，与导入/导出行保持一致 */
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .button-row :deep(.n-button) {
+    width: 100% !important;
   }
 
   /* 任务管理和时段控制 - 每行2个 */
@@ -19507,6 +19040,26 @@ const sortByActivityAfterDailyTask = async () => {
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+  .tr-summary-bar {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  
+  .tr-stat-card {
+    padding: 8px 2px;
+  }
+  
+  .tr-stat-num {
+    font-size: 18px !important;
+  }
+  
+  .tr-stat-label {
+    font-size: 11px !important;
+  }
 }
 
 .tr-stat-card {
@@ -20793,7 +20346,8 @@ html[data-theme="dark"] .st-section-toggle {
   .page-header {
     flex-direction: column;
     gap: 12px;
-    align-items: stretch;
+    /* 内联样式有 align-items: center，必须 !important 才能让子项撑满宽度 */
+    align-items: stretch !important;
   }
 
   .page-header .actions {
@@ -20834,14 +20388,14 @@ html[data-theme="dark"] .st-section-toggle {
     box-shadow: 0 6px 16px rgba(102, 126, 234, 0.3);
   }
 
-  /* Token分组管理样式 */
+  /* Token 分组管理样式 */
   .group-selection-section {
     padding: 12px;
     background-color: #f5f7fa;
     border-radius: 8px;
     border: 1px solid #e5e7eb;
   }
-
+  
   .group-tag {
     padding: 8px 12px;
     border-radius: 6px;
@@ -20851,48 +20405,181 @@ html[data-theme="dark"] .st-section-toggle {
     text-align: center;
     font-weight: 500;
   }
-
+  
   .group-tag:hover {
     transform: translateY(-2px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
-
+  
   .group-tag-selected {
     color: white;
     font-weight: 600;
   }
+  
+  /* === 全局移动端按钮样式覆盖 === */
+  /* Naive UI 按钮尺寸由元素 inline 样式上的 CSS 变量驱动，必须用 !important 变量覆盖 */
+  :deep(.n-button) {
+    --n-height: 30px !important;
+    --n-font-size: 12px !important;
+    --n-padding: 0 10px !important;
+    --n-icon-size: 14px !important;
+    height: 30px !important;
+    font-size: 12px !important;
+    padding: 0 10px !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+  }
 
-  /* 排序按钮组移动端自适应 */
+  :deep(.n-button .n-button__icon) {
+    font-size: 14px !important;
+  }
+
+  /* emoji 图标带内联 16px，移动端统一缩小 */
+  :deep(.n-button .n-button__icon span) {
+    font-size: 14px !important;
+  }
+  :deep(.n-button:active) {
+    transform: scale(0.96);
+  }
+
+  :deep(.n-button-group) {
+    flex-wrap: wrap !important;
+    display: flex !important;
+    gap: 6px !important;
+    max-width: 100% !important;
+  }
+
+  /* 主操作按钮区：移动端改为 3 列等宽网格，规整排列 */
+  .main-action-bar {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+    padding: 8px 4px !important;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  .main-action-bar :deep(.n-button) {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 0 4px !important;
+  }
+
+  /* 分组管理按钮行：移动端单行 5 列等宽网格 */
+  .group-manage-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px;
+  }
+
+  .group-manage-actions :deep(.n-space) {
+    display: grid !important;
+    grid-template-columns: repeat(5, 1fr) !important;
+    gap: 4px !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  .group-manage-actions :deep(.n-space > div) {
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .group-manage-actions :deep(.n-button) {
+    width: 100% !important;
+    font-size: 11px !important;
+    padding: 0 2px !important;
+    height: 28px !important;
+  }
+  
+  /* 卡片头部额外按钮组优化 */
+  :deep(.n-card-header__extra .n-button) {
+    font-size: 12px !important;
+    padding: 4px 10px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+  }
+  
+  :deep(.n-card-header__extra .n-button .n-button__content) {
+    font-size: 12px !important;
+  }
+  
+  :deep(.n-upload .n-button) {
+    width: 100% !important;
+    min-height: 32px !important;
+    height: auto !important;
+  }
+  
+  /* 排序按钮组移动自适应（已展平嵌套，兼容低版本 WebView） */
   .sort-buttons {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
     max-width: 100%;
     margin-top: 8px !important;
     margin-bottom: 8px !important;
+  }
 
-    :deep(.n-space) {
-      flex-wrap: wrap;
-      gap: 6px;
-      max-width: 100%;
-    }
+  /* 三块内容纵向堆叠，各自撑满整行 */
+  .sort-buttons :deep(.n-space) {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    max-width: 100%;
+  }
 
-    :deep(.n-button-group) {
-      flex-wrap: wrap;
-      display: flex;
-      
-      .n-button {
-        font-size: 12px !important;
-        padding: 4px 8px !important;
-        white-space: nowrap;
-      }
-    }
+  .sort-buttons :deep(.n-space > div) {
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
 
-    /* 每行数量和搜索框自适应 */
-    :deep(.n-input-number),
-    :deep(.n-input) {
-      width: 120px !important;
-      min-width: 80px;
-    }
+  .sort-buttons :deep(.n-space > div > div) {
+    margin-left: 0 !important;
+    width: 100%;
+  }
+
+  /* 行内标签（每行数量:/(自动)/搜索账号:）不换行不压缩 */
+  .sort-buttons :deep(.n-space > div > div > span) {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* 排序按钮：单行 5 列等宽网格 */
+  .sort-buttons :deep(.n-button-group) {
+    display: grid !important;
+    grid-template-columns: repeat(5, 1fr) !important;
+    gap: 4px !important;
+    width: 100% !important;
+  }
+
+  .sort-buttons :deep(.n-button-group .n-button) {
+    width: 100% !important;
+    font-size: 11px !important;
+    padding: 0 2px !important;
+    height: 28px !important;
+    white-space: nowrap;
+  }
+
+  /* 每行数量与搜索框均撑满剩余宽度，两行对齐规整 */
+  .sort-buttons :deep(.n-input-number) {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 100px;
+  }
+
+  .sort-buttons :deep(.n-input) {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+  }
+
+  /* 数字输入框内部的 .n-input 不能被上面规则挤成 0 宽 */
+  .sort-buttons :deep(.n-input-number .n-input) {
+    flex: none !important;
+    width: 100% !important;
   }
 
   /* 账号列表头部按钮移动端自适应 */
@@ -20901,11 +20588,11 @@ html[data-theme="dark"] .st-section-toggle {
     gap: 6px;
   }
 
-  /* Naive UI 卡片标题真实类名为 __main（非 __title），flex:1 1 auto 防止标题被压缩成竖排 */
+  /* Naive UI 卡片标题真实类名为 __main，防止被挤压后文字竖排 */
   :deep(.n-card-header__main) {
-    flex: 1 1 auto;
     white-space: nowrap;
     font-size: 15px;
+    flex: 1 1 auto;
   }
 
   :deep(.n-card-header__extra) {

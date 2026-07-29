@@ -125,9 +125,10 @@
             </div>
             <div class="member-status-row">
               <span class="status-label">枕头:</span>
-              <span :class="member.pillowCnt === 0 ? 'pillow-zero' : 'pillow-normal'">
+              <span v-if="member.pillowCnt != null" :class="member.pillowCnt === 0 ? 'pillow-zero' : 'pillow-normal'">
                 {{ member.pillowCnt }}
               </span>
+              <span v-else class="pillow-unknown">?</span>
               <span v-if="member.pillowCnt === 0" class="pillow-warning">枕头不足</span>
               <span v-if="idx !== 0" class="status-label" style="margin-left:8px">准备:</span>
               <n-tag v-if="idx !== 0" size="tiny" :type="member.prepared === 1 ? 'success' : 'error'">
@@ -254,12 +255,17 @@
         <span class="section-title">后台战斗 ({{ activeBattles.length }})</span>
         <n-button size="tiny" type="error" @click="stopAllBattles">全部停止</n-button>
       </div>
+      <div class="battles-grid">
       <div v-for="b in activeBattles" :key="b.preset.id" class="battle-status-item">
         <!-- 信息行：预设名 + 关卡 + Boss血量 -->
         <div class="battle-info-row">
           <span class="battle-preset-name">{{ b.preset.name }}</span>
           <n-tag size="small" :type="b.currentLevel > 0 ? 'success' : 'default'" :bordered="false" class="battle-level-tag">第{{ b.currentLevel || '?' }}关</n-tag>
           <span v-if="b.bossHp" class="boss-hp-tag" :class="{ 'boss-low': b.bossHp.curHp / b.bossHp.maxHp < 0.3, 'boss-mid': b.bossHp.curHp / b.bossHp.maxHp >= 0.3 && b.bossHp.curHp / b.bossHp.maxHp < 0.7 }">{{ formatHp(b.bossHp.curHp) }}/{{ formatHp(b.bossHp.maxHp) }}</span>
+          <!-- ✅ 全队共享剩余恢复次数（开局1次，通关第4/6殿各+1） -->
+          <n-tag v-if="b.recoverInfo" size="tiny" :type="b.recoverInfo.left > 0 ? 'info' : 'error'" :bordered="false">
+            恢复 {{ b.recoverInfo.left }}/{{ b.recoverInfo.total }}
+          </n-tag>
           <n-tag v-if="b.preset.waitLevel8" size="tiny" type="warning" class="battle-wait-tag">卡点</n-tag>
         </div>
         <!-- 控制行：时间 + 状态 + 操作按钮 -->
@@ -287,8 +293,19 @@
           </div>
         </div>
         
+        <!-- 成员汇总行：点击展开/收起明细 -->
+        <div
+          v-if="b.members && b.members.length > 0"
+          class="members-toggle-row"
+          @click="toggleBattleMembers(b.preset.id)"
+        >
+          <span class="members-summary">
+            成员 {{ b.members.length }} · 存活 {{ b.members.filter(m => !m.isAllHeroesDead).length }}<template v-if="b.attackRecords?.length"> · 已战 {{ b.attackRecords.length }}</template>
+          </span>
+          <span class="toggle-arrow">{{ expandedBattleMembers[b.preset.id] ? '收起 ▲' : '明细 ▼' }}</span>
+        </div>
         <!-- 成员状态：grid布局 -->
-        <div v-if="b.members && b.members.length > 0" class="members-grid">
+        <div v-if="b.members && b.members.length > 0" v-show="expandedBattleMembers[b.preset.id]" class="members-grid">
           <div 
             v-for="(m, idx) in b.members" 
             :key="idx" 
@@ -301,7 +318,7 @@
               class="member-tag"
               :class="{ 'member-fought': b.attackRecords?.includes(m.roleId) }"
             >
-              {{ m.name }}{{ m.isAllHeroesDead ? '(亡)' : '' }}{{ b.attackRecords?.includes(m.roleId) ? '(已战)' : '' }}
+              {{ m.name }}{{ m.isAllHeroesDead ? '(亡)' : '' }}{{ b.attackRecords?.includes(m.roleId) ? '(已战)' : '' }}{{ m.recoverCount > 0 ? `(已恢复x${m.recoverCount})` : '' }}
             </n-tag>
             <div v-if="m.heroes && m.heroes.length > 0" class="member-heroes-row">
               <span 
@@ -316,6 +333,7 @@
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
 
@@ -372,6 +390,12 @@ const message = useMessage();
 // ====== 后台战斗状态 ======
 const activeBattles = ref([]); // { preset, battle, status, currentLevel, startedAt, bossHp }
 
+// 成员明细展开状态（默认收起，点击汇总行切换）
+const expandedBattleMembers = ref({});
+const toggleBattleMembers = (id) => {
+  expandedBattleMembers.value[id] = !expandedBattleMembers.value[id];
+};
+
 // 格式化血量数值（225300000000 → 2253亿）
 const formatHp = (hp) => {
   if (hp == null) return '?';
@@ -422,6 +446,7 @@ const restoreActiveBattles = () => {
       // ✅ 新增：成员信息和出战记录
       members: item.battle?.getMembers?.() || item.members || [],
       attackRecords: item.battle?.getAttackRecords?.() || item.attackRecords || [],
+      recoverInfo: item.battle?.getRecoverInfo?.() || item.recoverInfo || null,
     }));
     // 重绑定回调到当前组件实例
     activeBattles.value.forEach(b => {
@@ -865,6 +890,18 @@ const isCreating = ref(false);
 // ====== 队伍队员信息 ======
 const teamMembers = ref([]);
 
+// 枕头缓存（localStorage 持久化，用于 API 无数据时的回退显示）
+const pillowCache = ref({});
+try {
+  pillowCache.value = JSON.parse(localStorage.getItem('nightmare-pillow-cache') || '{}');
+} catch { pillowCache.value = {}; }
+
+const getPillowFromCache = (tokenId) => {
+  const raw = pillowCache.value[tokenId];
+  if (raw == null) return null;
+  return Number(raw);
+};
+
 // 规范化名称
 const normalizeName = (name) => {
   if (!name) return "";
@@ -902,7 +939,14 @@ const teamMembersWithTokens = computed(() => {
       });
     }
 
-    const pillowCnt = member.extParam?.itemCnt != null ? Number(member.extParam.itemCnt) : 5;
+    let pillowCnt;
+    if (member.extParam?.itemCnt != null) {
+      pillowCnt = Number(member.extParam.itemCnt);
+    } else if (matchedToken && getPillowFromCache(matchedToken.id) != null) {
+      pillowCnt = getPillowFromCache(matchedToken.id);
+    } else {
+      pillowCnt = null;
+    }
     const presetSlot = matchedToken ? (activePresetTeamSlots.value[matchedToken.id] || 0) : 0;
     return {
       ...member,
@@ -1358,7 +1402,7 @@ const isRefreshing = ref(false);
 
 const saveRoleIdsToTokens = (fightRoleBase) => {
   let savedCount = 0;
-  const pillowCache = {};
+  const newPillowData = {};
   for (const member of fightRoleBase) {
     const memberRoleId = String(member.roleId || "");
     if (!memberRoleId) continue;
@@ -1369,7 +1413,7 @@ const saveRoleIdsToTokens = (fightRoleBase) => {
     );
     if (idx !== -1) {
       // 已有 roleId，只缓存枕头
-      if (pillowCnt != null) pillowCache[tokenStore.gameTokens[idx].id] = pillowCnt;
+      if (pillowCnt != null) newPillowData[tokenStore.gameTokens[idx].id] = pillowCnt;
       continue;
     }
     const memberServerId = String(member.serverId || "");
@@ -1385,14 +1429,15 @@ const saveRoleIdsToTokens = (fightRoleBase) => {
       tokenStore.gameTokens = tokenStore.gameTokens.map((t, i) => i === nameIdx ? updated : t);
       savedCount++;
       addLog(`自动保存 roleId: ${member.name} → ${memberRoleId}`, "success");
-      if (pillowCnt != null) pillowCache[token.id] = pillowCnt;
+      if (pillowCnt != null) newPillowData[token.id] = pillowCnt;
     }
   }
-  // 保存枕头缓存到 localStorage
-  if (Object.keys(pillowCache).length > 0) {
+  // 合并到响应式 pillowCache ref 和 localStorage
+  if (Object.keys(newPillowData).length > 0) {
     try {
       const existing = JSON.parse(localStorage.getItem('nightmare-pillow-cache') || '{}');
-      Object.assign(existing, pillowCache);
+      Object.assign(existing, newPillowData);
+      pillowCache.value = { ...existing };
       localStorage.setItem('nightmare-pillow-cache', JSON.stringify(existing));
     } catch { /* ignore */ }
   }
@@ -1420,6 +1465,8 @@ const refreshTeamMembers = async () => {
       teamMembers.value = teamInfoRes.teamInfo.fightRoleBase;
       addLog(`队伍成员已刷新，共 ${teamMembers.value.length} 人`);
       saveRoleIdsToTokens(teamInfoRes.teamInfo.fightRoleBase);
+      // 主动获取缺少枕头数据的成员的真实枕头数量
+      await fetchMissingPillowCounts(teamInfoRes.teamInfo.fightRoleBase);
     } else {
       addLog("刷新队伍成员：无fightRoleBase数据", "warning");
       isRefreshing.value = false;
@@ -1432,6 +1479,64 @@ const refreshTeamMembers = async () => {
   }
   isRefreshing.value = false;
   return true;
+};
+
+// 主动获取缺少枕头数据的成员的真实枕头数量
+const fetchMissingPillowCounts = async (fightRoleBase) => {
+  if (!captainTokenId.value || !Array.isArray(fightRoleBase)) return;
+  const membersNeedingPillow = fightRoleBase.filter(
+    (m) => m.extParam?.itemCnt == null && m.roleId
+  );
+  if (membersNeedingPillow.length === 0) {
+    // 所有成员都有枕头数据，无需额外获取
+    return;
+  }
+  addLog(`主动获取 ${membersNeedingPillow.length} 名成员的枕头数据...`, "info");
+  const newPillowData = {};
+  for (const member of membersNeedingPillow) {
+    const memberRoleId = Number(member.roleId);
+    try {
+      const resp = await tokenStore.sendMessageWithPromise(
+        captainTokenId.value,
+        'nightmare_getroleinfo',
+        { roleId: memberRoleId },
+        5000
+      );
+      const nightMareData = resp?.nightMareData || resp?.nightmareData || resp;
+      // 尝试从多个可能的字段中提取枕头数量
+      const pillow = nightMareData?.pillowCnt
+        ?? nightMareData?.itemCnt
+        ?? nightMareData?.extParam?.itemCnt
+        ?? resp?.pillowCnt
+        ?? resp?.extParam?.itemCnt
+        ?? null;
+      if (pillow != null) {
+        // 查找该成员对应的本地 token
+        const tokenIdx = tokenStore.gameTokens.findIndex(
+          (t) => t.roleId && String(t.roleId) === String(memberRoleId)
+        );
+        if (tokenIdx !== -1) {
+          newPillowData[tokenStore.gameTokens[tokenIdx].id] = Number(pillow);
+          addLog(`${member.name || memberRoleId} 枕头: ${pillow}`, "success");
+        }
+      } else {
+        // 记录响应结构以便调试
+        console.debug('[枕头获取] nightmare_getroleinfo 响应:', member.name, memberRoleId, JSON.stringify(resp).slice(0, 500));
+      }
+    } catch (err) {
+      console.debug(`[枕头获取] ${member.name || memberRoleId} 获取失败:`, err.message);
+    }
+    await delay(300); // 避免过快请求
+  }
+  // 合并到响应式 pillowCache ref 和 localStorage
+  if (Object.keys(newPillowData).length > 0) {
+    try {
+      const existing = JSON.parse(localStorage.getItem('nightmare-pillow-cache') || '{}');
+      Object.assign(existing, newPillowData);
+      pillowCache.value = { ...existing };
+      localStorage.setItem('nightmare-pillow-cache', JSON.stringify(existing));
+    } catch { /* ignore */ }
+  }
 };
 
 // ====== 核心操作 ======
@@ -2047,6 +2152,7 @@ const handleBattleStatusChange = (preset, info) => {
     if (activeBattles.value[idx].battle) {
       activeBattles.value[idx].members = activeBattles.value[idx].battle.getMembers?.() || [];
       activeBattles.value[idx].attackRecords = activeBattles.value[idx].battle.getAttackRecords?.() || [];
+      activeBattles.value[idx].recoverInfo = activeBattles.value[idx].battle.getRecoverInfo?.() || null;
     }
   }
   // 心跳更新：战斗运行或卡点等待期间，持续刷新跨标签页时间戳，防止其他标签页误判过期
@@ -2702,6 +2808,7 @@ const onPresetExecute = async (preset) => {
         roomId: battle.getRoomId(),
         status: 'running',
         currentLevel: 0,
+        recoverInfo: battle.getRecoverInfo?.() || null,
         startedAt: new Date().toLocaleTimeString(),
       });
 
@@ -3152,6 +3259,10 @@ const getTokenName = (tokenId) => {
           color: #d03050;
           font-size: 10px;
         }
+        .pillow-unknown {
+          color: var(--text-secondary, #999);
+          font-style: italic;
+        }
       }
     }
 
@@ -3183,11 +3294,22 @@ const getTokenName = (tokenId) => {
     }
   }
 
-  .battle-status-item {
-    padding: 8px 0;
-    border-bottom: 1px dashed var(--border-color, #e8e8e8);
+  // 战斗卡片响应式grid：宽屏多列并排，减少纵向滚动
+  .battles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 10px;
+  }
 
-    &:last-child { border-bottom: none; }
+  .battle-status-item {
+    background: var(--bg-primary, #fff);
+    border: 1px solid var(--border-color, #e8e8e8);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
 
     // 信息行：预设名 + 关卡 + Boss血量
     .battle-info-row {
@@ -3195,7 +3317,6 @@ const getTokenName = (tokenId) => {
       align-items: center;
       gap: 6px;
       flex-wrap: wrap;
-      margin-bottom: 4px;
     }
 
     .battle-preset-name {
@@ -3255,12 +3376,40 @@ const getTokenName = (tokenId) => {
       margin-left: auto;
     }
 
+    // 成员汇总行：点击展开/收起明细
+    .members-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: var(--bg-secondary, #f5f5f5);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.2s ease;
+
+      &:hover {
+        background: var(--border-color, #ececec);
+      }
+
+      .members-summary {
+        font-size: 11px;
+        color: var(--text-secondary, #666);
+      }
+
+      .toggle-arrow {
+        font-size: 11px;
+        color: var(--text-tertiary, #999);
+        flex-shrink: 0;
+      }
+    }
+
     // 成员grid布局
     .members-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
       gap: 8px;
-      margin-top: 6px;
       padding-top: 6px;
       border-top: 1px solid var(--border-color, #f0f0f0);
 
@@ -3322,7 +3471,14 @@ const getTokenName = (tokenId) => {
   @media (max-width: 480px) {
     padding: 8px;
 
+    .battles-grid {
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
     .battle-status-item {
+      padding: 8px 10px;
+
       .battle-info-row {
         gap: 4px;
       }

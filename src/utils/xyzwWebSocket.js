@@ -217,6 +217,9 @@ export function registerDefaultCommands(reg) {
     .register("apex_getroleinfo") // 获取竞技大厅角色信息（助威币数量）
     .register("apex_getvotelist", {}) // 获取可助威的俱乐部列表
     .register("apex_vote", { teamId: "A00000000", groupId: 1, round: 1, voteCnt: 1 }) // 对指定队伍进行助威
+    .register("apex_getguesslist") // 获取逐鹿盐山竞猜对阵列表
+    .register("apex_guess") // 逐鹿盐山竞猜（押队伍）
+    .register("apex_guessclaim") // 领取逐鹿盐山竞猜奖励
     .register("activity_claimtaskreward")
     .register("activity_commonbuygoods", { goodsId: 26061941, num: 1 }) // 领取消耗活动免费道具
     .register("activity_claimweekactreward") // 宝箱周任务达标奖励
@@ -608,6 +611,12 @@ export class XyzwWebSocketClient {
     this.lastHeartbeatAck = Date.now();  // 最后心跳响应时间
     this.heartbeatMissCount = 0;         // 连续心跳丢失计数
 
+    // APK 入站诊断：启用后前 N 条入站报文会被捕获到控制台，
+    // 用于在 APK 环境下定位“所有命令均超时”的根因
+    this.debugInbound = false;
+    this.debugInboundCount = 0;
+    this.debugInboundMax = 20;
+
     this.promises = Object.create(null);
     this.registry = registerDefaultCommands(
       new CommandRegistry(this.utils, this.enc),
@@ -626,6 +635,9 @@ export class XyzwWebSocketClient {
     wsLogger.info(`连接: ${this.url.split("?")[0]}`);
 
     this.socket = new WebSocket(this.url);
+    // 与 WsAgent 一致：强制二进制消息以 ArrayBuffer 形式接收，
+    // 避免 Android WebView 默认 blob 模式导致的异步解析差异
+    this.socket.binaryType = "arraybuffer";
 
     this.socket.onopen = () => {
       wsLogger.info("连接成功");
@@ -639,6 +651,31 @@ export class XyzwWebSocketClient {
     };
 
     this.socket.onmessage = (evt) => {
+      // APK 入站诊断：捕获前 N 条原始入站报文
+      if (this.debugInbound && this.debugInboundCount < this.debugInboundMax) {
+        this.debugInboundCount++;
+        const dataInfo = typeof evt.data === 'string'
+          ? `string(len=${evt.data.length})`
+          : evt.data instanceof ArrayBuffer
+            ? `ArrayBuffer(${evt.data.byteLength}B)`
+            : evt.data instanceof Blob
+              ? `Blob(${evt.data.size}B)`
+              : `${typeof evt.data}`;
+        let preview = '';
+        try {
+          if (evt.data instanceof ArrayBuffer) {
+            preview = `[${Array.from(new Uint8Array(evt.data, 0, Math.min(evt.data.byteLength, 32))).join(',')}]`;
+          } else if (typeof evt.data === 'string') {
+            preview = evt.data.substring(0, 60);
+          }
+        } catch (_e) {}
+        console.warn(
+          `[APK入站诊断 #${this.debugInboundCount}/${this.debugInboundMax}]`,
+          dataInfo, 'preview:', preview,
+          'pendingPromises:', Object.keys(this.promises).length,
+        );
+      }
+
       try {
         let packet;
         if (typeof evt.data === "string") {
@@ -1576,6 +1613,9 @@ export class XyzwWebSocketClient {
       apex_getroleinforesp: "apex_getroleinfo",
       apex_getvotelistresp: "apex_getvotelist",
       apex_voteresp: "apex_vote",
+      apex_getguesslistresp: "apex_getguesslist",
+      apex_guessresp: "apex_guess",
+      apex_guessclaimresp: "apex_guessclaim",
       activity_commonbuygoodsresp: "activity_commonbuygoods",
       activity_notify: "activity_commonbuygoods",
       autumn_useitemresp: "autumn_useitem",

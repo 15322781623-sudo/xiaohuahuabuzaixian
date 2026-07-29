@@ -105,6 +105,7 @@ import useIndexedDB from "@/hooks/useIndexedDB";
 import { saveBinBackup } from "@/utils/binBackup";
 import { g_utils } from "@/utils/bonProtocol";
 import { useTokenStore } from "@/stores/tokenStore";
+import { downloadFile } from "@/utils/imageExport";
 const tokenStore = useTokenStore();
 const { storeArrayBuffer } = useIndexedDB();
 
@@ -190,8 +191,10 @@ const statusType = ref("info");
 const accountName = ref<string | null>(null);
 const isScanning = ref(false);
 const scanInterval = ref<any>(null);
-const timeout = 120000; // 120秒超时
+const timeout = 300000; // 300秒（5分钟）超时
 const startTime = ref<number | null>(null);
+const remainSeconds = ref(0); // 实时倒计时秒数
+const autoRefreshCount = ref(0); // 自动刷新次数
 
 const serverListData = ref<any[]>([]);
 const currentBinData = ref<ArrayBuffer | null>(null);
@@ -356,7 +359,7 @@ const generateQRCode = async () => {
   try {
     isProcessing.value = true;
     updateStatus("正在获取二维码...", "info");
-
+    autoRefreshCount.value = 0; // 手动刷新时重置自动刷新计数
     resetQRCode();
 
     const success = await tryGetWeixinQR();
@@ -459,8 +462,18 @@ const startScanMonitoring = () => {
 
   isScanning.value = true;
   startTime.value = Date.now();
+  remainSeconds.value = Math.ceil(timeout / 1000);
 
   scanInterval.value = setInterval(() => {
+    // 每秒更新倒计时
+    if (startTime.value) {
+      const elapsed = Date.now() - startTime.value;
+      remainSeconds.value = Math.max(0, Math.ceil((timeout - elapsed) / 1000));
+      // 实时更新状态显示（每5秒更新一次文字）
+      if (remainSeconds.value % 5 === 0 && remainSeconds.value > 0) {
+        updateStatus(`请使用微信扫码登录 (${remainSeconds.value}秒)`, 'success');
+      }
+    }
     checkScanStatus();
   }, 1000);
 };
@@ -474,9 +487,16 @@ const checkScanStatus = async () => {
 
     const elapsed = Date.now() - startTime.value;
     if (elapsed > timeout) {
-      updateStatus("二维码已超时，请重新获取", "error");
+      updateStatus("二维码等待超时，正在自动刷新...", "info");
       stopScanMonitoring();
-      resetQRCode();
+      // 自动刷新二维码（最多自动刷新3次）
+      if (autoRefreshCount.value < 3) {
+        autoRefreshCount.value++;
+        await autoRefreshQRCode();
+      } else {
+        updateStatus("已自动刷新3次，请手动点击获取二维码", "error");
+        resetQRCode();
+      }
       return;
     }
     // 构造扫码状态轮询 URL
@@ -545,17 +565,21 @@ const checkScanStatus = async () => {
       }
 
       if (text.includes("window.wx_errcode=408")) {
-        updateStatus("二维码已过期，请重新生成", "error");
         stopScanMonitoring();
-        resetQRCode();
+        updateStatus("二维码已过期，正在自动刷新...", "info");
+        // 自动刷新二维码（最多自动刷新5次）
+        if (autoRefreshCount.value < 5) {
+          autoRefreshCount.value++;
+          await autoRefreshQRCode();
+        } else {
+          updateStatus("已自动刷新5次，请手动点击获取二维码", "error");
+          resetQRCode();
+        }
         return;
       }
     }
 
-    const remain = Math.ceil((timeout - elapsed) / 1000);
-    if (remain % 30 === 0) {
-      updateStatus(`请扫码，剩余 ${remain} 秒`, "info");
-    }
+    // 倒计时已在 startScanMonitoring 的 interval 中实时更新
   } catch (err) {
     console.error("扫码状态检查失败", err);
   }
@@ -569,6 +593,23 @@ const stopScanMonitoring = () => {
   if (scanInterval.value) {
     clearInterval(scanInterval.value);
     scanInterval.value = null;
+  }
+};
+
+/**
+ * 自动刷新二维码（过期/超时时调用）
+ */
+const autoRefreshQRCode = async () => {
+  try {
+    updateStatus(`正在自动刷新二维码 (第${autoRefreshCount.value}次)...`, 'info');
+    resetQRCode();
+    const success = await tryGetWeixinQR();
+    if (success) {
+      message.info(`二维码已自动刷新，请尽快扫码 (第${autoRefreshCount.value}次)`);
+    }
+  } catch (err: any) {
+    console.error('自动刷新二维码失败', err);
+    updateStatus('自动刷新失败，请手动获取', 'error');
   }
 };
 
@@ -890,21 +931,13 @@ const handleImport = async () => {
   emit("ok");
 };
 
-const downloadBinFile = (fileName: string, bin: ArrayBuffer | Uint8Array) => {
+const downloadBinFile = async (fileName: string, bin: ArrayBuffer | Uint8Array) => {
   const blob = new Blob([new Uint8Array(bin)], {
     type: "application/octet-stream",
   });
 
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  URL.revokeObjectURL(url);
+  // APK环境使用Filesystem+Share，Web环境使用<a>标签下载
+  await downloadFile(blob, fileName);
 };
 
 /**

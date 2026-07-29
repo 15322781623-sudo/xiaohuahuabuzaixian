@@ -34,6 +34,15 @@ const HANG_UP_COUNT = 4;
 const DAILY_TASK_COUNT = 10;
 const DREAM_WORLD_DAYS = [0, 3]; // 周日、周三
 
+// 精简补齐任务项定义（与活跃度>=90精简模式一致，供“日常精简补齐”功能勾选执行）
+export const SIMPLIFIED_TASK_ITEMS = [
+  { key: 'deepSeaLamp', label: '深海灯神扫荡' },
+  { key: 'freeFish', label: '免费钓鱼' },
+  { key: 'freeSweep', label: '免费扫荡卷' },
+  { key: 'gold', label: '免费点金' },
+  { key: 'reward', label: '任务奖励领取' },
+];
+
 // 错误码映射表
 const ERROR_MESSAGES = new Map([
   ['400190', '没有可领取的签到奖励'],
@@ -1008,12 +1017,10 @@ export class DailyTaskRunner {
   }
 
   /**
-   * 活动任务
+   * 免费钓鱼任务（独立方法，供活动任务/精简模式/精简补齐复用）
    */
-  buildActivityTasks(statistics, statisticsTime) {
+  buildFreeFishTasks(statistics) {
     const tasks = [];
-
-    // 免费钓鱼
     if (isToday(statistics['artifact:normal:lottery:time'])) {
       for (let i = 0; i < FREE_FISH_COUNT; i++) {
         tasks.push(() => this.sendCommandSafe('artifact_lottery', 
@@ -1021,6 +1028,17 @@ export class DailyTaskRunner {
           { description: `免费钓鱼 ${i + 1}/${FREE_FISH_COUNT}` }));
       }
     }
+    return tasks;
+  }
+
+  /**
+   * 活动任务
+   */
+  buildActivityTasks(statistics, statisticsTime) {
+    const tasks = [];
+
+    // 免费钓鱼（复用独立方法）
+    tasks.push(...this.buildFreeFishTasks(statistics));
 
     // 灯神扫荡（每次间隔3-5秒防限流）
     const kingdoms = ['魏国', '蜀国', '吴国', '群雄'];
@@ -1119,9 +1137,11 @@ export class DailyTaskRunner {
 
   /**
    * 深海灯神任务
+   * @param {Object} statisticsTime 统计时间
+   * @param {boolean} force 为true时跳过周一限制与当日已扫判断（精简补齐使用）
    */
-  buildDeepSeaLampTask(statisticsTime) {
-    if (new Date().getDay() !== 1 || !isToday(statisticsTime['genie:daily:free:5'])) {
+  buildDeepSeaLampTask(statisticsTime, force = false) {
+    if (!force && (new Date().getDay() !== 1 || !isToday(statisticsTime['genie:daily:free:5']))) {
       return [];
     }
 
@@ -1416,6 +1436,7 @@ export class DailyTaskRunner {
       const limitedTaskBuilders = [
         { build: () => this.buildArenaTask(), module: 'arena' },
         { build: () => this.buildDeepSeaLampTask(statisticsTime), module: 'treasure' },
+        { build: () => this.buildFreeFishTasks(statistics), module: 'activity' },
         { build: () => this.buildFreeSweepTickets(), module: 'activity' },
         { build: () => this.buildGoldTask(statisticsTime), module: 'daily' },
         { build: () => this.buildRewardTasks(), module: 'daily' },
@@ -1486,6 +1507,110 @@ export class DailyTaskRunner {
       this.success(`任务执行完成 (${completedCount}/${total})`);
     }
     
+    return { has400340Error: this.has400340Error, completedCount, totalCount: total };
+  }
+
+  /**
+   * 执行日常精简补齐（不做任何活跃度判断，按勾选的精简任务项直接执行）
+   * @param {string} tokenId Token ID
+   * @param {Object} callbacks 回调 { onLog, onProgress }
+   * @param {string[]} selectedKeys 勾选的任务项 key（见 SIMPLIFIED_TASK_ITEMS），为空时执行全部
+   * @param {Object} customSettings 自定义设置
+   */
+  async runSimplifiedTasks(tokenId, callbacks = {}, selectedKeys = null, customSettings = null) {
+    this.tokenId = tokenId;
+    this.callbacks = callbacks;
+    this.settings = customSettings || this.loadSettings(tokenId) || { ...DEFAULT_SETTINGS };
+
+    // 检查连接
+    this.info('检查连接状态...');
+    if (!await this.ensureConnection()) {
+      this.error('连接失败，无法执行任务');
+      throw new Error('连接异常');
+    }
+
+    // 获取角色数据（仅用于 statisticsTime，不做活跃度判断）
+    this.info('获取角色信息...');
+    const roleData = await this.fetchRoleData();
+    const statisticsTime = roleData.statisticsTime ?? {};
+    const statistics = roleData.statistics ?? {};
+
+    // 精简补齐任务构建器映射（与活跃度>=90精简模式一致）
+    const builderMap = {
+      deepSeaLamp: { build: () => this.buildDeepSeaLampTask(statisticsTime, true), module: 'treasure' },
+      freeFish: { build: () => this.buildFreeFishTasks(statistics), module: 'activity' },
+      freeSweep: { build: () => this.buildFreeSweepTickets(), module: 'activity' },
+      gold: { build: () => this.buildGoldTask(statisticsTime), module: 'daily' },
+      reward: { build: () => this.buildRewardTasks(), module: 'daily' },
+    };
+
+    const keys = (Array.isArray(selectedKeys) && selectedKeys.length > 0)
+      ? selectedKeys.filter(key => builderMap[key])
+      : Object.keys(builderMap);
+
+    const keyLabels = keys.map(key => SIMPLIFIED_TASK_ITEMS.find(item => item.key === key)?.label || key);
+    this.info(`🎯 日常精简补齐（不判断活跃度），执行：${keyLabels.join('、')}`);
+
+    // 获取模块延迟的辅助函数（与 run() 保持一致，支持单账号加速）
+    const getModuleDelay = (moduleName) => {
+      let delayMs;
+      if (this.batchSettings?.delayGroups) {
+        const group = MODULE_DELAY_GROUP_MAP[moduleName] || 'normal';
+        delayMs = this.batchSettings.delayGroups[group] ?? DELAY_GROUPS[group];
+      } else {
+        const md = this.batchSettings?.moduleDelays;
+        delayMs = md ? (md[moduleName] || md.default || this.delaySettings.taskDelay) : this.delaySettings.taskDelay;
+      }
+      if (this.batchSettings?.singleAccountMode) {
+        const multiplier = typeof this.batchSettings.singleAccountMultiplier === 'number'
+          ? this.batchSettings.singleAccountMultiplier : 0.2;
+        delayMs = Math.max(50, Math.round(delayMs * multiplier));
+      }
+      return delayMs;
+    };
+
+    const allTasks = keys.flatMap(key => {
+      const { build, module } = builderMap[key];
+      return build().map(fn => ({ fn, module }));
+    });
+    this.info(`精简补齐：共 ${allTasks.length} 个任务待执行`);
+
+    // 执行任务（与 run() 相同的延迟控制与限流处理）
+    const total = allTasks.length;
+    this.has400340Error = false;
+    let completedCount = 0;
+
+    for (let i = 0; i < allTasks.length; i++) {
+      try {
+        const { fn, module } = allTasks[i];
+        await fn();
+        completedCount++;
+        this.callbacks?.onProgress?.(Math.floor(((i + 1) / total) * 100));
+        const nextModule = allTasks[i + 1]?.module;
+        if (!nextModule || nextModule !== module) {
+          await delay(getModuleDelay(module));
+        } else {
+          const subtaskDelay = this._accelerateDelay(
+            this.batchSettings?.dailySubtaskDelay ?? 300, 50
+          );
+          if (subtaskDelay > 0) await delay(subtaskDelay);
+        }
+      } catch (error) {
+        const errMsg = error?.message || '';
+        if (errMsg.includes('400340') || errMsg.includes('200750') || errMsg.includes('11800010')) {
+          this.has400340Error = true;
+          const code = errMsg.includes('400340') ? '400340' : errMsg.includes('200750') ? '200750' : '11800010';
+          this.warn(`遇到${code}服务器限流，停止后续任务（已完成${completedCount}/${total}）`);
+          break;
+        }
+      }
+    }
+
+    if (!this.has400340Error) {
+      this.callbacks?.onProgress?.(100);
+      this.success(`日常精简补齐完成 (${completedCount}/${total})`);
+    }
+
     return { has400340Error: this.has400340Error, completedCount, totalCount: total };
   }
 }

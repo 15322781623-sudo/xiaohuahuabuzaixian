@@ -20,20 +20,21 @@
       <NInput clearable placeholder="例如：主号战士" v-model:value="importForm.name"></NInput>
     </NFormItem>
 
-    <NFormItem label="bin文件" :show-label="true">
-      <a-upload
-        clearable
-        draggable
-        dropzone
-        multiple
-        accept="*.bin,*.dmp"
-        placeholder="粘贴Token字符串..."
-        @before-upload="uploadBin"
-      >
-        <!-- <div class="dropzone-content">
-          请点击上传或将bind文件拖拽到此处
-        </div> -->
-      </a-upload>
+    <NFormItem label="bin 文件" :show-label="true">
+      <label class="bin-upload-zone">
+        <input
+          type="file"
+          multiple
+          accept=".bin,.dmp, application/octet-stream"
+          style="display: none"
+          @change="handleFileSelect"
+        />
+        <NIcon size="26" class="bin-upload-icon">
+          <CloudUpload />
+        </NIcon>
+        <span class="bin-upload-text">点击选择 bin 文件</span>
+        <span class="bin-upload-hint">支持 .bin / .dmp，可多选</span>
+      </label>
     </NFormItem>
 
     <!-- 上传进度提示 -->
@@ -122,6 +123,19 @@ const roleList = ref<
 const pendingFiles = ref<File[]>([]);
 const uploadProgress = ref({ current: 0, total: 0, processing: false });
 
+// 处理文件选择（Android 10 兼容）
+const handleFileSelect = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const files = Array.from(target.files || []);
+  if (files.length === 0) return;
+  
+  // 收集文件到队列
+  pendingFiles.value = [...pendingFiles.value, ...files];
+  
+  // 清空 input，允许重复上传同一文件
+  target.value = '';
+};
+
 const initName = (fileName: string) => {
   if (!fileName)
     return;
@@ -160,12 +174,6 @@ const initName = (fileName: string) => {
     roleId: "",
     roleName: fallbackName,
   };
-};
-
-const uploadBin = (binFile: File) => {
-  // 收集文件到队列，通过重新赋值触发 watch
-  pendingFiles.value = [...pendingFiles.value, binFile];
-  return false; // 阻止自动上传
 };
 
 // 监听文件队列，串行逐个处理，每个间隔 2 秒
@@ -320,6 +328,40 @@ const handleImport = async () => {
     flex: 1;
     min-width: 200px;
   }
+}
+
+.bin-upload-zone {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 20px 12px;
+  border: 2px dashed var(--border-color, #d9d9d9);
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--bg-tertiary, rgba(128, 128, 128, 0.06));
+  transition: border-color 0.2s, background 0.2s;
+
+  &:hover {
+    border-color: #2080f0;
+    background: rgba(32, 128, 240, 0.08);
+  }
+}
+
+.bin-upload-icon {
+  color: #2080f0;
+}
+
+.bin-upload-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, #333);
+}
+
+.bin-upload-hint {
+  font-size: 12px;
+  color: #999;
 }
 
 .form-actions {

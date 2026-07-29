@@ -24,6 +24,10 @@ const APK_SESSION_DISMISSED_KEY = 'apk_session_dismissed';
 const MAX_DAILY_DOWNLOADS = 3;       // 每日最大下载次数
 const DOWNLOAD_COOLDOWN_MS = 30 * 60 * 1000; // 下载冷却期 30分钟
 
+// ✅ 版本验证机制：2.32.0(23200) - 2.37.0(23700) 区间的版本必须强制更新到 2.38.0 才能继续使用
+const FORCE_UPDATE_MIN_CODE = 23200;
+const FORCE_UPDATE_MAX_CODE = 23700;
+
 // GitHub 加速镜像列表（中国用户常用）
 const GITHUB_MIRRORS = [
   'https://gh.llkk.cc/',
@@ -98,14 +102,20 @@ export function useApkUpdate() {
       const permanentSkip = localStorage.getItem(SKIP_VERSION_KEY);
       const sessionSkip = sessionStorage.getItem(SKIP_VERSION_KEY);
 
+      // ✅ 版本验证：当前版本处于强制更新区间（2.32.0-2.37.0）时，跳过标记不生效
+      const isInForceRange = localVersion.versionCode >= FORCE_UPDATE_MIN_CODE && localVersion.versionCode <= FORCE_UPDATE_MAX_CODE;
+      if (isInForceRange) {
+        console.log(`[APK更新] 当前版本 ${localVersion.versionName} (${localVersion.versionCode}) 处于强制更新区间 [${FORCE_UPDATE_MIN_CODE}, ${FORCE_UPDATE_MAX_CODE}]，必须更新到最新版本`);
+      }
+
       // 只有用户明确勾选"不再提示"才永久跳过（localStorage）
-      if (permanentSkip === serverInfo.latestVersion && !serverInfo.forceUpdate) {
+      if (!isInForceRange && permanentSkip === serverInfo.latestVersion && !serverInfo.forceUpdate) {
         isChecking.value = false;
         return { hasUpdate: false, reason: '用户已永久跳过此版本' };
       }
 
       // 本次会话已跳过（sessionStorage），不提示
-      if (sessionSkip === serverInfo.latestVersion && !serverInfo.forceUpdate) {
+      if (!isInForceRange && sessionSkip === serverInfo.latestVersion && !serverInfo.forceUpdate) {
         isChecking.value = false;
         return { hasUpdate: false, reason: '本次会话已跳过此版本' };
       }
@@ -124,7 +134,8 @@ export function useApkUpdate() {
         updateInfo.value = {
           ...serverInfo,
           localVersion: localVersion.versionName,
-          forceUpdate: false,
+          // ✅ 版本验证：强制更新区间内的版本弹窗不可关闭，必须更新后才能继续使用
+          forceUpdate: isInForceRange,
         };
 
         console.log(`[APK更新] 发现更新: local=${localCode}, server=${serverCode}, force=${updateInfo.value.forceUpdate}`);

@@ -1,3 +1,6 @@
+// 旧版 WebView 兼容性 Polyfill (必须最先加载)
+import "@/utils/polyfills";
+
 import "@arco-design/web-vue/dist/arco.css";
 import "virtual:uno.css";
 import "./assets/styles/global.scss";

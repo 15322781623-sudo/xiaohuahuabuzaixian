@@ -1523,6 +1523,13 @@ export function createTasksTower(deps) {
               });
             }
           } catch {}
+          // ✅ 400340/200750/11800010 限流错误且无缓存可回退时，抛出交由外层批量重试，避免误判为活动未开启而跳过
+          if (!actId) {
+            const em = e.message || '';
+            if (em.includes('400340') || em.includes('200750') || em.includes('11800010')) {
+              throw e;
+            }
+          }
         }
 
         // 获取换皮闯关信息（传入 actId）

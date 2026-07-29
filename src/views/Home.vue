@@ -5,7 +5,7 @@
       <div class="container">
         <div class="nav-content">
           <div class="nav-brand">
-            <img alt="XYZW" class="brand-logo" src="/icons/xiaoyugan.png">
+            <img alt="XYZW" class="brand-logo" src="/icons/gangzhongwang.png">
             <span class="brand-text">XYZW 游戏管理系统</span>
           </div>
 
@@ -237,7 +237,7 @@
       <div class="container">
         <div class="footer-content">
           <div class="footer-brand">
-            <img alt="XYZW" class="footer-logo" src="/icons/xiaoyugan.png">
+            <img alt="XYZW" class="footer-logo" src="/icons/gangzhongwang.png">
             <span class="footer-text">XYZW 游戏管理系统</span>
           </div>
           <div class="footer-links">

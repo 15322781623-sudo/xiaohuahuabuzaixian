@@ -16,20 +16,21 @@
       </NButton>
     </div>
 
-    <NFormItem label="bin文件" :show-label="true">
-      <a-upload
-        clearable
-        draggable
-        dropzone
-        multiple
-        accept="*.bin,*.dmp"
-        placeholder="粘贴Token字符串..."
-        @before-upload="uploadBin"
-      >
-        <!-- <div class="dropzone-content">
-          请点击上传或将bind文件拖拽到此处
-        </div> -->
-      </a-upload>
+    <NFormItem label="bin 文件" :show-label="true">
+      <label class="bin-upload-zone">
+        <input
+          type="file"
+          multiple
+          accept=".bin,.dmp, application/octet-stream"
+          style="display: none"
+          @change="handleFileSelect"
+        />
+        <NIcon size="26" class="bin-upload-icon">
+          <CloudUpload />
+        </NIcon>
+        <span class="bin-upload-text">点击选择 bin 文件</span>
+        <span class="bin-upload-hint">支持 .bin / .dmp，可多选，支持多角色</span>
+      </label>
     </NFormItem>
 
     <!-- 上传进度提示 -->
@@ -93,6 +94,7 @@ import {
   NFormItem,
   NIcon,
   NInput,
+  useDialog,
   useMessage,
 } from "naive-ui";
 
@@ -101,6 +103,7 @@ import useIndexedDB from "@/hooks/useIndexedDB";
 import { getServerList, getTokenId, transformToken } from "@/utils/token";
 import { saveBinBackup } from "@/utils/binBackup";
 import { g_utils } from "@/utils/bonProtocol";
+import { downloadFile } from "@/utils/imageExport";
 
 const $emit = defineEmits(["cancel", "ok"]);
 
@@ -122,17 +125,28 @@ const clearAllRoles = () => {
     return;
   }
 
-  const confirmed = window.confirm(`确定要删除全部 ${roleList.value.length} 个待添加角色吗？`);
-  if (!confirmed) {
-    return;
-  }
-
-  roleList.value = [];
-  message.success(`已删除全部 ${roleList.value.length} 个角色`);
+  // ✅ Android 10 兼容性：使用 Naive UI dialog 替代 window.confirm
+  dialog.warning({
+    title: "确认删除",
+    content: `确定要删除全部 ${roleList.value.length} 个待添加角色吗？`,
+    positiveText: "确定",
+    negativeText: "取消",
+    type: "warning",
+    maskClosable: false,
+    closable: false,
+    onPositiveClick: () => {
+      roleList.value = [];
+      message.success(`已删除全部 ${roleList.value.length} 个角色`);
+    },
+    onNegativeClick: () => {
+      // 用户取消，不做任何操作
+    },
+  });
 };
 
 const tokenStore = useTokenStore();
 const message = useMessage();
+const dialog = useDialog();
 const isImporting = ref(false);
 const uploadProgress = ref({ current: 0, total: 0, processing: false });
 const importForm = reactive({
@@ -325,37 +339,53 @@ const addAllRoles = async (roles: any[]) => {
   const filteredCount = roles.length - validRoles.length;
 
   if (validRoles.length === 0) {
-    message.warning(`没有可添加的角色（所有角色战力均低于1亿）`);
+    message.warning(`没有可添加的角色（所有角色战力均低于 1 亿）`);
     return;
   }
-
-  // 确认是否要添加所有角色
+  
+  // ✅ Android 10 兼容性：使用 Naive UI dialog 替代 window.confirm
   let confirmMsg = `确定要一键添加全部 ${validRoles.length} 个角色吗？`;
   if (filteredCount > 0) {
-    confirmMsg += `\n（已自动过滤 ${filteredCount} 个战力低于1亿的角色）`;
+    confirmMsg += `\n（已自动过滤 ${filteredCount} 个战力低于 1 亿的角色）`;
   }
-  const confirmed = window.confirm(confirmMsg);
-  if (!confirmed) {
-    return;
-  }
-
-  message.info(`开始批量添加 ${validRoles.length} 个角色，请稍候...`);
-
-  // 通过队列串行处理所有角色
-  for (const roleInfo of validRoles) {
-    await addSelectedRole(roleInfo);
-  }
-
-  message.success(`批量添加完成，共添加 ${validRoles.length} 个角色${filteredCount > 0 ? `（过滤${filteredCount}个战力低于1亿）` : ''}`);
+    
+  dialog.warning({
+    title: "确认添加",
+    content: confirmMsg,
+    positiveText: "确定",
+    negativeText: "取消",
+    type: "warning",
+    maskClosable: false,
+    closable: false,
+    onPositiveClick: async () => {
+      message.info(`开始批量添加 ${validRoles.length} 个角色，请稍候...`);
+        
+      // 通过队列串行处理所有角色
+      for (const roleInfo of validRoles) {
+        await addSelectedRole(roleInfo);
+      }
+        
+      message.success(`批量添加完成，共添加 ${validRoles.length} 个角色${filteredCount > 0 ? `（过滤${filteredCount}个战力低于 1 亿）` : ''}`);
+    },
+    onNegativeClick: () => {
+      // 用户取消，不做任何操作
+    },
+  });
 };
 
-// 待处理文件队列（收集所有上传的文件，然后串行处理）
 const pendingFiles = ref<File[]>([]);
 
-const uploadBin = (binFile: File) => {
-  // 收集文件到队列，通过重新赋值触发 watch
-  pendingFiles.value = [...pendingFiles.value, binFile];
-  return false; // 阻止自动上传
+// 处理文件选择（Android 10 兼容）
+const handleFileSelect = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const files = Array.from(target.files || []);
+  if (files.length === 0) return;
+  
+  // 收集文件到队列
+  pendingFiles.value = [...pendingFiles.value, ...files];
+  
+  // 清空 input，允许重复上传同一文件
+  target.value = '';
 };
 
 // 监听文件队列变化，触发串行处理
@@ -369,18 +399,24 @@ watch(pendingFiles, async (files) => {
 
   // 逐个串行处理，每个文件间隔 2 秒
   for (let i = 0; i < files.length; i++) {
-    const binFile = files[i];
+    const binFile: File = files[i] as File;
+    if (!binFile) continue;
+        
     uploadProgress.value.current = i + 1;
     console.log(`[上传进度] ${i + 1}/${totalFiles} 处理文件:`, binFile.name);
-    message.info(`正在处理第 ${i + 1}/${totalFiles} 个文件: ${binFile.name}`);
-
+    message.info(`正在处理第 ${i + 1}/${totalFiles} 个文件：${binFile.name}`);
+  
     try {
       // 读取文件
       const userToken: ArrayBuffer = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target?.result as ArrayBuffer);
         reader.onerror = () => reject(new Error("读取文件失败"));
-        reader.readAsArrayBuffer(binFile);
+        if (binFile) {
+          reader.readAsArrayBuffer(binFile);
+        } else {
+          reject(new Error("文件对象为空"));
+        }
       });
 
       currentBinData.value = userToken;
@@ -425,14 +461,15 @@ watch(pendingFiles, async (files) => {
         binDecodedResult.value = `Bin文件解析失败: ${err.message || err}`;
       }
 
-      message.success(`第 ${i + 1}/${totalFiles} 个文件处理完成: ${binFile.name}`);
+      message.success(`第 ${i + 1}/${totalFiles} 个文件处理完成：${binFile.name || '未知文件名'}`);
     } catch (err: any) {
-      console.error(`文件处理失败: ${binFile.name}`, err);
-      message.error(`第 ${i + 1}/${totalFiles} 个文件处理失败: ${err.message}`);
+      const fileName = binFile ? binFile.name : '未知文件';
+      console.error(`文件处理失败：${fileName}`, err);
+      message.error(`第 ${i + 1}/${totalFiles} 个文件处理失败：${err.message}`);
     }
 
     // 每个文件处理完后等待 2 秒再处理下一个
-    if (i < files.length - 1) {
+    if (i < files.length - 1 && binFile) {
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
   }
@@ -477,21 +514,13 @@ const handleImport = async () => {
   }
 };
 
-const downloadBinFile = (fileName, bin) => {
+const downloadBinFile = async (fileName: string, bin: ArrayBuffer | Uint8Array) => {
   const blob = new Blob([new Uint8Array(bin)], {
     type: "application/octet-stream",
   });
 
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  URL.revokeObjectURL(url);
+  // APK环境使用Filesystem+Share，Web环境使用<a>标签下载
+  await downloadFile(blob, fileName);
 };
 </script>
 
@@ -539,5 +568,39 @@ const downloadBinFile = (fileName, bin) => {
   font-weight: var(--font-weight-medium, 500);
   font-size: 14px;
   color: var(--text-primary, #333);
+}
+
+.bin-upload-zone {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 20px 12px;
+  border: 2px dashed var(--border-color, #d9d9d9);
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--bg-tertiary, rgba(128, 128, 128, 0.06));
+  transition: border-color 0.2s, background 0.2s;
+
+  &:hover {
+    border-color: #2080f0;
+    background: rgba(32, 128, 240, 0.08);
+  }
+}
+
+.bin-upload-icon {
+  color: #2080f0;
+}
+
+.bin-upload-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, #333);
+}
+
+.bin-upload-hint {
+  font-size: 12px;
+  color: #999;
 }
 </style>

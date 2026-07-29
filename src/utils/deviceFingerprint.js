@@ -5,6 +5,9 @@
 
 const STORAGE_KEY = 'xyzw_device_id';
 
+// ✅ 卡密版本验证：上报构建时注入的版本号（旧版本 2.32.0-2.37.0 不上报该字段，服务端据此拦截）
+const APP_VERSION_CODE = typeof __APK_VERSION_CODE__ !== 'undefined' && __APK_VERSION_CODE__ ? Number(__APK_VERSION_CODE__) : 23800;
+
 // 会话级激活缓存，避免同一页面生命周期内反复弹窗验证
 let sessionActivated = false;
 let sessionChecked = false;
@@ -177,7 +180,7 @@ export async function isActivated() {
       const resp = await fetch(`${WORKER_BASE}/api/card/check`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardKey: data.cardKey, deviceId }),
+        body: JSON.stringify({ cardKey: data.cardKey, deviceId, appVersionCode: APP_VERSION_CODE }),
       });
       const result = await resp.json();
       console.log('[设备激活] 服务器响应:', result);

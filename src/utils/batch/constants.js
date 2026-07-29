@@ -38,6 +38,7 @@ export const dailyBossTimesOptions = [0, 1, 2, 3, 4, 5].map((v) => ({
 // 可用的定时任务列表
 export const availableTasks = [
   { label: "日常任务", value: "startBatch" },
+  { label: "日常精简补齐", value: "batchSimplifiedDaily" },
   { label: "领取挂机", value: "claimHangUpRewards" },
   { label: "一键加钟", value: "batchAddHangUpTime" },
   { label: "挂机升级", value: "batchHangUpUpgrade" },
@@ -124,6 +125,8 @@ export const availableTasks = [
   { label: "消耗活动兑换购买", value: "batchActivityExchange" },
   { label: "领取竞技大厅道具", value: "batchClaimApexRewards" },
   { label: "比赛竞猜", value: "batchSaltCupBet" },
+  { label: "逐鹿盐山竞猜", value: "batchApexGuess" },
+  { label: "逐鹿盐山竞猜领奖", value: "batchApexGuessClaim" },
 ];
 
 // 黑市商品列表
@@ -275,6 +278,7 @@ export const defaultBatchSettings = {
   recruitCount: 100,
   defaultBoxType: 2001,
   defaultFishType: 1,
+  targetBoxRounds: 1,
   receiverId: "",
   password: "",
   useGoldRefreshFallback: false,

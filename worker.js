@@ -12,15 +12,15 @@ const GITHUB_PROXY_LIST = [
 
 // 静态兜底配置（R2 和 GitHub 都失败时使用）
 const FALLBACK_CONFIG = {
-  latestVersion: "2.28.0",
-  versionCode: 22800,
+  latestVersion: "2.38.0",
+  versionCode: 23800,
   // R2 直连下载（最快最稳）
   downloadUrl: `https://xyzw-apk-updater.15322781623.workers.dev/api/apk/download`,
   // GitHub 原始链接作为备选
   downloadUrlOriginal: `https://github.com/${GITHUB_REPO}/releases/latest/download/肝王之王.apk`,
-  changelog: "v2.28.0: 赞助系统优化 & 首页跳转恢复",
-  minVersionCode: 21500,
-  forceUpdate: false,
+  changelog: "v2.38.0: 竞技场阵容切换集成 & 全量导出导入v2.5 & 定时任务执行记录修复（2.32.0-2.37.0版本必须更新到本版本才能继续使用）",
+  minVersionCode: 23800,
+  forceUpdate: true,
 };
 
 // ==================== 卡密系统工具函数 ====================
@@ -398,10 +398,16 @@ export default {
     // 检查卡密状态（设备是否匹配）
     if (url.pathname === '/api/card/check' && request.method === 'POST') {
       try {
-        const { cardKey, deviceId } = await request.json();
+        const { cardKey, deviceId, appVersionCode } = await request.json();
         const normalizedKey = (cardKey || '').toUpperCase().trim();
         if (!normalizedKey || !deviceId) {
           return cardJson({ success: false, error: '参数不完整' }, 400);
+        }
+        // ✅ 版本验证：2.32.0-2.37.0 旧客户端不会上报 appVersionCode，拒绝验证并提示更新
+        // 注意：错误文案必须包含"未激活"关键字，旧客户端 isActivated() 据此清除本地激活记录并锁定在卡密弹窗
+        const clientVersionCode = Number(appVersionCode) || 0;
+        if (clientVersionCode < 23800) {
+          return cardJson({ success: false, error: '卡密未激活：当前软件版本已停用，请更新到 2.38.0 后继续使用' }, 400);
         }
         const card = await getCard(cardKv, normalizedKey);
         if (!card) {
@@ -423,10 +429,15 @@ export default {
     // 激活/验证卡密
     if (url.pathname === '/api/card/verify' && request.method === 'POST') {
       try {
-        const { cardKey, deviceId } = await request.json();
+        const { cardKey, deviceId, appVersionCode } = await request.json();
         const normalizedKey = (cardKey || '').toUpperCase().trim();
         if (!normalizedKey || !deviceId) {
           return cardJson({ success: false, error: '参数不完整' }, 400);
+        }
+        // ✅ 版本验证：2.32.0-2.37.0 旧客户端不会上报 appVersionCode，拒绝激活并提示更新
+        const verifyVersionCode = Number(appVersionCode) || 0;
+        if (verifyVersionCode < 23800) {
+          return cardJson({ success: false, error: '当前软件版本已停用，请更新到 2.38.0 后再激活' }, 400);
         }
         let card = await getCard(cardKv, normalizedKey);
         if (!card) {
