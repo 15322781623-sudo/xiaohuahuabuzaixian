@@ -17,11 +17,16 @@ export const useChangelogStore = defineStore("changelog", () => {
       version: "v2.45.7",
       date: "2026-08-03",
       type: "patch",
-      title: "怪异塔累抽奖励日志语义化",
+      title: "怪异塔累抽奖励日志语义化 & 收车发车400340重试链路修复",
       fixes: [
-        "怪异塔使用道具（batchUseItems）领取累计奖励语义化：原 mergebox_claimcostprogress 默认走 2 次重试 + 打 warning『服务器错误: 11800010 - 未知错误，交由批量重试处理』，实际 11800010 在本接口代表“未达累计阈值/无奖励可领”；现调用指定 retries: 0 只请求 1 次，并按错误码映射为 info『累抽奖励无奖励可领取』",
+        "怪异塔使用道具（batchUseItems）领取累计奖励语义化：原 mergebox_claimcostprogress 默认走 2 次重试 + 打 warning『服务器错误: 11800010 - 未知错误，交由批量重试处理』，实际 11800010 在本接口代表「未达累计阈值/无奖励可领」；现调用指定 retries: 0 只请求 1 次，并按错误码映射为 info『累抽奖励无奖励可领取』",
         "callWithRetry 可重试错误日志分级：retries === 0 时跳过『交由批量重试处理』warning（调用方已自行处理错误），仅 retries > 0 时打 warning，避免静默 catch 场景刷屏",
         "怪异塔累抽奖励成功日志细化：捕获 API 响应并尝试解析 rewards/rewardList/items 字段，有奖励明细时展示『累抽奖励领取成功：道具名×数量』，空响应时展示『累抽奖励领取成功』，区分真实领取结果",
+        "修复收车发车 400340 不走外部重试：carUtils.js processCarForSmartSend 内层 catch 只处理 12000050/12000030 后静默吞掉所有错误，导致 400340/200750/11800010 无法冒泡到 tasksCar.js 的 retry400340Tokens 队列；现新增三码判断分支 throw 向上抛出",
+        "修复旧版 claimCars 收车 catch 静默吞错：carUtils.js 的 claimCars 原 catch 无差别 warning 吞掉所有错误含 400340；现新增 400340/200750/11800010 判断 throw 向上抛出",
+        "tasksCar.js executeSmartSendCarForToken 外层 catch 扩展：原仅 12000030 向上 throw，现扩展为 12000030/400340/200750/11800010 全部 throw，确保错误码能穿透到 retry400340Tokens 重试队列（防御第二层）",
+        "extractErrorCode 补全错误码：原只识别 400340/200750/11800010 三个码，12000030 和 12000050 进来时日志显示『服务器错误unknown』；现补充 12000030/12000050 映射",
+        "processCarForSmartSend car_refresh 加回 12000030 限流局部重试：旧版 carUtils.js 对 car_refresh 有专门的 12000030 重试循环（最多 N 次等 retryDelay），新版 tasksCar.js 缺失导致单次刷新限流就中断整个账号等 60 秒全账号重试；现加回局部重试循环对齐旧版逻辑",
       ],
     },
     {
