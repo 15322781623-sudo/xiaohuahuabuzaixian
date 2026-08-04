@@ -109,6 +109,17 @@
             <div class="section-header">
               <h4>孔位锁定</h4>
               <span class="section-hint">勾选锁定孔位，洗练时不会改变</span>
+              <n-button
+                size="tiny"
+                type="primary"
+                quaternary
+                :loading="refreshingSlots"
+                :disabled="state.isRunning"
+                @click="refreshSlots"
+              >
+                <template #icon><n-icon><RefreshOutline /></n-icon></template>
+                刷新孔位
+              </n-button>
             </div>
             <div class="slots-row">
               <div
@@ -208,15 +219,21 @@
               </n-button>
               <div class="quench-count-wrapper">
                 <span class="count-label">次数</span>
-                <n-input-number
-                  v-model:value="continuousQuenchCount"
-                  :min="0"
-                  :max="9000"
-                  :step="10"
-                  size="small"
-                  :disabled="state.isRunning"
-                  style="width: 90px;"
-                />
+                <n-tooltip trigger="hover">
+                  <template #trigger>
+                    <n-input-number
+                      v-model:value="continuousQuenchCount"
+                      :min="0"
+                      :max="9000"
+                      :step="10"
+                      size="small"
+                      :disabled="state.isRunning"
+                      style="width: 90px;"
+                    />
+                  </template>
+                  设为 0 时不限次数，自动淬炼直到达成目标或手动停止
+                </n-tooltip>
+                <span class="count-hint">0=无限</span>
               </div>
             </div>
             <div class="actions-row">
@@ -242,14 +259,34 @@
                 <span class="status-label">已淬炼</span>
                 <span class="status-value">{{ quenchCount }}</span>
               </div>
+              <div class="quench-count-wrapper">
+                <span class="count-label">延迟(ms)</span>
+                <n-input-number
+                  v-model:value="delay"
+                  :min="0"
+                  :max="5000"
+                  :step="100"
+                  size="small"
+                  style="width: 100px;"
+                />
+              </div>
               <n-switch
                 size="small"
-                v-model:value="skipHighQuality"
+                v-model:value="skipOrangeQuality"
                 :disabled="state.isRunning"
                 class="skip-switch"
               >
-                <template #checked>跳过橙红</template>
-                <template #unchecked>遇见橙红停止</template>
+                <template #checked>跳过橙</template>
+                <template #unchecked>遇橙确认</template>
+              </n-switch>
+              <n-switch
+                size="small"
+                v-model:value="skipRedQuality"
+                :disabled="state.isRunning"
+                class="skip-switch"
+              >
+                <template #checked>跳过红</template>
+                <template #unchecked>遇红确认</template>
               </n-switch>
             </div>
           </div>
@@ -313,19 +350,6 @@
                 添加条件
               </n-button>
             </div>
-            <!-- 延迟设置 -->
-            <div class="delay-setting">
-              <div class="form-group">
-                <span class="form-label">延迟(ms)</span>
-                <n-input-number
-                  size="small"
-                  v-model:value="delay"
-                  :min="0"
-                  :step="100"
-                  style="width: 100px;"
-                ></n-input-number>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -334,8 +358,8 @@
 </template>
 
 <script setup>
-import { computed, ref } from "vue";
-import { useMessage } from "naive-ui";
+import { computed, h, ref, watch } from "vue";
+import { useDialog, useMessage } from "naive-ui";
 import { useTokenStore } from "@/stores/tokenStore";
 import MyCard from "../Common/MyCard.vue";
 import { HERO_DICT } from "@/utils/HeroList.js";
@@ -352,6 +376,7 @@ import {
 
 const tokenStore = useTokenStore();
 const message = useMessage();
+const dialog = useDialog();
 
 // 响应式数据
 const loading = ref(false);
@@ -359,8 +384,9 @@ const heroes = ref([]);
 const selectedHeroId = ref(null);
 const selectedPart = ref(null);
 const quenchCount = ref(0);
-const delay = ref(350);
-const skipHighQuality = ref(false); // 跳过橙红品质
+const delay = ref(300);
+const skipOrangeQuality = ref(false); // 跳过橙色品质
+const skipRedQuality = ref(false); // 跳过红色品质
 // 连续淬炼次数（初始值100，后续根据装备动态计算）
 const continuousQuenchCount = ref(100);
 
@@ -529,6 +555,38 @@ const refreshHeroes = async () => {
     loading.value = false;
   }
 };
+
+// 切换账号时重置洗练助手状态（英雄/装备/孔位信息属于旧账号，必须清空）
+watch(
+  () => tokenStore.selectedToken?.id,
+  (newId, oldId) => {
+    if (!oldId || newId === oldId)
+      return;
+
+    // 停止进行中的洗练
+    if (state.value.isRunning) {
+      stopQuench();
+    }
+
+    // 清空旧账号数据
+    heroes.value = [];
+    allHeroesData.value = {};
+    selectedHeroId.value = null;
+    selectedPart.value = null;
+    heroEquipment.value = {};
+    slots.value = [];
+    quenchTimes.value = 0;
+    equipBonusValue.value = 0;
+    jadeCount.value = 0;
+    colorJadeCount.value = 0;
+    quenchCount.value = 0;
+
+    // 新账号已连接时自动刷新阵容
+    if (newId && tokenStore.getWebSocketStatus(newId) === "connected") {
+      refreshHeroes();
+    }
+  },
+);
 
 // 解析队伍数据
 const parseTeamData = (presetTeamInfo) => {
@@ -786,6 +844,20 @@ const handleSlotLock = async (slotId, isLocked) => {
       slot.isLocked = isLocked;
     }
 
+    // 同步更新装备数据中的锁定状态（洗练发送的 quenches 与高词条检测都依赖此数据）
+    const equipQuenches = heroEquipment.value[selectedPart.value]?.quenches;
+    const equipSlot = equipQuenches?.[slotId] || equipQuenches?.[String(slotId)];
+    if (equipSlot) {
+      equipSlot.isLocked = isLocked;
+    }
+
+    // 拉取服务器最新装备数据，避免本地快照与服务端不一致（失败不阻断）
+    try {
+      await syncEquipFromServer(tokenId);
+    } catch (syncError) {
+      console.warn(`[洗练] 锁定后同步装备数据失败: ${syncError.message}`);
+    }
+
     message.success(isLocked ? "孔位已锁定" : "孔位已解锁");
   } catch (error) {
     message.error(`锁定孔位失败: ${error.message}`);
@@ -803,7 +875,7 @@ const quenchOnce = async () => {
 };
 
 // 连续淬炼
-const quenchContinuous = () => {
+const quenchContinuous = async () => {
   if (state.value.continuousQuenching)
     return;
 
@@ -817,14 +889,17 @@ const quenchContinuous = () => {
   state.value.continuousQuenching = true;
   state.value.isRunning = true;
 
+  // 开始前先刷新一次孔位状态，避免本地数据与服务端不一致
+  await refreshSlotsBeforeStart();
+
   // 次数为0时使用9999上限
   const targetCount = continuousQuenchCount.value === 0 ? 9999 : (continuousQuenchCount.value || 100);
 
-  if (skipHighQuality.value) {
-    message.info(`开始连续淬炼(跳过橙红)，共${targetCount}次`);
-  } else {
-    message.info(`开始连续淬炼，共${targetCount}次，出现橙色或红色属性时自动暂停`);
-  }
+  const skipDesc = [
+    skipOrangeQuality.value ? "跳过橙" : "遇橙确认",
+    skipRedQuality.value ? "跳过红" : "遇红确认",
+  ].join("、");
+  message.info(`开始连续淬炼(${skipDesc})，共${targetCount}次`);
 
   const continuousQuench = async () => {
     if (!state.value.continuousQuenching)
@@ -840,17 +915,9 @@ const quenchContinuous = () => {
     try {
       const result = await executeQuench();
 
-      // 如果不跳过橙红，且检测到高品质属性，则停止
-      if (!skipHighQuality.value && result && checkHighQualityAttr(result)) {
-        message.success("发现橙色或红色属性，已自动暂停");
-        stopQuench();
-        return;
-      }
+      // 不跳过橙红时无需在此停止：下一次 executeQuench 检测到橙红会弹窗让用户确认
 
-      // 如果跳过橙红，且检测到高品质属性，则记录日志但继续
-      if (skipHighQuality.value && result && checkHighQualityAttr(result)) {
-        console.log(`跳过橙红属性，继续淬炼 (${quenchCount.value}/${targetCount})`);
-      }
+      // 跳过橙红时无需额外处理：下一次 executeQuench 会自动先确认放弃高品质词条再继续
 
       // 随机延迟
       const randomDelay = Math.floor(Math.random() * 150) + delay.value;
@@ -882,7 +949,7 @@ const removeCondition = (index) => {
 };
 
 // 自动淬炼
-const startAutoQuench = () => {
+const startAutoQuench = async () => {
   // 检查是否有有效的条件
   const hasValidCondition = targetConditions.value.some((condition) =>
     condition.attrId !== null && condition.attrValue !== null,
@@ -900,6 +967,9 @@ const startAutoQuench = () => {
 
   state.value.autoQuenching = true;
   state.value.isRunning = true;
+
+  // 开始前先刷新一次孔位状态，避免切换锁定后本地数据与服务端不一致
+  await refreshSlotsBeforeStart();
 
   // 生成条件描述
   const conditionDescriptions = targetConditions.value
@@ -924,6 +994,8 @@ const startAutoQuench = () => {
         return;
       }
 
+      // 未达标时无需额外处理橙红：下一次 executeQuench 会自动确认放弃后继续
+
       // 随机延迟
       const randomDelay = Math.floor(Math.random() * 150) + delay.value;
       autoTimer = setTimeout(autoQuench, randomDelay);
@@ -936,8 +1008,76 @@ const startAutoQuench = () => {
   autoQuench();
 };
 
+// 手动刷新孔位状态（从服务器拉取最新装备数据）
+const refreshingSlots = ref(false);
+const refreshSlots = async () => {
+  const token = tokenStore.selectedToken;
+  if (!token || tokenStore.getWebSocketStatus(token.id) !== "connected") {
+    message.warning("请先连接游戏");
+    return;
+  }
+  if (!selectedHeroId.value || !selectedPart.value) {
+    message.warning("请先选择武将和装备部位");
+    return;
+  }
+
+  refreshingSlots.value = true;
+  try {
+    const synced = await syncEquipFromServer(token.id);
+    if (synced) {
+      message.success("孔位状态已刷新");
+    } else {
+      message.warning("未获取到装备数据");
+    }
+  } catch (error) {
+    message.error(`刷新孔位失败: ${error.message}`);
+  } finally {
+    refreshingSlots.value = false;
+  }
+};
+
+// 开始洗练前刷新一次孔位状态（失败不阻断后续流程，executeQuench 自带失败重试自救）
+const refreshSlotsBeforeStart = async () => {
+  const token = tokenStore.selectedToken;
+  if (!token || tokenStore.getWebSocketStatus(token.id) !== "connected")
+    return;
+
+  try {
+    await syncEquipFromServer(token.id);
+  } catch (error) {
+    console.warn(`[洗练] 开始前刷新孔位状态失败: ${error.message}`);
+  }
+};
+
+// 从服务器重新拉取当前装备的最新数据（本地快照与服务端不一致时用于自救）
+const syncEquipFromServer = async (tokenId) => {
+  const roleInfo = await tokenStore.sendMessageWithPromise(
+    tokenId,
+    "role_getroleinfo",
+    {},
+    15000,
+  );
+
+  const heroData = roleInfo?.role?.heroes?.[String(selectedHeroId.value)]
+    || roleInfo?.heroes?.[String(selectedHeroId.value)];
+  const latestEquip = heroData?.equipment?.[selectedPart.value];
+  if (latestEquip) {
+    // 合并保留本地已有基础字段，防止增量数据缺level等字段导致装备显示为1级
+    heroEquipment.value[selectedPart.value] = {
+      ...heroEquipment.value[selectedPart.value],
+      ...latestEquip,
+    };
+    quenchTimes.value = latestEquip.quenchTimes || 0;
+    if (latestEquip.quenches) {
+      updateSlots(latestEquip.quenches);
+    }
+    return true;
+  }
+  return false;
+};
+
 // 执行淬炼
-const executeQuench = async () => {
+const executeQuench = async (retried = false) => {
   const token = tokenStore.selectedToken;
   if (!token) {
     message.warning("请先选择Token");
@@ -970,13 +1110,56 @@ const executeQuench = async () => {
       return null;
     }
 
+    // 不做字段过滤或类型转换，保持与服务器返回的数据完全一致
+    const rawQuenches = currentEquip.quenches;
+
+    // seed 默认取装备自身携带的 seed 字段（服务端会校验，发 0 会报"界面已发生变化"）
+    let seed = Number(currentEquip.seed) || 0;
+
+    // 存在未锁定的高品质词条（橙/红）时，须先发送 equipment_confirm 获取最新 seed，
+    // 否则服务端会拒绝洗练并报"您当前看到的界面已发生变化，请重新登录"
+    const highSlots = getHighAttrSlots(rawQuenches);
+    const needConfirm = highSlots.length > 0;
+
+    // 未开启对应"跳过"开关的词条（红看跳红、橙看跳橙），放弃前弹窗让用户确认
+    const pendingSlots = highSlots.filter(slot =>
+      Number(slot.colorId) >= 6 ? !skipRedQuality.value : !skipOrangeQuality.value,
+    );
+    if (pendingSlots.length > 0) {
+      const approved = await confirmDiscardDialog(pendingSlots);
+      if (!approved) {
+        message.info("已停止洗练，可锁定孔位保留词条");
+        stopQuench();
+        return null;
+      }
+    }
+
+    if (needConfirm) {
+      const confirmResult = await tokenStore.sendMessageWithPromise(
+        tokenId,
+        "equipment_confirm",
+        {
+          heroId: selectedHeroId.value,
+          part: selectedPart.value,
+          quenchId: 0,
+          quenches: rawQuenches,
+        },
+        15000,
+      );
+      seed = extractSeedFromConfirm(confirmResult) || seed;
+    }
+
+    console.log(
+      `[洗练] needConfirm=${needConfirm}, seed=${seed}, equipSeed=${currentEquip.seed ?? "无"}`,
+    );
+
     // 构建淬炼制请求参数
     const quenchParams = {
       heroId: selectedHeroId.value,
       part: selectedPart.value,
       quenchId: 0,
-      quenches: currentEquip.quenches,
-      seed: 0,
+      quenches: rawQuenches,
+      seed,
       skipOrange: false,
     };
 
@@ -995,8 +1178,11 @@ const executeQuench = async () => {
     let updatedEquip = null;
 
     // 处理1: Equipment_QuenchResp响应直接包含装备数据
+    // 兼容两种结构：装备对象本身（含quenches）/ 按部位id索引的映射
     if (result?.equipment) {
-      updatedEquip = result.equipment;
+      updatedEquip = result.equipment.quenches
+        ? result.equipment
+        : result.equipment[selectedPart.value];
     }
     // 处理2: 响应包含角色英雄数据
     else if (result?.role?.heroes) {
@@ -1017,6 +1203,9 @@ const executeQuench = async () => {
 
     // 如果获取到了更新的装备数据，更新界面
     if (updatedEquip) {
+      // 合并而非整体替换：响应可能只含淬炼相关字段（缺level等基础字段），
+      // 整体替换会导致装备显示为1级、武器等级校验误拦截
+      updatedEquip = { ...heroEquipment.value[selectedPart.value], ...updatedEquip };
       // 更新装备对象
       heroEquipment.value[selectedPart.value] = updatedEquip;
 
@@ -1045,6 +1234,31 @@ const executeQuench = async () => {
 
     return result;
   } catch (error) {
+    // 400010-物品数量不足（白玉/彩玉耗尽）、400000-已上限，重试无意义，直接停止洗练
+    const errMsg = String(error.message);
+    if (errMsg.includes("400010") || errMsg.includes("物品数量不足")) {
+      message.error("物品数量不足，已自动停止洗练");
+      stopQuench();
+      return null;
+    }
+    if (errMsg.includes("400000") || errMsg.includes("已上限")) {
+      message.error("淬炼已上限，已自动停止洗练");
+      stopQuench();
+      return null;
+    }
+    // 首次失败时自动同步服务器最新装备数据后重试一次
+    // （本地装备快照过期会导致服务端报"界面已发生变化"）
+    if (!retried) {
+      console.warn(`[洗练] 淬炼失败(${error.message})，同步服务器装备数据后重试...`);
+      try {
+        const synced = await syncEquipFromServer(tokenId);
+        if (synced) {
+          return await executeQuench(true);
+        }
+      } catch (syncError) {
+        console.warn(`[洗练] 同步装备数据失败: ${syncError.message}`);
+      }
+    }
     message.error(`淬炼失败: ${error.message}`);
     return null;
   }
@@ -1054,7 +1268,10 @@ const executeQuench = async () => {
 const getEquipFromResult = (result) => {
   // 处理1: Equipment_QuenchResp响应直接包含装备数据
   if (result?.equipment) {
-    return result.equipment;
+    // 兼容两种结构：装备对象本身（含quenches）/ 按部位id索引的映射
+    return result.equipment.quenches
+      ? result.equipment
+      : result.equipment[selectedPart.value];
   }
   // 处理2: 响应包含角色英雄数据
   else if (result?.role?.heroes) {
@@ -1076,20 +1293,66 @@ const getEquipFromResult = (result) => {
   return heroEquipment.value[selectedPart.value];
 };
 
-// 检查高品质属性（橙色或红色）
-const checkHighQualityAttr = (result) => {
-  const equip = getEquipFromResult(result);
-  if (!equip?.quenches)
-    return false;
+// 弹窗确认是否放弃未锁定的橙/红词条（未开启跳过橙红时使用），展示具体词条信息
+const confirmDiscardDialog = (highSlots = []) => {
+  return new Promise((resolve) => {
+    dialog.warning({
+      title: "发现橙/红词条",
+      content: () =>
+        h("div", null, [
+          h(
+            "div",
+            null,
+            "当前存在未锁定的橙色或红色词条，继续洗练将放弃该词条。如需保留请先锁定孔位。",
+          ),
+          ...highSlots.map(slot =>
+            h(
+              "div",
+              {
+                style: `margin-top: 8px; font-weight: 600; color: ${
+                  Number(slot.colorId) >= 6 ? "#d03050" : "#f0a020"
+                };`,
+              },
+              `孔${slot.id} [${Number(slot.colorId) >= 6 ? "红" : "橙"}] ${getAttrName(slot.attrId)} +${slot.attrNum}%`,
+            ),
+          ),
+        ]),
+      positiveText: "放弃并继续",
+      negativeText: "停止洗练",
+      maskClosable: false,
+      onPositiveClick: () => resolve(true),
+      onNegativeClick: () => resolve(false),
+      onClose: () => resolve(false),
+    });
+  });
+};
 
-  // 检查是否有高品质属性（colorId >= 5）
-  for (const slot of Object.values(equip.quenches)) {
-    if (slot.colorId && slot.colorId >= 5) {
-      return true;
-    }
-  }
+// 获取未锁定的高品质词条列表（attrNum > 50 或 colorId >= 5，即橙/红），
+// 存在此类词条时必须先 equipment_confirm 确认后服务端才允许继续洗练
+const getHighAttrSlots = (quenches) => {
+  if (!quenches)
+    return [];
 
-  return false;
+  return Object.entries(quenches)
+    .filter(
+      ([, slot]) =>
+        (Number(slot.attrNum) > 50 || Number(slot.colorId) >= 5)
+        && !(slot.isLocked || slot.locked),
+    )
+    .map(([id, slot]) => ({ id, ...slot }));
+};
+
+// 从 equipment_confirm 响应中提取 seed（兼容多种响应格式）
+const extractSeedFromConfirm = (result) => {
+  if (!result)
+    return 0;
+
+  // 格式1: role.heroes[heroId].equipment[part].seed
+  const hero = result?.role?.heroes?.[String(selectedHeroId.value)];
+  const equipSeed = hero?.equipment?.[String(selectedPart.value)]?.seed;
+
+  // 格式2: seed直接在响应中；格式3: equipment.seed
+  return equipSeed || result?.seed || result?.equipment?.seed || 0;
 };
 
 // 检查目标属性
@@ -1151,7 +1414,11 @@ const flipQuench = async () => {
     // 更新装备信息
     const heroData = roleInfo?.role?.heroes?.[String(selectedHeroId.value)];
     if (heroData?.equipment?.[selectedPart.value]) {
-      const updatedEquip = heroData.equipment[selectedPart.value];
+      // 合并保留本地已有基础字段，防止增量数据缺level等字段导致装备显示为1级
+      const updatedEquip = {
+        ...heroEquipment.value[selectedPart.value],
+        ...heroData.equipment[selectedPart.value],
+      };
       heroEquipment.value[selectedPart.value] = updatedEquip;
       quenchTimes.value = updatedEquip.quenchTimes || 0;
 
@@ -1605,6 +1872,12 @@ const resetCount = () => {
   color: var(--text-secondary);
 }
 
+.count-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .quench-status {
   display: flex;
   align-items: center;
@@ -1671,13 +1944,6 @@ const resetCount = () => {
 
 .add-condition-row {
   margin-bottom: 6px;
-}
-
-.delay-setting {
-  padding-top: 6px;
-  border-top: 1px dashed var(--border-light);
-  display: flex;
-  justify-content: flex-start;
 }
 
 // 响应式设计

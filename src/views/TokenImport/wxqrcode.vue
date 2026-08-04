@@ -195,6 +195,7 @@ const timeout = 300000; // 300秒（5分钟）超时
 const startTime = ref<number | null>(null);
 const remainSeconds = ref(0); // 实时倒计时秒数
 const autoRefreshCount = ref(0); // 自动刷新次数
+const autoRefreshDelay = 300000; // 300秒（5分钟）刷新间隔
 
 const serverListData = ref<any[]>([]);
 const currentBinData = ref<ArrayBuffer | null>(null);
@@ -489,12 +490,12 @@ const checkScanStatus = async () => {
     if (elapsed > timeout) {
       updateStatus("二维码等待超时，正在自动刷新...", "info");
       stopScanMonitoring();
-      // 自动刷新二维码（最多自动刷新3次）
-      if (autoRefreshCount.value < 3) {
+      // 自动刷新二维码（最多自动刷新1次）
+      if (autoRefreshCount.value < 1) {
         autoRefreshCount.value++;
         await autoRefreshQRCode();
       } else {
-        updateStatus("已自动刷新3次，请手动点击获取二维码", "error");
+        updateStatus("已自动刷新1次，请手动点击获取二维码", "error");
         resetQRCode();
       }
       return;
@@ -567,12 +568,12 @@ const checkScanStatus = async () => {
       if (text.includes("window.wx_errcode=408")) {
         stopScanMonitoring();
         updateStatus("二维码已过期，正在自动刷新...", "info");
-        // 自动刷新二维码（最多自动刷新5次）
-        if (autoRefreshCount.value < 5) {
+        // 自动刷新二维码（最多自动刷新1次）
+        if (autoRefreshCount.value < 1) {
           autoRefreshCount.value++;
           await autoRefreshQRCode();
         } else {
-          updateStatus("已自动刷新5次，请手动点击获取二维码", "error");
+          updateStatus("已自动刷新1次，请手动点击获取二维码", "error");
           resetQRCode();
         }
         return;
@@ -603,6 +604,13 @@ const autoRefreshQRCode = async () => {
   try {
     updateStatus(`正在自动刷新二维码 (第${autoRefreshCount.value}次)...`, 'info');
     resetQRCode();
+    
+    // 延迟30秒后再刷新，避免频繁触发
+    for (let i = autoRefreshDelay / 1000; i > 0; i--) {
+      updateStatus(`二维码将在 ${i} 秒后自动刷新...`, 'info');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
     const success = await tryGetWeixinQR();
     if (success) {
       message.info(`二维码已自动刷新，请尽快扫码 (第${autoRefreshCount.value}次)`);
@@ -619,6 +627,12 @@ const autoRefreshQRCode = async () => {
 const handleScanSuccess = async (code: string, nickname = "") => {
   try {
     isProcessing.value = true;
+    
+    // 扫码成功后重置自动刷新计数器
+    autoRefreshCount.value = 0;
+    
+    // 停止扫码监控
+    stopScanMonitoring();
 
     // 获取加密数据
     const encrypted = await getEncryptedData(code);
@@ -955,6 +969,7 @@ const resetQRCode = () => {
   stopScanMonitoring();
   qrcodeUUID.value = null;
   qrcodeUrl.value = null;
+  autoRefreshCount.value = 0; // 重置自动刷新计数
   updateStatus("点击获取微信登录二维码", "info");
 };
 

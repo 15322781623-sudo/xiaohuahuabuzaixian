@@ -45,6 +45,7 @@ export const MODULE_DELAY_GROUP_MAP = {
   daily: 'normal',   // 日常任务
   hero: 'normal',    // 英雄/鱼灵/宠物升级
   legacy: 'normal',  // 功法残卷
+  apex: 'normal',    // 竞技大厅道具领取（apex_taskclaim）
   default: 'normal', // 默认回退
 
   // === 战斗操作 (battle) ===
@@ -54,6 +55,8 @@ export const MODULE_DELAY_GROUP_MAP = {
   club: 'battle',    // 俱乐部
   car: 'battle',     // 发车/收车
   dungeon: 'battle', // 宝库/梦境（别名）
+  saltcup: 'battle', // 比赛竞猜 / 逐鹿盐山竞猜
+  saltroad: 'battle', // 天宫助威
 
   // === 重度操作 (heavy) ===
   activity: 'heavy',   // 消耗活动

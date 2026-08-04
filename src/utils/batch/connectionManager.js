@@ -125,7 +125,8 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
           type: "info",
         });
 
-        const refreshedToken = tokens.find((t) => t.id === tokenId);
+        // ✅ 修复：Token 可能在执行途中被删除，回退用 latestToken，避免 TypeError 导致已获取的槽位泄漏
+        const refreshedToken = tokens.find((t) => t.id === tokenId) || latestToken;
         try {
           await tokenStore.createWebSocketConnection(
             tokenId,
@@ -165,38 +166,8 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
 
     // 连接成功，槽位保持占用，直到任务完成后手动释放
 
-    // Initialize Game Data (Critical for Battle Version and Session)
-    try {
-      // Fetch Role Info first (Standard flow)
-      await tokenStore.sendMessageWithPromise(
-        tokenId,
-        "role_getroleinfo",
-        {},
-        5000,
-      );
-
-      // Fetch Battle Version
-      const res = await tokenStore.sendMessageWithPromise(
-        tokenId,
-        "fight_startlevel",
-        {},
-        5000,
-      );
-      if (res?.battleData?.version) {
-        tokenStore.setBattleVersion(res.battleData.version);
-      }
-    } catch (e) {
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `${latestToken.name} 初始化数据失败: ${e.message}`,
-        type: "warning",
-      });
-
-      // 关闭连接，槽位由调用方 finally 块统一释放
-      tokenStore.closeWebSocketConnection(tokenId);
-
-      throw new Error(`初始化数据失败: ${e.message}`);
-    }
+    // ✅ 深度精简：不再在连接时统一获取 role_getroleinfo / fight_startlevel
+    // 战斗命令所需的 randomSeed/battleVersion 已改为在 tokenStore.sendMessageWithPromise 中懒加载
 
     return true;
   };

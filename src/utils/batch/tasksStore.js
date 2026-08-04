@@ -1864,8 +1864,76 @@ export function createTasksStore(deps) {
     const isRetryable = (msg) => RETRYABLE_CODES.some(code => msg.includes(code));
     const getErrorCode = (msg) => RETRYABLE_CODES.find(code => msg.includes(code)) || '';
     const retryableTokens = [];
-    const maxRetries = batchSettings.defaultRetryCount !== undefined ? batchSettings.defaultRetryCount : 2;
-    const retryWaitTime = batchSettings.retryDelay || 60000;
+    // ✅ 统一走「⚙️ 高级配置」面板里的重试设置（不再硬编码）
+    const maxRetries = batchSettings.defaultRetryCount ?? 2;
+    const retryWaitTime = batchSettings.retryDelay ?? 10000;
+    const commandTimeout = batchSettings.defaultCommandTimeout || 5000;
+    // 账号间重试间隔（面板中的"账号间重试间隔"）
+    const accountRetryInterval = batchSettings.accountRetryInterval ?? 5000;
+    // 领取步骤的小重试次数与延迟：跟随面板 defaultRetryCount / retryDelay
+    // 为保证至少执行 1 次调用，小重试次数保底 1
+    const claimMaxAttempts = Math.max(1, maxRetries + 1);  // attempts = 首次调用 + maxRetries 次重试
+    const claimRetryDelay = retryWaitTime;
+
+    /**
+     * 带小重试的领取步骤（周奖励/寻宝次数）
+     * - 400340 / 200750 / 11800010 → 按面板「重试延迟」等待后重试，次数受「默认重试次数」控制
+     * - 200020 / "已领取" / "次数" → 视为已领取，直接返回
+     * - 其他错误 → 抛出，由外层进入账号级重试
+     */
+    const claimWithRetry = async (tokenId, tokenName, cmd, stepLabel) => {
+      let lastErr = null;
+      for (let attempt = 1; attempt <= claimMaxAttempts; attempt++) {
+        try {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${tokenName} ${stepLabel}（第${attempt}/${claimMaxAttempts}次）...`,
+            type: "info",
+          });
+          const res = await tokenStore.sendMessageWithPromise(tokenId, cmd, {}, commandTimeout);
+          if (res?.error) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${tokenName} ${stepLabel}：服务端返回 ${res.error}`,
+              type: "warning",
+            });
+            return { claimed: false, reason: String(res.error) };
+          }
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${tokenName} ✅ ${stepLabel}成功`,
+            type: "success",
+          });
+          return { claimed: true };
+        } catch (e) {
+          lastErr = e;
+          const msg = e.message || '';
+          // 业务性"已领取" → 直接返回，不再重试
+          if (msg.includes("200020") || msg.includes("已领取") || msg.includes("次数")) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${tokenName} ${stepLabel}：已领取/无需领取`,
+              type: "info",
+            });
+            return { claimed: false, reason: "already" };
+          }
+          // 可重试错误码 → 按面板重试延迟等待后再试
+          if (isRetryable(msg) && attempt < claimMaxAttempts) {
+            const code = getErrorCode(msg);
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${tokenName} ${stepLabel}：${code}，${claimRetryDelay/1000}s 后重试(${attempt}/${claimMaxAttempts})...`,
+              type: "warning",
+            });
+            await new Promise((r) => setTimeout(r, claimRetryDelay));
+            continue;
+          }
+          // 其他错误 / 最后一次仍失败 → 抛出让外层走账号级重试
+          throw e;
+        }
+      }
+      throw lastErr || new Error(`${stepLabel}未知失败`);
+    };
 
     // 单次账号抽奖逻辑（抽干次数为止）
     const doDrawLoop = async (tokenId, tokenName) => {
@@ -1917,24 +1985,21 @@ export function createTasksStore(deps) {
         addLog({ time: new Date().toLocaleTimeString(), message: `=== 开始十殿抽奖: ${token.name} ===`, type: "info" });
         await ensureConnection(tokenId);
 
-        // 1. 领取周奖励
+        // 1. 领取周奖励（带小重试，区分"已领取"与真实失败）
         try {
-          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领取周奖励次数...`, type: "info" });
-          // ✅ 使用用户配置
-          const commandTimeout = batchSettings.defaultCommandTimeout || 5000;
-          await tokenStore.sendMessageWithPromise(tokenId, "nightmare_claimweekreward", {}, commandTimeout);
+          await claimWithRetry(tokenId, token.name, "nightmare_claimweekreward", "领取周奖励次数");
         } catch (e) {
-          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 周奖励已领取/无需领取`, type: "info" });
+          // 小重试都失败 → 抛出让外层进入账号级重试
+          throw e;
         }
         await new Promise((r) => setTimeout(r, _getModuleDelay('nightmare')));
 
-        // 2. 领取寻宝次数
+        // 2. 领取寻宝次数（带小重试，区分"已领取"与真实失败）
         try {
-          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领取寻宝次数...`, type: "info" });
-          // ✅ 使用用户配置
-          await tokenStore.sendMessageWithPromise(tokenId, "nightmare_claimturnrewardtimes", {}, commandTimeout);
+          await claimWithRetry(tokenId, token.name, "nightmare_claimturnrewardtimes", "领取寻宝次数");
         } catch (e) {
-          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 寻宝次数已领取`, type: "info" });
+          // 小重试都失败 → 抛出让外层进入账号级重试
+          throw e;
         }
         await new Promise((r) => setTimeout(r, _getModuleDelay('nightmare')));
 
@@ -2007,12 +2072,19 @@ export function createTasksStore(deps) {
     }
 
     // ==================== 400340/200750/11800010 重试逻辑 ====================
-    if (retryableTokens.length > 0) {
-      addLog({ time: new Date().toLocaleTimeString(), message: `\n=== ${retryableTokens.length} 个账号等待${retryWaitTime/1000}秒后重试 ===`, type: "info" });
-      await new Promise((resolve) => setTimeout(resolve, retryWaitTime));
-
+    // 重试次数 / 重试延迟 / 账号间重试间隔 全部走「⚙️ 高级配置」面板设置
+    if (retryableTokens.length > 0 && maxRetries > 0) {
       for (let retry = 0; retry < maxRetries && retryableTokens.length && !shouldStop.value; retry++) {
-        addLog({ time: new Date().toLocaleTimeString(), message: `\n--- 第 ${retry + 1} 轮重试（${retryableTokens.length} 个账号）---`, type: "info" });
+        // ✅ 每轮重试开始前先等待「重试延迟」（与智能发车 / 收车重试对齐）
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `\n⏳ 等待 ${retryWaitTime/1000}s 后进行第 ${retry + 1}/${maxRetries} 轮重试（${retryableTokens.length} 个账号）...`,
+          type: "info",
+        });
+        await new Promise((resolve) => setTimeout(resolve, retryWaitTime));
+        if (shouldStop.value) break;
+
+        addLog({ time: new Date().toLocaleTimeString(), message: `\n--- 第 ${retry + 1}/${maxRetries} 轮重试（${retryableTokens.length} 个账号）---`, type: "info" });
         const failedTokens = [];
 
         // 分批执行重试
@@ -2030,6 +2102,16 @@ export function createTasksStore(deps) {
               addLog({ time: new Date().toLocaleTimeString(), message: `重试：${tokenName}`, type: "info" });
               tokenStatus.value[tokenId] = "retrying";
               await ensureConnection(tokenId);
+
+              // 重试时也要走「领取次数 → 抽奖」完整流程，否则仍会因没领次数而空转
+              try {
+                await claimWithRetry(tokenId, tokenName, "nightmare_claimweekreward", "重试-领取周奖励次数");
+              } catch (_) { /* 已领取也无妨，继续 */ }
+              await new Promise((r) => setTimeout(r, _getModuleDelay('nightmare')));
+              try {
+                await claimWithRetry(tokenId, tokenName, "nightmare_claimturnrewardtimes", "重试-领取寻宝次数");
+              } catch (_) { /* 已领取也无妨，继续 */ }
+              await new Promise((r) => setTimeout(r, _getModuleDelay('nightmare')));
 
               const { totalDraws } = await doDrawLoop(tokenId, tokenName);
 
@@ -2050,15 +2132,16 @@ export function createTasksStore(deps) {
               releaseConnectionSlot();
             }
           }));
+
+          // 重试批次间也走「账号间重试间隔」，避免一批刚完成立即启动下一批导致再次限流
+          if (i + maxConcurrent < retryIds.length && !shouldStop.value && accountRetryInterval > 0) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `重试批次间等待 ${accountRetryInterval/1000}s...`, type: "info" });
+            await new Promise((r) => setTimeout(r, accountRetryInterval));
+          }
         }
 
         retryableTokens.length = 0;
         retryableTokens.push(...failedTokens);
-
-        if (failedTokens.length && retry < maxRetries - 1) {
-          addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWaitTime/1000}秒后继续重试...`, type: "info" });
-          await new Promise((r) => setTimeout(r, retryWaitTime));
-        }
       }
 
       if (retryableTokens.length) {
@@ -2068,6 +2151,12 @@ export function createTasksStore(deps) {
           tokenStatus.value[i.tokenId] = "failed"; // ✅ 标记为失败，确保执行记录进度统计正确
         });
       }
+    } else if (retryableTokens.length > 0 && maxRetries === 0) {
+      addLog({ time: new Date().toLocaleTimeString(), message: `\n默认重试次数=0，跳过重试；${retryableTokens.length} 个账号直接标记失败`, type: "warning" });
+      retryableTokens.forEach((i) => {
+        tokenStatus.value[i.tokenId] = "failed";
+      });
+      retryableTokens.length = 0;
     }
 
     currentRunningTokenId.value = null;
@@ -2438,8 +2527,9 @@ export function createTasksStore(deps) {
    * 批量逐鹿盐山竞猜
    * @param {number} scheduleId - 赛程ID (20=64强, 21=32强, 22=16强, 23=8强, 24=4强, 25=季军赛, 26=决赛)
    * @param {string[]} teamIds - 按选中顺序的队伍ID列表
+   * @param {number} [maxConcurrent] - 并发数（定时任务级并发控制，0 或不传则使用全局 batchSettings.maxActive）
    */
-  const batchApexGuess = async (scheduleId, teamIds) => {
+  const batchApexGuess = async (scheduleId, teamIds, maxConcurrent = 0) => {
     if (selectedTokens.value.length === 0) {
       message.warning("请先选择账号");
       return;
@@ -2498,11 +2588,14 @@ export function createTasksStore(deps) {
             }
           }
 
-          await new Promise(r => setTimeout(r, _getModuleDelay('club')));
+          await new Promise(r => setTimeout(r, _getModuleDelay('saltcup')));
         }
 
         tokenStatus.value[tokenId] = successCount > 0 ? "completed" : "failed";
         addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜完成: 成功${successCount}场, 失败${failCount}场`, type: "info" });
+
+        // ✅ 修复：账号级收尾延迟，与其他任务模块一致（避免账号快速完成后立即启动下一个账号导致级联启动）
+        await new Promise(r => setTimeout(r, _getModuleDelay('saltcup')));
       } catch (error) {
         addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜异常: ${error.message}`, type: "error" });
         tokenStatus.value[tokenId] = "failed";
@@ -2511,7 +2604,7 @@ export function createTasksStore(deps) {
         releaseConnectionSlot();
         addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 连接已关闭 (队列: ${connectionQueue.active}/${batchSettings.maxActive})`, type: "info" });
       }
-    });
+    }, maxConcurrent || undefined);
 
     currentRunningTokenId.value = null;
     isRunning.value = false;
@@ -2615,8 +2708,9 @@ export function createTasksStore(deps) {
    * 批量比赛竞猜
    * @param {string|undefined} matchId - 比赛ID（不传则自动获取所有比赛并下注）
    * @param {number} pick - 竞猜选项 (1=主胜, 2=平局, 3=客胜)
+   * @param {number} [maxConcurrent] - 并发数（定时任务级并发控制，0 或不传则使用全局 batchSettings.maxActive）
    */
-  const batchSaltCupBet = async (matchId, pick) => {
+  const batchSaltCupBet = async (matchId, pick, maxConcurrent = 0) => {
     if (selectedTokens.value.length === 0) {
       message.warning("请先选择账号");
       return;
@@ -2704,7 +2798,8 @@ export function createTasksStore(deps) {
             addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜异常(${mid}): ${e.message}`, type: "error" });
           }
 
-          await new Promise(r => setTimeout(r, 300));
+          // ✅ 修复：使用模块统一延迟（与其他功能按钮一致），替代硬编码 300ms
+          await new Promise(r => setTimeout(r, _getModuleDelay('saltcup')));
         }
 
         if (successCount > 0 || skipCount === targetMatchIds.length) {
@@ -2713,6 +2808,10 @@ export function createTasksStore(deps) {
           tokenStatus.value[tokenId] = "failed";
         }
         addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜完成: 成功${successCount}场, 跳过${skipCount}场`, type: "info" });
+
+        // ✅ 修复：账号级收尾延迟，与其他任务模块一致（如 batchSaltRoadCheer、batchApexGuess）
+        // 避免账号快速完成后立即启动下一个账号导致“级联启动”视觉上是串行
+        await new Promise(r => setTimeout(r, _getModuleDelay('saltcup')));
       } catch (error) {
         addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞猜异常: ${error.message}`, type: "error" });
         tokenStatus.value[tokenId] = "failed";
@@ -2720,7 +2819,7 @@ export function createTasksStore(deps) {
         tokenStore.closeWebSocketConnection(tokenId);
         releaseConnectionSlot();
       }
-    });
+    }, maxConcurrent || undefined);
 
     currentRunningTokenId.value = null;
     isRunning.value = false;
@@ -3988,93 +4087,114 @@ export function createTasksStore(deps) {
 
         await ensureConnection(tokenId);
 
-        // 先获取角色信息，查询斑点蛋数量
+        // 蛋类型列表（斑点蛋/盐壳蛋/亮纹蛋）
+        const EGG_TYPES = [
+          { itemId: 37011, name: "斑点蛋" },
+          { itemId: 37012, name: "盐壳蛋" },
+          { itemId: 37013, name: "亮纹蛋" },
+        ];
+
+        // 先获取角色信息，查询各类蛋数量
         const roleInfo = await tokenStore.sendGetRoleInfo(tokenId);
-        const eggCount = roleInfo?.role?.items?.[37011]?.quantity || 0;
+        const eggInventory = EGG_TYPES.map((t) => ({
+          ...t,
+          count: roleInfo?.role?.items?.[t.itemId]?.quantity || 0,
+        }));
+        const totalEggs = eggInventory.reduce((s, t) => s + t.count, 0);
 
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} 当前斑点蛋数量: ${eggCount}`,
+          message: `${token.name} 当前蛋数量: ${eggInventory.map((t) => `${t.name}×${t.count}`).join(" / ")}`,
           type: "info",
         });
 
-        if (eggCount <= 0) {
+        if (totalEggs <= 0) {
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `${token.name} 斑点蛋不足，无法使用`,
+            message: `${token.name} 蛋不足，无法使用`,
             type: "warning",
           });
           tokenStatus.value[tokenId] = "completed";
           return;
         }
 
-        // 使用斑点蛋（最多10次或直到用完）
-        const maxUseCount = Math.min(eggCount, 10);
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token.name} 开始使用斑点蛋（${maxUseCount}次）...`,
-          type: "info",
-        });
-
-        for (let i = 0; i < maxUseCount; i++) {
-          if (shouldStop.value)
+        // 按顺序依次使用：斑点蛋用完→盐壳蛋，盐壳蛋用完→亮纹蛋
+        let gridFull = false;
+        for (const egg of eggInventory) {
+          if (shouldStop.value || gridFull)
             break;
+          if (egg.count <= 0)
+            continue;
 
-          try {
-            const result = await tokenStore.sendMessageWithPromise(
-              tokenId,
-              "pet_openegg",
-              { itemId: 37011 },
-              batchSettings.defaultCommandTimeout || 5000,
-            );
+          const maxUseCount = egg.count;
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 开始使用${egg.name}（共${maxUseCount}个，用完后切换下一种蛋）...`,
+            type: "info",
+          });
 
-            if (result.error) {
-              const isEggUsedUp = result.error.includes("12600020");
+          for (let i = 0; i < maxUseCount; i++) {
+            if (shouldStop.value)
+              break;
+
+            try {
+              const result = await tokenStore.sendMessageWithPromise(
+                tokenId,
+                "pet_openegg",
+                { itemId: egg.itemId },
+                batchSettings.defaultCommandTimeout || 5000,
+              );
+
+              if (result.error) {
+                const isEggUsedUp = result.error.includes("12600020");
+
+                if (isEggUsedUp) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} ${egg.name} ${i + 1}/${maxUseCount} 当前没有空格存放宠物，请先合成之后再使用`,
+                    type: "info",
+                  });
+                  // 格子已满，后续蛋也无法使用，提前退出
+                  gridFull = true;
+                  break;
+                } else {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} ${egg.name} ${i + 1}/${maxUseCount} 使用失败: ${result.error}`,
+                    type: "warning",
+                  });
+                }
+              } else {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} ${egg.name} ${i + 1}/${maxUseCount} 使用成功`,
+                  type: "success",
+                });
+              }
+            } catch (error) {
+              const errorMsg = error.message || "";
+              const isEggUsedUp = errorMsg.includes("12600020");
 
               if (isEggUsedUp) {
                 addLog({
                   time: new Date().toLocaleTimeString(),
-                  message: `${token.name} 斑点蛋 ${i + 1}/${maxUseCount} 当前没有空格存放宠物，请先合成之后再使用`,
+                  message: `${token.name} ${egg.name} ${i + 1}/${maxUseCount} 当前没有空格存放宠物，请先合成之后再使用`,
                   type: "info",
                 });
-                // 斑点蛋用完，提前退出循环
+                // 格子已满，后续蛋也无法使用，提前退出
+                gridFull = true;
                 break;
               } else {
                 addLog({
                   time: new Date().toLocaleTimeString(),
-                  message: `${token.name} 斑点蛋 ${i + 1}/${maxUseCount} 使用失败: ${result.error}`,
+                  message: `${token.name} ${egg.name} ${i + 1}/${maxUseCount} 使用异常: ${errorMsg}`,
                   type: "warning",
                 });
               }
-            } else {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 斑点蛋 ${i + 1}/${maxUseCount} 使用成功`,
-                type: "success",
-              });
             }
-          } catch (error) {
-            const errorMsg = error.message || "";
-            const isEggUsedUp = errorMsg.includes("12600020");
 
-            if (isEggUsedUp) {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 斑点蛋 ${i + 1}/${maxUseCount} 当前没有空格存放宠物，请先合成之后再使用`,
-                type: "info",
-              });
-              // 斑点蛋用完，提前退出循环
-              break;
-            } else {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 斑点蛋 ${i + 1}/${maxUseCount} 使用异常: ${errorMsg}`,
-                type: "warning",
-              });
-            }
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
           }
-
-          await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
         }
 
         tokenStatus.value[tokenId] = "completed";
@@ -4482,6 +4602,396 @@ export function createTasksStore(deps) {
         addLog({
           time: new Date().toLocaleTimeString(),
           message: `${token.name} 宠物合成异常: ${error.message}`,
+          type: "error",
+        });
+        tokenStatus.value[tokenId] = "failed";
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭  (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+      }
+    });
+
+    currentRunningTokenId.value = null;
+    isRunning.value = false;
+    shouldStop.value = false;
+  };
+
+  /**
+   * 斑点蛋 + 宠物合成循环
+   * 逻辑：使用2个蛋 → 合成1次 → 重复，直到蛋不足2个且无可合成宠物
+   * 遇空格不足（12600020）时自动先合成再继续
+   */
+  const egg_merge_cycle = async () => {
+    if (selectedTokens.value.length === 0) return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    await runStreaming(selectedTokens.value, async (tokenId) => {
+      if (shouldStop.value) return;
+      tokenStatus.value[tokenId] = "running";
+
+      const token = tokens.value.find((t) => t.id === tokenId);
+      const cmdTimeout = batchSettings.defaultCommandTimeout || 5000;
+
+      try {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 开始点蛋+合成循环: ${token.name} ===`,
+          type: "info",
+        });
+
+        await ensureConnection(tokenId);
+
+        // 图鉴宠物ID集合
+        const codexPetIds = new Set([
+          101, 102, 103, 104, 201, 202, 203, 204,
+          301, 302, 303, 304, 401, 402, 403, 404,
+          501, 502, 503, 504, 601, 602, 603, 604,
+          701, 702, 703, 704,
+        ]);
+        const getPetLevel = (petId) => Math.floor(Number(petId) / 100);
+
+        // 获取角色信息（返回 roleInfo 对象）
+        const fetchRoleInfo = async () => {
+          return await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, cmdTimeout);
+        };
+
+        // 蛋类型列表（斑点蛋/盐壳蛋/亮纹蛋）
+        const EGG_TYPES = [
+          { itemId: 37011, name: "斑点蛋" },
+          { itemId: 37012, name: "盐壳蛋" },
+          { itemId: 37013, name: "亮纹蛋" },
+        ];
+
+        // 获取各类蛋库存
+        const getEggInventory = (roleInfo) => EGG_TYPES.map((t) => ({
+          ...t,
+          count: roleInfo?.role?.items?.[t.itemId]?.quantity || 0,
+        }));
+
+        // 获取蛋总数
+        const getEggCount = (roleInfo) => getEggInventory(roleInfo).reduce((s, t) => s + t.count, 0);
+
+        // 获取宠物列表
+        const getPetList = (roleInfo) => {
+          const petsObj = roleInfo?.role?.petData?.pets;
+          if (!petsObj || typeof petsObj !== "object") return [];
+          return Object.entries(petsObj).map(([slot, pet]) => ({ ...pet, slot: Number(slot) }));
+        };
+
+        // 按等级分组（仅图鉴宠物）
+        const groupByLevel = (petList) => {
+          const groups = {};
+          for (const pet of petList) {
+            const pid = pet.petId || pet.petid || pet.id;
+            if (!pid || !codexPetIds.has(Number(pid))) continue;
+            const level = getPetLevel(pid);
+            if (!groups[level]) groups[level] = [];
+            groups[level].push({ ...pet, petId: Number(pid), uId: pet.uId || pet.uid });
+          }
+          return groups;
+        };
+
+        // 尝试一次合成，返回是否成功
+        const tryOneMerge = async (petList) => {
+          const groups = groupByLevel(petList);
+          const maxLevelEnabled = batchSettings.petMergeMaxLevelEnabled || false;
+          const maxLevel = batchSettings.petMergeMaxLevel || 4;
+          const levels = Object.keys(groups).map(Number).sort((a, b) => a - b);
+
+          for (const level of levels) {
+            if (shouldStop.value) return false;
+            if (maxLevelEnabled && level > maxLevel) continue;
+
+            const pets = groups[level];
+            if (pets.length < 2) continue;
+
+            // 优先同种配对
+            let fromPet = null, toPet = null;
+            for (let i = 0; i < pets.length; i++) {
+              for (let j = i + 1; j < pets.length; j++) {
+                if (pets[i].petId === pets[j].petId) { fromPet = pets[i]; toPet = pets[j]; break; }
+              }
+              if (fromPet) break;
+            }
+            if (!fromPet) { fromPet = pets[0]; toPet = pets[1]; }
+
+            // 继承槽位计算：只有 4 级及以上才继承槽位（与原批次合成功能一致）
+            const inheritSlot = level >= 4 ? fromPet.slot : 0;
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} ${level}级合成: 槽位${fromPet.slot}(材料) → 槽位${toPet.slot}(目标)${inheritSlot ? ` inheritSlot=${inheritSlot}` : ""}`,
+              type: "info",
+            });
+
+            try {
+              const result = await tokenStore.sendMessageWithPromise(tokenId, "pet_merge", {
+                fromSlotUId: { slot: fromPet.slot, uId: fromPet.uId },
+                toSlotUId: { slot: toPet.slot, uId: toPet.uId },
+                inheritSlot,
+              }, cmdTimeout);
+
+              if (result?.error) {
+                // 200400 限流：等待后重试
+                if (result.error.includes("200400")) {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${level}级合成: 操作太快(200400)，等待10秒后重试`, type: "warning" });
+                  await new Promise(r => setTimeout(r, 10000));
+                  const retryResult = await tokenStore.sendMessageWithPromise(tokenId, "pet_merge", {
+                    fromSlotUId: { slot: fromPet.slot, uId: fromPet.uId },
+                    toSlotUId: { slot: toPet.slot, uId: toPet.uId },
+                    inheritSlot,
+                  }, cmdTimeout);
+                  if (retryResult?.error) {
+                    addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${level}级合成重试失败: ${retryResult.error}`, type: "warning" });
+                    return false;
+                  }
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${level}级合成成功(重试)`, type: "success" });
+                  await new Promise(r => setTimeout(r, _getModuleDelay('store')));
+                  return true;
+                }
+                              
+                // 🆕 5 级及以上（橙宠/金宠）合成失败的特殊处理
+                if (level >= 5 && result.error.includes("200020")) {
+                  addLog({ 
+                    time: new Date().toLocaleTimeString(), 
+                    message: `${token.name} 🟠 ${level}级橙宠合成需要手动操作！服务器返回：${result.error}`, 
+                    type: "warning" 
+                  });
+                  addLog({ 
+                    time: new Date().toLocaleTimeString(), 
+                    message: `${token.name} 💡 建议：请进入游戏手动合成 5 级及以上宠物`, 
+                    type: "info" 
+                  });
+                  return false;
+                }
+                              
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${level}级合成失败：${result.error}`, type: "warning" });
+                return false;
+              }
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${level}级合成成功`, type: "success" });
+              await new Promise(r => setTimeout(r, _getModuleDelay('store')));
+              return true;
+            } catch (err) {
+              // 200400 限流：等待后重试
+              if (err.message?.includes("200400")) {
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${level}级合成: 操作太快(200400)，等待10秒后重试`, type: "warning" });
+                await new Promise(r => setTimeout(r,10000));
+                try {
+                  const retryResult = await tokenStore.sendMessageWithPromise(tokenId, "pet_merge", {
+                    fromSlotUId: { slot: fromPet.slot, uId: fromPet.uId },
+                    toSlotUId: { slot: toPet.slot, uId: toPet.uId },
+                    inheritSlot,
+                  }, cmdTimeout);
+                  if (retryResult?.error) {
+                    addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${level}级合成重试失败: ${retryResult.error}`, type: "warning" });
+                    return false;
+                  }
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${level}级合成成功(重试)`, type: "success" });
+                  await new Promise(r => setTimeout(r, _getModuleDelay('store')));
+                  return true;
+                } catch (retryErr) {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${level}级合成重试异常: ${retryErr.message}`, type: "warning" });
+                  return false;
+                }
+              }
+                          
+              // 🆕 5 级及以上（橙宠/金宠）合成失败的特殊处理
+              if (level >= 5 && err.message?.includes("200020")) {
+                addLog({ 
+                  time: new Date().toLocaleTimeString(), 
+                  message: `${token.name} 🟠 ${level}级橙宠合成需要手动操作！服务器返回：${err.message}`, 
+                  type: "warning" 
+                });
+                addLog({ 
+                  time: new Date().toLocaleTimeString(), 
+                  message: `${token.name} 💡 建议：请进入游戏手动合成 5 级及以上宠物`, 
+                  type: "info" 
+                });
+                return false;
+              }
+                          
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${level}级合成异常：${err.message}`, type: "warning" });
+              return false;
+            }
+          }
+          return false; // 无可合成
+        };
+
+        let totalEggsUsed = 0;
+        let totalMergesDone = 0;
+        const maxCycles = 100; // 防死循环
+
+        for (let cycle = 0; cycle < maxCycles; cycle++) {
+          if (shouldStop.value) break;
+
+          try {
+          // 1. 获取最新数据
+          const roleInfo = await fetchRoleInfo();
+          const eggCount = getEggCount(roleInfo);
+
+          if (eggCount < 2) {
+            // 蛋不足2个，检查是否还能合成
+            const petList = getPetList(roleInfo);
+            const merged = await tryOneMerge(petList);
+            if (merged) {
+              totalMergesDone++;
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 蛋不足但合成成功，继续循环...`, type: "info" });
+              continue;
+            }
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 蛋不足（剩余${eggCount}）且无可合成宠物，停止`, type: "info" });
+            break;
+          }
+
+          // 2. 使用2个蛋（按斑点蛋→盐壳蛋→亮纹蛋顺序优先使用）
+          const eggInventory = getEggInventory(roleInfo);
+          let eggsUsedThisCycle = 0;
+          let gridFull = false;
+          for (let e = 0; e < 2 && !gridFull; e++) {
+            if (shouldStop.value) break;
+            // 当前蛋类使用失败时（如库存数据滞后）本地清零，改试下一种蛋，直到用成或无蛋可用
+            let usedThisSlot = false;
+            let rateLimitRetries = 0; // 200400 限流重试次数
+            while (!usedThisSlot && !gridFull) {
+              if (shouldStop.value) break;
+              const egg = eggInventory.find((t) => t.count > 0);
+              if (!egg) break;
+              try {
+                const result = await tokenStore.sendMessageWithPromise(tokenId, "pet_openegg", { itemId: egg.itemId }, cmdTimeout);
+                if (result?.error) {
+                  if (result.error.includes("12600020") || result.error.includes("1260020")) {
+                    addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 第${e + 1}个蛋(${egg.name}): 宠物格子已满，先合成`, type: "info" });
+                    gridFull = true;
+                    break;
+                  }
+                  // 200400 限流：等待后重试当前蛋，不清零库存，最多重试3次
+                  if (result.error.includes("200400")) {
+                    rateLimitRetries++;
+                    if (rateLimitRetries >= 3) {
+                      addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 第${e + 1}个蛋(${egg.name}): 限流(200400)重试${rateLimitRetries}次仍失败，跳过当前蛋`, type: "warning" });
+                      break;
+                    }
+                    addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 第${e + 1}个蛋(${egg.name}): 操作太快(200400)，等待4秒后重试(${rateLimitRetries}/3)`, type: "warning" });
+                    await new Promise(r => setTimeout(r, 4000));
+                    continue;
+                  }
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 第${e + 1}个蛋(${egg.name})使用失败: ${result.error}，尝试下一种蛋`, type: "warning" });
+                  egg.count = 0;
+                  continue;
+                }
+                egg.count--;
+                eggsUsedThisCycle++;
+                totalEggsUsed++;
+                usedThisSlot = true;
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 第${e + 1}个蛋(${egg.name})使用成功`, type: "success" });
+                await new Promise(r => setTimeout(r, _getModuleDelay('store')));
+              } catch (err) {
+                if (err.message?.includes("12600020") || err.message?.includes("1260020")) {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 第${e + 1}个蛋(${egg.name}): 宠物格子已满，开始批量合成`, type: "info" });
+                  gridFull = true;
+                  // ✅ 新逻辑：不要立即退出，而是尝试连续合成所有能合成的
+                  continue; // 🔁 重新进入 while 循环，继续尝试用蛋，同时会触发下面的"批量合成阶段"
+                }
+                // 200400 限流：等待后重试当前蛋，不清零库存，最多重试3次
+                if (err.message?.includes("200400")) {
+                  rateLimitRetries++;
+                  if (rateLimitRetries >= 3) {
+                    addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 第${e + 1}个蛋(${egg.name}): 限流(200400)重试${rateLimitRetries}次仍失败，跳过当前蛋`, type: "warning" });
+                    break;
+                  }
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 第${e + 1}个蛋(${egg.name}): 操作太快(200400)，等待4秒后重试(${rateLimitRetries}/3)`, type: "warning" });
+                  await new Promise(r => setTimeout(r, 4000));
+                  continue;
+                }
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 第${e + 1}个蛋(${egg.name})使用异常: ${err.message}，尝试下一种蛋`, type: "warning" });
+                egg.count = 0;
+                continue;
+              }
+            }
+            // 所有蛋类都无法使用 → 退出
+            if (!usedThisSlot && !gridFull) break;
+          }
+
+          // 格子满或已用蛋 → 尝试批量合成所有能合成的
+          if (eggsUsedThisCycle > 0 || gridFull) {
+            if (shouldStop.value) break;
+            
+            let mergeCount = 0;
+            const maxMergesPerStage = 50; // 防止死循环
+            
+            // 🔄 批量合成阶段：连续合掉所有能合成的宠物
+            while (mergeCount < maxMergesPerStage && !shouldStop.value) {
+              const newRoleInfo = await fetchRoleInfo();
+              const petList = getPetList(newRoleInfo);
+              const merged = await tryOneMerge(petList);
+              
+              if (merged) {
+                totalMergesDone++;
+                mergeCount++;
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 🎯 已完成${mergeCount}次批量合成`, type: "success" });
+                await new Promise(r => setTimeout(r, _getModuleDelay('store')));
+                // ✅ 继续循环，不要 break，让 while 循环继续尝试合成其他同等级的宠物
+              } else {
+                // 无法再合成 → 停止批量合成
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 💡 当前无更多可合成宠物`, type: "info" });
+                
+                // 检查格子空间是否已释放
+                const latestRoleInfo = await fetchRoleInfo();
+                const eggCount = getEggCount(latestRoleInfo);
+                
+                if (eggCount < 2) {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ⚠️ 蛋不足 2 个（剩余${eggCount}），且无法继续合成，停止`, type: "warning" });
+                  if (gridFull) {
+                    return false; // 格子已满且无蛋可用，任务结束
+                  }
+                  break; // 跳出批量合成，让主循环判断是否退出
+                }
+                
+                // 还有蛋可用，释放格空间，继续点蛋
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ✅ 格子空间释放（剩余${eggCount}个蛋），恢复点蛋...`, type: "info" });
+                gridFull = false;
+                // ✅ 不要重置 eggsUsedThisCycle，这个值表示本轮已成功用了几个蛋
+                break; // 跳出批量合成循环，回到正常的点蛋流程
+              }
+            }
+          }
+
+          // 本轮一个蛋都没用成且合成也失败 → 退出
+          if (eggsUsedThisCycle === 0 && !gridFull) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 无法继续，停止`, type: "info" });
+            break;
+          }
+          } catch (cycleErr) {
+            // 主循环 200400 限流保护：等待后重试下一轮
+            if (cycleErr.message?.includes("200400")) {
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 循环中操作太快(200400)，等待10秒后继续下一轮`, type: "warning" });
+              await new Promise(r => setTimeout(r, 10000));
+              continue;
+            }
+            throw cycleErr; // 非200400错误向上抛出
+          }
+        }
+
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 点蛋+合成循环结束，共使用 ${totalEggsUsed} 个蛋，合成 ${totalMergesDone} 次`,
+          type: totalEggsUsed > 0 || totalMergesDone > 0 ? "success" : "info",
+        });
+
+        tokenStatus.value[tokenId] = "completed";
+      } catch (error) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 点蛋+合成循环异常: ${error.message}`,
           type: "error",
         });
         tokenStatus.value[tokenId] = "failed";
@@ -6039,6 +6549,7 @@ export function createTasksStore(deps) {
     use_spotted_egg,
     claim_pet_book,
     batch_pet_merge,
+    egg_merge_cycle,
     batch_pet_upgrade,
     store_buy_selectable,
     batchCollectionExchange,

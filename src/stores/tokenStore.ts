@@ -86,9 +86,12 @@ export const tokenGroups = useLocalStorage<TokenGroup[]>("tokenGroups", []);
  * 以名称-token列表形式管理多个游戏角色
  */
 export const useTokenStore = defineStore("tokens", () => {
-  const wsConnections = ref<WebCtx>({}); // WebSocket连接状态
+  const wsConnections = ref<WebCtx>({}); // WebSocket 连接状态
   const connectionLocks = ref<LockCtx>({}); // 连接操作锁，防止竞态条件
   const intentionallyDisconnected = new Set<string>(); // 主动断开的连接，禁止自动重连
+  
+  // ✅ 新增：竞技场运行状态标记（用于并发控制）
+  const arenaRunningMark = ref<Record<string, boolean>>({});
 
   // 游戏数据存储（当前选中token的数据）
   const gameData = ref({
@@ -269,8 +272,8 @@ export const useTokenStore = defineStore("tokens", () => {
       createdAt: new Date().toISOString(),
       lastUsed: new Date().toISOString(),
       isActive: true,
-      // URL获取相关信息
-      sourceUrl: tokenData.sourceUrl || null, // Token来源URL（用于刷新）
+      // URL 获取相关信息
+      sourceUrl: tokenData.sourceUrl, // Token 来源 URL（用于刷新）
       importMethod: tokenData.importMethod || "manual", // 导入方式：manual 或 url
       avatar: tokenData.avatar || "", // 用户头像
     };
@@ -749,7 +752,7 @@ export const useTokenStore = defineStore("tokens", () => {
             updateToken(tokenId, {
               ...gameToken,
               token,
-              lastRefreshed: now,
+              lastRefreshAt: new Date().toISOString(),
             });
             if (usedOldKey) {
               const saved = await storeArrayBuffer(tokenId, userToken);
@@ -1401,46 +1404,12 @@ export const useTokenStore = defineStore("tokens", () => {
         updateCrossTabConnectionState(tokenId, "connected");
         releaseConnectionLock(tokenId, "connect");
         localStorage.removeItem("xyzw_chat_msg_list");
-        try {
-          wsClient.send("role_getroleinfo");
-        } catch (error) {
-          wsLogger.warn(`初始化角色信息请求失败 [${tokenId}]`, error);
-        }
-        // 连接成功后自动获取游戏采购清单并同步到本地设置
-        setTimeout(async () => {
-          try {
-            const conn = wsConnections.value[tokenId];
-            if (conn?.status === "connected") {
-              const result = await sendMessageWithPromise(tokenId, 'store_getpurchase', {}, 8000);
-              wsLogger.info(`采购清单响应 [${tokenId}]:`, JSON.stringify(result).substring(0, 500));
-              // 兼容多种响应结构：直接 purchaseItemList 或嵌套在 store 子对象中
-              const purchaseItems = result?.purchaseItemList
-                || result?.store?.purchaseItemList
-                || result?.data?.purchaseItemList;
-              if (purchaseItems?.length > 0) {
-                // 读取现有本地设置
-                let settings: any = {};
-                try {
-                  const raw = localStorage.getItem(`daily-settings:${tokenId}`);
-                  if (raw) settings = JSON.parse(raw);
-                } catch (e) {}
-                // 用游戏数据覆盖本地采购清单
-                settings.purchaseList = purchaseItems.map((i: any) => i.itemId);
-                const discounts: Record<number, number> = {};
-                purchaseItems.forEach((i: any) => { if (i.discount != null) discounts[i.itemId] = i.discount; });
-                settings.purchaseDiscounts = discounts;
-                const purchaseCnt = result?.purchaseCnt ?? result?.store?.purchaseCnt;
-                if (purchaseCnt != null) settings.purchaseCnt = purchaseCnt;
-                localStorage.setItem(`daily-settings:${tokenId}`, JSON.stringify(settings));
-                wsLogger.info(`已同步采购清单到本地 [${tokenId}]: ${purchaseItems.length}项, 次数${purchaseCnt ?? '未设置'}`);
-              } else {
-                wsLogger.warn(`采购清单为空或无purchaseItemList字段 [${tokenId}], 响应keys: ${result ? Object.keys(result).join(',') : 'null'}`);
-              }
-            }
-          } catch (e: any) {
-            wsLogger.warn(`获取采购清单失败 [${tokenId}]: ${e.message}`);
-          }
-        }, 3000);
+        // ✅ 深度精简：连接成功后不再自动发送 role_getroleinfo / store_getpurchase
+        // 各数据改为按需获取，避免功能按钮连接时产生无关API调用：
+        // - Dashboard 选中Token流程：通过 connectToken 的 onConnect 回调 → refreshGameData 获取
+        // - 批量账号卡片数据：通过 refreshForBatchRoleOnly 按需获取
+        // - 采购清单：由设置面板（BatchDailyTasks 设置弹窗 / DailyTaskStatus）打开时主动拉取
+        // - 战斗命令的 randomSeed/battleVersion：在 sendMessageWithPromise 中懒加载
         // 调用传入的onConnect回调
         if (onConnect) {
           try {
@@ -1677,6 +1646,27 @@ export const useTokenStore = defineStore("tokens", () => {
       "fight_startdungeon",
     ];
     if (battleCommands.includes(cmd)) {
+      // ✅ 按需初始化1：随机种子未同步时，先拉取角色信息触发 syncRandomSeedFromStatistics
+      if (!connection.randomSeedSynced) {
+        try {
+          await client.sendWithPromise("role_getroleinfo", {}, 8000);
+          wsLogger.info(`⚔️ [战斗命令] 已按需拉取角色信息同步随机种子 [${tokenId}]`);
+        } catch (e: any) {
+          wsLogger.warn(`⚔️ [战斗命令] 按需拉取角色信息失败 [${tokenId}]: ${e.message}`);
+        }
+      }
+      // ✅ 按需初始化2：battleVersion 为空时懒加载（原来在连接建立时统一获取，现改为战斗命令触发时才获取）
+      if (gameData.value.battleVersion == null) {
+        try {
+          const levelRes = await client.sendWithPromise("fight_startlevel", {}, 8000);
+          if (levelRes?.battleData?.version) {
+            gameData.value.battleVersion = levelRes.battleData.version;
+            wsLogger.info(`⚔️ [战斗命令] 已按需获取 battleVersion: ${levelRes.battleData.version} [${tokenId}]`);
+          }
+        } catch (e: any) {
+          wsLogger.warn(`⚔️ [战斗命令] 按需获取 battleVersion 失败 [${tokenId}]: ${e.message}`);
+        }
+      }
       const battleVersion = gameData.value.battleVersion;
       params = { battleVersion, ...params };
       wsLogger.info(

@@ -2033,11 +2033,26 @@ export function createTasksItem(deps) {
       try {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `=== 开始批量钓鱼: ${token.name} ===`,
+          message: `=== 开始批量钓鱼：${token.name} ===`,
           type: "info",
         });
-
+        
         await ensureConnection(tokenId);
+        
+        // ✅ 新增：检查月度任务钓鱼进度
+        let myMonthInfo = tokenStore.getTokenGameData(tokenId)?.myMonthInfo || {};
+        const fishProgress = Number(myMonthInfo?.["2"]?.num || 0);
+        const fishTarget = 320; // 月度任务目标次数
+                
+        if (fishProgress >= fishTarget) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 月度钓鱼任务已完成 (${fishProgress}/${fishTarget})，跳过本次批量操作`,
+            type: "info",
+          });
+          tokenStatus.value[tokenId] = "completed";
+          return;
+        }
 
         // 检查鱼竿数量
         let role = tokenStore.gameData?.roleInfo?.role;
@@ -2053,20 +2068,21 @@ export function createTasksItem(deps) {
 
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} 鱼竿类型: ${fishNames[fishType]}, 目标数量: ${totalCount}, 当前库存: ${rodCount}`,
+          message: `${token.name} 鱼竿类型：${fishNames[fishType]}, 目标数量：${totalCount}, 当前库存：${rodCount}`,
+          type: "info",
+        });
+                
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 月度进度：${fishProgress}/${fishTarget}, 剩余可执行：${remainingCount}`, 
           type: "info",
         });
 
-        let availableCount = totalCount;
-        if (rodCount < totalCount) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 库存不足 (${rodCount} < ${totalCount})，将仅消耗现有库存`,
-            type: "warning",
-          });
-          availableCount = rodCount;
-        }
-
+        // ✅ 取鱼竿数量和剩余任务进度的较小值
+        const byRodLimit = rodCount < totalCount ? rodCount : totalCount;
+        const remainingCount = fishTarget - fishProgress;
+        availableCount = Math.min(byRodLimit, remainingCount);
+        
         if (availableCount <= 0) {
           addLog({
             time: new Date().toLocaleTimeString(),
@@ -2958,7 +2974,7 @@ export function createTasksItem(deps) {
       114: "姜维",
       116: "公孙瓒",
       117: "典韦",
-      118: "超云",
+      118: "赵云",
       120: "张角",
       121: "鲁肃",
     };
@@ -4709,7 +4725,7 @@ export function createTasksItem(deps) {
               addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${reward.name}: ${errMsg}`, type: "warning" });
             }
           }
-          await new Promise(r => setTimeout(r, _getModuleDelay('default')));
+          await new Promise(r => setTimeout(r, _getModuleDelay('apex')));
         }
 
         tokenStatus.value[tokenId] = "completed";
@@ -4733,10 +4749,20 @@ export function createTasksItem(deps) {
       }
     };
 
-    // 串行处理
-    for (const tokenId of selectedTokens.value) {
+    // ✅ 分批执行：每批 maxActive 个，一批完成后再执行下一批
+    const maxConcurrent = batchSettings.maxActive || 5;
+    const allTokenIds = [...selectedTokens.value];
+    for (let i = 0; i < allTokenIds.length; i += maxConcurrent) {
       if (shouldStop.value) break;
-      await processToken(tokenId);
+      const batch = allTokenIds.slice(i, i + maxConcurrent);
+      const batchNum = Math.floor(i / maxConcurrent) + 1;
+      const totalBatches = Math.ceil(allTokenIds.length / maxConcurrent);
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `执行第 ${batchNum}/${totalBatches} 批（${batch.length}个账号）`,
+        type: "info",
+      });
+      await Promise.all(batch.map(tokenId => processToken(tokenId)));
     }
 
     // 批量重试失败账号
@@ -4748,11 +4774,13 @@ export function createTasksItem(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `等待${retryWait/1000}秒后重试 ${failed.length} 个失败账号（第${r+1}/${retryMax}轮）`, type: "info" });
       await new Promise(r2 => setTimeout(r2, retryWait));
       const cur = [...failed]; failed = [];
-      for (const tokenId of cur) {
+      // 重试也分批执行
+      for (let i = 0; i < cur.length; i += maxConcurrent) {
         if (shouldStop.value) break;
-        await processToken(tokenId);
-        if (tokenStatus.value[tokenId] === "failed") failed.push(tokenId);
+        const batch = cur.slice(i, i + maxConcurrent);
+        await Promise.all(batch.map(tokenId => processToken(tokenId)));
       }
+      cur.forEach(id => { if (tokenStatus.value[id] === "failed") failed.push(id); });
     }
 
     isRunning.value = false;

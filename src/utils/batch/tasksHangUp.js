@@ -961,18 +961,25 @@ export function createTasksHangUp(deps) {
       });
 
       const payloadSignupForToken = async (tokenId, token) => {
-        addLog({ time: new Date().toLocaleTimeString(), message: `=== 蟠桃报名: ${token.name} ===`, type: "info" });
-        
+        addLog({ time: new Date().toLocaleTimeString(), message: `=== 蟠桃报名：${token.name} ===`, type: "info" });
+          
+        // ✅ 新增：任务级预连接，确保定时任务执行时连接可靠
+        try {
+          await ensureConnection(tokenId, 3, true); // 重试 3 次、跳过槽位检查
+        } catch (e) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 预连接失败：${e.message?.substring(0, 50) || e}，尝试继续执行`, type: "warning" });
+        }
+          
         // 1. 提交铃铛（即使失败也继续报名）
         try {
           await callWithRetry(tokenId, "legion_buypayloaditem", { num: 60 });
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 提交铃铛成功`, type: "success" });
         } catch (e) {
-          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 提交铃铛失败: ${e.message?.substring(0, 50) || e}，继续报名`, type: "warning" });
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 提交铃铛失败：${e.message?.substring(0, 50) || e}，继续报名`, type: "warning" });
         }
-        
+          
         await safeDelay(_getModuleDelay('hangup'));
-        
+          
         // 2. 蟠桃报名（即使提交铃铛失败也执行）
         try {
           await callWithRetry(tokenId, "legion_payloadsignup", {});

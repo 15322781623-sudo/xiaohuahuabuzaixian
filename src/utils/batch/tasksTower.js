@@ -156,11 +156,14 @@ export function createTasksTower(deps) {
         
         // ✅ 仅对可重试错误码（400340、200750、11800010）直接抛出，交由批量重试处理
         if (isRetryable(errorMsg)) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `API ${command}: ${errorMsg.substring(0, 50)}，交由批量重试处理`,
-            type: 'warning',
-          });
+          // retries=0 表示调用方自行处理错误，不打 warning 干扰日志
+          if (retries > 0) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `API ${command}: ${errorMsg.substring(0, 50)}，交由批量重试处理`,
+              type: 'warning',
+            });
+          }
           throw err;
         }
         
@@ -217,17 +220,22 @@ export function createTasksTower(deps) {
    * 安全关闭连接
    */
   const safeCloseConnection = async (tokenId, tokenName) => {
+    // ✅ 分离关闭WS和释放槽位，确保即使关闭WS失败，槽位也一定会释放
     try {
       tokenStore.closeWebSocketConnection(tokenId);
-      releaseConnectionSlot();
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `${tokenName} 连接已关闭 (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
-        type: "info",
-      });
     } catch (closeErr) {
       // 忽略关闭失败
     }
+    try {
+      releaseConnectionSlot();
+    } catch (releaseErr) {
+      // 忽略释放失败
+    }
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `${tokenName} 连接已关闭 (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+      type: "info",
+    });
   };
 
   /**
@@ -730,12 +738,23 @@ export function createTasksTower(deps) {
    * 爬怪异塔
    */
   const climbWeirdTower = async () => {
-    if (selectedTokens.value.length === 0) return;
+    // ✅ 定时任务每次执行前重新检查 token 列表
+    if (selectedTokens.value.length === 0) {
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: "⚠️ 选择的 Token 数量为 0，停止执行",
+        type: "warning",
+      });
+      return;
+    }
 
     isRunning.value = true;
     shouldStop.value = false;
 
-    selectedTokens.value.forEach((id) => {
+    // ✅ 固定 token 列表快照，防止定时任务执行过程中列表变化
+    const tokenListSnapshot = [...selectedTokens.value];
+    
+    tokenListSnapshot.forEach((id) => {
       tokenStatus.value[id] = "waiting";
     });
 
@@ -1270,12 +1289,12 @@ export function createTasksTower(deps) {
 
     // ✅ 分批并发执行：每批 maxActive 个账号，本批全部完成后才执行下一批
     const maxActive = batchSettings.maxActive || 5;
-    const totalTokens = selectedTokens.value.length;
+    const totalTokens = tokenListSnapshot.length;  // ✅ 使用快照
     const totalBatches = Math.ceil(totalTokens / maxActive);
     
     addLog({
       time: new Date().toLocaleTimeString(),
-      message: `📊 共 ${totalTokens} 个账号，分 ${totalBatches} 批执行，每批 ${maxActive} 个`,
+      message: `📊 共 ${totalTokens} 个账号（快照）,分 ${totalBatches} 批执行，每批 ${maxActive} 个`,
       type: "info",
     });
     
@@ -1284,7 +1303,7 @@ export function createTasksTower(deps) {
       
       const startIdx = batchIndex * maxActive;
       const endIdx = Math.min(startIdx + maxActive, totalTokens);
-      const batchTokens = selectedTokens.value.slice(startIdx, endIdx);
+      const batchTokens = tokenListSnapshot.slice(startIdx, endIdx);  // ✅ 使用快照
       
       addLog({
         time: new Date().toLocaleTimeString(),
@@ -1305,7 +1324,8 @@ export function createTasksTower(deps) {
     // 批量重试失败账号
     const retryCount_max = batchSettings.defaultRetryCount || 2;
     const retryWaitMs = batchSettings.retryDelay || 60000;
-    let failedTokenIds = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+    // ✅ 从快照中筛选失败的账号（防止定时任务过程中列表变化）
+    let failedTokenIds = tokenListSnapshot.filter(id => tokenStatus.value[id] === "failed");
 
     for (let retryRound = 0; retryRound < retryCount_max && failedTokenIds.length > 0; retryRound++) {
       if (shouldStop.value) break;
@@ -1330,7 +1350,8 @@ export function createTasksTower(deps) {
         await Promise.all(retryBatch.map(tokenId => processClimbWeirdTower(tokenId)));
       }
       
-      failedTokenIds = selectedTokens.value.filter(id => tokenStatus.value[id] === "failed");
+      // ✅ 从快照中重新筛选失败的账号
+      failedTokenIds = tokenListSnapshot.filter(id => tokenStatus.value[id] === "failed");
     }
 
     isRunning.value = false;
@@ -1461,6 +1482,16 @@ export function createTasksTower(deps) {
 
       let actId = null;
 
+      // ✅ 单账号整体超时保护（防止 ensureConnection 或 WebSocket 无响应导致永远挂起）
+      const SINGLE_ACCOUNT_TIMEOUT = 8 * 60 * 1000; // 8分钟超时
+      const startTime = Date.now();
+      let timedOut = false; // ✅ 超时标记，供 finally 判断是否跳过连接操作
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`单账号执行超时(${SINGLE_ACCOUNT_TIMEOUT/1000}s)，强制结束`)), SINGLE_ACCOUNT_TIMEOUT);
+      });
+      
+      const executePromise = async () => {
       try {
         addLog({
           time: new Date().toLocaleTimeString(),
@@ -1645,8 +1676,10 @@ export function createTasksTower(deps) {
           return;
         }
 
+        let usageLimitReached = false;  // ✅ 7900023 次数上限标记，账号级限制，命中后直接结束所有BOSS
+
         for (const type of targetTowers) {
-          if (shouldStop.value) break;
+          if (shouldStop.value || usageLimitReached) break;
 
           addLog({
             time: new Date().toLocaleTimeString(),
@@ -1696,6 +1729,18 @@ export function createTasksTower(deps) {
                       message: `${token.name} BOSS ${type} 换皮闯关不在活动时间内 (7900021)，跳过`,
                       type: "warning",
                     });
+                    loop = false;
+                    break;
+                  }
+                  
+                  // ✅ 7900023错误：已达到使用次数上限（账号级当日硬限制），重试无意义，直接结束整个账号的换皮闯关
+                  if (startErrorMsg.includes('7900023')) {
+                    addLog({
+                      time: new Date().toLocaleTimeString(),
+                      message: `${token.name} 已达到使用次数上限 (7900023)，结束换皮闯关`,
+                      type: "warning",
+                    });
+                    usageLimitReached = true;
                     loop = false;
                     break;
                   }
@@ -1791,6 +1836,18 @@ export function createTasksTower(deps) {
                 throw err;
               }
 
+              // ✅ 7900023 已达到使用次数上限 - 账号级当日硬限制，重试无意义，直接结束整个账号（不算失败）
+              if (errorMsg.includes("7900023")) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 已达到使用次数上限 (7900023)，结束换皮闯关`,
+                  type: "warning",
+                });
+                usageLimitReached = true;
+                loop = false;
+                break;
+              }
+
               addLog({
                 time: new Date().toLocaleTimeString(),
                 message: `${token.name} BOSS ${type} 战斗出错: ${errorMsg.substring(0, 80)}`,
@@ -1846,63 +1903,89 @@ export function createTasksTower(deps) {
           });
         }
       } finally {
-        // 换皮闯关结束前刷新闯关状态并同步到账号卡片
-        try {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 正在刷新闯关状态...`,
-            type: "info",
-          });
-          
-          // 获取最新的闯关数据（传入 actId）
-          // ✅ 加超时保护（10秒），防止 WebSocket 无响应导致 finally 永远挂起
-          const TOWER_REFRESH_TIMEOUT = 10000;
-          const towerRes = await Promise.race([
-            actId 
-              ? callWithRetry(tokenId, "towers_getinfo", { actId: Number(actId) })
-              : callWithRetry(tokenId, "towers_getinfo", {}),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('刷新闯关状态超时(10s)')), TOWER_REFRESH_TIMEOUT))
-          ]);
-          
-          // 更新到 tokenStore 的 tokenGameDataMap，触发账号卡片自动刷新
-          const towerData = towerRes.actId ? towerRes : (towerRes.towerData?.actId ? towerRes.towerData : towerRes);
-          
-          if (towerData?.actId) {
-            tokenStore.updateTokenGameData(tokenId, {
-              towerInfo: {
-                actId: towerData.actId,
-                levelRewardMap: towerData.levelRewardMap || {},
-                dailyFightNum: towerData.todayUseTickCnt || 0,
-                finishedCount: Object.keys(towerData.levelRewardMap || {}).filter(key => {
-                  const numKey = Number(key);
-                  return numKey % 1000 === 8; // 第8层标记通关
-                }).length,
-                isActivityValid: true,
-                updatedAt: new Date().toISOString()
-              }
+        // ✅ 超时后连接已由超时处理器关闭，不再尝试操作已关闭的连接
+        if (!timedOut) {
+          // 换皮闯关结束前刷新闯关状态并同步到账号卡片
+          try {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 正在刷新闯关状态...`,
+              type: "info",
             });
             
+            // 获取最新的闯关数据（传入 actId）
+            // ✅ 加超时保护（10秒），防止 WebSocket 无响应导致 finally 永远挂起
+            const TOWER_REFRESH_TIMEOUT = 10000;
+            const towerRes = await Promise.race([
+              actId 
+                ? callWithRetry(tokenId, "towers_getinfo", { actId: Number(actId) })
+                : callWithRetry(tokenId, "towers_getinfo", {}),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('刷新闯关状态超时(10s)')), TOWER_REFRESH_TIMEOUT))
+            ]);
+            
+            // 更新到 tokenStore 的 tokenGameDataMap，触发账号卡片自动刷新
+            const towerData = towerRes.actId ? towerRes : (towerRes.towerData?.actId ? towerRes.towerData : towerRes);
+            
+            if (towerData?.actId) {
+              tokenStore.updateTokenGameData(tokenId, {
+                towerInfo: {
+                  actId: towerData.actId,
+                  levelRewardMap: towerData.levelRewardMap || {},
+                  dailyFightNum: towerData.todayUseTickCnt || 0,
+                  finishedCount: Object.keys(towerData.levelRewardMap || {}).filter(key => {
+                    const numKey = Number(key);
+                    return numKey % 1000 === 8; // 第8层标记通关
+                  }).length,
+                  isActivityValid: true,
+                  updatedAt: new Date().toISOString()
+                }
+              });
+              
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 闯关状态已刷新并同步`,
+                type: "success",
+              });
+            } else {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 闯关状态已刷新`,
+                type: "success",
+              });
+            }
+          } catch (refreshErr) {
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 闯关状态已刷新并同步`,
-              type: "success",
-            });
-          } else {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 闯关状态已刷新`,
-              type: "success",
+              message: `${token.name} 刷新闯关状态失败: ${refreshErr.message}`,
+              type: "warning",
             });
           }
-        } catch (refreshErr) {
+          
+          await safeCloseConnection(tokenId, token.name);
+        } else {
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `${token.name} 刷新闯关状态失败: ${refreshErr.message}`,
-            type: "warning",
+            message: `${token.name} 超时触发，跳过 finally 中的连接操作`,
+            type: "info",
           });
         }
-        
-        await safeCloseConnection(tokenId, token.name);
+      }
+      }; // ✅ 闭合 executePromise 函数
+      
+      // ✅ 使用 Promise.race 实现超时保护
+      try {
+        await Promise.race([executePromise(), timeoutPromise]);
+      } catch (timeoutErr) {
+        timedOut = true; // ✅ 标记超时，防止 finally 重复操作连接
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `⚠️ ${token.name} 换皮闯关超时(${elapsed}s)，强制结束: ${timeoutErr.message}`,
+          type: "error",
+        });
+        tokenStatus.value[tokenId] = "failed";
+        // 尝试关闭可能卡住的连接
+        try { await safeCloseConnection(tokenId, token.name); } catch {}
       }
     };
 
@@ -2297,13 +2380,33 @@ export function createTasksTower(deps) {
 
         // 领取累计奖励
         try {
-          await callWithRetry(tokenId, "mergebox_claimcostprogress", { actType: 1 });
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 领取累计奖励`,
-            type: "info",
-          });
-        } catch (e) {}
+          const claimResult = await callWithRetry(tokenId, "mergebox_claimcostprogress", { actType: 1 }, { retries: 0 });
+          // 提取响应信息，便于判断是否真正领取成功
+          const rewards = claimResult?.rewards || claimResult?.rewardList || claimResult?.items;
+          if (rewards && Array.isArray(rewards) && rewards.length > 0) {
+            const rewardDesc = rewards.map(r => `${r.name || r.itemId || '奖励'}×${r.count || r.num || 1}`).join(', ');
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 累抽奖励领取成功：${rewardDesc}`,
+              type: "success",
+            });
+          } else {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 累抽奖励领取成功`,
+              type: "success",
+            });
+          }
+        } catch (e) {
+          const errorMsg = e.message || '';
+          if (errorMsg.includes('11800010')) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 累抽奖励无奖励可领取`,
+              type: "info",
+            });
+          }
+        }
 
         tokenStatus.value[tokenId] = "completed";
         addLog({

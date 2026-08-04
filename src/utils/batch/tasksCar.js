@@ -97,6 +97,8 @@ export function createTasksCar(deps) {
     if (errorMsg.includes("400340")) return "400340";
     if (errorMsg.includes("200750")) return "200750";
     if (errorMsg.includes("11800010")) return "11800010";
+    if (errorMsg.includes("12000030")) return "12000030";
+    if (errorMsg.includes("12000050")) return "12000050";
     return "unknown";
   };
 
@@ -201,11 +203,12 @@ export function createTasksCar(deps) {
             refreshTickets = await processCarForSmartSend(tokenId, token.name, car, refreshTickets, customConditions, effectiveCarMinColor, effectiveRefreshDelay, effectiveRequireMinColor, effectiveUseGoldRefresh, sortedHelpers, helperUsageMap, tokenHelperPresets);
           } catch (carError) {
             const errorMsg = carError.message || "未知错误";
-            // 12000030限流错误向上抛出，由批次重试逻辑统一处理
-            if (errorMsg.includes("12000030")) {
+            // 12000030/400340/200750/11800010 错误向上抛出，由批次重试逻辑统一处理
+            if (errorMsg.includes("12000030") || errorMsg.includes("400340") || errorMsg.includes("200750") || errorMsg.includes("11800010")) {
+              const errCode = extractErrorCode(errorMsg);
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `${token.name} 车辆[${gradeLabel(car.color)}]发车被限流(12000030)，已加入重试队列`,
+                message: `${token.name} 车辆[${gradeLabel(car.color)}]服务器错误${errCode}，已加入重试队列`,
                 type: "warning",
               });
               throw carError;
@@ -528,8 +531,25 @@ export function createTasksCar(deps) {
     for (let refreshAttempt = 0; refreshAttempt < maxRefreshAttempts && !shouldStop.value; refreshAttempt++) {
       addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 车辆[${gradeLabel(car.color)}]尝试刷新(第${refreshAttempt + 1}次)...`, type: "info" });
 
-      const resp = await tokenStore.sendMessageWithPromise(tokenId, "car_refresh", { carId: String(car.id) }, getTimeout());
-      const data = resp?.car || resp?.body?.car || resp;
+      // car_refresh 带 12000030 限流局部重试（对齐旧版 carUtils.js smartSendCar 逻辑）
+      const maxRefreshRetry = batchSettings.defaultRetryCount ?? 2;
+      const refreshRetryDelay = batchSettings.retryDelay || 60000;
+      let refreshResp;
+      for (let rr = 0; rr <= maxRefreshRetry; rr++) {
+        try {
+          refreshResp = await tokenStore.sendMessageWithPromise(tokenId, "car_refresh", { carId: String(car.id) }, getTimeout());
+          break;
+        } catch (refreshErr) {
+          const rm = refreshErr.message || "";
+          if (rm.includes("12000030") && rr < maxRefreshRetry) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 车辆[${gradeLabel(car.color)}]刷新被限流(12000030)，等待${refreshRetryDelay / 1000}秒后重试(${rr + 1}/${maxRefreshRetry})...`, type: "warning" });
+            await new Promise((r) => setTimeout(r, refreshRetryDelay));
+          } else {
+            throw refreshErr;
+          }
+        }
+      }
+      const data = refreshResp?.car || refreshResp?.body?.car || refreshResp;
       if (data && typeof data === "object") {
         if (data.color != null) car.color = Number(data.color);
         if (data.refreshCount != null) car.refreshCount = Number(data.refreshCount);
@@ -589,7 +609,25 @@ export function createTasksCar(deps) {
 
       const retryTasks = [];
 
-      // 第一轮：执行所有账号的收车
+      // ✅ 优化 1：共享限流冷却状态（跨账号）
+      // 任一账号触发 400340 → 所有账号主动避让，避免并发风暴连锁触发限流
+      const sharedCooldown = {
+        lastRateLimitTime: 0,
+        cooldownMs: 12000, // ✅ 任账号触发限流后 12s 内所有账号主动避让
+      };
+      const recordRateLimit = () => {
+        sharedCooldown.lastRateLimitTime = Date.now();
+      };
+      const waitForCooldown = async (tokenName) => {
+        const elapsed = Date.now() - sharedCooldown.lastRateLimitTime;
+        if (elapsed < sharedCooldown.cooldownMs) {
+          const waitMs = sharedCooldown.cooldownMs - elapsed;
+          addLog({ time: new Date().toLocaleTimeString(), message: `⏱️ ${tokenName} 检测到限流冷却中，主动避让 ${(waitMs / 1000).toFixed(1)}s`, type: "info" });
+          await new Promise((r) => setTimeout(r, waitMs));
+        }
+      };
+
+      // 第一轮：执行所有账号的收车（并发数走外部 batchSettings.maxActive，与智能发车等其他模块一致）
       await runStreaming(selectedTokens.value, async (tokenId) => {
         if (shouldStop.value) return;
         tokenStatus.value[tokenId] = "running";
@@ -600,6 +638,9 @@ export function createTasksCar(deps) {
         try {
           addLog({ time: new Date().toLocaleTimeString(), message: `=== 开始一键收车: ${token.name} ===`, type: "info" });
           await ensureConnection(tokenId);
+
+          // ✅ 优化 3：发送 car_claim 前先检查共享冷却，避免其他账号刚触发限流时继续踩坑
+          await waitForCooldown(token.name);
 
           const res = await tokenStore.sendMessageWithPromise(tokenId, "car_getrolecar", {}, getTimeout());
           const carList = normalizeCars(res?.body ?? res);
@@ -613,24 +654,51 @@ export function createTasksCar(deps) {
 
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 检测到 ${claimableCars.length} 辆可收取的车辆，开始收车`, type: "info" });
 
+          // ✅ 修复：400340 触发后终止本账号循环，剩余车全部加入重试队列
+          let hitRateLimit = false;
+
           for (const car of carList) {
             if (shouldStop.value) break;
             if (!car.id || !canClaim(car)) continue;
+
+            // ✅ 修复：已触发限流时直接入队，不再发请求加剧服务端压力
+            if (hitRateLimit) {
+              retryTasks.push({ tokenId, tokenName: token.name, car });
+              failCount++;
+              continue;
+            }
+
+            // ✅ 每辆车请求前再次检查共享冷却（其他账号可能刚触发限流）
+            await waitForCooldown(token.name);
 
             try {
               await tokenStore.sendMessageWithPromise(tokenId, "car_claim", { carId: String(car.id) }, getTimeout());
               successCount++;
               addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 收车成功: ${gradeLabel(car.color)}`, type: "success" });
-              await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
+              // ✅ 收车间隔统一走 _getModuleDelay('car')（car→battle 分组），受「⚙️ 延迟设置」战斗操作滑块控制
+              await new Promise((r) => setTimeout(r, _getModuleDelay('car')));
             } catch (error) {
               const errorMsg = error.message || "";
               if (isRetryableClaimError(errorMsg)) {
-                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 收车失败: 服务器错误${extractErrorCode(errorMsg)}，加入重试队列`, type: "warning" });
-                retryTasks.push({ tokenId, tokenName: token.name, car });
+                const errCode = extractErrorCode(errorMsg);
+                // ✅ 关键修复：400340（限流）触发后终止当前账号循环 + 记录共享冷却
+                if (errorMsg.includes("400340")) {
+                  recordRateLimit();
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 触发限流 ${errCode}，剩余车辆停止请求并加入重试队列（其他账号冷却 12s）`, type: "warning" });
+                  retryTasks.push({ tokenId, tokenName: token.name, car });
+                  failCount++;
+                  hitRateLimit = true;
+                } else {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 收车失败: 服务器错误${errCode}，加入重试队列`, type: "warning" });
+                  retryTasks.push({ tokenId, tokenName: token.name, car });
+                  failCount++;
+                  // ✅ 非限流的可重试错误也加延迟，避免连续请求
+                  await new Promise((r) => setTimeout(r, _getModuleDelay('car')));
+                }
               } else {
                 addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 收车失败: ${errorMsg}`, type: "error" });
+                failCount++;
               }
-              failCount++;
             }
           }
 
@@ -651,9 +719,9 @@ export function createTasksCar(deps) {
         }
       });
 
-      // 重试阶段
+      // 重试阶段（重试循环内部已对齐智能发车模式：每轮重试前先等待 batchSettings.retryDelay）
       if (retryTasks.length > 0 && !shouldStop.value) {
-        await executeRetryRound(retryTasks);
+        await executeRetryRound(retryTasks, sharedCooldown);
       }
 
       refreshCompletedTokens();
@@ -664,54 +732,125 @@ export function createTasksCar(deps) {
     }
   };
 
-  /** 执行重试轮次 */
-  const executeRetryRound = async (retryTasks) => {
-    const maxRetries = batchSettings.defaultRetryCount ?? 2;
+  /** 执行重试轮次（对齐智能发车重试模式：每轮重试前等待 batchSettings.retryDelay） */
+  const executeRetryRound = async (retryTasks, sharedCooldown) => {
+    const MAX_RETRIES = batchSettings.defaultRetryCount ?? 2;
+    const RETRY_WAIT_TIME = batchSettings.retryDelay || 60000; // ✅ 对齐智能发车，默认 60s
+    const maxConcurrent = batchSettings.maxActive || 5; // 重试并发数走外部配置（与主流程一致）
+    const recordRateLimit = () => { if (sharedCooldown) sharedCooldown.lastRateLimitTime = Date.now(); };
+    const waitForCooldown = async (tokenName) => {
+      if (!sharedCooldown) return;
+      const elapsed = Date.now() - sharedCooldown.lastRateLimitTime;
+      if (elapsed < sharedCooldown.cooldownMs) {
+        const waitMs = sharedCooldown.cooldownMs - elapsed;
+        addLog({ time: new Date().toLocaleTimeString(), message: `⏱️ ${tokenName} 重试冷却中，主动避让 ${(waitMs / 1000).toFixed(1)}s`, type: "info" });
+        await new Promise((r) => setTimeout(r, waitMs));
+      }
+    };
     addLog({ time: new Date().toLocaleTimeString(), message: `\n========== 开始重试 ${retryTasks.length} 个服务器错误的收车任务 ==========`, type: "info" });
 
     let pendingTasks = [...retryTasks];
 
-    for (let round = 1; round <= maxRetries && pendingTasks.length > 0 && !shouldStop.value; round++) {
-      addLog({ time: new Date().toLocaleTimeString(), message: `\n--- 第 ${round}/${maxRetries} 轮重试，共 ${pendingTasks.length} 个任务 ---`, type: "info" });
+    for (let round = 1; round <= MAX_RETRIES && pendingTasks.length > 0 && !shouldStop.value; round++) {
+      // ✅ 关键对齐：每轮重试前先等待 RETRY_WAIT_TIME（与智能发车一致）
+      const waitSeconds = RETRY_WAIT_TIME / 1000;
+      const waitMinutes = Math.floor(waitSeconds / 60);
+      const waitDesc = waitMinutes > 0 ? `${waitMinutes}分钟` : `${waitSeconds}秒`;
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `\n⏳ 等待${waitDesc}后进行第 ${round}/${MAX_RETRIES} 轮重试（${pendingTasks.length} 个任务）...`,
+        type: "info",
+      });
+      await new Promise((r) => setTimeout(r, RETRY_WAIT_TIME));
+      if (shouldStop.value) break;
+
+      addLog({ time: new Date().toLocaleTimeString(), message: `--- 开始重试 第${round}/${MAX_RETRIES}轮，共 ${pendingTasks.length} 个任务 ---`, type: "info" });
 
       const stillFailed = [];
       let retrySuccess = 0;
 
+      // ✅ 按账号分组，同一账号的多辆车共用连接
+      const tasksByToken = new Map();
       for (const task of pendingTasks) {
+        if (!tasksByToken.has(task.tokenId)) tasksByToken.set(task.tokenId, []);
+        tasksByToken.get(task.tokenId).push(task);
+      }
+      const tokenGroups = [...tasksByToken.entries()];
+      const totalBatches = Math.ceil(tokenGroups.length / maxConcurrent);
+
+      // ✅ 分批并发执行（使用外部 maxActive 设置）
+      for (let i = 0; i < tokenGroups.length; i += maxConcurrent) {
         if (shouldStop.value) break;
-        try {
-          addLog({ time: new Date().toLocaleTimeString(), message: `${task.tokenName} 重试收车 [${gradeLabel(task.car.color)}] (第${round}次)...`, type: "info" });
-          await ensureConnection(task.tokenId);
-          await tokenStore.sendMessageWithPromise(task.tokenId, "car_claim", { carId: String(task.car.id) }, getTimeout());
-          retrySuccess++;
-          addLog({ time: new Date().toLocaleTimeString(), message: `${task.tokenName} 重试收车成功: ${gradeLabel(task.car.color)}`, type: "success" });
-          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
-        } catch (error) {
-          const errorMsg = error.message || "";
-          if (isRetryableClaimError(errorMsg)) {
-            addLog({ time: new Date().toLocaleTimeString(), message: `${task.tokenName} 重试失败: ${extractErrorCode(errorMsg)}错误，等待下次重试`, type: "warning" });
-            stillFailed.push(task);
-          } else {
-            addLog({ time: new Date().toLocaleTimeString(), message: `${task.tokenName} 重试失败: ${errorMsg}`, type: "error" });
-          }
-        } finally {
-          tokenStore.closeWebSocketConnection(task.tokenId);
-          releaseConnectionSlot();
+        const batch = tokenGroups.slice(i, i + maxConcurrent);
+        const batchIndex = Math.floor(i / maxConcurrent) + 1;
+
+        if (totalBatches > 1) {
+          addLog({ time: new Date().toLocaleTimeString(), message: `--- 重试第 ${batchIndex}/${totalBatches} 批（${batch.length} 个账号）---`, type: "info" });
         }
+
+        await Promise.all(batch.map(async ([tokenId, tasks]) => {
+          const tokenName = tasks[0].tokenName;
+          try {
+            await ensureConnection(tokenId);
+
+            let rateLimited = false; // ✅ 重试时若触发 400340，跳过剩余车辆
+            for (const task of tasks) {
+              if (shouldStop.value) break;
+              // ✅ 已触发限流，直接入队等下一轮，不再请求
+              if (rateLimited) {
+                addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 重试收车 [${gradeLabel(task.car.color)}]：本账号已触发限流，跳过等下一轮`, type: "info" });
+                stillFailed.push(task);
+                continue;
+              }
+              // ✅ 重试也走共享冷却，避免并发账号同时踩限流坑
+              await waitForCooldown(tokenName);
+              try {
+                addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 重试收车 [${gradeLabel(task.car.color)}] (第${round}次)...`, type: "info" });
+                await tokenStore.sendMessageWithPromise(tokenId, "car_claim", { carId: String(task.car.id) }, getTimeout());
+                retrySuccess++;
+                addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 重试收车成功：${gradeLabel(task.car.color)}`, type: "success" });
+                // ✅ 重试收车间隔统一走 _getModuleDelay('car')（car→battle 分组）
+                await new Promise((r) => setTimeout(r, _getModuleDelay('car')));
+              } catch (error) {
+                const errorMsg = error.message || "";
+                if (isRetryableClaimError(errorMsg)) {
+                  const errCode = extractErrorCode(errorMsg);
+                  if (errorMsg.includes("400340")) {
+                    recordRateLimit();
+                    // ✅ 限流后停止本账号剩余请求，入队下一轮重试
+                    addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 重试触发限流 ${errCode}，剩余车辆等下一轮（其他账号冷却 12s）`, type: "warning" });
+                    rateLimited = true;
+                  } else {
+                    addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 重试失败：${errCode}错误，等待下次重试`, type: "warning" });
+                    // 非限流错误加延迟避免连续请求
+                    await new Promise((r) => setTimeout(r, _getModuleDelay('car')));
+                  }
+                  stillFailed.push(task);
+                } else {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 重试失败：${errorMsg}`, type: "error" });
+                }
+              }
+            }
+          } finally {
+            closeConnection(tokenId, tokenName);
+          }
+        }));
       }
 
       pendingTasks = stillFailed;
       addLog({ time: new Date().toLocaleTimeString(), message: `本轮重试结果: 成功${retrySuccess}个，失败${stillFailed.length}个`, type: "info" });
 
-      if (pendingTasks.length > 0 && round < maxRetries) {
-        const retryDelay = batchSettings.retryDelay || 60000;
-        addLog({ time: new Date().toLocaleTimeString(), message: `⏱️ 等待${retryDelay / 1000}秒后进行第 ${round + 1} 轮重试...`, type: "info" });
-        await new Promise((r) => setTimeout(r, retryDelay));
+      if (pendingTasks.length === 0) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `✅ 所有错误任务重试成功！`, type: "success" });
       }
     }
 
     if (pendingTasks.length > 0) {
-      addLog({ time: new Date().toLocaleTimeString(), message: `\n========== 仍有 ${pendingTasks.length} 个任务重试${maxRetries}次后失败 ==========`, type: "error" });
+      for (const task of pendingTasks) {
+        const token = tokens.value.find((t) => t.id === task.tokenId);
+        addLog({ time: new Date().toLocaleTimeString(), message: `❌ ${token?.name || task.tokenName} 重试${MAX_RETRIES}次后仍失败：${gradeLabel(task.car.color)}`, type: "error" });
+      }
+      addLog({ time: new Date().toLocaleTimeString(), message: `\n========== 仍有 ${pendingTasks.length} 个任务重试${MAX_RETRIES}次后失败 ==========`, type: "error" });
     } else {
       addLog({ time: new Date().toLocaleTimeString(), message: `\n========== 所有重试错误任务重试成功 ==========`, type: "success" });
     }
@@ -753,13 +892,27 @@ export function createTasksCar(deps) {
             }
           }
 
-          // 领取改装升级累计奖励
+          // 领取改装升级累计奖励（原 catch 静默 + 无奖励时不打印日志，导致看不到操作痕迹，现补充诊断日志）
           try {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 尝试领取改装升级累计奖励...`, type: "info" });
             const rewardRes = await tokenStore.sendMessageWithPromise(tokenId, "car_claimpartconsumereward", {}, getTimeout());
             if (rewardRes?.reward) {
-              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领取改装升级累计奖励成功`, type: "success" });
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ✅ 领取改装升级累计奖励成功`, type: "success" });
+            } else if (rewardRes?.error) {
+              // 服务端返回的错误码（如无可领奖励、未达成条件等）
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ⚠️ 改装累计奖励未领取: ${rewardRes.error}`, type: "warning" });
+            } else {
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ℹ️ 改装累计奖励响应无 reward 字段（可能已领完或无需领取）`, type: "info" });
             }
-          } catch (_) {}
+          } catch (e) {
+            // ✅ 错误码 200020 在累计奖励场景下意为“未达标”，原提示“重启游戏”与实际语义不符
+            const msg = e.message || "";
+            if (msg.includes("200020")) {
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ℹ️ 改装累计奖励还未达标，无法领取`, type: "info" });
+            } else {
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ❌ 领取改装累计奖励失败: ${msg}`, type: "error" });
+            }
+          }
 
           addLog({ time: new Date().toLocaleTimeString(), message: `=== ${token.name} 改装升级完成 ===`, type: "success" });
           tokenStatus.value[tokenId] = "completed";

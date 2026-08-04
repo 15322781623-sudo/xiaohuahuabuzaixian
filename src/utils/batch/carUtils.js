@@ -572,6 +572,16 @@ export function createCarManager({ tokenStore, connectionManager, batchSettings,
             errorMsg = "发车被限流(12000030)，请稍后重试";
             errorType = "warning";
           }
+          // 400340/200750/11800010 服务器错误向上抛出，交由 tasksCar.js 批量重试队列处理
+          else if (errorMsg.includes("400340") || errorMsg.includes("200750") || errorMsg.includes("11800010")) {
+            const errCode = errorMsg.match(/(\d{6,})/)?.[0] || '';
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 车辆[${gradeLabel(car.color)}]服务器错误${errCode}，交由批量重试处理`,
+              type: "warning",
+            });
+            throw carError;
+          }
 
           addLog({
             time: new Date().toLocaleTimeString(),
@@ -616,6 +626,9 @@ export function createCarManager({ tokenStore, connectionManager, batchSettings,
    * @param {Array} CarresearchItem - 车辆研究配置
    */
   const claimCars = async (tokenId, token, tokens, tokenStatus, shouldStop, CarresearchItem) => {
+    // ✅ 与智能发车对齐：统一走延迟管理器（_getModuleDelay('car') → battle 分组，默认 3000ms）
+    // 修复原硬编码 300ms 不受「⚙️ 延迟设置」面板 battle 分组滑块与单账号智能加速控制的问题
+    const actionDelay = _getModuleDelay('car');
     try {
       addLog({
         time: new Date().toLocaleTimeString(),
@@ -638,9 +651,8 @@ export function createCarManager({ tokenStore, connectionManager, batchSettings,
         20000, // 增加超时时间到20秒
       );
       const carList = normalizeCars(res?.body ?? res);
-      let refreshlevel = res?.roleCar?.research?.[1] || 0;
 
-      // 2. Claim Cars
+      // 2. Claim Cars（仅收车，不再内嵌改装升级 / 累计奖励 API 调用，这些已拆分为独立按钮）
       let claimedCount = 0;
       for (const car of carList) {
         if (shouldStop.value)
@@ -670,83 +682,26 @@ export function createCarManager({ tokenStore, connectionManager, batchSettings,
               message: `${token.name} 收车成功: ${gradeLabel(car.color)}`,
               type: "success",
             });
-            const roleRes = await tokenStore.sendMessageWithPromise(
-              tokenId,
-              "role_getroleinfo",
-              {},
-              5000,
-            );
-            let refreshpieces = Number(
-              roleRes?.role?.items?.[35009]?.quantity || 0,
-            );
-            while (
-              refreshlevel < CarresearchItem.length
-              && refreshpieces >= CarresearchItem[refreshlevel]
-              && !shouldStop.value
-            ) {
-              try {
-                await tokenStore.sendMessageWithPromise(
-                  tokenId,
-                  "car_research",
-                  { researchId: 1 },
-                  5000,
-                );
-                refreshlevel++;
-
-                // 更新refreshpieces数量
-                const updatedRoleRes = await tokenStore.sendMessageWithPromise(
-                  tokenId,
-                  "role_getroleinfo",
-                  {},
-                  5000,
-                );
-                refreshpieces = Number(
-                  updatedRoleRes?.role?.items?.[35009]?.quantity || 0,
-                );
-
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `${token.name} 执行车辆改装升级，当前等级: ${refreshlevel}`,
-                  type: "success",
-                });
-
-                await new Promise((r) => setTimeout(r, 300));
-              } catch (e) {
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `${token.name} 车辆改装升级失败: ${e.message}`,
-                  type: "error",
-                });
-                break; // 升级失败时跳出循环
-              }
-            }
-
-            // 尝试领取改装升级累计奖励
-            try {
-              const rewardRes = await tokenStore.sendMessageWithPromise(
-                tokenId,
-                "car_claimpartconsumereward",
-                {},
-                5000,
-              );
-              if (rewardRes && rewardRes.reward) {
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `${token.name} 领取改装升级累计奖励成功`,
-                  type: "success",
-                });
-              }
-            } catch (e) {
-              // 忽略错误
-            }
           } catch (e) {
+            const em = e.message || '';
+            // 400340/200750/11800010 服务器错误向上抛出，交由批量重试队列处理
+            if (em.includes("400340") || em.includes("200750") || em.includes("11800010")) {
+              const errCode = em.match(/(\d{6,})/)?.[0] || '';
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 收车服务器错误${errCode}，交由批量重试处理`,
+                type: "warning",
+              });
+              throw e;
+            }
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 收车失败: ${e.message}`,
+              message: `${token.name} 收车失败: ${em}`,
               type: "warning",
             });
           }
-          await new Promise((r) => setTimeout(r, 300));
+          // ✅ 每辆车收取后间隔走统一延迟管理器（与智能发车一致，受 battle 分组滑块控制）
+          await new Promise((r) => setTimeout(r, actionDelay));
         }
       }
 

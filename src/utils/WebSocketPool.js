@@ -90,13 +90,24 @@ export class WebSocketPool {
             resolve()
           } else {
             // 达到上限，加入等待队列
-            this.waitingQueue.push({
+            const waiter = {
               tokenId,
               resolve,
               reject,
               startTime,
-              timeout
-            })
+              timeout,
+              timerId: null
+            }
+            // ✅ 修复：设置超时定时器，防止无 release 时等待者永久挂起
+            waiter.timerId = setTimeout(() => {
+              const idx = this.waitingQueue.indexOf(waiter)
+              if (idx !== -1) {
+                this.waitingQueue.splice(idx, 1)
+                this.stats.totalFailed++
+                reject(new Error(`等待连接槽位超时（${timeout / 1000}秒）`))
+              }
+            }, timeout)
+            this.waitingQueue.push(waiter)
             this.stats.totalWaiting++
           }
         })
@@ -119,13 +130,19 @@ export class WebSocketPool {
     this.stats.totalReleased++
 
     // 如果有等待的token，唤醒下一个
-    if (this.waitingQueue.length > 0) {
+    // ✅ 修复：循环跳过已超时的等待者，避免队首过期时释放的槽位被丢失
+    while (this.waitingQueue.length > 0) {
       const waiting = this.waitingQueue.shift()
 
-      // 检查超时
+      if (waiting.timerId) {
+        clearTimeout(waiting.timerId)
+      }
+
+      // 检查超时（继续尝试唤醒下一个等待者，而不是丢弃槽位）
       if (Date.now() - waiting.startTime > waiting.timeout) {
+        this.stats.totalFailed++
         waiting.reject(new Error(`等待连接槽位超时（${waiting.timeout / 1000}秒）`))
-        return
+        continue
       }
 
       // 尝试唤醒
@@ -140,6 +157,7 @@ export class WebSocketPool {
       this.stats.avgWaitTime = this.stats.totalWaitTime / this.stats.totalAcquired
 
       waiting.resolve()
+      return
     }
   }
 
@@ -152,6 +170,9 @@ export class WebSocketPool {
     // 拒绝所有等待的任务
     while (this.waitingQueue.length > 0) {
       const waiting = this.waitingQueue.shift()
+      if (waiting.timerId) {
+        clearTimeout(waiting.timerId)
+      }
       waiting.reject(new Error('连接池已清理'))
     }
 

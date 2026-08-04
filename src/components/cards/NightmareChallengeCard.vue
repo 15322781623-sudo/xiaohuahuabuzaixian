@@ -44,6 +44,15 @@
           >
             设置和执行
           </n-button>
+          <!-- 🆕 预设完成情况切换按钮（始终显示） -->
+          <n-button 
+            v-if="completedPresets.length > 0"
+            class="captain-main-btn"
+            type="info"
+            @click="showCompletedPresets = !showCompletedPresets"
+          >
+            {{ showCompletedPresets ? '收起' : '完成记录' }} ({{ completedPresets.length }})
+          </n-button>
         </div>
         <div class="captain-ctrl-row">
           <div class="captain-ctrl-item">
@@ -241,6 +250,60 @@
       </n-button>
     </div>
 
+    <!-- 🆕 预设完成情况汇总 -->
+    <div v-show="showCompletedPresets && completedPresets.length > 0" class="completed-presets-section">
+      <div class="section-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="section-title">📋 预设完成情况 ({{ completedPresets.length }})</span>
+          <n-button 
+            size="tiny" 
+            @click="showCompletedPresets = false"
+            type="default"
+            quaternary
+          >
+            ▲ 收起
+          </n-button>
+        </div>
+        <n-button size="tiny" @click="clearCompletedPresets">清空记录</n-button>
+      </div>
+      <div class="completed-stats">
+        <div class="stat-item">
+          <span class="stat-label">成功：</span>
+          <span class="stat-value success">{{ completedPresets.filter(p => p.status === 'completed').length }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">失败：</span>
+          <span class="stat-value failed">{{ completedPresets.filter(p => p.status === 'failed').length }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">停止：</span>
+          <span class="stat-value stopped">{{ completedPresets.filter(p => p.status === 'stopped').length }}</span>
+        </div>
+      </div>
+      <div class="completed-list">
+        <div v-for="preset in completedPresets" :key="preset.id" class="completed-item">
+          <div class="completed-info">
+            <span class="preset-name">{{ preset.name }}</span>
+            <n-tag size="small" :type="preset.status === 'completed' ? 'success' : preset.status === 'failed' ? 'error' : 'warning'">
+              {{ preset.status === 'completed' ? '✅成功' : preset.status === 'failed' ? '❌失败' : '⏸️停止' }}
+            </n-tag>
+          </div>
+          <div class="completed-meta">
+            <span class="meta-time">完成时间：{{ formatTime(preset.completedAt) }}</span>
+            <span v-if="preset.finalLevel" class="meta-level">最终关卡：第{{ preset.finalLevel }}关</span>
+            <span v-if="preset.duration" class="meta-duration">耗时：{{ formatDuration(preset.duration) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 🆕 空状态提示 -->
+    <div v-show="showCompletedPresets && completedPresets.length === 0" class="empty-presets-hint">
+      <n-alert type="info" :bordered="false">
+        📝 暂无预设完成记录。执行预设战斗后，完成情况将在此显示。
+      </n-alert>
+    </div>
+
     <!-- 战斗中状态页面 -->
     <div class="fighting-section" v-if="pageState === 'fighting'">
       <n-alert type="success" title="战斗中">
@@ -390,6 +453,55 @@ const message = useMessage();
 // ====== 后台战斗状态 ======
 const activeBattles = ref([]); // { preset, battle, status, currentLevel, startedAt, bossHp }
 
+// 🆕 预设完成情况记录
+const completedPresets = ref([]); // { id, name, status, completedAt, finalLevel, duration }
+const showCompletedPresets = ref(true); // 默认展开显示完成记录
+
+// 添加预设完成记录
+const addCompletedPreset = (preset, status, finalLevel = 8, startTime = null) => {
+  const duration = startTime ? Math.round((Date.now() - startTime) / 1000) : 0;
+  completedPresets.value.unshift({
+    id: preset.id,
+    name: preset.name,
+    status, // 'completed' | 'failed' | 'stopped'
+    completedAt: new Date().toISOString(),
+    finalLevel,
+    duration,
+  });
+  // 限制最多显示 20 条记录
+  if (completedPresets.value.length > 20) {
+    completedPresets.value = completedPresets.value.slice(0, 20);
+  }
+  // 持久化到 sessionStorage
+  try {
+    sessionStorage.setItem('nightmare-completed-presets', JSON.stringify(completedPresets.value));
+  } catch (e) {
+    console.warn('保存预设完成记录失败:', e);
+  }
+};
+
+// 清空完成记录
+const clearCompletedPresets = () => {
+  completedPresets.value = [];
+  try {
+    sessionStorage.removeItem('nightmare-completed-presets');
+  } catch (e) {
+    console.warn('清空预设完成记录失败:', e);
+  }
+};
+
+// 从 sessionStorage 加载完成记录
+const loadCompletedPresets = () => {
+  try {
+    const saved = sessionStorage.getItem('nightmare-completed-presets');
+    if (saved) {
+      completedPresets.value = JSON.parse(saved);
+    }
+  } catch (e) {
+    console.warn('加载预设完成记录失败:', e);
+  }
+};
+
 // 成员明细展开状态（默认收起，点击汇总行切换）
 const expandedBattleMembers = ref({});
 const toggleBattleMembers = (id) => {
@@ -404,6 +516,26 @@ const formatHp = (hp) => {
   if (n >= 1e8) return (n / 1e8).toFixed(1) + '亿';
   if (n >= 1e4) return (n / 1e4).toFixed(0) + '万';
   return String(Math.floor(n));
+};
+
+// 🆕 格式化时间（ISO 字符串 → HH:mm:ss）
+const formatTime = (isoString) => {
+  if (!isoString) return '?';
+  try {
+    const date = new Date(isoString);
+    return date.toLocaleTimeString('zh-CN', { hour12: false });
+  } catch (e) {
+    return '?';
+  }
+};
+
+// 🆕 格式化耗时（秒 → Xm Xs 或 Xs）
+const formatDuration = (seconds) => {
+  if (seconds == null || seconds < 0) return '?';
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}m ${secs}s`;
 };
 
 // 已处理的残留队伍 ID 缓存，避免同一会话重复检测
@@ -1145,6 +1277,9 @@ const disconnectTeammate = async (tid) => {
 
 // ====== 初始化：检查已有队伍 ======
 onMounted(async () => {
+  // 🆕 加载预设完成记录
+  loadCompletedPresets();
+  
   // 清理当前标签页的残留预设运行标记（防止页面刷新后残留标记阻止执行）
   cleanupStalePresetMarkers();
 
@@ -2061,6 +2196,10 @@ const handleBattleComplete = async (preset, result) => {
   teamId.value = '';
   teamMembers.value = [];
   captainRoleId.value = '';
+  // 🆕 添加完成记录
+  const startTime = activeBattles.value[idx]?.startedAt ? new Date(activeBattles.value[idx].startedAt).getTime() : Date.now() - 60000;
+  addCompletedPreset(preset, 'completed', result.level || 8, startTime);
+  
   // 自动恢复预设组队到UI
   restorePresetTeamToUI(preset);
   // 完成后30秒自动移除
@@ -2132,10 +2271,16 @@ const handleBattleError = async (preset, err) => {
       delete presetRetryCount[preset.id];
       // 清除跨标签页运行标记
       clearPresetRunning(preset.id);
+      // 🆕 添加失败记录（仅最终失败时记录，重试中不记录）
+      const startTime = activeBattles.value[idx]?.startedAt ? new Date(activeBattles.value[idx].startedAt).getTime() : Date.now() - 60000;
+      addCompletedPreset(preset, 'failed', activeBattles.value[idx]?.currentLevel || 8, startTime);
     }
   } else {
     // 其他失败：清除跨标签页运行标记
     clearPresetRunning(preset.id);
+    // 🆕 添加失败记录
+    const startTime = activeBattles.value[idx]?.startedAt ? new Date(activeBattles.value[idx].startedAt).getTime() : Date.now() - 60000;
+    addCompletedPreset(preset, 'failed', activeBattles.value[idx]?.currentLevel || 8, startTime);
   }
   // 其他失败不自动移除，保留"重连继续"按钮
 };
@@ -2165,37 +2310,57 @@ const stopAllBattles = () => {
   activeBattles.value.forEach(b => {
     if (b.battle && (b.status === 'running' || b.status === 'cooling' || b.status === 'waiting_midnight')) {
       b.battle.stop();
+      // 🆕 添加停止记录
+      const startTime = b.startedAt ? new Date(b.startedAt).getTime() : Date.now() - 60000;
+      addCompletedPreset(b.preset, 'stopped', b.currentLevel || 8, startTime);
     }
   });
   addLog('已停止所有后台战斗', 'warning');
 };
 
-// 重连队长并继续战斗
+// 重连队长并继续战斗（失败后重建队伍并执行预设）
 const reconnectAndContinue = async (battleItem) => {
   const { preset, battle } = battleItem;
-  addLog(`尝试重连队长并继续预设「${preset.name}」...`, 'info');
+  addLog(`🔄 尝试重连并重新执行预设「${preset.name}」...`, 'info');
 
-  // 1. 切换队长并重新连接
+  // 1. 保存当前状态
   const savedCaptain = captainTokenId.value;
-  captainTokenId.value = preset.captainTokenId;
-  try {
-    const connected = await ensureCaptainConnected();
-    if (!connected) {
-      addLog(`重连队长失败，无法继续预设「${preset.name}」`, 'error');
-      captainTokenId.value = savedCaptain;
-      return;
-    }
-    addLog(`队长重连成功，继续战斗...`, 'success');
-  } catch (e) {
-    addLog(`重连异常: ${e.message}`, 'error');
-    captainTokenId.value = savedCaptain;
-    return;
+  const savedTeammates = [...selectedTeammates.value];
+  const savedSelectedMembers = [...selectedMemberRoleIds.value];
+  const savedTeamId = teamId.value;
+  const savedCaptainRoleId = captainRoleId.value;
+  
+  // 2. 清除失败的队伍状态
+  teamId.value = '';
+  teamMembers.value = [];
+  captainRoleId.value = '';
+  
+  // 3. 移除失败的后台战斗记录
+  const battleIndex = activeBattles.value.findIndex(b => b.preset.id === preset.id);
+  if (battleIndex !== -1) {
+    activeBattles.value.splice(battleIndex, 1);
   }
-
-  // 2. 调用 Service 的 resume 方法继续战斗
-  battleItem.status = 'running';
-  battle.resume(); // 异步启动，不等待
-  captainTokenId.value = savedCaptain;
+  
+  // 4. 清除跨标签页运行标记（允许重新执行）
+  clearPresetRunning(preset.id);
+  
+  // 5. 重新执行预设（完整流程：创建房间 + 邀请队员 + 开始战斗）
+  try {
+    addLog(`🚀 重新执行预设「${preset.name}」...`, 'info');
+    await onPresetExecute(preset);
+    addLog(`✅ 预设「${preset.name}」已重新启动`, 'success');
+    message.success(`预设「${preset.name}」已重新开始`);
+  } catch (error) {
+    addLog(`❌ 重新执行预设失败：${error.message || error}`, 'error');
+    message.error(`重新执行失败：${error.message || error}`);
+    
+    // 恢复原始状态
+    captainTokenId.value = savedCaptain;
+    selectedTeammates.value = savedTeammates;
+    selectedMemberRoleIds.value = savedSelectedMembers;
+    teamId.value = savedTeamId;
+    captainRoleId.value = savedCaptainRoleId;
+  }
 };
 
 // ====== 进入前端战斗页面 ======
@@ -3051,6 +3216,8 @@ const getTokenName = (tokenId) => {
       flex: 1;
       min-width: 0;
       white-space: nowrap;
+      overflow: hidden;        // 隐藏溢出内容
+      text-overflow: ellipsis; // 溢出时显示省略号
     }
   }
 
@@ -3271,6 +3438,170 @@ const getTokenName = (tokenId) => {
       flex-direction: column;
       gap: 3px;
       flex-shrink: 0;
+    }
+  }
+}
+
+// 🆕 预设完成情况汇总样式
+.completed-presets-section {
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, rgba(67, 206, 162, 0.05) 0%, rgba(105, 135, 255, 0.05) 100%);
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+
+    .section-title {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text-primary, #333);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    // 🆕 收起按钮样式
+    :deep(.n-button--quaternary-type) {
+      font-size: 11px;
+      color: var(--text-secondary, #666);
+      padding: 2px 6px;
+      height: 22px;
+      font-weight: 500;
+      
+      &:hover {
+        color: var(--primary-color, #18a058);
+        background: rgba(24, 160, 88, 0.08);
+      }
+    }
+  }
+
+  .completed-stats {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    background: var(--bg-primary, #fff);
+    border-radius: 6px;
+    border: 1px solid var(--border-color, #e8e8e8);
+
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+
+      .stat-label {
+        font-size: 12px;
+        color: var(--text-secondary, #666);
+        font-weight: 500;
+      }
+
+      .stat-value {
+        font-weight: 600;
+        font-size: 13px;
+        padding: 3px 10px;
+        border-radius: 12px;
+        min-width: 24px;
+        text-align: center;
+
+        &.success {
+          color: #18a058;
+          background: rgba(24, 160, 88, 0.12);
+        }
+
+        &.failed {
+          color: #d03050;
+          background: rgba(208, 48, 80, 0.12);
+        }
+
+        &.stopped {
+          color: #f0a020;
+          background: rgba(240, 160, 32, 0.12);
+        }
+      }
+    }
+  }
+
+  .completed-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 280px; // 限制最大高度，超出后显示滚动条
+    overflow-y: auto;
+    padding-right: 4px; // 为滚动条留出空间
+
+    .completed-item {
+      padding: 10px 12px;
+      background: var(--bg-primary, #fff);
+      border: 1px solid var(--border-color, #e8e8e8);
+      border-radius: 6px;
+      transition: all 0.2s ease;
+      flex-shrink: 0; // 防止被压缩
+
+      &:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border-color: var(--primary-color, #18a058);
+        transform: translateX(2px);
+      }
+
+      .completed-info {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+
+        .preset-name {
+          font-weight: 600;
+          font-size: 13px;
+          color: var(--text-primary, #333);
+          flex: 1;
+        }
+      }
+
+      .completed-meta {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        font-size: 11px;
+        color: var(--text-secondary, #999);
+        line-height: 1.4;
+
+        .meta-time,
+        .meta-level,
+        .meta-duration {
+          display: flex;
+          align-items: center;
+          
+          &::before {
+            content: '·';
+            margin-right: 10px;
+            color: var(--text-secondary, #ccc);
+          }
+          
+          &:first-child::before {
+            display: none;
+          }
+        }
+      }
+    }
+  }
+}
+
+// 🆕 空状态提示样式
+.empty-presets-hint {
+  margin-bottom: 12px;
+  
+  :deep(.n-alert) {
+    background: var(--bg-secondary, #f5f5f5);
+    border: 1px dashed var(--border-color, #d9d9d9);
+    
+    .n-alert__content {
+      color: var(--text-secondary, #666);
+      font-size: 13px;
     }
   }
 }

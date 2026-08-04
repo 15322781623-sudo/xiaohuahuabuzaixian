@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="cardRootRef"
     class="token-card"
     :class="{
       'is-selected': isSelected,
@@ -36,6 +37,7 @@
       <div class="header-right">
         <!-- 连接状态指示灯 -->
         <div class="status-dot" :class="connectionStatusClass" :title="connectionStatusText"></div>
+        <template v-if="!isHeaderCompact">
         <!-- 设置按钮 -->
         <n-button circle quaternary size="small" @click.stop="openSettings">
           <template #icon>
@@ -118,6 +120,21 @@
             </n-icon>
           </template>
         </n-button>
+        </template>
+        <!-- 窄卡片时自动收纳为下拉菜单 -->
+        <n-dropdown v-else trigger="click" :options="headerActionOptions" @select="handleHeaderAction">
+          <n-button circle quaternary size="small" title="更多操作" @click.stop>
+            <template #icon>
+              <n-icon>
+                <svg fill="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="5" r="2" />
+                  <circle cx="12" cy="12" r="2" />
+                  <circle cx="12" cy="19" r="2" />
+                </svg>
+              </n-icon>
+            </template>
+          </n-button>
+        </n-dropdown>
       </div>
     </div>
 
@@ -2550,9 +2567,68 @@ watch(() => isConnected.value, (connected) => {
   }
 }, { immediate: true });
 
+// ====== 窄卡片头部按钮自动收纳为下拉菜单 ======
+const cardRootRef = ref(null);
+const isHeaderCompact = ref(false);
+// 收纳后需要卡片放大到此宽度才恢复按钮展示（滞后防抖动）
+let headerCompactReleaseWidth = 0;
+let headerResizeObserver = null;
+
+// 检测头部按钮是否溢出，溢出则自动切换为下拉菜单
+const measureHeaderCompact = () => {
+  const card = cardRootRef.value;
+  if (!card)
+    return;
+  const cardWidth = card.clientWidth;
+  if (!isHeaderCompact.value) {
+    const right = card.querySelector(".card-header .header-right");
+    if (right && right.scrollWidth > right.clientWidth + 1) {
+      isHeaderCompact.value = true;
+      headerCompactReleaseWidth = cardWidth + 40;
+    }
+  } else if (headerCompactReleaseWidth && cardWidth >= headerCompactReleaseWidth) {
+    // 宽度恢复后展开，下一帧重新检测，若仍溢出会再次收纳
+    isHeaderCompact.value = false;
+    nextTick(() => measureHeaderCompact());
+  }
+};
+
+const headerActionOptions = computed(() => [
+  { label: "⚙️ 设置", key: "settings" },
+  { label: "✅ 一键补齐每日任务", key: "daily", disabled: !isConnected.value },
+  { label: "⚔️ 月度竞技场补齐", key: "arena", disabled: !isConnected.value },
+  { label: "🎣 月度钓鱼补齐", key: "fish", disabled: !isConnected.value },
+  { label: isPushing.value ? "⏹️ 停止推图" : "⚡ 开始推图", key: "pushMap" },
+  { label: "🎮 打开游戏", key: "openGame" },
+  { label: "🖥️ 跳转游戏界面", key: "jumpGame" },
+  { label: isConnected.value ? "🔌 断开连接" : "🔗 连接", key: "connection", disabled: isConnectionButtonDisabled.value },
+]);
+
+const handleHeaderAction = (key) => {
+  switch (key) {
+    case "settings": openSettings(); break;
+    case "daily": completeDailyTasks(); break;
+    case "arena": completeMonthlyArena(); break;
+    case "fish": completeMonthlyFish(); break;
+    case "pushMap": togglePushMap(); break;
+    case "openGame": openGame(); break;
+    case "jumpGame": jumpGame(); break;
+    case "connection": toggleConnection(); break;
+  }
+};
+
 // 定时器更新
 let timer = null;
 onMounted(async () => {
+  // 监听卡片宽度，按钮溢出时自动切换为下拉菜单
+  if (typeof ResizeObserver !== "undefined" && cardRootRef.value) {
+    headerResizeObserver = new ResizeObserver(() => {
+      measureHeaderCompact();
+    });
+    headerResizeObserver.observe(cardRootRef.value);
+    nextTick(() => measureHeaderCompact());
+  }
+
   // 恢复卡片状态
   await restoreCardStatus();
 
@@ -2591,6 +2667,10 @@ onUnmounted(() => {
     clearTimeout(autoCloseTimer);
   if (syncGameDataTimer)
     clearTimeout(syncGameDataTimer); // 清理同步游戏数据定时器
+  if (headerResizeObserver) {
+    headerResizeObserver.disconnect();
+    headerResizeObserver = null;
+  }
 });
 
 // 格式化时间（短格式）
@@ -5187,6 +5267,14 @@ const challengeTower = async (type) => {
     display: flex;
     align-items: center;
     gap: 4px;
+    // 允许被压缩，配合 JS 溢出检测自动切换为下拉菜单
+    min-width: 0;
+
+    // 防止按钮被压缩变形（溢出时由 JS 收纳为下拉）
+    .n-button,
+    .status-dot {
+      flex-shrink: 0;
+    }
 
     .status-dot {
       width: 10px;

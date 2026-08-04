@@ -225,7 +225,7 @@ const main = async () => {
         // 8.1 上传 APK 文件到 R2（使用英文文件名避免编码问题）
         const r2ApkKey = `xyzw_helper_${version}.apk`;
         log(`上传 APK 到 R2: ${r2ApkKey} ...`, 'info');
-        execSync(`${wranglerCmd} r2 object put "${R2_BUCKET}/${r2ApkKey}" --file "${destPath}"`, {
+        execSync(`${wranglerCmd} r2 object put "${R2_BUCKET}/${r2ApkKey}" --file "${destPath}" --remote`, {
           stdio: 'inherit',
           cwd: ROOT_DIR,
         });
@@ -241,7 +241,7 @@ const main = async () => {
         fs.writeFileSync(tempVersionJson, versionJsonStr, 'utf-8');
 
         log(`上传 version.json 到 R2 (版本: ${version}) ...`, 'info');
-        execSync(`${wranglerCmd} r2 object put "${R2_BUCKET}/version.json" --file "${tempVersionJson}"`, {
+        execSync(`${wranglerCmd} r2 object put "${R2_BUCKET}/version.json" --file "${tempVersionJson}" --remote`, {
           stdio: 'inherit',
           cwd: ROOT_DIR,
         });

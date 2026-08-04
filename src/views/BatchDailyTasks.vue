@@ -387,15 +387,30 @@
                 >
                   答题奖励领取
                 </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('batcharenafight', '一键竞技场战斗3次', batcharenafight)"
-                  :disabled="
-                    isRunning || selectedTokens.length === 0 || !isarenaActivityOpen
-                  "
-                >
-                  一键竞技场战斗3次
-                </n-button>
+                <n-button-group size="small">
+                  <n-button
+                    @click="executeArenaFight"
+                    :disabled="
+                      isRunning || selectedTokens.length === 0 || !isarenaActivityOpen
+                    "
+                  >
+                    一键竞技场战斗{{ arenaFightCount }}次
+                  </n-button>
+                  <n-dropdown 
+                    :options="arenaFightCountOptions" 
+                    trigger="click"
+                    @select="handleArenaFightCountSelect"
+                  >
+                    <n-button 
+                      :disabled="isRunning || selectedTokens.length === 0 || !isarenaActivityOpen"
+                      style="padding: 0 8px;"
+                    >
+                      <template #icon>
+                        <n-icon><ChevronDown /></n-icon>
+                      </template>
+                    </n-button>
+                  </n-dropdown>
+                </n-button-group>
                 <n-button
                   size="small"
                   @click="executeManualTaskWithRecord('batchSmartSendCar', '智能发车', batchSmartSendCar)"
@@ -1753,11 +1768,15 @@
           <div class="st-section-title"><span class="st-section-icon">⚔️</span>战斗次数</div>
           <div class="st-section-grid st-grid-2">
             <div class="st-field">
-              <label class="st-label">俱乐部BOSS</label>
+              <label class="st-label">竞技场</label>
+              <n-select v-model:value="currentSettings.arenaFightCount" :options="arenaFightCountOptions" size="small" />
+            </div>
+            <div class="st-field">
+              <label class="st-label">俱乐部 BOSS</label>
               <n-select v-model:value="currentSettings.bossTimes" :options="bossTimesOptions" size="small" />
             </div>
             <div class="st-field">
-              <label class="st-label">每日BOSS</label>
+              <label class="st-label">每日 BOSS</label>
               <n-select v-model:value="currentSettings.dailyBossTimes" :options="dailyBossTimesOptions" size="small" />
             </div>
           </div>
@@ -3482,7 +3501,7 @@
               >
                 <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8" style="padding-top: 12px;">
                   <n-grid-item v-for="task in groupedAvailableTasks[group.name]" :key="task.value">
-                    <n-checkbox :value="task.value" size="large">{{ task.label }}</n-checkbox>
+                    <n-checkbox :value="task.value" size="large">{{ taskLabels[task.value] || task.label }}</n-checkbox>
                   </n-grid-item>
                 </n-grid>
               </n-tab-pane>
@@ -3494,13 +3513,46 @@
               >
                 <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8" style="padding-top: 12px;">
                   <n-grid-item v-for="task in groupedAvailableTasks['other']" :key="task.value">
-                    <n-checkbox :value="task.value" size="large">{{ task.label }}</n-checkbox>
+                    <n-checkbox :value="task.value" size="large">{{ taskLabels[task.value] || task.label }}</n-checkbox>
                   </n-grid-item>
                 </n-grid>
               </n-tab-pane>
             </n-tabs>
           </n-checkbox-group>
           
+          <!-- 竞技场战斗次数配置 -->
+          <div v-if="taskForm.selectedTasks.includes('batcharenafight')" class="task-config-card">
+            <div class="config-card-header">
+              <span class="config-card-title">⚔️ 竞技场战斗 - 配置战斗次数</span>
+            </div>
+            <div class="config-card-content">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="white-space: nowrap; font-size: 13px;">战斗次数：</span>
+                <n-input-number
+                  v-model:value="taskForm.arenaFightCount"
+                  :min="1"
+                  :max="100"
+                  :step="1"
+                  size="small"
+                  style="width: 120px;"
+                />
+                <span style="font-size: 13px; color: var(--text-secondary);">
+                  次（1-100，当前门票不足时以实际门票数量为准）
+                </span>
+              </div>
+              <div style="margin-top: 12px; display: flex; gap: 8px;">
+                <n-button
+                  v-for="count in [1, 3, 5, 8, 10]"
+                  :key="count"
+                  size="small"
+                  @click="taskForm.arenaFightCount = count"
+                >
+                  {{ count }}次
+                </n-button>
+              </div>
+            </div>
+          </div>
+
           <!-- 日常精简补齐配置 -->
           <div v-if="taskForm.selectedTasks.includes('batchSimplifiedDaily')" class="task-config-card">
             <div class="config-card-header">
@@ -5860,7 +5912,7 @@ import { useRouter, useRoute } from "vue-router";
 import { DailyTaskRunner, SIMPLIFIED_TASK_ITEMS } from "@/utils/dailyTaskRunner";
 import { preloadQuestions } from "@/utils/studyQuestionsFromJSON.js";
 import { useMessage } from "naive-ui";
-import { Settings, AddCircleOutline, CheckmarkCircleOutline, CloseCircleOutline, ListOutline, CloudDownloadOutline, CloudUploadOutline, SearchOutline, DocumentTextOutline, CreateOutline, TrashOutline, SettingsOutline, PlayOutline, Add, CopyOutline } from "@vicons/ionicons5";
+import { Settings, AddCircleOutline, CheckmarkCircleOutline, CloseCircleOutline, ListOutline, CloudDownloadOutline, CloudUploadOutline, SearchOutline, DocumentTextOutline, CreateOutline, TrashOutline, SettingsOutline, PlayOutline, Add, CopyOutline, ChevronDown } from "@vicons/ionicons5";
 import { getFirstSaturdayOfMonth, getLastSaturday } from "@/utils/clubBattleUtils";
 import TokenCard from "@/components/TokenCard.vue";
 import GameWindowToolbar from "@/components/GameWindowToolbar.vue";
@@ -7671,6 +7723,7 @@ const currentSettings = reactive({
   saltFieldPeachFormation: 1, // 盐场蟠桃阵容
   bossTimes: 2,
   dailyBossTimes: 3,
+  arenaFightCount: 3, // 竞技场战斗次数
   claimBottle: true,
   payRecruit: true,
   openBox: true,
@@ -7703,6 +7756,7 @@ const currentTemplate = reactive({
   saltFieldPeachFormation: 1, // 盐场蟠桃阵容
   bossTimes: 2,
   dailyBossTimes: 3,
+  arenaFightCount: 3, // 竞技场战斗次数
   claimBottle: true,
   payRecruit: true,
   openBox: true,
@@ -7859,6 +7913,16 @@ const executeHeroFourSaintsUpgrade = () => {
     message.warning("请选择一个英雄");
     return;
   }
+  
+  // ✅ 显示并发数量日志，与定时任务和其他手动任务保持一致
+  const totalAccounts = selectedTokens.value.length;
+  const maxConcurrent = batchSettings.maxActive > 0 ? batchSettings.maxActive : '全局设置';
+  addLog({
+    time: new Date().toLocaleTimeString(),
+    message: `📊 开始执行 英雄四圣升级，共 ${totalAccounts} 个账号，并发数:${maxConcurrent}`,
+    type: 'info',
+  });
+  
   showHeroFourSaintsModal.value = false;
   heroFourSaintsUpgrade([selectedHeroSingle.value]);
 };
@@ -7946,6 +8010,54 @@ const manualBuyItemOptions = [
   { label: "彩玉", value: "15" },
   { label: "扳手", value: "16" },
 ];
+
+// === 竞技场次数选择相关 ===
+const arenaFightCount = ref(3); // 默认竞技场战斗次数
+const showArenaFightCountModal = ref(false); // 显示次数输入弹窗
+
+// 竞技场次数选项（预设值）
+const arenaFightCountOptions = [
+  { label: '1次', key: 1 },
+  { label: '3次', key: 3 },
+  { label: '5次', key: 5 },
+  { label: '8次', key: 8 },
+  { label: '10次', key: 10 },
+  { label: '自定义...', key: 'custom' },
+];
+
+// 处理竞技场次数选择
+const handleArenaFightCountSelect = (key) => {
+  if (key === 'custom') {
+    // 弹出输入框让用户输入
+    const inputCount = prompt('请输入竞技场战斗次数（1-100）:', arenaFightCount.value);
+    if (inputCount !== null) {
+      const count = parseInt(inputCount);
+      if (!isNaN(count) && count >= 1 && count <= 100) {
+        arenaFightCount.value = count;
+        executeArenaFight();
+      } else {
+        message.warning('请输入1-100之间的数字');
+      }
+    }
+  } else {
+    arenaFightCount.value = key;
+    executeArenaFight();
+  }
+};
+
+// 执行竞技场战斗（带参数）
+const executeArenaFight = async () => {
+  try {
+    // 调用 executeManualTaskWithRecord，并传递竞技场次数参数
+    await executeManualTaskWithRecord(
+      'batcharenafight', 
+      `一键竞技场战斗${arenaFightCount.value}次`, 
+      () => batcharenafight(arenaFightCount.value)
+    );
+  } catch (error) {
+    console.error('竞技场战斗执行失败:', error);
+  }
+};
 
 // 盐锭商店商品选项
 const saltIngotShopItemOptions = [
@@ -8538,7 +8650,8 @@ const taskForm = reactive({
     8: { selected: false, label: "特级灵贝包" },
     9: { selected: false, label: "养成补给包" },
   },
-  boxWeeklyRewards: {5: 1}, // 宝箱周自选大奖配置，默认珍珠1次
+  boxWeeklyRewards: {5: 1}, // 宝箱周自选大奖配置，默认珍珠 1 次
+  arenaFightCount: 3, // 竞技场战斗次数配置
   smartDeparture: { // 智能发车任务级配置（覆盖全局设置）
     enabled: false, // 是否启用任务级配置
     goldThreshold: 800,
@@ -8662,6 +8775,20 @@ const groupedAvailableTasks = computed(() => {
   // }
   
   return groups;
+});
+
+// ✅ 动态任务标签计算属性（用于显示竞技场配置的次数）
+const taskLabels = computed(() => {
+  const labels = {};
+  availableTasks.forEach(task => {
+    if (task.value === 'batcharenafight') {
+      // 竞技场任务显示配置的次数
+      labels[task.value] = `一键竞技场战斗${currentSettings.arenaFightCount || 3}次`;
+    } else {
+      labels[task.value] = task.label;
+    }
+  });
+  return labels;
 });
 
 // Cron表达式解析相关变量
@@ -9270,6 +9397,7 @@ const editTask = (task) => {
     saltRoadLegionName: task.saltRoadLegionName || '',
     bookUpgradeTypes: task.bookUpgradeTypes && task.bookUpgradeTypes.length > 0 ? [...task.bookUpgradeTypes] : ['hero', 'fish', 'skin'],
     simplifiedDailyItems: task.simplifiedDailyItems && task.simplifiedDailyItems.length > 0 ? [...task.simplifiedDailyItems] : SIMPLIFIED_TASK_ITEMS.map(item => item.key),
+    arenaFightCount: task.arenaFightCount || 3, // 竞技场战斗次数配置
     maxActive: task.maxActive !== undefined ? task.maxActive : 0, // 任务级并发控制：0=使用全局
     pushStartTime: task.pushStartTime ? (() => {
       const [h, m] = task.pushStartTime.split(':').map(Number);
@@ -9548,6 +9676,7 @@ const saveTask = () => {
     saltRoadLegionName: taskForm.saltRoadLegionName || '',
     bookUpgradeTypes: [...(taskForm.bookUpgradeTypes || ['hero', 'fish', 'skin'])],
     simplifiedDailyItems: [...(taskForm.simplifiedDailyItems || SIMPLIFIED_TASK_ITEMS.map(item => item.key))],
+    arenaFightCount: taskForm.arenaFightCount || 3, // 竞技场战斗次数配置
     maxActive: taskForm.maxActive || 0, // 任务级并发控制：0=使用全局设置
   };
 
@@ -11267,8 +11396,9 @@ const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) =>
   
   const taskStartTime = Date.now();
   const availableTokens = [...selectedTokens.value];
-
-  // ✅ 单账号智能加速：仅1个账号时自动降低延迟
+  const totalAccounts = availableTokens.length;
+  
+  // ✅ 单账号智能加速：仅 1 个账号时自动降低延迟
   if (batchSettings.singleAccountSpeedUp && availableTokens.length === 1) {
     batchSettings.singleAccountMode = true;
     const mult = batchSettings.singleAccountMultiplier;
@@ -11276,6 +11406,14 @@ const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) =>
     addLog({
       time: new Date().toLocaleTimeString(),
       message: `⚡ ${token?.name || '单账号'} 单账号加速模式（延迟×${mult}）`,
+      type: 'info',
+    });
+  } else {
+    // ✅ 显示并发数量日志，与定时任务保持一致
+    const maxConcurrent = batchSettings.maxActive > 0 ? batchSettings.maxActive : '全局设置';
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `📊 开始执行 ${taskLabel},共 ${totalAccounts} 个账号，并发数:${maxConcurrent}`,
       type: 'info',
     });
   }
@@ -11431,7 +11569,40 @@ const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) =>
     // ✅ 修复 Bug #1: 手动任务结束后，尝试消费 pendingTaskQueue
     // 防止定时任务被"静默丢失"
     setTimeout(() => {
-      processPendingQueue();
+      // 如果队列中有待执行任务且当前没有定时任务运行
+      if (pendingTaskQueue.length > 0 && !isScheduledTaskRunning.value) {
+        const nextTask = pendingTaskQueue.shift();
+        // ✅ 修复：检查任务时间是否仍然有效，过期的队列任务不再启动（其余过期任务由调度器兜底清理）
+        const timeCheck = isTaskTimeStillValid(nextTask, 60);
+        if (!timeCheck.valid) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `⏰ 手动任务完成后，跳过已过期的队列任务: ${nextTask.name}（${timeCheck.reason}）`,
+            type: "warning",
+          });
+          return;
+        }
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `▶️ 手动任务完成，开始执行队列任务：${nextTask.name}`,
+          type: "info",
+        });
+                    
+        // ✅ 启动新任务
+        isScheduledTaskRunning.value = true;
+        currentScheduledTask = nextTask;
+        scheduledTaskStartTime = Date.now();
+        
+        // 执行任务
+        executeScheduledTask(nextTask).catch(error => {
+          console.error('队列任务执行失败:', error);
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `❌ 队列任务执行失败: ${error.message}`,
+            type: 'error'
+          });
+        });
+      }
     }, 1000); // 延迟 1 秒确保状态完全释放
   }
 };
@@ -11785,6 +11956,17 @@ const startScheduler = () => {
         }
 
         if (shouldRun) {
+            // ✅ 防重复触发：调度器每10秒tick一次，daily 任务按 HH:mm 匹配会在同一分钟内多次命中
+            // executeScheduledTask 开头会写入 lastTaskExecution_，此处校验同一分钟内是否已触发过
+            const lastExecRaw = localStorage.getItem(`lastTaskExecution_${task.id}`);
+            if (lastExecRaw) {
+              const lastExecTs = isNaN(Number(lastExecRaw)) ? new Date(lastExecRaw).getTime() : Number(lastExecRaw);
+              if (lastExecTs && !isNaN(lastExecTs) &&
+                  Math.floor(lastExecTs / 60000) === Math.floor(Date.now() / 60000)) {
+                return; // 同一分钟内已触发过该任务，跳过（防止任务1分钟内完成后被同一分钟的后续tick重复执行）
+              }
+            }
+
             // ✅ 不上线时段检查（调度器层：最早拦截，避免任何副作用执行）
             if (task.offlineTimeEnabled && isInOfflineTime()) {
               addLog({
@@ -11875,12 +12057,33 @@ const startScheduler = () => {
               lastTaskExecution = Date.now();
               
               // ✅ 修复 Bug #1: 队列消费时绕过 lastTaskExecution 防重检查
+              // ✅ 修复：此处仅作兜底消费路径（executeScheduledTask 的 finally 已优先消费队列），
+              // 必须先检查互斥状态与任务时效，否则会与已启动的队列任务并发执行（两个定时任务同时跑导致执行错乱）
               if (pendingTaskQueue.length > 0) {
                 setTimeout(() => {
-                  const nextTask = pendingTaskQueue.shift();
+                  // 互斥检查：finally 兜底路径可能已启动新任务
+                  if (isScheduledTaskRunning.value || pendingTaskQueue.length === 0) return;
+                  // 跳过已过期的队列任务
+                  let nextTask = null;
+                  while (pendingTaskQueue.length > 0) {
+                    const peek = pendingTaskQueue[0];
+                    const timeCheck = isTaskTimeStillValid(peek, 60);
+                    if (!timeCheck.valid) {
+                      pendingTaskQueue.shift();
+                      addLog({
+                        time: new Date().toLocaleTimeString(),
+                        message: `⏰ 跳过已过期的队列任务: ${peek.name}（${timeCheck.reason}，剩余队列: ${pendingTaskQueue.length}）`,
+                        type: "warning",
+                      });
+                      continue;
+                    }
+                    nextTask = pendingTaskQueue.shift();
+                    break;
+                  }
+                  if (!nextTask) return;
                   addLog({
                     time: new Date().toLocaleTimeString(),
-                    message: `▶️ 定时任务 [${currentScheduledTask.name}] 完成，开始执行队列任务：${nextTask.name}`,
+                    message: `▶️ 定时任务完成，开始执行队列任务：${nextTask.name}`,
                     type: "info",
                   });
                               
@@ -11891,7 +12094,7 @@ const startScheduler = () => {
                   // ✅ 写入 localStorage 防止浏览器崩溃
                   localStorage.setItem(
                     `lastTaskExecution_${nextTask.id}`,
-                    now.toString()
+                    new Date().toString()
                   );
                                   
                   executeScheduledTask(nextTask).catch(error => {
@@ -12555,7 +12758,7 @@ const executeScheduledTask = async (task) => {
       // 重新计算 availableTokens 使用清理后的数据
       availableTokens = (task.connectedTokens && task.connectedTokens.length > 0)
         ? task.connectedTokens
-        : task.selectedTokens;
+        : (task.selectedTokens || []);
       
       // 保存到localStorage
       saveScheduledTasks();
@@ -12673,8 +12876,29 @@ const executeScheduledTask = async (task) => {
     let skinChallengeConfirmedOpen = false; // ✅ 服务器确认活动已开启标记
     
     if (hasSkinChallengeTask && availableTokens.length > 0) {
+      // ✅ 修复：短期负缓存防重 - 预检失败/活动关闭后 10 分钟内不再发起服务器请求
+      // 避免活动未开启时每个调度器 tick（10秒）都重复连接服务器检测，浪费连接资源
+      const SKIN_NEGATIVE_CACHE_KEY = 'skinChallenge_negativeCache';
+      const SKIN_NEGATIVE_TTL = 10 * 60 * 1000; // 10 分钟
+      let skipDueToNegativeCache = false;
+      try {
+        const negCache = JSON.parse(localStorage.getItem(SKIN_NEGATIVE_CACHE_KEY) || 'null');
+        if (negCache?.timestamp && (Date.now() - negCache.timestamp) < SKIN_NEGATIVE_TTL) {
+          const minsAgo = Math.round((Date.now() - negCache.timestamp) / 60000);
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `⏭️ 换皮闯关检测：${minsAgo}分钟前已确认活动未开启（原因: ${negCache.reason || '未知'}），10分钟内不再重复检测，直接跳过`,
+            type: "warning",
+          });
+          skipDueToNegativeCache = true;
+          return false; // ✅ 直接短路，不建立连接
+        }
+      } catch {}
+      
+      if (!skipDueToNegativeCache) {
       // 需要连接一个Token来检测活动是否开启
       const testTokenId = availableTokens[0];
+      let precheckSlotHeld = false; // ✅ 跟踪预检测连接的槽位持有状态，防止重复释放破坏连接池计数
       
       // ✅ 活动时间范围校验函数（根据 actId 前6位解析 YYMMDD，活动周期7天）
       const isActivityTimeValid = (rawActId) => {
@@ -12692,6 +12916,7 @@ const executeScheduledTask = async (task) => {
       
       try {
         await ensureConnection(testTokenId);
+        precheckSlotHeld = true; // ✅ ensureConnection 成功后才持有槽位（失败抛出时其内部已释放）
         const activityRes = await tokenStore.sendMessageWithPromise(
           testTokenId,
           "activity_get",
@@ -12718,6 +12943,8 @@ const executeScheduledTask = async (task) => {
                 timestamp: Date.now(),
               }));
             } catch {}
+            // ✅ 修复：服务器确认活动开启，清除负缓存，避免误拦后续任务
+            try { localStorage.removeItem(SKIN_NEGATIVE_CACHE_KEY); } catch {}
             addLog({
               time: new Date().toLocaleTimeString(),
               message: `✅ 换皮闯关活动已开启（actId: ${rawActId}）`,
@@ -12743,19 +12970,28 @@ const executeScheduledTask = async (task) => {
         }
         
         if (!isActivityOpen) {
+          // ✅ 写入负缓存：10 分钟内不再重复发起检测
+          try {
+            localStorage.setItem(SKIN_NEGATIVE_CACHE_KEY, JSON.stringify({
+              timestamp: Date.now(),
+              reason: actEGameInfo?.actId ? '活动已过期' : '活动未开启',
+            }));
+          } catch {}
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `=== 定时任务 ${task.name} 包含的任务都需要换皮闯关活动，但当前活动未开启，取消执行 ===`,
+            message: `=== 定时任务 ${task.name} 包含的任务都需要换皮闯关活动，但当前活动未开启，取消执行（10分钟内不再重复检测） ===`,
             type: "warning",
           });
           tokenStore.closeWebSocketConnection(testTokenId);
-          releaseConnectionSlot(); // ✅ 修复：预检测获取的连接槽位必须释放，否则并发1时后续任务永久卡死
-          return;  // ✅ finally块会清理状态
+          releaseConnectionSlot(); // ✅ 修复：预检测获取的连接槽位必须释放，否则并发 1 时后续任务永久卡死
+          precheckSlotHeld = false;
+          return false; // ✅ 修改：返回 false 而不是直接 return，让调用者知道是验证失败
         }
         
         // 关闭测试连接，后续任务会按需连接
         tokenStore.closeWebSocketConnection(testTokenId);
         releaseConnectionSlot(); // ✅ 修复：释放连接槽位
+        precheckSlotHeld = false;
       } catch (err) {
         console.error('[换皮闯关检测] 检测失败:', err);
         // ✅ 回退：请求失败时检查缓存并校验时间范围
@@ -12782,19 +13018,29 @@ const executeScheduledTask = async (task) => {
         } catch {}
         
         if (!useCache) {
+          // ✅ 写入负缓存：10 分钟内不再重复发起检测
+          try {
+            localStorage.setItem(SKIN_NEGATIVE_CACHE_KEY, JSON.stringify({
+              timestamp: Date.now(),
+              reason: '检测失败且无缓存',
+            }));
+          } catch {}
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `=== 换皮闯关活动检测失败且无可用缓存，取消执行 ===`,
+            message: `=== 换皮闯关活动检测失败且无可用缓存，取消执行（10分钟内不再重复检测） ===`,
             type: "warning",
           });
           try { tokenStore.closeWebSocketConnection(testTokenId); } catch {}
-          try { releaseConnectionSlot(); } catch {} // ✅ 修复：释放连接槽位
-          return;  // ✅ 无法确认活动状态，取消执行
+          // ✅ 修复：仅在持有槽位时释放（ensureConnection 失败时其内部已释放，重复释放会破坏连接池计数导致超并发）
+          if (precheckSlotHeld) { try { releaseConnectionSlot(); } catch {} precheckSlotHeld = false; }
+          return false; // ✅ 修改：返回 false 而不是直接 return，让调用者知道是验证失败
         }
         // 关闭测试连接
         try { tokenStore.closeWebSocketConnection(testTokenId); } catch {}
-        try { releaseConnectionSlot(); } catch {} // ✅ 修复：释放连接槽位
+        // ✅ 修复：仅在持有槽位时释放，防止重复释放
+        if (precheckSlotHeld) { try { releaseConnectionSlot(); } catch {} precheckSlotHeld = false; }
       }
+      } // end of if (!skipDueToNegativeCache)
     }
 
     // 检查任务是否包含宝箱周限制的任务
@@ -13335,16 +13581,27 @@ const executeScheduledTask = async (task) => {
                 type: "info",
               });
               await taskFunction(types);
+            } else if (taskName === 'batcharenafight') {
+              // ✅ 竞技场战斗，读取任务配置的竞技场次数（优先任务级配置，否则用全局设置）
+              const fightCount = task.arenaFightCount || currentSettings.arenaFightCount || 3;
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `⚔️ 竞技场战斗：执行 ${fightCount} 次`,
+                type: "info",
+              });
+              await taskFunction(fightCount);
             } else if (taskName === 'batchSaltCupBet') {
               // 比赛竞猜，自动获取所有比赛并下注
               const pickVal = task.saltCupBetPick !== undefined ? task.saltCupBetPick : 1;
               const pickLabels = { 1: '主胜', 2: '平局', 3: '客胜' };
+              const taskMaxConcurrent = (task.maxActive > 0) ? task.maxActive : (batchSettings.maxActive || 5);
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `🏆 比赛竞猜：自动对所有未下注比赛押【${pickLabels[pickVal] || '主胜'}】`,
+                message: `🏆 比赛竞猜：自动对所有未下注比赛押【${pickLabels[pickVal] || '主胜'}】（并发 ${taskMaxConcurrent}）`,
                 type: "info",
               });
-              await taskFunction(null, pickVal);
+              // ✅ 修复：显式把任务级并发数传给 batchSaltCupBet→runStreaming，避免仅靠 batchSettings.maxActive 隐式中继导致用户设置的并行数不生效（表现为串行）
+              await taskFunction(null, pickVal, taskMaxConcurrent);
             } else if (taskName === 'batchApexGuess') {
               // 逐鹿盐山竞猜：自动拉取对阵并按策略择队
               const scheduleId = task.apexGuessScheduleId || 21;
@@ -13359,13 +13616,31 @@ const executeScheduledTask = async (task) => {
               // 用第一个账号拉取对阵列表
               const fetchTokenId = availableTokens[0];
               const fetchToken = tokens.value.find(t => t.id === fetchTokenId);
-              if (tokenStore.getWebSocketStatus(fetchTokenId) !== 'connected') {
+              let fetchReady = false;
+              if (!fetchToken) {
+                // ✅ 修复：Token 可能已被删除，避免 fetchToken.token 报 TypeError 导致整个子任务失败
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `⚠️ 逐鹿盐山竞猜：账号 ${fetchTokenId} 不存在，无法拉取对阵列表`,
+                  type: "warning",
+                });
+              } else if (tokenStore.getWebSocketStatus(fetchTokenId) !== 'connected') {
+                // ✅ 修复：等待连接真正建立（原固定等待2秒可能未连上，导致后续请求失败使整个子任务中断）
                 tokenStore.createWebSocketConnection(fetchTokenId, fetchToken.token, fetchToken.wsUrl);
-                await new Promise(r => setTimeout(r, 2000));
+                fetchReady = await waitForConnection(fetchTokenId);
+                if (!fetchReady) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `⚠️ 逐鹿盐山竞猜：账号 ${fetchToken.name} 连接超时，无法拉取对阵列表`,
+                    type: "warning",
+                  });
+                }
+              } else {
+                fetchReady = true;
               }
               const guessTeamIds = [];
               let guessIdx = 0;
-              for (let page = 0; page < 40; page++) {
+              for (let page = 0; fetchReady && page < 40; page++) {
                 const res = await tokenStore.sendMessageWithPromise(fetchTokenId, "apex_getguesslist", { scheduleId, idx: guessIdx }, 5000);
                 const list = res?.apexGuessList;
                 if (!Array.isArray(list) || list.length === 0) break;
@@ -13391,12 +13666,14 @@ const executeScheduledTask = async (task) => {
                   type: "warning",
                 });
               } else {
+                const taskMaxConcurrent = (task.maxActive > 0) ? task.maxActive : (batchSettings.maxActive || 5);
                 addLog({
                   time: new Date().toLocaleTimeString(),
-                  message: `⚔️ 已择队 ${guessTeamIds.length} 场，开始批量竞猜`,
+                  message: `⚔️ 已择队 ${guessTeamIds.length} 场，开始批量竞猜（并发 ${taskMaxConcurrent}）`,
                   type: "info",
                 });
-                await taskFunction(scheduleId, guessTeamIds);
+                // ✅ 修复：显式把任务级并发数传给 batchApexGuess→runStreaming，避免仅靠 batchSettings.maxActive 隐式中继
+                await taskFunction(scheduleId, guessTeamIds, taskMaxConcurrent);
               }
             } else if (taskName === 'batchSaltRoadCheer') {
               // 天宫助威：支持预选军团ID或自动按方向获取
@@ -13758,10 +14035,11 @@ saveTaskExecutionRecordsToStorage();
     // 场景：任务还未真正开始就提前返回，但 scheduledStartTime 已被设置
     // 导致 runningTokens.size === 0，被 stale 检测误判为卡死
     const elapsedSinceStart = scheduledTaskStartTime ? Date.now() - scheduledTaskStartTime : 0;
-    const hasActiveChildTask = tokenStore.runningTokens?.value?.size || 0 > 0;
+    // ✅ 修复：Pinia store 会自动解包 ref（无 .value），且原写法运算符优先级错误（size || 0 > 0）
+    const hasActiveChildTask = (tokenStore.runningTokens?.size ?? 0) > 0;
     if (!hasActiveChildTask && elapsedSinceStart < 3000) {
       console.warn(
-        `[${new Date().toISOString()}] 检测到任务可能未真正执行（elapsed=${elapsedSinceStart}ms, runningTokens=${tokenStore.runningTokens?.value?.size || 0}）`
+        `[${new Date().toISOString()}] 检测到任务可能未真正执行（elapsed=${elapsedSinceStart}ms, runningTokens=${tokenStore.runningTokens?.size ?? 0}）`
       );
     }
     
@@ -16366,6 +16644,7 @@ const runStreaming = async (tokenIds, processFn, maxConcurrent) => {
 const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
   let retryCount = 0;
   let lastError = null;
+  let slotAcquired = false; // ✅ 跟踪槽位持有状态，防止未获取就释放导致连接池计数错乱
   
   while (retryCount < maxRetries) {
     try {
@@ -16375,8 +16654,9 @@ const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
       }
 
       // 获取连接槽位来限制并发数（skipSlot=true时由外层滚动执行控制并发）
-      if (!skipSlot) {
+      if (!skipSlot && !slotAcquired) {
         await waitForConnectionSlot(60000);
+        slotAcquired = true;
       }
 
       // 检查现有连接状态
@@ -16424,9 +16704,10 @@ const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
       lastError = error;
       retryCount++;
       
-      // 释放连接槽位
-      if (!skipSlot) {
+      // ✅ 修复：只释放已获取的槽位（原逻辑无条件释放，若失败发生在获取槽位之前会造成虚假释放，破坏连接池计数）
+      if (!skipSlot && slotAcquired) {
         releaseConnectionSlot();
+        slotAcquired = false;
       }
       
       // 关闭可能存在的连接

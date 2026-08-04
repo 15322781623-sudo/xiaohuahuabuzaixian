@@ -406,10 +406,15 @@ export function createTasksArena(deps) {
  /**
   * 一键竞技场战斗3次
    */
-  const batcharenafight = async () => {
+  const batcharenafight = async (fightCountParam) => {
     if (selectedTokens.value.length === 0)
       return;
 
+    // ✅ 顶层兜底：确保该函数永不向外抛异常
+    // 差异排查：手动按钮外层 executeManualTaskWithRecord 有 try/catch 兜底，
+    // 但定时任务路径没有强兜底，竞技场异常穿透会让整个定时任务 for 循环终止，
+    // 导致竞技场后面所有任务（智能发车、领车、邮件、竞技场补齐...）全被中断。
+    // 加一层顶层 try 确保无论任何情况都只走到 finally，绝不向外抛异常。
     try {
       isRunning.value = true;
       shouldStop.value = false;
@@ -420,6 +425,9 @@ export function createTasksArena(deps) {
       const retryTargetTokens = []; // 获取目标超时或未找到目标的账号
       const maxRetries = batchSettings.defaultRetryCount !== undefined ? batchSettings.defaultRetryCount : 2; // 使用设置的重试次数
       const retryWaitTime = batchSettings.retryDelay || 60000; // 使用设置的重试延迟
+      
+      // ✅ 接受外部传入的竞技场次数参数，默认为 3 次
+      const targetFightCount = fightCountParam || 3;
 
       selectedTokens.value.forEach((id) => {
         tokenStatus.value[id] = "waiting";
@@ -435,7 +443,7 @@ export function createTasksArena(deps) {
 
       addLog({
         time: new Date().toLocaleTimeString(),
-        message: `=== 开始批量竞技场战斗，共 ${selectedTokens.value.length} 个账号，分 ${batches.length} 批执行（每批${batchSize}个） ===`,
+        message: `=== 开始批量竞技场战斗，共 ${selectedTokens.value.length} 个账号，分 ${batches.length} 批执行（每批${batchSize}个），每个账号战斗${targetFightCount}次 ===`,
         type: "info",
       });
 
@@ -494,10 +502,11 @@ export function createTasksArena(deps) {
               } catch {}
             }
             const ticketCount = role?.items?.[1007]?.quantity || 0;
-            const fights = Math.min(3, ticketCount); // 提前声明，catch块重试时需要
+            // ✅ 使用传入的参数或默认值 3
+            const fights = Math.min(targetFightCount, ticketCount); // 提前声明，catch块重试时需要
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 当前咸神门票: ${ticketCount}`,
+              message: `${token.name} 当前咸神门票：${ticketCount}, 准备战斗：${fights}次`,
               type: "info",
             });
 
@@ -801,12 +810,12 @@ export function createTasksArena(deps) {
                   // selfScore/oppoScore 为绝对值，正负号取决于胜负
                   const displaySelfScore = isWin ? Math.abs(selfScore) : -Math.abs(selfScore);
                   const displayOppoScore = isWin ? -Math.abs(oppoScore) : Math.abs(oppoScore);
-                  let fightMsg = `${token.name} 竞技场战斗 ${i + 1}/3: ${isWin ? '✅ 胜利' : '❌ 失败'}`;
+                  let fightMsg = `${token.name} 竞技场战斗 ${i + 1}/${fights}: ${isWin ? '✅ 胜利' : '❌ 失败'}`;
                   if (selfScore !== undefined) fightMsg += ` | 我方积分${displaySelfScore >= 0 ? '+' : ''}${displaySelfScore}`;
                   if (oppoScore !== undefined) fightMsg += ` | 对手积分${displayOppoScore >= 0 ? '+' : ''}${displayOppoScore}`;
                   addLog({ time: new Date().toLocaleTimeString(), message: fightMsg, type: isWin ? 'success' : 'warning' });
                 } else {
-                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞技场战斗 ${i + 1}/3 (isWin未找到，请检查控制台)`, type: "warning" });
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 竞技场战斗 ${i + 1}/${fights} (isWin 未找到，请检查控制台)`, type: "warning" });
                 }
                 await new Promise((r) => setTimeout(r, _getModuleDelay('arena')));
               } catch (e) {
@@ -1351,6 +1360,14 @@ export function createTasksArena(deps) {
       }
 
       message.success("批量竞技场战斗结束");
+    } catch (fatalError) {
+      // ✅ 顶层兜底：吞掉所有未预期的异常，防止向上传播导致定时任务中断
+      console.error("[batcharenafight] 顶层异常（已拦截，不影响后续任务）:", fatalError);
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `❌ 竞技场任务异常终止（已隔离，不影响后续任务）: ${fatalError?.message || fatalError}`,
+        type: "error",
+      });
     } finally {
       isRunning.value = false;
       currentRunningTokenId.value = null;
@@ -1363,6 +1380,7 @@ export function createTasksArena(deps) {
     if (selectedTokens.value.length === 0)
       return;
 
+    // ✅ 顶层兜底：确保该函数永不向外抛异常，防止定时任务 for 循环被终止
     try {
       isRunning.value = true;
       shouldStop.value = false;
@@ -1704,6 +1722,13 @@ export function createTasksArena(deps) {
       });
 
       message.success("批量钓鱼补齐结束");
+    } catch (fatalError) {
+      console.error("[batchTopUpFish] 顶层异常（已拦截，不影响后续任务）:", fatalError);
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `❌ 钓鱼补齐异常终止（已隔离）: ${fatalError?.message || fatalError}`,
+        type: "error",
+      });
     } finally {
       isRunning.value = false;
       currentRunningTokenId.value = null;
@@ -1717,6 +1742,7 @@ export function createTasksArena(deps) {
     if (selectedTokens.value.length === 0)
       return;
 
+    // ✅ 顶层兜底：确保该函数永不向外抛异常，防止定时任务 for 循环被终止
     try {
       isRunning.value = true;
       shouldStop.value = false;
@@ -2332,6 +2358,13 @@ export function createTasksArena(deps) {
       }
 
       message.success("批量竞技场补齐结束");
+    } catch (fatalError) {
+      console.error("[batchTopUpArena] 顶层异常（已拦截，不影响后续任务）:", fatalError);
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `❌ 竞技场补齐异常终止（已隔离）: ${fatalError?.message || fatalError}`,
+        type: "error",
+      });
     } finally {
       isRunning.value = false;
       currentRunningTokenId.value = null;

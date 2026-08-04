@@ -314,6 +314,22 @@ export class DailyTaskRunner {
   info(msg) { this.log(msg, 'info'); }
 
   /**
+   * 首字母大写（用于模块名转中文）
+   */
+  capitalizeFirst(str) {
+    if (!str) return str;
+    const map = {
+      arena: '竞技场',
+      treasure: '深海寻宝',
+      activity: '活动',
+      daily: '日常',
+      club: '俱乐部',
+      store: '黑市',
+    };
+    return map[str] || str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  /**
    * 获取有效的命令延迟（单账号模式自动加速）
    * @returns {number} 实际命令延迟（ms）
    */
@@ -554,9 +570,9 @@ export class DailyTaskRunner {
       this.success(`已恢复阵容${this.originalFormation}`);
     } catch (error) {
       if (getErrorCode(error) === '200020') {
-        this.info(`阵容${this.originalFormation}已是当前阵容`);
+        this.info('✅ 阵容已是当前阵容');
       } else {
-        this.error(`恢复阵容失败: ${error.message}`);
+        this.warn(`⚠️ 恢复阵容失败：${error.message}`);
       }
     }
   }
@@ -825,10 +841,25 @@ export class DailyTaskRunner {
         // 执行战斗
         for (let i = 1; i <= ARENA_TIME.MAX_FIGHTS; i++) {
           await this.executeArenaFight(i);
-          if (i < ARENA_TIME.MAX_FIGHTS) await delay(this._accelerateDelay(1000, 100));
+          if (i < ARENA_TIME.MAX_FIGHTS) {
+            // ✅ 新增独立 delayPriority 链式配置（优先级从高到低）
+            const baseDelay = 
+              this.batchSettings?.moduleDelays?.arena ||      // 优先使用竞技场专用延迟
+              this.batchSettings?.delayGroups?.arena ||       // 其次使用 arena 分组延迟
+              this.batchSettings?.delayGroups?.battle ||      // 再其次使用 battle 分组延迟
+              this.batchSettings?.moduleDelays?.battle ||     // 最后使用 moduleDelays.battle
+              3000;                                             // 默认 3000ms
+            const delayMs = this._accelerateDelay(baseDelay, 500);
+            await delay(delayMs);
+          }
         }
 
         this.success('竞技场战斗流程完成');
+        
+        // ✅ 新增统计摘要
+        this.success(`━━━━━━━━━`);
+        this.success(`✅ 竞技场模块执行完毕`);
+        this.success(`━━━━━━━━━`);
       } finally {
         if (switched) await this.restoreFormation();
       }
@@ -839,51 +870,56 @@ export class DailyTaskRunner {
    * 执行单次竞技场战斗
    */
   async executeArenaFight(fightIndex) {
-    this.info(`竞技场战斗 ${fightIndex}/${ARENA_TIME.MAX_FIGHTS}`);
-
+    this.info(`🔸 第 ${fightIndex}/${ARENA_TIME.MAX_FIGHTS} 场`);
+    
     // 获取目标
     let targets;
     try {
       targets = await this.sendCommand('arena_getareatarget', {}, 
         { description: `获取目标${fightIndex}` });
     } catch (error) {
-      // ✅ 限流错误向上传播，触发主循环break
+      // ✅ 限流错误向上传播，触发主循环 break
       if (isRetryableError(error)) {
-        this.warn(`获取目标${fightIndex} - 服务器限流(${getErrorCode(error)})，停止竞技场战斗`);
+        const code = getErrorCode(error);
+        this.error(`⏱️ 服务器限流 (${code}) - 停止竞技场战斗`);
         throw error;
       }
-      this.error(`获取目标失败: ${error.message}`);
+      this.error(`❌ 获取目标失败：${error.message}`);
       return;
     }
-
+    
     if (!targets || (extractTargetList(targets).length === 0 && 
         !targets.roleId && !targets.id && !targets.targetId)) {
-      this.warn(`战斗${fightIndex} - 无可用目标`);
+      this.warn(`⚠️ 无可用目标`);
       return;
     }
-
+    
     // 选择目标
     const roleInfo = safeGet(this.tokenStore, 'gameData.roleInfo.role', {});
     const target = pickArenaTargetId(targets, roleInfo);
-
+    
     if (!target?.targetId) {
-      this.warn(`战斗${fightIndex} - 未找到合适目标`);
+      this.warn(`⚠️ 未找到合适目标`);
       return;
     }
-
-    this.info(`目标: ${target.targetName} (排名:${target.targetRank})`);
+    
+    const opponentName = target.targetName;
+    const opponentRank = target.targetRank || 'N/A';
+    this.info(`🎯 对手：${opponentName} (排名:${opponentRank})`);
 
     // ✅ 执行战斗（支持一次重试）
     try {
       await this.sendCommand('fight_startareaarena', { targetId: target.targetId }, 
         { description: `竞技场战斗${fightIndex}`, timeout: this.getTimeout('fight_startareaarena') });
     } catch (error) {
-      // ✅ 限流错误(400340/200750/11800010)：不再局部重试，直接向上抛出，让主循环break
+      // ✅ 限流错误 (400340/200750/11800010)：不再局部重试，直接向上抛出，让主循环 break
       if (isRetryableError(error)) {
-        this.warn(`战斗${fightIndex} - 服务器限流(${getErrorCode(error)})，停止竞技场战斗`);
-        throw error; // ✅ 向上抛出，触发主循环break
+        const code = getErrorCode(error);
+        this.error(`⏱️ 服务器限流 (${code}) - 停止竞技场战斗`);
+        throw error; // ✅ 向上抛出，触发主循环 break
       }
-      this.error(`战斗失败: ${error.message}`);
+      this.error(`❌ 战斗失败：${error.message}`);
+      return;
     }
   }
 
@@ -1473,32 +1509,63 @@ export class DailyTaskRunner {
     this.has400340Error = false; // ✅ 重置可重试错误标记（400340/200750/11800010）
     let completedCount = 0;
 
+    // ✅ 将任务按模块分组（arena、treasure 等），实现模块级限流隔离
+    const groupedTasks = [];
     for (let i = 0; i < allTasks.length; i++) {
+      const task = allTasks[i];
+      const lastGroup = groupedTasks[groupedTasks.length - 1];
+      
+      // ✅ 如果上一个组存在且当前任务的 module 与上一组相同，加入同一组
+      if (lastGroup && task.module === lastGroup.module) {
+        lastGroup.tasks.push(task);
+      } else {
+        groupedTasks.push({ module: task.module, tasks: [task] });
+      }
+    }
+
+    // ✅ 逐模块执行任务（非模块间中断），支持模块级限流隔离（如竞技场 200750 不影响其他模块）
+    let interruptedModule = null; // ✅ 记录被限流中断的模块名
+    
+    for (const group of groupedTasks) {
+      const { module, tasks } = group;
+      
+      // ✅ 如果是竞技场模块，检查是否已被之前的限流中断
+      if (module === 'arena' && interruptedModule !== 'arena') {
+        this.info(`📊 开始执行竞技场模块...`);
+      }
+      
       try {
-        const { fn, module } = allTasks[i];
-        await fn();
-        completedCount++;
-        this.callbacks?.onProgress?.(Math.floor(((i + 1) / total) * 100));
-        // ✅ 延迟控制：模块切换时用 moduleDelay，同模块子任务间用 dailySubtaskDelay
-        const nextModule = allTasks[i + 1]?.module;
-        if (!nextModule || nextModule !== module) {
-          await delay(getModuleDelay(module));
-        } else {
-          const subtaskDelay = this._accelerateDelay(
-            this.batchSettings?.dailySubtaskDelay ?? 300, 50
-          );
-          if (subtaskDelay > 0) await delay(subtaskDelay);
+        for (let i = 0; i < tasks.length; i++) {
+          const { fn } = tasks[i];
+          await fn();
+          completedCount++;
+          this.callbacks?.onProgress?.(Math.floor(((completedCount / total) * 100)));
         }
+        
+        // ✅ 模块切换时的延迟控制（只在不同模块间切换时应用 getModuleDelay）
+        const nextGroup = groupedTasks.find((g, idx) => idx > groupedTasks.indexOf(group) && g.module !== module);
+        if (nextGroup) {
+          const delayMs = getModuleDelay(module);
+          if (delayMs > 0) await delay(delayMs);
+        }
+        
+        this.info(`${this.capitalizeFirst(module)} 模块任务完成`);
       } catch (error) {
-        // ✅ 检测可重试错误码，标记需要外层重试
+        // ✅ 检测模块级别的可重试错误码（400340/200750/11800010）
         const errMsg = error?.message || '';
         if (errMsg.includes('400340') || errMsg.includes('200750') || errMsg.includes('11800010')) {
           this.has400340Error = true;
           const code = errMsg.includes('400340') ? '400340' : errMsg.includes('200750') ? '200750' : '11800010';
-          this.warn(`遇到${code}服务器限流，停止后续任务（已完成${completedCount}/${total}），交由外层重试机制处理`);
-          // ✅ 立即中断循环，避免后续任务也被限流白白浪费重试次数
-          break;
+          
+          // ✅ 仅当前模块被中断，其他模块继续执行
+          if (interruptedModule === null) {
+            interruptedModule = module;
+          }
+          
+          this.warn(`${this.capitalizeFirst(module)} 模块遇到${code}服务器限流，停止该模块后续任务，其他模块继续执行，该模块交由外层重试机制处理`);
+          break; // ✅ 仅退出当前模块的任务循环，继续下一模块
         }
+        throw error; // ✅ 非可重试错误直接抛出
       }
     }
 
@@ -1574,38 +1641,65 @@ export class DailyTaskRunner {
       return build().map(fn => ({ fn, module }));
     });
     this.info(`精简补齐：共 ${allTasks.length} 个任务待执行`);
-
-    // 执行任务（与 run() 相同的延迟控制与限流处理）
+    
+    // ✅ 将任务按模块分组（支持模块级限流隔离）
+    const groupedTasks = [];
+    for (let i = 0; i < allTasks.length; i++) {
+      const task = allTasks[i];
+      const lastGroup = groupedTasks[groupedTasks.length - 1];
+          
+      // ✅ 如果上一个组存在且当前任务的 module 与上一组相同，加入同一组
+      if (lastGroup && task.module === lastGroup.module) {
+        lastGroup.tasks.push(task);
+      } else {
+        groupedTasks.push({ module: task.module, tasks: [task] });
+      }
+    }
+    
+    // ✅ 逐模块执行任务（支持模块级限流隔离）
+    let interruptedModule = null; // ✅ 记录被限流中断的模块名
     const total = allTasks.length;
     this.has400340Error = false;
     let completedCount = 0;
-
-    for (let i = 0; i < allTasks.length; i++) {
+    
+    for (const group of groupedTasks) {
+      const { module, tasks } = group;
+          
       try {
-        const { fn, module } = allTasks[i];
-        await fn();
-        completedCount++;
-        this.callbacks?.onProgress?.(Math.floor(((i + 1) / total) * 100));
-        const nextModule = allTasks[i + 1]?.module;
-        if (!nextModule || nextModule !== module) {
-          await delay(getModuleDelay(module));
-        } else {
-          const subtaskDelay = this._accelerateDelay(
-            this.batchSettings?.dailySubtaskDelay ?? 300, 50
-          );
-          if (subtaskDelay > 0) await delay(subtaskDelay);
+        for (let i = 0; i < tasks.length; i++) {
+          const { fn } = tasks[i];
+          await fn();
+          completedCount++;
+          this.callbacks?.onProgress?.(Math.floor(((completedCount / total) * 100)));
         }
+            
+        // ✅ 模块切换时的延迟控制
+        const nextGroup = groupedTasks.find((g, idx) => idx > groupedTasks.indexOf(group) && g.module !== module);
+        if (nextGroup) {
+          const delayMs = getModuleDelay(module);
+          if (delayMs > 0) await delay(delayMs);
+        }
+            
+        this.info(`${this.capitalizeFirst(module)} 模块任务完成`);
       } catch (error) {
+        // ✅ 检测模块级别的可重试错误码（400340/200750/11800010）
         const errMsg = error?.message || '';
         if (errMsg.includes('400340') || errMsg.includes('200750') || errMsg.includes('11800010')) {
           this.has400340Error = true;
           const code = errMsg.includes('400340') ? '400340' : errMsg.includes('200750') ? '200750' : '11800010';
-          this.warn(`遇到${code}服务器限流，停止后续任务（已完成${completedCount}/${total}）`);
-          break;
+              
+          // ✅ 仅当前模块被中断，其他模块继续执行
+          if (interruptedModule === null) {
+            interruptedModule = module;
+          }
+              
+          this.warn(`${this.capitalizeFirst(module)} 模块遇到${code}服务器限流，停止该模块后续任务，其他模块继续执行`);
+          break; // ✅ 仅退出当前模块的任务循环，继续下一模块
         }
+        throw error; // ✅ 非可重试错误直接抛出
       }
     }
-
+    
     if (!this.has400340Error) {
       this.callbacks?.onProgress?.(100);
       this.success(`日常精简补齐完成 (${completedCount}/${total})`);

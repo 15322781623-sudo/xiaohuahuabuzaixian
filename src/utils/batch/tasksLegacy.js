@@ -192,7 +192,7 @@ export function createTasksLegacy(deps) {
           const failReason = '模块未开启无法领取功法';
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `=== ${token.name} 领取失败：模块未开启无法领取功法 ===`,
+            message: `${token.name} 模块未开启无法领取功法`,
             type: "error",
           });
           tokenStatus.value[tokenId] = "failed";
