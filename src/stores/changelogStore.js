@@ -14,6 +14,23 @@ export const useChangelogStore = defineStore("changelog", () => {
    */
   const changelogs = ref([
     {
+      version: "v2.45.8",
+      date: "2026-08-04",
+      type: "patch",
+      title: "定时任务队列串行化修复（5 路径统一互斥锁）",
+      fixes: [
+        "修复定时任务 B/C 并行启动：A 完成后 finally 同步块启动 B，调度器 tick / finally setTimeout 恰好在 isScheduledTaskRunning=false 瞬态窗口也启动 C，导致两个任务并发；现新增 _isProcessingQueue 互斥锁 + processPendingQueue() 统一消费函数，所有路径必须经此入口",
+        "修复进度条共用污染：B 和 C 并发运行时都覆写 selectedTokens/tokenStatus 全局状态，导致进度定时器读到对方状态；串行化后每个任务独立占用全局状态",
+        "修复 D 中断正在执行的 B/C：D 到时间触发调度器时覆写 selectedTokens 和 currentScheduledTask，导致 B/C 进度定时器失效；现 D 排队等待 B/C 完成后才执行",
+        "统一 5 条队列消费路径为单入口：① executeScheduledTask finally 同步块 ② 调度器 finally setTimeout ③ 调度器兜底 tick ④ 手动任务 finally ⑤ 日常任务完成后路径，全部替换为 processPendingQueue(source) 调用",
+        "processPendingQueue 内置过期任务跳过 + 孤儿记录清理 + 来源日志标记，确保队列消费可追溯、无竞态",
+        "修复 stale 检测后旧任务 finally 覆盖新任务状态：旧任务被 stale 强制释放后新任务已启动，旧任务的 finally 块延迟到达时会错误地重置 isScheduledTaskRunning=false 和 currentScheduledTask=null；新增 _scheduledTaskGeneration 代计数器，finally 块只在代数匹配时才重置状态",
+        "修复 stale 检测和 2h 健康检查后不处理队列：强制释放 isScheduledTaskRunning 后未调用 processPendingQueue，导致排队任务需等待下一个调度器 tick（最多 10 秒）；现强制释放后均触发 processPendingQueue 消费队列",
+        "新增任务完成情况 Modal 内队列状态显示：显示当前正在执行的定时任务和排队等待列表（任务名称、计划时间、序号），队列变化时实时同步，支持明暗主题",
+        "修复队列任务因前序任务执行时间过长被误判过期丢弃：isTaskTimeStillValid 容差从 60 分钟提升至 180 分钟，避免前序任务执行 1–2 小时后队列中 B/C 等任务因超出容差窗口被静默跳过",
+      ],
+    },
+    {
       version: "v2.45.7",
       date: "2026-08-03",
       type: "patch",

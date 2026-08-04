@@ -1635,6 +1635,41 @@
         </div>
       </div>
 
+      <!-- 当前执行 & 队列状态 -->
+      <div class="tr-queue-section" v-if="isScheduledTaskRunning || queueDisplayList.length > 0">
+        <div class="tr-queue-title">
+          <span class="tr-queue-icon">⏳</span>
+          <span>定时任务队列</span>
+        </div>
+        <!-- 当前正在执行 -->
+        <div class="tr-queue-current" v-if="isScheduledTaskRunning && currentScheduledTaskDisplay">
+          <div class="tr-queue-label">执行中：</div>
+          <div class="tr-queue-task">
+            <span class="tr-dot-running"></span>
+            <span class="tr-queue-task-name">{{ currentScheduledTaskDisplay.name }}</span>
+            <span class="tr-queue-task-time">{{ currentScheduledTaskDisplay.runTime }}</span>
+          </div>
+        </div>
+        <!-- 排队等待列表 -->
+        <div class="tr-queue-waiting" v-if="queueDisplayList.length > 0">
+          <div class="tr-queue-label">等待中 ({{ queueDisplayList.length }})：</div>
+          <div class="tr-queue-list">
+            <div
+              v-for="item in queueDisplayList"
+              :key="item.id"
+              class="tr-queue-item"
+            >
+              <span class="tr-queue-index">{{ item.index }}</span>
+              <span class="tr-queue-task-name">{{ item.name }}</span>
+              <span class="tr-queue-task-time">{{ item.runTime }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="tr-queue-empty" v-else-if="!isScheduledTaskRunning">
+          队列为空
+        </div>
+      </div>
+
       <!-- 任务列表 -->
       <div class="tr-list">
         <div
@@ -11264,13 +11299,107 @@ const openTaskRecordsModal = () => {
   }
   
   showTaskRecordsModal.value = true;
+  syncQueueDisplay(); // 打开时同步队列展示
 };
 
 // 同步到全局，供推图循环 (pushMapRunner) 检测定时任务互斥
 watch(isScheduledTaskRunning, (v) => { window._isScheduledTaskRunning = v; }, { immediate: true });
 let currentScheduledTask = null; // 当前正在执行的定时任务
 const pendingTaskQueue = []; // ✅ 待执行队列：当定时任务冲突时，排队等待执行
+const queueDisplayList = ref([]); // 响应式队列展示列表（同步自 pendingTaskQueue）
+const currentScheduledTaskDisplay = ref(null); // 响应式当前执行任务展示
+const syncQueueDisplay = () => {
+  queueDisplayList.value = pendingTaskQueue.map((t, i) => ({
+    index: i + 1,
+    name: t.name,
+    runTime: t.runType === 'daily' ? t.runTime : (t.cronExpression || ''),
+    runType: t.runType,
+    id: t.id,
+  }));
+  currentScheduledTaskDisplay.value = currentScheduledTask ? {
+    name: currentScheduledTask.name,
+    runTime: currentScheduledTask.runType === 'daily' ? currentScheduledTask.runTime : (currentScheduledTask.cronExpression || ''),
+    runType: currentScheduledTask.runType,
+  } : null;
+};
 let _activeNightmareBattles = []; // ✅ 模块级引用：跟踪当前十殿战斗，用于超时传导停止
+
+// =====================
+// 统一队列消费函数（互斥锁保护，防止多路径竞态启动并发任务）
+// =====================
+let _isProcessingQueue = false; // 队列消费互斥锁
+let _scheduledTaskGeneration = 0; // 任务代计数器：防止 stale 后旧任务 finally 覆盖新任务状态
+
+/**
+ * 统一队列消费函数 — 所有路径必须调用此函数
+ * 确保同一时刻只有一个任务从队列中启动
+ */
+const processPendingQueue = (source = '') => {
+  // 互斥：已有消费者在执行，直接返回
+  if (_isProcessingQueue) return;
+  // 已有定时任务在运行，不消费
+  if (isScheduledTaskRunning.value) return;
+  // 队列为空
+  if (pendingTaskQueue.length === 0) return;
+
+  _isProcessingQueue = true;
+  try {
+    // 跳过过期任务（容差 180 分钟：前序任务可能执行 1–2 小时，队列任务不应因等待时间过长而被丢弃）
+    // 已在队列中的任务说明用户需要它执行，时间检查仅作为极端场景的安全兜底
+    while (pendingTaskQueue.length > 0) {
+      const peek = pendingTaskQueue[0];
+      const timeCheck = isTaskTimeStillValid(peek, 180);
+      if (!timeCheck.valid) {
+        pendingTaskQueue.shift();
+        syncQueueDisplay(); // 过期任务移除后同步展示
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `⏰ [${source}] 跳过过期队列任务: ${peek.name}（${timeCheck.reason}，剩余: ${pendingTaskQueue.length}）`,
+          type: 'warning',
+        });
+        continue;
+      }
+      break; // 找到有效任务
+    }
+    if (pendingTaskQueue.length === 0) { syncQueueDisplay(); return; }
+
+    const nextTask = pendingTaskQueue.shift();
+    syncQueueDisplay(); // 任务出队后同步展示
+
+    // 孤儿记录清理
+    const orphanRecs = taskExecutionRecords.value.filter(
+      r => r.status === 'running' && r.name === nextTask.name
+    );
+    if (orphanRecs.length > 0) {
+      orphanRecs.forEach(r => {
+        r.status = 'timeout';
+        r.elapsedStr = '超时（队列启动前孤儿清理）';
+        r.endTime = Date.now();
+      });
+    }
+
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `▶️ [${source}] 从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
+      type: 'info',
+    });
+
+    // 立即锁定（同步设置，防止竞态）
+    _scheduledTaskGeneration++; // 递增代数，使旧任务的 finally 知道自己已被替代
+    isScheduledTaskRunning.value = true;
+    currentScheduledTask = nextTask;
+    scheduledTaskStartTime = Date.now();
+    lastTaskExecution = Date.now();
+    try { localStorage.setItem(`lastTaskExecution_${nextTask.id}`, Date.now().toString()); } catch (e) { /* ignore */ }
+
+    // 异步执行任务（executeScheduledTask 的 finally 会调用 processPendingQueue 消费下一个）
+    executeScheduledTask(nextTask).catch(error => {
+      console.error(`[${source}] 队列任务执行错误:`, error);
+    });
+  } finally {
+    _isProcessingQueue = false;
+  }
+};
 
 // =====================
 // 任务完成情况持久化与自动清空机制
@@ -11566,44 +11695,8 @@ const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) =>
     // 重置单账号加速标志
     batchSettings.singleAccountMode = false;
     
-    // ✅ 修复 Bug #1: 手动任务结束后，尝试消费 pendingTaskQueue
-    // 防止定时任务被"静默丢失"
-    setTimeout(() => {
-      // 如果队列中有待执行任务且当前没有定时任务运行
-      if (pendingTaskQueue.length > 0 && !isScheduledTaskRunning.value) {
-        const nextTask = pendingTaskQueue.shift();
-        // ✅ 修复：检查任务时间是否仍然有效，过期的队列任务不再启动（其余过期任务由调度器兜底清理）
-        const timeCheck = isTaskTimeStillValid(nextTask, 60);
-        if (!timeCheck.valid) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `⏰ 手动任务完成后，跳过已过期的队列任务: ${nextTask.name}（${timeCheck.reason}）`,
-            type: "warning",
-          });
-          return;
-        }
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `▶️ 手动任务完成，开始执行队列任务：${nextTask.name}`,
-          type: "info",
-        });
-                    
-        // ✅ 启动新任务
-        isScheduledTaskRunning.value = true;
-        currentScheduledTask = nextTask;
-        scheduledTaskStartTime = Date.now();
-        
-        // 执行任务
-        executeScheduledTask(nextTask).catch(error => {
-          console.error('队列任务执行失败:', error);
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `❌ 队列任务执行失败: ${error.message}`,
-            type: 'error'
-          });
-        });
-      }
-    }, 1000); // 延迟 1 秒确保状态完全释放
+    // ✅ 修复 Bug #1: 手动任务结束后，通过统一入口消费 pendingTaskQueue
+    setTimeout(() => processPendingQueue('manual'), 1000);
   }
 };
 
@@ -11772,6 +11865,8 @@ const healthCheck = () => {
           message: "=== 检测到定时任务执行已超过 2 小时，已强制结束 ===",
           type: "warning",
         });
+        // ✅ 强制结束后消费队列，避免排队任务等待下一个调度器 tick
+        setTimeout(() => processPendingQueue('healthCheck'), 500);
       }
     }
   }
@@ -11809,6 +11904,8 @@ const healthCheck = () => {
         message: `=== 检测到 isRunning=false 但定时任务 [${taskName}] 状态未清理（持续${Math.round(elapsed/60000)}分钟），已兜底重置${orphanCount ? `，标记${orphanCount}条孤儿记录为 timeout` : ''} ===`,
         type: "warning",
       });
+      // ✅ 兆底重置后消费队列，避免排队任务等待下一个调度器 tick
+      setTimeout(() => processPendingQueue('stale5m'), 500);
     }
   }
 
@@ -11872,6 +11969,8 @@ const healthCheck = () => {
         message: `⚠️ 定时任务[${taskName}]已无活跃进度达${Math.round(elapsed/1000)}秒（层${triggerLayer}），调度器已强制释放${orphanCount ? `（标记${orphanCount}条孤儿记录）` : ''}`,
         type: "warning",
       });
+      // ✅ stale 释放后消费队列，避免排队任务等待下一个调度器 tick
+      setTimeout(() => processPendingQueue(`stale${triggerLayer}`), 500);
     }
   }
 
@@ -11987,6 +12086,7 @@ const startScheduler = () => {
               // ✅ 加入待执行队列（仅定时任务之间互斥）
               if (!pendingTaskQueue.some(t => t.id === task.id)) {
                 pendingTaskQueue.push(task);
+                syncQueueDisplay(); // 同步响应式展示
                 addLog({
                   time: currentTime,
                   message: `⏸️ 定时任务 ${task.name} 加入待执行队列（当前：${currentScheduledTask.name} 执行中，队列：${pendingTaskQueue.length}）`,
@@ -12039,6 +12139,7 @@ const startScheduler = () => {
             }
 
             // 设置任务执行状态并立即更新lastTaskExecution
+            _scheduledTaskGeneration++; // 递增代数，使旧任务的 finally 知道自己已被替代
             isScheduledTaskRunning.value = true;
             currentScheduledTask = task;
             scheduledTaskStartTime = Date.now(); // ✅ 记录任务开始时间
@@ -12055,55 +12156,6 @@ const startScheduler = () => {
             }).finally(() => {
               // ✅ 确保任务完成后更新 lastTaskExecution
               lastTaskExecution = Date.now();
-              
-              // ✅ 修复 Bug #1: 队列消费时绕过 lastTaskExecution 防重检查
-              // ✅ 修复：此处仅作兜底消费路径（executeScheduledTask 的 finally 已优先消费队列），
-              // 必须先检查互斥状态与任务时效，否则会与已启动的队列任务并发执行（两个定时任务同时跑导致执行错乱）
-              if (pendingTaskQueue.length > 0) {
-                setTimeout(() => {
-                  // 互斥检查：finally 兜底路径可能已启动新任务
-                  if (isScheduledTaskRunning.value || pendingTaskQueue.length === 0) return;
-                  // 跳过已过期的队列任务
-                  let nextTask = null;
-                  while (pendingTaskQueue.length > 0) {
-                    const peek = pendingTaskQueue[0];
-                    const timeCheck = isTaskTimeStillValid(peek, 60);
-                    if (!timeCheck.valid) {
-                      pendingTaskQueue.shift();
-                      addLog({
-                        time: new Date().toLocaleTimeString(),
-                        message: `⏰ 跳过已过期的队列任务: ${peek.name}（${timeCheck.reason}，剩余队列: ${pendingTaskQueue.length}）`,
-                        type: "warning",
-                      });
-                      continue;
-                    }
-                    nextTask = pendingTaskQueue.shift();
-                    break;
-                  }
-                  if (!nextTask) return;
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `▶️ 定时任务完成，开始执行队列任务：${nextTask.name}`,
-                    type: "info",
-                  });
-                              
-                  // ✅ 启动新任务（直接设置状态，不经过 scheduler tick 的防重检查）
-                  isScheduledTaskRunning.value = true;
-                  currentScheduledTask = nextTask;
-                  scheduledTaskStartTime = Date.now();
-                  // ✅ 写入 localStorage 防止浏览器崩溃
-                  localStorage.setItem(
-                    `lastTaskExecution_${nextTask.id}`,
-                    new Date().toString()
-                  );
-                                  
-                  executeScheduledTask(nextTask).catch(error => {
-                    console.error(`队列任务执行错误:`, error);
-                  }).finally(() => {
-                    lastTaskExecution = Date.now();
-                  });
-                }, 1000);
-              }
             });
         }
       });
@@ -12128,73 +12180,8 @@ const startScheduler = () => {
       });
       // =============================================
       
-      // ✅ 调度器尼底：如果队列中有等待任务且当前无定时任务运行，主动消费队列（跳过已过期任务）
-      // 定时任务优先：即使日常任务正在执行，定时任务也可以启动
-      if (pendingTaskQueue.length > 0 && !isScheduledTaskRunning.value) {
-        // 循环清理已过期任务，找到第一个有效的执行
-        while (pendingTaskQueue.length > 0) {
-          const peekTask = pendingTaskQueue[0];
-          const timeCheck = isTaskTimeStillValid(peekTask, 60);
-
-          if (!timeCheck.valid) {
-            pendingTaskQueue.shift();
-            addLog({
-              time: currentTime,
-              message: `⏰ 兜底跳过已过期队列任务: ${peekTask.name}（${timeCheck.reason}，剩余队列: ${pendingTaskQueue.length}）`,
-              type: "warning",
-            });
-            continue;
-          }
-
-          // 找到有效任务，正式出队并执行
-          const nextTask = pendingTaskQueue.shift();
-          // ✅ 启动前安全检查：检测孤儿 running 记录
-          const orphanRecords = taskExecutionRecords.value.filter(
-            r => r.status === 'running' && r.name === nextTask.name
-          );
-          if (orphanRecords.length > 0) {
-            orphanRecords.forEach(r => {
-              r.status = 'timeout';
-              r.elapsedStr = '超时（兜底启动前孤儿清理）';
-              r.endTime = Date.now();
-            });
-            addLog({
-              time: currentTime,
-              message: `⚠️ 兜底启动 ${nextTask.name} 前检测到${orphanRecords.length}条孤儿 running 记录，已标记为 timeout`,
-              type: "warning",
-            });
-          }
-          addLog({
-            time: currentTime,
-            message: `▶️ 调度器兜底：从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
-            type: "info",
-          });
-          isScheduledTaskRunning.value = true;
-          currentScheduledTask = nextTask;
-          scheduledTaskStartTime = Date.now();
-          lastTaskExecution = Date.now();
-          executeScheduledTask(nextTask).catch(error => {
-            console.error(`兜底队列任务执行错误:`, error);
-          }).finally(() => {
-            lastTaskExecution = Date.now();
-            // ✅ 写入 localStorage
-            localStorage.setItem(
-              `lastTaskExecution_${nextTask.id}`,
-              now.toString()
-            );
-          });
-          return; // 已找到有效任务并执行，退出兜底逻辑
-        }
-
-        // 队列全部过期，已清空
-        if (pendingTaskQueue.length === 0) {
-          addLog({
-            time: currentTime,
-            message: `✅ 兜底消费：队列中所有任务均已过期，已清空`,
-            type: "info",
-          });
-        }
-      }
+      // ✅ 调度器兜底：通过统一入口消费队列
+      processPendingQueue('scheduler');
     
       // ✅ 调度器统一处理延迟刷新：在所有任务处理和队列处理完毕后，检查是否需要刷新页面
       // ✅ 使用统一的刷新安全检查（含账号任务活跃度与即将触发的定时任务）
@@ -12677,6 +12664,9 @@ const executeScheduledTask = async (task) => {
   let availableTokens = [];
   // ✅ originalMaxActive 提升到函数级作用域，确保 finally 块能访问
   let originalMaxActive = batchSettings.maxActive;
+  // ✅ 捕获当前任务代数，finally 块中用于判断自己是否仍是当前任务
+  // 场景：stale 检测强制释放后新任务已启动，旧任务的 finally 不应覆盖新任务状态
+  const _myGeneration = _scheduledTaskGeneration;
   
   // ✅ 在函数开始处就设置状态(调用者已设置,这里做防御性检查)
   if (!isScheduledTaskRunning.value) {
@@ -14043,99 +14033,37 @@ saveTaskExecutionRecordsToStorage();
       );
     }
     
-    // 清除任务执行状态
-    isScheduledTaskRunning.value = false;
-    currentScheduledTask = null;
-    scheduledTaskStartTime = null; // ✅ 清除超时计时
-    // 重置单账号加速标志
-    batchSettings.singleAccountMode = false;
-    // ✅ 统一在此处重置 isRunning（不再在子任务 finally 中重置，避免竞态窗口）
-    if (isRunning.value) {
-      isRunning.value = false;
-      currentRunningTokenId.value = null;
-    }
-
-    // ✅ 任务完成后，同步处理待执行队列（不再用 nextTick，避免与调度器兖底竞态）
-    // ✅ 用 try-catch 包裹，防止队列处理抛出同步错误导致整个 finally 提前退出
-    try {
-      if (pendingTaskQueue.length > 0) {
-        // 循环清理已过期任务，找到第一个仍然有效的任务执行
-        while (pendingTaskQueue.length > 0) {
-          const nextTask = pendingTaskQueue[0]; // 只peek，不先shift
-          const timeCheck = isTaskTimeStillValid(nextTask, 60);
-
-          if (!timeCheck.valid) {
-            pendingTaskQueue.shift(); // 移除过期任务
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `⏰ 跳过已过期的队列任务: ${nextTask.name}（${timeCheck.reason}，剩余队列: ${pendingTaskQueue.length}）`,
-              type: "warning",
-            });
-            continue; // 继续检查下一个
-          }
-
-          // 找到了时间有效的任务
-          pendingTaskQueue.shift(); // 正式出队
-          // ✅ 定时任务仅与其他定时任务互斥，日常任务执行中也可以启动定时任务
-          if (!isScheduledTaskRunning.value) {
-            // ✅ 启动前孤儿检查
-            const orphanRecs = taskExecutionRecords.value.filter(
-              r => r.status === 'running' && r.name === nextTask.name
-            );
-            if (orphanRecs.length > 0) {
-              orphanRecs.forEach(r => {
-                r.status = 'timeout';
-                r.elapsedStr = '超时（finally 启动前孤儿清理）';
-                r.endTime = Date.now();
-              });
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⚠️ 队列启动 ${nextTask.name} 前检测到${orphanRecs.length}条孤儿记录，已标记为 timeout`,
-                type: "warning",
-              });
-            }
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `▶️ 从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
-              type: "info",
-            });
-            isScheduledTaskRunning.value = true; // 立即锁定，防止兖底逻辑竞态
-            currentScheduledTask = nextTask;
-            scheduledTaskStartTime = Date.now();
-            executeScheduledTask(nextTask).catch(error => {
-              console.error(`队列任务执行错误:`, error);
-            }).finally(() => {
-              lastTaskExecution = Date.now();
-              // ✅ Bug #5: 写入 localStorage
-              localStorage.setItem(
-                `lastTaskExecution_${nextTask.id}`,
-                Date.now().toString()
-              );
-            });
-          } else {
-            // 另一个定时任务正在执行，放回队列等待
-            pendingTaskQueue.unshift(nextTask);
-          }
-          return; // 已处理，退出
-        }
-
-        // 队列已全部清空（全部过期）
-        if (pendingTaskQueue.length === 0) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `✅ 队列中所有任务均已过期，已清空`,
-            type: "info",
-          });
-        }
-      }
-    } catch (queueError) {
-      console.error(`[定时任务 finally] 队列处理异常:`, queueError);
+    // ✅ 检查自己是否仍是当前任务（代数未变 → 没有被 stale 检测替代 → 安全清理）
+    // 如果代数已变，说明新任务已启动，跳过状态重置避免覆盖新任务
+    const _isMyCleanup = (_myGeneration === _scheduledTaskGeneration);
+    if (!_isMyCleanup) {
+      console.warn(
+        `[${new Date().toISOString()}] 任务 [${task.name}] 的 finally 检测到代数已变（我的=${_myGeneration}, 当前=${_scheduledTaskGeneration}），跳过状态重置避免覆盖新任务`
+      );
       addLog({
         time: new Date().toLocaleTimeString(),
-        message: `⚠️ 定时任务结束后队列处理异常: ${queueError.message}，调度器将在下次 tick 继续处理`,
-        type: "warning",
+        message: `⚠️ 任务 [${task.name}] 已被 stale 检测替代，finally 跳过状态重置`,
+        type: 'warning',
       });
     }
+
+    // 清除任务执行状态（仅当自己仍是当前任务时）
+    if (_isMyCleanup) {
+      isScheduledTaskRunning.value = false;
+      currentScheduledTask = null;
+      scheduledTaskStartTime = null; // ✅ 清除超时计时
+      // 重置单账号加速标志
+      batchSettings.singleAccountMode = false;
+      // ✅ 统一在此处重置 isRunning（不再在子任务 finally 中重置，避免竞态窗口）
+      if (isRunning.value) {
+        isRunning.value = false;
+        currentRunningTokenId.value = null;
+      }
+    }
+
+    // ✅ 任务完成后，通过统一入口消费队列（延迟 500ms 确保状态完全释放）
+    // 即使被 stale 替代也尝试消费（processPendingQueue 内部有 isScheduledTaskRunning 守卫）
+    setTimeout(() => processPendingQueue('finally'), 500);
 
     // ✅ 不在 finally 块中立即触发刷新
     // 改为由调度器 10 秒 tick 统一检查 shouldRefreshAfterTask 并在无任务运行时刷新
@@ -19222,57 +19150,8 @@ const startBatch = async () => {
   // 重置单账号加速标志
   batchSettings.singleAccountMode = false;
   
-  // ✅ 日常任务结束后，主动消费定时任务队列
-  if (pendingTaskQueue.length > 0 && !isScheduledTaskRunning.value) {
-    while (pendingTaskQueue.length > 0) {
-      const nextTask = pendingTaskQueue[0];
-      const timeCheck = isTaskTimeStillValid(nextTask, 60);
-      
-      if (!timeCheck.valid) {
-        pendingTaskQueue.shift();
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `⏰ 日常任务完成后，跳过已过期的队列任务: ${nextTask.name}（${timeCheck.reason}）`,
-          type: "warning",
-        });
-        continue;
-      }
-      
-      // 找到有效任务，出队并执行
-      pendingTaskQueue.shift();
-      // ✅ 启动前孤儿检查
-      const orphanRecs = taskExecutionRecords.value.filter(
-        r => r.status === 'running' && r.name === nextTask.name
-      );
-      if (orphanRecs.length > 0) {
-        orphanRecs.forEach(r => {
-          r.status = 'timeout';
-          r.elapsedStr = '超时（日常任务结束后启动前孤儿清理）';
-          r.endTime = Date.now();
-        });
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `⚠️ 日常任务结束后启动 ${nextTask.name} 前检测到${orphanRecs.length}条孤儿记录，已标记为 timeout`,
-          type: "warning",
-        });
-      }
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `▶️ 日常任务结束后，从队列执行定时任务: ${nextTask.name}（剩余队列: ${pendingTaskQueue.length}）`,
-        type: "info",
-      });
-      isScheduledTaskRunning.value = true;
-      currentScheduledTask = nextTask;
-      scheduledTaskStartTime = Date.now();
-      lastTaskExecution = Date.now();
-      executeScheduledTask(nextTask).catch(error => {
-        console.error(`日常任务完成后队列任务执行错误:`, error);
-      }).finally(() => {
-        lastTaskExecution = Date.now();
-      });
-      break; // 每次只启动一个定时任务
-    }
-  }
+  // ✅ 日常任务结束后，通过统一入口消费定时任务队列
+  setTimeout(() => processPendingQueue('daily'), 500);
   
   // 检查是否需要在任务完成后刷新页面
   // ✅ 使用统一的刷新安全检查，避免刷新中断任务或丢失即将触发的定时任务
@@ -19861,6 +19740,98 @@ html[data-theme="dark"] .tr-header-actions {
 
 html[data-theme="dark"] .tr-empty {
   color: #666;
+}
+
+/* 队列状态区域 */
+.tr-queue-section {
+  background: linear-gradient(135deg, #f0f7ff 0%, #e8f4f8 100%);
+  border: 1px solid #d0e8f7;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+html[data-theme="dark"] .tr-queue-section {
+  background: linear-gradient(135deg, #1a2332 0%, #1e2d3d 100%);
+  border-color: #2a3f52;
+}
+.tr-queue-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+html[data-theme="dark"] .tr-queue-title {
+  color: #a0c4e8;
+}
+.tr-queue-icon {
+  font-size: 14px;
+}
+.tr-queue-current,
+.tr-queue-waiting {
+  margin-bottom: 6px;
+}
+.tr-queue-label {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+html[data-theme="dark"] .tr-queue-label {
+  color: #8899aa;
+}
+.tr-queue-task,
+.tr-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(255,255,255,0.6);
+  border-radius: 4px;
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+html[data-theme="dark"] .tr-queue-task,
+html[data-theme="dark"] .tr-queue-item {
+  background: rgba(255,255,255,0.05);
+}
+.tr-queue-task-name {
+  font-weight: 500;
+  color: #2c3e50;
+  flex: 1;
+}
+html[data-theme="dark"] .tr-queue-task-name {
+  color: #c8d8e8;
+}
+.tr-queue-task-time {
+  font-size: 11px;
+  color: #888;
+  font-family: monospace;
+}
+.tr-queue-index {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #e0e7ef;
+  color: #555;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+html[data-theme="dark"] .tr-queue-index {
+  background: #2a3f52;
+  color: #8899aa;
+}
+.tr-queue-empty {
+  font-size: 12px;
+  color: #999;
+  text-align: center;
+  padding: 4px;
 }
 
 .tr-list {
