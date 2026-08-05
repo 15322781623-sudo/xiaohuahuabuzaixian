@@ -4719,8 +4719,6 @@ const handleHangUp = async () => {
         batchSettings = JSON.parse(batchSettingsRaw);
       } else {
         batchSettings = {
-          hangUpMinTime: 9,
-          hangUpTimeControlEnabled: false,
           defaultRetryCount: 2,
           retryDelay: 60000,
         };
@@ -4728,8 +4726,6 @@ const handleHangUp = async () => {
     } catch (error) {
       console.error("读取batchSettings失败，使用默认值:", error);
       batchSettings = {
-        hangUpMinTime: 9,
-        hangUpTimeControlEnabled: false,
         defaultRetryCount: 2,
         retryDelay: 60000,
       };

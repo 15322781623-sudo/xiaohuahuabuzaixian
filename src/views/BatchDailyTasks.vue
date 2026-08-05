@@ -3305,6 +3305,12 @@
                 </template>
                 编辑
               </n-button>
+              <n-button size="small" @click="copyTask(task)">
+                <template #icon>
+                  <n-icon><CopyOutline /></n-icon>
+                </template>
+                复制
+              </n-button>
               <n-button
                 size="small"
                 type="info"
@@ -3964,7 +3970,7 @@
               </n-alert>
               <div class="settings-grid-responsive">
                 <div class="setting-item-responsive">
-                  <label class="setting-label-responsive">最低品质</label>
+                  <label class="setting-label-responsive" title="车辆品质达到此等级即可发车，0为不限制品质">最低品质</label>
                   <n-select
                     v-model:value="taskForm.smartDeparture.carMinColor"
                     :options="[
@@ -3980,19 +3986,19 @@
                   />
                 </div>
                 <div class="setting-item-responsive">
-                  <label class="setting-label-responsive">金砖 >=</label>
+                  <label class="setting-label-responsive" title="车辆奖励中含金砖数量达到此值才满足条件，0为不限制">金砖 >=</label>
                   <n-input-number v-model:value="taskForm.smartDeparture.goldThreshold" :min="0" :step="100" size="small" class="input-responsive" />
                 </div>
                 <div class="setting-item-responsive">
-                  <label class="setting-label-responsive">招募令 >=</label>
+                  <label class="setting-label-responsive" title="车辆奖励中招募令数量达到此值才满足条件，0为不限制">招募令 >=</label>
                   <n-input-number v-model:value="taskForm.smartDeparture.recruitThreshold" :min="0" :step="10" size="small" class="input-responsive" />
                 </div>
                 <div class="setting-item-responsive">
-                  <label class="setting-label-responsive">白玉 >=</label>
+                  <label class="setting-label-responsive" title="车辆奖励中白玉数量达到此值才满足条件，0为不限制">白玉 >=</label>
                   <n-input-number v-model:value="taskForm.smartDeparture.jadeThreshold" :min="0" :step="100" size="small" class="input-responsive" />
                 </div>
                 <div class="setting-item-responsive">
-                  <label class="setting-label-responsive">刷新券 >=</label>
+                  <label class="setting-label-responsive" title="车辆奖励中刷新券数量达到此值才满足条件，0为不限制">刷新券 >=</label>
                   <n-input-number v-model:value="taskForm.smartDeparture.ticketThreshold" :min="0" :step="1" size="small" class="input-responsive" />
                 </div>
                 <div class="setting-item-responsive">
@@ -4002,6 +4008,13 @@
                 <div class="setting-item-responsive">
                   <label class="setting-label-responsive" title="开启后，满足自定义条件(金砖/招募令/白玉/刷新券)时，车辆还必须达到最低品质才会发车">品质必须同时满足</label>
                   <n-switch v-model:value="taskForm.smartDeparture.requireMinColorWithConditions" size="small">
+                    <template #checked>开</template>
+                    <template #unchecked>关</template>
+                  </n-switch>
+                </div>
+                <div class="setting-item-responsive">
+                  <label class="setting-label-responsive" title="开启后，必须满足自定义条件才发车；关闭后，自定义条件或品质任一满足即发车">自定义优先</label>
+                  <n-switch v-model:value="taskForm.smartDeparture.customPriority" size="small">
                     <template #checked>开</template>
                     <template #unchecked>关</template>
                   </n-switch>
@@ -4103,10 +4116,19 @@
               </n-alert>
               <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
                 <div style="display: flex; align-items: center;">
+                  <span style="font-size: 14px; margin-right: 8px;">期次：</span>
+                  <n-select
+                    v-model:value="taskForm.apexGuessSeason"
+                    :options="[{ label: '第一期', value: 1 }, { label: '第二期', value: 2 }]"
+                    size="small"
+                    style="width: 100px;"
+                  />
+                </div>
+                <div style="display: flex; align-items: center;">
                   <span style="font-size: 14px; margin-right: 8px;">赛程：</span>
                   <n-select
                     v-model:value="taskForm.apexGuessScheduleId"
-                    :options="[{ label: '64强', value: 20 }, { label: '32强', value: 21 }, { label: '16强', value: 22 }, { label: '8强', value: 23 }, { label: '4强', value: 24 }, { label: '季军赛', value: 25 }, { label: '决赛', value: 26 }]"
+                    :options="taskFormApexScheduleOptions"
                     size="small"
                     style="width: 120px;"
                   />
@@ -4262,14 +4284,14 @@
             </n-divider>
             <div class="settings-grid-responsive">
               <div class="setting-item-responsive">
-                <label class="setting-label-responsive">启用条件检查</label>
+                <label class="setting-label-responsive" title="总开关，开启后才会检查下方的自定义条件(金砖/招募令/白玉/刷新券)，关闭则只按保底品质判断">启用条件检查</label>
                 <n-switch v-model:value="batchSettings.smartDepartureEnabled" size="small" @update:value="autoSaveBatchSettings">
                   <template #checked>开</template>
                   <template #unchecked>关</template>
                 </n-switch>
               </div>
               <div class="setting-item-responsive">
-                <label class="setting-label-responsive">保底车辆颜色</label>
+                <label class="setting-label-responsive" title="车辆品质达到此等级即可发车，0为不限制品质">保底车辆颜色</label>
                 <n-select
                   v-model:value="batchSettings.carMinColor"
                   :options="[
@@ -4285,24 +4307,31 @@
                 />
               </div>
               <div class="setting-item-responsive">
-                <label class="setting-label-responsive">金砖 >=</label>
+                <label class="setting-label-responsive" title="车辆奖励中含金砖数量达到此值才满足条件，0为不限制">金砖 >=</label>
                 <n-input-number v-model:value="batchSettings.smartDepartureGoldThreshold" :min="0" :step="100" size="small" class="input-responsive" />
               </div>
               <div class="setting-item-responsive">
-                <label class="setting-label-responsive">招募令 >=</label>
+                <label class="setting-label-responsive" title="车辆奖励中招募令数量达到此值才满足条件，0为不限制">招募令 >=</label>
                 <n-input-number v-model:value="batchSettings.smartDepartureRecruitThreshold" :min="0" :step="10" size="small" class="input-responsive" />
               </div>
               <div class="setting-item-responsive">
-                <label class="setting-label-responsive">白玉 >=</label>
+                <label class="setting-label-responsive" title="车辆奖励中白玉数量达到此值才满足条件，0为不限制">白玉 >=</label>
                 <n-input-number v-model:value="batchSettings.smartDepartureJadeThreshold" :min="0" :step="100" size="small" class="input-responsive" />
               </div>
               <div class="setting-item-responsive">
-                <label class="setting-label-responsive">刷新券 >=</label>
+                <label class="setting-label-responsive" title="车辆奖励中刷新券数量达到此值才满足条件，0为不限制">刷新券 >=</label>
                 <n-input-number v-model:value="batchSettings.smartDepartureTicketThreshold" :min="0" :step="1" size="small" class="input-responsive" />
               </div>
               <div class="setting-item-responsive">
                 <label class="setting-label-responsive" title="开启后，满足自定义条件(金砖/招募令/白玉/刷新券)时，车辆还必须达到最低品质才会发车">品质必须同时满足</label>
                 <n-switch v-model:value="batchSettings.requireMinColorWithConditions" size="small" @update:value="autoSaveBatchSettings">
+                  <template #checked>开</template>
+                  <template #unchecked>关</template>
+                </n-switch>
+              </div>
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive" title="开启后，必须满足自定义条件才发车；关闭后，自定义条件或品质任一满足即发车">自定义优先</label>
+                <n-switch v-model:value="batchSettings.customPriority" size="small" @update:value="autoSaveBatchSettings">
                   <template #checked>开</template>
                   <template #unchecked>关</template>
                 </n-switch>
@@ -4462,22 +4491,11 @@
               </div>
             </div>
             
-            <!-- 合并显示：挂机时间控制 + 换皮闯关设置 + 功法赠送设置 -->
+            <!-- 换皮闯关设置 + 功法赠送设置 -->
             <n-divider title-placement="left" style="margin: 16px 0 12px 0">
-              <span style="font-size: 14px; font-weight: 600;">⏰ 挂机时间控制 | ⚔️ 换皮闯关设置 | 💻 功法赠送设置</span>
+              <span style="font-size: 14px; font-weight: 600;">⚔️ 换皮闯关设置 | 💻 功法赠送设置</span>
             </n-divider>
             <div class="settings-grid-responsive-3cols">
-              <!-- 挂机时间控制 -->
-              <div class="setting-group-merged">
-                <div class="setting-item-responsive">
-                  <label class="setting-label-responsive" title="是否启用挂机时间控制">启用时间控制</label>
-                  <n-switch v-model:value="batchSettings.hangUpTimeControlEnabled" @update:value="autoSaveBatchSettings" />
-                </div>
-                <div class="setting-item-responsive" v-if="batchSettings.hangUpTimeControlEnabled">
-                  <label class="setting-label-responsive" title="领取挂机奖励和加钟的最小挂机时间">最小挂机时间 (小时)</label>
-                  <n-input-number v-model:value="batchSettings.hangUpMinTime" :min="1" :max="24" :step="1" size="small" class="input-responsive" />
-                </div>
-              </div>
               
               <!-- 换皮闯关设置 -->
               <div class="setting-group-merged">
@@ -4688,8 +4706,14 @@
           <!-- 顶部操作栏：赛程选择 + 批量操作 -->
           <div style="margin-bottom: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <n-select
+              v-model:value="apexGuessSeason"
+              :options="[{ label: '第一期', value: 1 }, { label: '第二期', value: 2 }]"
+              style="width: 90px"
+              size="small"
+            />
+            <n-select
               v-model:value="apexGuessScheduleId"
-              :options="[{ label: '64强', value: 20 }, { label: '32强', value: 21 }, { label: '16强', value: 22 }, { label: '8强', value: 23 }, { label: '4强', value: 24 }, { label: '季军赛', value: 25 }, { label: '决赛', value: 26 }]"
+              :options="apexGuessScheduleOptions"
               style="width: 110px"
               size="small"
             />
@@ -4697,6 +4721,7 @@
               获取对阵列表
             </n-button>
             <span v-if="apexGuessLoading" style="color: #999; font-size: 12px;">加载中...</span>
+            <span v-if="apexGuessDetectedScheduleId > 0 && apexGuessScheduleId === 0 && !apexGuessLoading" style="color: #18a058; font-size: 12px;">✓ 已检测到：{{ allApexScheduleLabels[apexGuessDetectedScheduleId] || apexGuessDetectedScheduleId }}</span>
             <div style="flex: 1; min-width: 8px;"></div>
             <n-button size="tiny" :type="'info'" ghost :disabled="apexGuessMatchList.length === 0" @click="apexGuessPickAll('left')">全押蓝方</n-button>
             <n-button size="tiny" :type="'error'" ghost :disabled="apexGuessMatchList.length === 0" @click="apexGuessPickAll('right')">全押红方</n-button>
@@ -6522,9 +6547,38 @@ const saltCupBetLoading = ref(false);
 // ======================
 const showApexGuessModal = ref(false);
 const apexGuessLoading = ref(false);
-const apexGuessScheduleId = ref(21); // 20=64强 21=32强 22=16强 23=8强 24=4强 25=季军赛 26=决赛
+// 期次配置：每期7个赛程，scheduleId = seasonBase + offset(0~6)
+const APEX_SEASONS = [
+  { value: 1, label: '第一期', base: 20 },
+  { value: 2, label: '第二期', base: 27 },
+];
+const APEX_ROUND_NAMES = ['64强', '32强', '16强', '8强', '4强', '季军赛', '决赛'];
+const apexGuessSeason = ref(2); // 默认第二期
+const apexGuessScheduleId = ref(0); // 0=自动检测
+const apexGuessDetectedScheduleId = ref(0); // 自动检测后实际使用的赛程ID
 const apexGuessMatchList = ref([]); // [{ left, right, picked: 'left'|'right'|null }]
 const apexGuessPickedCount = computed(() => apexGuessMatchList.value.filter(m => m.picked).length);
+// 根据选定期次动态生成赛程选项
+const apexGuessScheduleOptions = computed(() => {
+  const season = APEX_SEASONS.find(s => s.value === apexGuessSeason.value) || APEX_SEASONS[APEX_SEASONS.length - 1];
+  const opts = [{ label: '自动检测', value: 0 }];
+  APEX_ROUND_NAMES.forEach((name, i) => opts.push({ label: name, value: season.base + i }));
+  return opts;
+});
+// 所有期次的赛程标签（用于日志显示）
+const allApexScheduleLabels = computed(() => {
+  const labels = { 0: '自动检测' };
+  APEX_SEASONS.forEach(s => {
+    APEX_ROUND_NAMES.forEach((name, i) => { labels[s.base + i] = `${s.label}${name}`; });
+  });
+  return labels;
+});
+// 切换期次时重置赛程选择和检测结果，避免赛程ID与新期次不匹配
+watch(apexGuessSeason, () => {
+  apexGuessScheduleId.value = 0;
+  apexGuessDetectedScheduleId.value = 0;
+  apexGuessMatchList.value = [];
+});
 
 // ======================
 // Apex Cheering Feature (竞技大厅助威)
@@ -6997,10 +7051,36 @@ const applyApexVote = async () => {
   }
 
   const isAllVote = apexVoteCount.value === 0;
+  const availableTokens = [...selectedTokens.value];
+  const taskStartTime = Date.now();
 
-  for (const tokenId of selectedTokens.value) {
+  // ✅ 初始化所有账号状态为 waiting
+  availableTokens.forEach(id => { tokenStatus.value[id] = 'waiting'; });
+
+  // ✅ 创建任务记录
+  const taskRecordIndex = taskExecutionRecords.value.push({
+    name: '竞技大厅助威',
+    startTime: taskStartTime,
+    endTime: null,
+    elapsedStr: null,
+    status: 'running',
+    totalAccounts: availableTokens.length,
+    successCount: 0,
+    failCount: 0,
+    runningCount: availableTokens.length,
+    progressPercent: 0,
+    failedAccounts: [],
+    scheduledTime: null,
+    isManual: true,
+  }) - 1;
+
+  // ✅ 清理失败原因缓存
+  availableTokens.forEach(tokenId => { delete tokenFailReasons.value[tokenId]; });
+
+  for (const tokenId of availableTokens) {
     const token = tokens.value.find(t => t.id === tokenId);
-    
+    tokenStatus.value[tokenId] = 'running';
+
     // Ensure connection
     const status = tokenStore.getWebSocketStatus(tokenId);
     if (status === "connecting") {
@@ -7094,6 +7174,7 @@ const applyApexVote = async () => {
         message: `[${token.name}] ✅ 助威成功！赠送 ${voteCnt} 次`,
         type: "success",
       });
+      tokenStatus.value[tokenId] = 'completed';
 
       await new Promise(r => setTimeout(r, 500)); // 防止限流
     } catch (error) {
@@ -7106,13 +7187,45 @@ const applyApexVote = async () => {
         message: `[${token.name}] ❌ 助威失败：${errMsg}`,
         type: "error",
       });
+      tokenStatus.value[tokenId] = 'failed';
+      tokenFailReasons.value[tokenId] = errMsg;
     }
   }
 
-  // 关闭所有账号的连接，释放连接槽
-  for (const tokenId of selectedTokens.value) {
+  // ✅ 关闭所有账号的连接，释放连接槽
+  for (const tokenId of availableTokens) {
     tokenStore.closeWebSocketConnection(tokenId);
   }
+
+  // ✅ 更新任务记录
+  const taskElapsed = Date.now() - taskStartTime;
+  const taskElapsedStr = taskElapsed >= 60000
+    ? `${Math.floor(taskElapsed / 60000)}分${Math.floor((taskElapsed % 60000) / 1000)}秒`
+    : `${(taskElapsed / 1000).toFixed(1)}秒`;
+
+  let successCount = 0, failCount = 0;
+  const failedAccounts = [];
+  availableTokens.forEach(id => {
+    if (tokenStatus.value[id] === 'completed') successCount++;
+    else if (tokenStatus.value[id] === 'failed') {
+      failCount++;
+      const t = tokens.value.find(t => t.id === id);
+      failedAccounts.push({ name: t?.name || '未知', error: tokenFailReasons.value[id] || '未知错误', time: new Date().toLocaleTimeString() });
+    }
+  });
+
+  const record = taskExecutionRecords.value[taskRecordIndex];
+  if (record) {
+    record.endTime = Date.now();
+    record.elapsedStr = taskElapsedStr;
+    record.successCount = successCount;
+    record.failCount = failCount;
+    record.runningCount = 0;
+    record.progressPercent = 100;
+    record.failedAccounts = failedAccounts;
+    record.status = failCount === 0 ? 'success' : (successCount > 0 ? 'partial' : 'fail');
+  }
+  saveTaskExecutionRecordsToStorage();
 
   // 关闭弹窗
   showApexCheerModal.value = false;
@@ -7654,6 +7767,7 @@ const handleSaltCupBet = async (matchId, pick) => {
 const openApexGuessModal = () => {
   showApexGuessModal.value = true;
   apexGuessMatchList.value = [];
+  apexGuessDetectedScheduleId.value = 0;
 };
 
 const fetchApexGuessList = async () => {
@@ -7680,10 +7794,52 @@ const fetchApexGuessList = async () => {
       await new Promise(r => setTimeout(r, 2000));
     }
 
+    // ✅ 自动检测赛程：当选择“自动检测”时，根据选定的期次范围从高到低尝试
+    let actualScheduleId = apexGuessScheduleId.value;
+    const _season = APEX_SEASONS.find(s => s.value === apexGuessSeason.value) || APEX_SEASONS[APEX_SEASONS.length - 1];
+    const _roundLabels = {};
+    APEX_ROUND_NAMES.forEach((name, i) => { _roundLabels[_season.base + i] = name; });
+    if (actualScheduleId === 0) {
+      // 从决赛到64强降序尝试
+      const candidateSchedules = [];
+      for (let i = APEX_ROUND_NAMES.length - 1; i >= 0; i--) candidateSchedules.push(_season.base + i);
+      let detected = false;
+      for (const candidateId of candidateSchedules) {
+        try {
+          const testRes = await tokenStore.sendMessageWithPromise(tokenId, "apex_getguesslist", { scheduleId: candidateId, idx: 0 }, 5000);
+          if (testRes?.apexGuessList && testRes.apexGuessList.length > 0) {
+            actualScheduleId = candidateId;
+            apexGuessDetectedScheduleId.value = candidateId;
+            detected = true;
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `✅ 自动检测到当前活跃赛程：${_season.label}${_roundLabels[candidateId]}`,
+              type: "success",
+            });
+            break;
+          }
+        } catch (e) {
+          // 该赛程无数据或出错，继续尝试下一个
+        }
+      }
+      if (!detected) {
+        apexGuessDetectedScheduleId.value = 0;
+        message.warning("自动检测未找到活跃赛程");
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `⚠️ 自动检测未找到活跃赛程`,
+          type: "warning",
+        });
+        return;
+      }
+    } else {
+      apexGuessDetectedScheduleId.value = actualScheduleId;
+    }
+
     const matches = [];
     let idx = 0;
     for (let page = 0; page < 40; page++) {
-      const res = await tokenStore.sendMessageWithPromise(tokenId, "apex_getguesslist", { scheduleId: apexGuessScheduleId.value, idx }, 5000);
+      const res = await tokenStore.sendMessageWithPromise(tokenId, "apex_getguesslist", { scheduleId: actualScheduleId, idx }, 5000);
       const list = res?.apexGuessList;
       if (!Array.isArray(list) || list.length === 0) break;
       for (const pair of list) {
@@ -7736,7 +7892,9 @@ const handleApexGuess = async () => {
     return;
   }
   showApexGuessModal.value = false;
-  await batchApexGuess(apexGuessScheduleId.value, teamIds);
+  // 使用自动检测后的实际赛程ID
+  const finalScheduleId = apexGuessScheduleId.value === 0 ? apexGuessDetectedScheduleId.value : apexGuessScheduleId.value;
+  await batchApexGuess(finalScheduleId, teamIds);
 };
 
 // 预设护卫成员状态（账号单独设置弹窗）
@@ -8306,6 +8464,7 @@ const batchSettings = reactive({
   smartDepartureJadeThreshold: 1500,
   smartDepartureTicketThreshold: 4,
   requireMinColorWithConditions: false, // 满足自定义条件时是否还必须满足最低品质
+  customPriority: false, // 自定义优先模式：开启后必须满足自定义条件才发车
   // 分页配置
   tokensPerPage: 20,      // 账号每页显示数量
   logPageSize: 100,       // 日志虚拟滚动每页数量
@@ -8315,11 +8474,8 @@ const batchSettings = reactive({
   defaultRetryCount: 2,             // 默认重试次数
   retryDelay: 10000,                 // 重试延迟(ms)
   accountRetryInterval: 5000,       // 账号间重试间隔(ms)
-  // 挂机时间控制配置
-  hangUpMinTime: 9,                 // 最小挂机时间（小时），默认9小时
-  hangUpTimeControlEnabled: false,  // 是否启用挂机时间控制，默认关闭
   // 宠物合成等级限制
-  petMergeMaxLevelEnabled: false,   // 是否启用宠物合成等级限制，默认关闭
+  petMergeMaxLevelEnabled: true,    // 是否启用宠物合成等级限制，默认开启
   petMergeMaxLevel: 4,              // 合成等级上限（1-7），默认4级
   // 兑换码
   cdkCode: '',                      // 兑换码（定时任务使用）
@@ -8696,12 +8852,14 @@ const taskForm = reactive({
     carMinColor: 4,
     refreshDelay: 2, // 刷新后等待同步延迟（秒）
     requireMinColorWithConditions: false, // 满足自定义条件时是否还必须满足最低品质
+    customPriority: false, // 自定义优先模式
     useGoldRefreshFallback: false, // 强制用金砖刷新
   },
   nightmarePresetIds: [], // 十殿阎罗挑战预设ID列表
   nightmarePresetDelay: 10, // 预设间执行间隔（秒），默认10秒
   saltCupBetPick: 1, // 比赛竞猜选项: 1=主胜, 2=平局, 3=客胜
-  apexGuessScheduleId: 21, // 逐鹿盐山竞猜赛程: 20=64强 21=32强 22=16强 23=8强 24=4强 25=季军赛 26=决赛
+  apexGuessSeason: 2, // 逐鹿盐山竞猜期次: 1=第一期 2=第二期
+  apexGuessScheduleId: 0, // 逐鹿盐山竞猜赛程: 0=自动检测
   apexGuessStrategy: 'power', // 逐鹿盐山竞猜策略: left=全押蓝方 right=全押红方 power=押高战力 cheer=押多助威
   saltRoadBattlefieldId: '', // 天宫助威战场ID（已废弃，保留兼容）
   saltRoadSide: 1, // 天宫助威方向: 1=左军, 2=右军
@@ -8713,7 +8871,17 @@ const taskForm = reactive({
   maxActive: 0, // 任务级并发控制：0=使用全局设置，>0=使用此任务的并发数
 });
 
-// 定时任务配置 - 天宫助威对阵列表获取
+// 定时任务配置 - 根据选定期次动态生成赛程选项
+const taskFormApexScheduleOptions = computed(() => {
+  const season = APEX_SEASONS.find(s => s.value === taskForm.apexGuessSeason) || APEX_SEASONS[APEX_SEASONS.length - 1];
+  const opts = [{ label: '自动检测', value: 0 }];
+  APEX_ROUND_NAMES.forEach((name, i) => opts.push({ label: name, value: season.base + i }));
+  return opts;
+});
+// 定时任务配置：切换期次时重置赛程选择
+watch(() => taskForm.apexGuessSeason, () => {
+  taskForm.apexGuessScheduleId = 0;
+});
 const taskSaltRoadOpponents = ref([]);
 const taskSaltRoadLoading = ref(false);
 
@@ -8789,10 +8957,10 @@ const taskGroupDefinitions = [
   { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
   { name: 'pet', label: '宠物', tasks: ['legion_buy_spotted_egg', 'use_spotted_egg', 'claim_pet_book', 'batch_pet_merge', 'egg_merge_cycle', 'batch_pet_upgrade'] },
   { name: 'nightmare', label: '十殿', tasks: ['batchNightmareChallengePresets', 'nightmare_draw_lottery', 'nightmare_claim_book_reward', 'star_drawturntable', 'batch_star_challenge'] },
-  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchAutumnUseItem', 'batchClaimCdkReward', 'batchClaimApexRewards', 'batchSaltCupBet'] },
+  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchClaimCdkReward', 'batchClaimApexRewards', 'batchSaltCupBet'] },
   { name: 'legacy', label: '功法', tasks: ['batchLegacyHangup', 'batchLegacyClaim', 'batchLegacyGiftSendEnhanced', 'batchLegacyClaimGiftTask'] },
   { name: 'monthly', label: '月度', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items', 'batchSaltRoadCheer', 'batchApexGuess', 'batchApexGuessClaim'] },
-  { name: 'consumeActivity', label: '消耗活动', tasks: ['batchConsumeActivity', 'batchClaimConsumeRewards', 'batchApexCheer', 'batchUseActivityItem', 'batchActivityExchange'] }
+  { name: 'consumeActivity', label: '消耗活动', tasks: ['batchConsumeActivity', 'batchClaimConsumeRewards', 'batchApexCheer', 'batchUseActivityItem', 'batchActivityExchange', 'batchAutumnUseItem'] }
 ];
 
 // 计算属性，根据 taskGroupDefinitions 将 availableTasks 分组
@@ -9096,12 +9264,14 @@ const cancelTaskEdit = () => {
       carMinColor: 4,
       refreshDelay: 2,
       requireMinColorWithConditions: false,
+      customPriority: false,
       useGoldRefreshFallback: false,
     };
     taskForm.nightmarePresetIds = [];
     taskForm.nightmarePresetDelay = 10;
     taskForm.saltCupBetPick = 1;
-    taskForm.apexGuessScheduleId = 21;
+    taskForm.apexGuessSeason = 2;
+    taskForm.apexGuessScheduleId = 0;
     taskForm.apexGuessStrategy = 'power';
     taskForm.saltRoadBattlefieldId = '';
     taskForm.saltRoadSide = 1;
@@ -9224,7 +9394,8 @@ const openTaskModal = () => {
   taskForm.nightmarePresetIds = [];
   taskForm.nightmarePresetDelay = 10;
   taskForm.saltCupBetPick = 1;
-  taskForm.apexGuessScheduleId = 21;
+  taskForm.apexGuessSeason = 2;
+  taskForm.apexGuessScheduleId = 0;
   taskForm.apexGuessStrategy = 'power';
   taskForm.saltRoadBattlefieldId = '';
   taskForm.saltRoadSide = 1;
@@ -9419,11 +9590,14 @@ const editTask = (task) => {
       carMinColor: 4,
       refreshDelay: 2,
       requireMinColorWithConditions: false,
+      customPriority: false,
+      useGoldRefreshFallback: false,
     },
     nightmarePresetIds: task.nightmarePresetIds || [],
     nightmarePresetDelay: task.nightmarePresetDelay || 10,
     saltCupBetPick: task.saltCupBetPick !== undefined ? task.saltCupBetPick : 1,
-    apexGuessScheduleId: task.apexGuessScheduleId !== undefined ? task.apexGuessScheduleId : 21,
+    apexGuessSeason: task.apexGuessSeason !== undefined ? task.apexGuessSeason : 2,
+    apexGuessScheduleId: task.apexGuessScheduleId !== undefined ? task.apexGuessScheduleId : 0,
     apexGuessStrategy: task.apexGuessStrategy || 'power',
     saltRoadBattlefieldId: task.saltRoadBattlefieldId || '',
     saltRoadSide: task.saltRoadSide !== undefined ? task.saltRoadSide : 1,
@@ -9469,6 +9643,13 @@ const editTask = (task) => {
   }
   taskScheduleSelectedGroupIds.value = [];
   showTaskModal.value = true;
+};
+
+// 复制任务：以原任务配置为基础创建新任务（名称加"(副本)"，ID 重新生成）
+const copyTask = (task) => {
+  editTask(task);            // 复用编辑逻辑填充表单
+  editingTask.value = null;  // 标记为新任务，saveTask 会走创建路径
+  taskForm.name = (task.name || '未命名') + ' (副本)';
 };
 
 // 注: validateCronExpression 已从 @/utils/batch 导入
@@ -9702,7 +9883,8 @@ const saveTask = () => {
     nightmarePresetIds: [...(taskForm.nightmarePresetIds || [])],
     nightmarePresetDelay: taskForm.nightmarePresetDelay || 10,
     saltCupBetPick: taskForm.saltCupBetPick || 1,
-    apexGuessScheduleId: taskForm.apexGuessScheduleId || 21,
+    apexGuessSeason: taskForm.apexGuessSeason ?? 2,
+    apexGuessScheduleId: taskForm.apexGuessScheduleId ?? 0,
     apexGuessStrategy: taskForm.apexGuessStrategy || 'power',
     saltRoadBattlefieldId: taskForm.saltRoadBattlefieldId || '',
     saltRoadSide: taskForm.saltRoadSide || 1,
@@ -10379,6 +10561,7 @@ const getFullBatchSettings = () => ({
   smartDepartureJadeThreshold: batchSettings.smartDepartureJadeThreshold,
   smartDepartureTicketThreshold: batchSettings.smartDepartureTicketThreshold,
   requireMinColorWithConditions: batchSettings.requireMinColorWithConditions,
+  customPriority: batchSettings.customPriority,
   tokensPerPage: batchSettings.tokensPerPage,
   logPageSize: batchSettings.logPageSize,
   defaultCommandTimeout: batchSettings.defaultCommandTimeout,
@@ -10386,8 +10569,6 @@ const getFullBatchSettings = () => ({
   defaultRetryCount: batchSettings.defaultRetryCount,
   retryDelay: batchSettings.retryDelay,
   accountRetryInterval: batchSettings.accountRetryInterval,
-  hangUpMinTime: batchSettings.hangUpMinTime,
-  hangUpTimeControlEnabled: batchSettings.hangUpTimeControlEnabled,
   petMergeMaxLevelEnabled: batchSettings.petMergeMaxLevelEnabled,
   petMergeMaxLevel: batchSettings.petMergeMaxLevel,
   dreamPurchaseList: batchSettings.dreamPurchaseList,
@@ -11547,9 +11728,10 @@ const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) =>
     });
   }
   
-  // 清理本次执行相关的失败原因缓存
+  // 清理本次执行相关的失败原因缓存 + 重置 tokenStatus，避免上一个任务的残留状态污染本次记录
   availableTokens.forEach(tokenId => {
     delete tokenFailReasons.value[tokenId];
+    tokenStatus.value[tokenId] = 'waiting';
   });
   
   // 添加任务记录
@@ -13594,15 +13776,13 @@ const executeScheduledTask = async (task) => {
               await taskFunction(null, pickVal, taskMaxConcurrent);
             } else if (taskName === 'batchApexGuess') {
               // 逐鹿盐山竞猜：自动拉取对阵并按策略择队
-              const scheduleId = task.apexGuessScheduleId || 21;
+              let scheduleId = task.apexGuessScheduleId || 0;
               const strategy = task.apexGuessStrategy || 'power';
               const strategyLabels = { left: '全押蓝方', right: '全押红方', power: '押高战力', cheer: '押多助威' };
-              const scheduleLabels = { 20: '64强', 21: '32强', 22: '16强', 23: '8强', 24: '4强', 25: '季军赛', 26: '决赛' };
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⚔️ 逐鹿盐山竞猜：${scheduleLabels[scheduleId] || scheduleId} 按【${strategyLabels[strategy] || strategy}】自动择队`,
-                type: "info",
-              });
+              // 根据期次配置计算赛程范围
+              const _taskSeason = task.apexGuessSeason || 2;
+              const _seasonCfg = APEX_SEASONS.find(s => s.value === _taskSeason) || APEX_SEASONS[APEX_SEASONS.length - 1];
+              const scheduleLabels = allApexScheduleLabels.value;
               // 用第一个账号拉取对阵列表
               const fetchTokenId = availableTokens[0];
               const fetchToken = tokens.value.find(t => t.id === fetchTokenId);
@@ -13628,6 +13808,43 @@ const executeScheduledTask = async (task) => {
               } else {
                 fetchReady = true;
               }
+              // ✅ 自动检测赛程：根据期次范围从高到低尝试
+              if (fetchReady && scheduleId === 0) {
+                const candidateSchedules = [];
+                for (let i = APEX_ROUND_NAMES.length - 1; i >= 0; i--) candidateSchedules.push(_seasonCfg.base + i);
+                for (const candidateId of candidateSchedules) {
+                  try {
+                    const testRes = await tokenStore.sendMessageWithPromise(fetchTokenId, "apex_getguesslist", { scheduleId: candidateId, idx: 0 }, 5000);
+                    if (testRes?.apexGuessList && testRes.apexGuessList.length > 0) {
+                      scheduleId = candidateId;
+                      addLog({
+                        time: new Date().toLocaleTimeString(),
+                        message: `✅ 自动检测到当前活跃赛程：${scheduleLabels[candidateId]}`,
+                        type: "success",
+                      });
+                      break;
+                    }
+                  } catch (e) {
+                    // 该赛程无数据或出错，继续尝试下一个
+                  }
+                }
+                if (scheduleId === 0) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `⚠️ 自动检测未找到活跃赛程，跳过竞猜`,
+                    type: "warning",
+                  });
+                }
+              }
+              // 自动检测失败，跳过竞猜
+              if (scheduleId === 0) {
+                // 已在上方记录警告日志
+              } else {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `⚔️ 逐鹿盐山竞猜：${scheduleLabels[scheduleId] || scheduleId} 按【${strategyLabels[strategy] || strategy}】自动择队`,
+                type: "info",
+              });
               const guessTeamIds = [];
               let guessIdx = 0;
               for (let page = 0; fetchReady && page < 40; page++) {
@@ -13665,6 +13882,7 @@ const executeScheduledTask = async (task) => {
                 // ✅ 修复：显式把任务级并发数传给 batchApexGuess→runStreaming，避免仅靠 batchSettings.maxActive 隐式中继
                 await taskFunction(scheduleId, guessTeamIds, taskMaxConcurrent);
               }
+              } // end else (scheduleId !== 0)
             } else if (taskName === 'batchSaltRoadCheer') {
               // 天宫助威：支持预选军团ID或自动按方向获取
               const side = task.saltRoadSide || 1;
@@ -13697,6 +13915,10 @@ const executeScheduledTask = async (task) => {
                 type: "info",
               });
               await taskFunction(keys);
+            } else if (taskName === 'batchLegacyClaimGiftTask') {
+              // 领取残卷赠送奖励：传入任务级并发数
+              const taskMaxConcurrent = (task.maxActive > 0) ? task.maxActive : (batchSettings.maxActive || 5);
+              await taskFunction(taskMaxConcurrent);
             } else {
               await taskFunction();
             }
@@ -18538,9 +18760,10 @@ const startBatch = async () => {
     });
   }
 
-  // 清理本次执行相关的失败原因缓存
+  // 清理本次执行相关的失败原因缓存 + 重置 tokenStatus，避免上一个任务的残留状态污染本次记录
   availableTokens.forEach(tokenId => {
     delete tokenFailReasons.value[tokenId];
+    tokenStatus.value[tokenId] = 'waiting';
   });
   const _batchTaskRecordIndex = _isFromScheduledTask ? -1 : taskExecutionRecords.value.push({
     name: '日常任务',

@@ -693,20 +693,11 @@ export class DailyTaskRunner {
           return;
         }
         
-        // ✅ Step 2: 判断是否满足领取条件
-        const canClaim = this.batchSettings?.hangUpTimeControlEnabled
-          ? (hangUpStatus.hasData && hangUpStatus.elapsedTime >= ((this.batchSettings.hangUpMinTime || 9) * 3600))
-          : hangUpStatus.hasData; // 开关关闭时，有挂机数据就可以领取
+        // ✅ Step 2: 判断是否满足领取条件（有挂机数据即可领取）
+        const canClaim = hangUpStatus.hasData;
         
         if (!canClaim) {
-          // 不满足领取条件，跳过领取
-          if (this.batchSettings?.hangUpTimeControlEnabled) {
-            const elapsedTime = hangUpStatus.elapsedTime || 0;
-            const minTime = this.batchSettings.hangUpMinTime || 9;
-            this.info(`挂机时间${this.formatTime(elapsedTime)}，未达到${this.formatTime(minTime * 3600)}（${minTime}小时），跳过领取`);
-          } else {
-            this.info(`无挂机数据，跳过领取`);
-          }
+          this.info(`无挂机数据，跳过领取`);
           // ✅ 刷新角色信息（独立try-catch，不影响跳过决策）
           try {
             await this.sendCommand('role_getroleinfo', {}, { timeout: this.getTimeout('role_getroleinfo') });

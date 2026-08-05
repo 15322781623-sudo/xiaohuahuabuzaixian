@@ -14,6 +14,42 @@ export const useChangelogStore = defineStore("changelog", () => {
    */
   const changelogs = ref([
     {
+      version: "v2.46.0",
+      date: "2026-08-05",
+      type: "minor",
+      title: "兼容层、脚本存储与任务记录优化",
+      features: [
+        "逐鹿盐山竞猜新增期次选择器：支持第一期/第二期切换，赛程选项随期次动态变化；自动检测赛程时仅检查当前期次范围，避免跨期次误匹配",
+        "兼容层全面重构（patch.js v11.12）：新增 GM_xmlhttpRequest（fetch 实现，自动过滤 Accept-Encoding 等浏览器管控头，responseHeaders 返回标准 HTTP 头字符串格式）、GM_info（scriptHandler='Tampermonkey'）、GM_getValue/GM_setValue/GM_deleteValue/GM_listValues、GM_addStyle、GM_openInTab、GM_setClipboard、GM_log 等完整 API；unsafeWindow 指向 window",
+        "JS 自定义脚本存储迁移至 IndexedDB：解决 localStorage 5MB 配额不足导致脚本保存失败的问题；首次加载自动从 localStorage 迁移到 IndexedDB，存储空间大幅提升",
+      ],
+      fixes: [
+        "修复任务执行记录状态污染：连续执行多个手动任务时，上一个任务的失败状态(如残卷为0)会被下一个任务(如一键收车)的进度监控误读，导致记录错乱；现每次任务启动前重置所有账号的 tokenStatus 为 waiting，并清理 tokenFailReasons",
+        "竞技大厅助威新增任务完成记录：助威执行完成后会记录成功/失败账号数、耗时、失败原因，与其他手动任务保持一致",
+        "删除未生效的挂机时间控制设置：启用时间控制开关和最小挂机时间配置仅在 dailyTaskRunner 中部分生效，批量任务路径完全忽略，已移除 UI、默认值和逻辑分支",
+        "宠物合成等级限制默认开启：petMergeMaxLevelEnabled 默认值从 false 改为 true，新用户默认启用合成等级上限(4级)",
+      ],
+    },
+    {
+      version: "v2.45.10",
+      date: "2026-08-05",
+      type: "minor",
+      title: "智能发车自定义优先开关与设置说明",
+      fixes: [
+        "新增智能发车“自定义优先”开关：开启后必须满足自定义条件(金砖/招募令/白玉/刷新券)才发车；关闭后自定义条件或品质任一满足即发车(OR 模式)，同时支持任务级和全局配置，任务级优先",
+        "智能发车设置项补充悬浮提示说明：启用条件检查、保底车辆颜色/最低品质、金砖/招募令/白玉/刷新券阈值等选项均增加 title 说明，悬停可查看功能含义",
+      ],
+    },
+    {
+      version: "v2.45.9",
+      date: "2026-08-05",
+      type: "minor",
+      title: "定时任务复制功能",
+      fixes: [
+        "新增定时任务复制功能：任务卡片操作栏新增“复制”按钮，点击后以原任务的全部配置（运行类型、时间、账号、任务、商店配置等）预填表单，任务名称自动加“(副本)”后缀，保存为新任务",
+      ],
+    },
+    {
       version: "v2.45.8",
       date: "2026-08-04",
       type: "patch",

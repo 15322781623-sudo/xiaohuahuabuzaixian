@@ -133,10 +133,15 @@ export function createTasksCar(deps) {
         ? taskSmartDeparture.refreshDelay * 1000
         : _getModuleDelay('default');
 
-      // 任务级"最低品质必须同时满足"覆盖全局设置
+      // 任务级“最低品质必须同时满足”覆盖全局设置
       const effectiveRequireMinColor = (taskSmartDeparture && taskSmartDeparture.enabled && taskSmartDeparture.requireMinColorWithConditions != null)
         ? taskSmartDeparture.requireMinColorWithConditions
         : (batchSettings.requireMinColorWithConditions || false);
+      
+      // 任务级“自定义优先”覆盖全局设置
+      const effectiveCustomPriority = (taskSmartDeparture && taskSmartDeparture.enabled && taskSmartDeparture.customPriority != null)
+        ? taskSmartDeparture.customPriority
+        : (batchSettings.customPriority || false);
 
       // 任务级"强制用金砖刷新"覆盖全局设置
       const effectiveUseGoldRefresh = (taskSmartDeparture && taskSmartDeparture.enabled && taskSmartDeparture.useGoldRefreshFallback != null)
@@ -200,7 +205,7 @@ export function createTasksCar(deps) {
 
           try {
             // processCarForSmartSend 返回处理后的刷新券数量，用于后续车辆判断
-            refreshTickets = await processCarForSmartSend(tokenId, token.name, car, refreshTickets, customConditions, effectiveCarMinColor, effectiveRefreshDelay, effectiveRequireMinColor, effectiveUseGoldRefresh, sortedHelpers, helperUsageMap, tokenHelperPresets);
+            refreshTickets = await processCarForSmartSend(tokenId, token.name, car, refreshTickets, customConditions, effectiveCarMinColor, effectiveRefreshDelay, effectiveRequireMinColor, effectiveUseGoldRefresh, effectiveCustomPriority, sortedHelpers, helperUsageMap, tokenHelperPresets);
           } catch (carError) {
             const errorMsg = carError.message || "未知错误";
             // 12000030/400340/200750/11800010 错误向上抛出，由批次重试逻辑统一处理
@@ -497,12 +502,12 @@ export function createTasksCar(deps) {
   };
 
   /** 处理单辆车的智能发车逻辑，返回处理后的最新刷新券数量 */
-  const processCarForSmartSend = async (tokenId, tokenName, car, refreshTickets, customConditions, carMinColor, refreshDelay, requireMinColorWithConditions, useGoldRefresh, sortedHelpers, helperUsageMap, helperPresets = []) => {
+  const processCarForSmartSend = async (tokenId, tokenName, car, refreshTickets, customConditions, carMinColor, refreshDelay, requireMinColorWithConditions, useGoldRefresh, customPriority, sortedHelpers, helperUsageMap, helperPresets = []) => {
     const effectiveTickets = useGoldRefresh ? 999 : refreshTickets;
     const assignHelperFn = async () => assignHelper(tokenId, tokenName, car, sortedHelpers, helperUsageMap, helperPresets);
 
     // 检查是否直接满足发车条件
-    if (shouldSendCar(car, effectiveTickets, carMinColor, customConditions, useGoldRefresh, requireMinColorWithConditions)) {
+    if (shouldSendCar(car, effectiveTickets, carMinColor, customConditions, useGoldRefresh, requireMinColorWithConditions, customPriority)) {
       await assignHelperFn();
       addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 车辆[${gradeLabel(car.color)}]满足条件，直接发车`, type: "info" });
       await sendCar(tokenId, car);
@@ -564,7 +569,7 @@ export function createTasksCar(deps) {
       await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
 
       // 检查刷新后是否满足条件
-      if (shouldSendCar(car, currentTickets, carMinColor, customConditions, useGoldRefresh, requireMinColorWithConditions)) {
+      if (shouldSendCar(car, currentTickets, carMinColor, customConditions, useGoldRefresh, requireMinColorWithConditions, customPriority)) {
         await assignHelperFn();
         addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 刷新后车辆[${gradeLabel(car.color)}]满足条件，发车`, type: "success" });
         // 等待服务端数据同步，防止刷新后立即发车触发12000030限流

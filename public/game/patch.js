@@ -1,4 +1,8 @@
-// patch.js - 鸟哥之王 v6.2
+// patch.js - 鸟哥之王 v11.12
+// ★ v11.12: 完整 Tampermonkey GM API 兼容层
+//   GM_xmlhttpRequest (fetch实现 + 过滤Accept-Encoding + responseHeaders字符串)
+//   GM_getValue/GM_setValue/GM_deleteValue/GM_listValues (localStorage)
+//   GM_addStyle/GM_openInTab/GM_setClipboard/GM_info/unsafeWindow
 // ★ v5.9: 岚山4.5等脚本延迟到GAME_SCENE_READY后3秒首次执行
 //   (Launcher场景触发GAME_SCENE_READY, 但主游戏场景需要时间初始化)
 // ★ v5.9: GM_xmlhttpRequest走浏览器标准路径 → NativeHttpBridge不拦截用户脚本HTTP
@@ -7,7 +11,7 @@
 (function() {
     'use strict';
 
-    var PATCH_VERSION = 'v11.5';
+    var PATCH_VERSION = 'v11.12';
     if (window.__PATCH_LOADED__) { return; }
     window.__PATCH_LOADED__ = true;
 
@@ -301,6 +305,225 @@
     if (window.wx && typeof window.wx.setClipboard !== 'function') window.wx.setClipboard = _setClip;
     if (window.HSDK && typeof window.HSDK.setClipboard !== 'function') window.HSDK.setClipboard = _setClip;
     if (window.__HORTOR_SDK__ && typeof window.__HORTOR_SDK__.setClipboard !== 'function') window.__HORTOR_SDK__.setClipboard = _setClip;
+
+    // ══════════════════════════════════════════
+    //  ★ v11.12: Tampermonkey GM API 兼容层
+    //    油猴脚本注入后通过全局变量访问 GM_* API，
+    //    此处在脚本注入前预定义所有常用 API
+    // ══════════════════════════════════════════
+
+    // ── unsafeWindow ──
+    window.unsafeWindow = window;
+
+    // ── GM_info ──
+    window.GM_info = {
+        scriptHandler: 'Tampermonkey',
+        version: '5.0',
+        script: {
+            version: '1.0',
+            name: '',
+            namespace: '',
+            description: '',
+            author: '',
+            grant: [],
+            match: [],
+            connect: [],
+            'run-at': 'document-end'
+        },
+        injectInto: 'page'
+    };
+
+    // ── GM_xmlhttpRequest ──
+    //    关键修复：过滤 Accept-Encoding（浏览器自动解压），responseHeaders 返回字符串
+    window.GM_xmlhttpRequest = function(details) {
+        var method = (details.method || 'GET').toUpperCase();
+        var url = details.url;
+        var timeout = details.timeout || 30000;
+
+        console.log('[GM_xhr] ' + method + ' ' + url);
+
+        // 过滤 Accept-Encoding / Host / Origin 等浏览器管控的请求头
+        var blockedHeaders = ['accept-encoding', 'host', 'origin', 'content-length',
+                              'connection', 'transfer-encoding', 'upgrade'];
+        var headers = {};
+        if (details.headers) {
+            Object.keys(details.headers).forEach(function(k) {
+                if (blockedHeaders.indexOf(k.toLowerCase()) === -1) {
+                    headers[k] = details.headers[k];
+                }
+            });
+        }
+
+        var body = details.data || null;
+        var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        var timer = null;
+
+        if (typeof fetch === 'function') {
+            var fetchOpts = {
+                method: method,
+                headers: headers,
+                signal: controller ? controller.signal : undefined
+            };
+            if (body && method !== 'GET' && method !== 'HEAD') {
+                fetchOpts.body = body;
+            }
+
+            fetch(url, fetchOpts).then(function(response) {
+                // 读取所有响应头为标准 HTTP 头字符串
+                var respHeadersStr = '';
+                try {
+                    response.headers.forEach(function(value, key) {
+                        respHeadersStr += key + ': ' + value + '\r\n';
+                    });
+                } catch(e) {}
+
+                return response.text().then(function(text) {
+                    var resp = {
+                        responseText: text,
+                        response: text,
+                        status: response.status,
+                        statusText: response.statusText || '',
+                        readyState: 4,
+                        finalUrl: response.url || url,
+                        responseHeaders: respHeadersStr,
+                        responseXML: null
+                    };
+                    console.log('[GM_xhr] ✅ ' + response.status + ' ' + url + ' (' + text.length + ' chars)');
+                    if (details.onload) {
+                        try { details.onload(resp); } catch(cbErr) {
+                            console.error('[GM_xhr] onload 回调异常:', cbErr.message);
+                        }
+                    }
+                });
+            }).catch(function(err) {
+                var errMsg = (err && err.message) || String(err);
+                console.error('[GM_xhr] ❌ ' + url + ': ' + errMsg);
+                if (details.ontimeout && errMsg.indexOf('abort') !== -1) {
+                    try { details.ontimeout({ responseText: '', status: 0, statusText: 'timeout' }); } catch(e) {}
+                } else if (details.onerror) {
+                    try { details.onerror({ responseText: '', status: 0, statusText: errMsg }); } catch(e) {}
+                }
+            });
+
+            if (timeout > 0) {
+                timer = setTimeout(function() {
+                    if (controller) controller.abort();
+                }, timeout);
+            }
+        } else {
+            // 兜底: XMLHttpRequest
+            var xhr = new XMLHttpRequest();
+            xhr.open(method, url, true);
+            Object.keys(headers).forEach(function(k) {
+                try { xhr.setRequestHeader(k, headers[k]); } catch(e) {}
+            });
+            xhr.timeout = timeout;
+            xhr.onload = function() {
+                var respHeadersStr = '';
+                try {
+                    var rh = xhr.getAllResponseHeaders();
+                    if (rh) respHeadersStr = rh;
+                } catch(e) {}
+                var resp = {
+                    responseText: xhr.responseText || '',
+                    response: xhr.responseText || '',
+                    status: xhr.status,
+                    statusText: xhr.statusText || '',
+                    readyState: xhr.readyState,
+                    finalUrl: xhr.responseURL || url,
+                    responseHeaders: respHeadersStr,
+                    responseXML: xhr.responseXML
+                };
+                console.log('[GM_xhr] ✅ ' + xhr.status + ' ' + url);
+                if (details.onload) {
+                    try { details.onload(resp); } catch(cbErr) {
+                        console.error('[GM_xhr] onload 回调异常:', cbErr.message);
+                    }
+                }
+            };
+            xhr.onerror = function() {
+                console.error('[GM_xhr] ❌ ' + url);
+                if (details.onerror) {
+                    try { details.onerror({ responseText: '', status: 0, statusText: 'network error' }); } catch(e) {}
+                }
+            };
+            xhr.ontimeout = function() {
+                console.error('[GM_xhr] ⏰ timeout ' + url);
+                if (details.ontimeout) {
+                    try { details.ontimeout({ responseText: '', status: 0, statusText: 'timeout' }); } catch(e) {}
+                }
+            };
+            xhr.send(body);
+
+            // 返回 abort 引用
+            return { abort: function() { try { xhr.abort(); } catch(e) {} } };
+        }
+
+        return {
+            abort: function() {
+                if (controller) controller.abort();
+                if (timer) clearTimeout(timer);
+            }
+        };
+    };
+
+    // ── GM_getValue / GM_setValue ──
+    window.GM_getValue = function(key, defaultValue) {
+        try {
+            var raw = localStorage.getItem('GM_' + key);
+            if (raw === null) return defaultValue !== undefined ? defaultValue : undefined;
+            return JSON.parse(raw);
+        } catch(e) {
+            return defaultValue !== undefined ? defaultValue : undefined;
+        }
+    };
+    window.GM_setValue = function(key, value) {
+        try { localStorage.setItem('GM_' + key, JSON.stringify(value)); }
+        catch(e) { console.error('[GM_setValue] 失败:', e); }
+    };
+    window.GM_deleteValue = function(key) {
+        try { localStorage.removeItem('GM_' + key); } catch(e) {}
+    };
+    window.GM_listValues = function() {
+        var keys = [];
+        try {
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i);
+                if (k && k.indexOf('GM_') === 0) keys.push(k.substring(3));
+            }
+        } catch(e) {}
+        return keys;
+    };
+
+    // ── GM_addStyle ──
+    window.GM_addStyle = function(css) {
+        try {
+            var style = document.createElement('style');
+            style.textContent = css;
+            var target = document.head || document.documentElement;
+            if (target) target.appendChild(style);
+            return style;
+        } catch(e) {
+            console.error('[GM_addStyle] 失败:', e);
+        }
+    };
+
+    // ── GM_openInTab ──
+    window.GM_openInTab = function(url) {
+        try { window.open(url, '_blank'); } catch(e) {}
+        return { close: function() {} };
+    };
+
+    // ── GM_setClipboard ──
+    window.GM_setClipboard = function(text) {
+        if (typeof window.setClipboard === 'function') window.setClipboard(text);
+    };
+
+    // ── GM_notification (空实现) ──
+    window.GM_notification = function() {};
+    window.GM_log = function() { console.log.apply(console, ['[GM_log]'].concat(Array.prototype.slice.call(arguments))); };
+
+    console.log('[Patch ' + PATCH_VERSION + '] ✅ Tampermonkey GM API 兼容层已初始化 (GM_xmlhttpRequest/GM_getValue/GM_setValue/GM_addStyle/GM_info/unsafeWindow)');
 
     // ══════════════════════════════════════════
     //  ★ v1.0 核心修复: Canvas尺寸强制同步

@@ -496,6 +496,7 @@ import SingleBinTokenForm from '@/views/TokenImport/singlebin.vue';
 import WxQrcodeForm from '@/views/TokenImport/wxqrcode.vue';
 import { pickAsarFile, restoreAsarFile, requestStoredAsarFile, clearAsarHandle, parseAsarIndex } from '@/utils/localResManager';
 import { ENHANCE_KEY, ENHANCE_CODES_KEY, SCRIPTS_KEY, ENHANCEMENTS, ENHANCE_CODE, DEFAULT_ENABLED, PANEL_ENHANCER_FILE, PANEL_ENHANCER_DEPS, loadScriptFile, buildAndCacheEnhanceCodes } from '@/utils/gameEnhanceConfig';
+import { getKV, setKV } from '@/utils/tokenDb';
 
 const message = useMessage();
 const tokenStore = useTokenStore();
@@ -990,14 +991,41 @@ initLocalRes();
 
 // ★ loadScriptFile 已从 gameEnhanceConfig.js 导入
 
-// 从 localStorage 加载用户自定义脚本
-try {
-  const raw = localStorage.getItem(SCRIPTS_KEY);
-  if (raw) scripts.value = JSON.parse(raw);
-} catch(e) {}
+// 从 IndexedDB 加载用户自定义脚本（localStorage 空间不足时自动迁移）
+(async () => {
+  try {
+    // 优先从 IndexedDB 加载
+    const idbData = await getKV(SCRIPTS_KEY);
+    if (idbData) {
+      scripts.value = idbData;
+      console.log('[JS脚本] 从 IndexedDB 加载成功，共', scripts.value.length, '个');
+      return;
+    }
+    // 回退：尝试 localStorage（兼容旧数据）
+    const raw = localStorage.getItem(SCRIPTS_KEY);
+    if (raw) {
+      const parsedData = JSON.parse(raw);
+      scripts.value = parsedData;
+      console.log('[JS脚本] 从 localStorage 加载成功，共', parsedData.length, '个，正在迁移到 IndexedDB...');
+      // 迁移到 IndexedDB（使用纯对象，避免 Vue Proxy 导致 DataCloneError）
+      await setKV(SCRIPTS_KEY, parsedData);
+      console.log('[JS脚本] 迁移到 IndexedDB 完成');
+    }
+  } catch(e) {
+    console.error('[JS脚本] 加载失败:', e);
+  }
+})();
 
-function saveScriptsToStorage() {
-  localStorage.setItem(SCRIPTS_KEY, JSON.stringify(scripts.value));
+async function saveScriptsToStorage() {
+  try {
+    // 将 Vue 响应式代理转为纯对象，避免 IndexedDB DataCloneError
+    const plainData = JSON.parse(JSON.stringify(scripts.value));
+    await setKV(SCRIPTS_KEY, plainData);
+    console.log('[JS脚本] 保存到 IndexedDB 成功，共', plainData.length, '个');
+  } catch (e) {
+    console.error('[JS脚本] 保存失败:', e);
+    message.error('脚本保存失败：' + (e.message || '存储异常'));
+  }
 }
 
 function saveScript() {

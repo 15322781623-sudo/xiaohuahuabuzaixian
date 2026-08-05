@@ -166,9 +166,10 @@ const checkRewardConditions = (rewards, conditions) => {
  * @param {object} customConditions - 自定义条件 { gold, recruit, jade, ticket }
  * @param {boolean} useGoldRefreshFallback - 是否启用金砖刷新保底
  * @param {boolean} requireMinColorWithConditions - 满足自定义条件时是否还必须满足最低品质
+ * @param {boolean} customPriority - 自定义优先模式：开启后必须满足自定义条件才发车；关闭后自定义或品质任一满足即发车
  * @returns {boolean} - 是否应该发车
  */
-export const shouldSendCar = (car, tickets, minColor = 4, customConditions = {}, useGoldRefreshFallback = false, requireMinColorWithConditions = false) => {
+export const shouldSendCar = (car, tickets, minColor = 4, customConditions = {}, useGoldRefreshFallback = false, requireMinColorWithConditions = false, customPriority = false) => {
   const color = Number(car?.color || 0);
   const rewards = Array.isArray(car?.rewards) ? car.rewards : [];
 
@@ -179,34 +180,47 @@ export const shouldSendCar = (car, tickets, minColor = 4, customConditions = {},
   // 检查自定义条件是否满足
   const customConditionsMet = checkRewardConditions(rewards, customConditions);
 
+  // 品质达标检查
+  const colorMet = color >= minColor;
+
   // 第一优先级: 自定义条件
   if (hasConditions) {
-    // 如果满足自定义条件
-    if (customConditionsMet) {
-      // 如果开启"最低品质必须同时满足"，则还需颜色达标
-      if (requireMinColorWithConditions) {
-        return color >= minColor;
+    // 自定义优先模式：必须满足自定义条件才发车
+    if (customPriority) {
+      if (customConditionsMet) {
+        // 如果开启“最低品质必须同时满足”，则还需颜色达标
+        if (requireMinColorWithConditions) {
+          return colorMet;
+        }
+        return true; // 直接发车（无视颜色）
       }
-      // 否则直接发车（无视颜色）
-      return true;
-    }
-
-    // 不满足自定义条件,需要继续刷新追求自定义条件
-    // 严格模式: 必须达到保底颜色才考虑发车
-    if (useGoldRefreshFallback) {
-      if (color < minColor)
-        return false;
-      // 颜色达标但自定义条件不满足,不发车,继续刷新
+      // 不满足自定义条件，不发车，继续刷新
       return false;
     }
 
-    // 普通模式: 不满足自定义条件时,不发车,应该继续刷新
-    // 除非刷新券不足,否则不应该降级到只看颜色
+    // 非优先模式（OR 模式）：自定义条件或品质任一满足即发车
+    if (customConditionsMet) {
+      if (requireMinColorWithConditions) {
+        return colorMet;
+      }
+      return true;
+    }
+    // 自定义条件不满足，但品质达标也可以发车
+    if (colorMet) {
+      return true;
+    }
+
+    // 两者都不满足
+    // 严格模式: 必须达到保底颜色才考虑发车
+    if (useGoldRefreshFallback) {
+      return false;
+    }
+    // 普通模式: 继续刷新
     return false;
   }
 
   // 没有设置自定义条件,优先按照保底车辆颜色进行发车
-  return color >= minColor;
+  return colorMet;
 };
 
 /**
@@ -327,7 +341,7 @@ export function createCarManager({ tokenStore, connectionManager, batchSettings,
           const hasConditions = customConditions.gold > 0 || customConditions.recruit > 0
             || customConditions.jade > 0 || customConditions.ticket > 0;
 
-          if (shouldSendCar(car, effectiveTickets, batchSettings.carMinColor, customConditions, batchSettings.useGoldRefreshFallback, batchSettings.requireMinColorWithConditions)) {
+          if (shouldSendCar(car, effectiveTickets, batchSettings.carMinColor, customConditions, batchSettings.useGoldRefreshFallback, batchSettings.requireMinColorWithConditions, batchSettings.customPriority)) {
             addLog({
               time: new Date().toLocaleTimeString(),
               message: `${token.name} 车辆[${gradeLabel(car.color)}]满足条件，直接发车`,
@@ -467,7 +481,7 @@ export function createCarManager({ tokenStore, connectionManager, batchSettings,
             } catch (_) {}
 
             // 检查是否满足条件
-            const conditionsMet = shouldSendCar(car, refreshTickets, batchSettings.carMinColor, customConditions, batchSettings.useGoldRefreshFallback, batchSettings.requireMinColorWithConditions);
+            const conditionsMet = shouldSendCar(car, refreshTickets, batchSettings.carMinColor, customConditions, batchSettings.useGoldRefreshFallback, batchSettings.requireMinColorWithConditions, batchSettings.customPriority);
 
             addLog({
               time: new Date().toLocaleTimeString(),

@@ -866,7 +866,7 @@ export function createTasksLegacy(deps) {
    * 批量领取残卷赠送奖励
    * 领取功法赠送任务的奖励（任务ID 1-6）
    */
-  const batchLegacyClaimGiftTask = async () => {
+  const batchLegacyClaimGiftTask = async (maxConcurrent = 0) => {
     if (selectedTokens.value.length === 0)
       return;
     isRunning.value = true;
@@ -926,7 +926,7 @@ export function createTasksLegacy(deps) {
               successCount++;
             }
 
-            await new Promise((r) => setTimeout(r, _getModuleDelay('hero')));
+            await new Promise((r) => setTimeout(r, _getModuleDelay('legacy')));
           } catch (error) {
             const errorMsg = error.message || "";
             // 错误码700010表示任务未达成完成条件，跳过后续所有任务
@@ -985,7 +985,7 @@ export function createTasksLegacy(deps) {
           type: "info",
         });
       }
-    });
+    }, maxConcurrent || undefined);
 
     isRunning.value = false;
     currentRunningTokenId.value = null;

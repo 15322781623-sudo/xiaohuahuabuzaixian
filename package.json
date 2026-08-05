@@ -1,6 +1,6 @@
 {
   "name": "xyzw-token-manager",
-  "version": "2.45.8",
+  "version": "2.46.0",
   "type": "module",
   "description": "XYZW 游戏 Token 管理器 - 支持 Base64 导入和 WebSocket 连接管理",
   "main": "src/main.js",
@@ -66,6 +66,7 @@
     "@vue/tsconfig": "^0.8.1",
     "confbox": "0.2.4",
     "javascript-obfuscator": "^5.4.7",
+    "pngjs": "^7.0.0",
     "sass": "^1.93.2",
     "sharp": "^0.35.3",
     "terser": "^5.48.0",
