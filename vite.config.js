@@ -3,8 +3,81 @@ import vue from "@vitejs/plugin-vue";
 import path from "path";
   import fs from "fs";
 import { fileURLToPath } from "url";
+import { spawn } from "node:child_process";
+import http from "node:http";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * 应用宝协议服务 dev 托管插件：
+ * Web 版浏览器无法拉起本地进程，改由 dev server（Node）托管 yyb-go 的启停，
+ * 前端开关通过 /api/yyb-service/{start|stop|status} 控制（仅 dev 环境生效）
+ */
+function yybServiceDevPlugin() {
+  const yybDir = path.resolve(__dirname, "yyb_go.rar");
+  const exePath = path.join(yybDir, "yyb-go.exe");
+  let child = null;
+
+  const checkRunning = () =>
+    new Promise((resolve) => {
+      const req = http.get("http://127.0.0.1:8000/health", { timeout: 1500 }, (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      });
+      req.on("error", () => resolve(false));
+      req.on("timeout", () => { req.destroy(); resolve(false); });
+    });
+
+  return {
+    name: "yyb-service-dev",
+    configureServer(server) {
+      server.middlewares.use("/api/yyb-service", async (req, res, next) => {
+        const url = (req.url || "").split("?")[0];
+        const send = (obj) => {
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(obj));
+        };
+        if (url === "/status") {
+          return send({ ok: true, running: await checkRunning() });
+        }
+        if (url === "/start") {
+          if (await checkRunning()) return send({ ok: true, already: true });
+          if (!fs.existsSync(exePath)) return send({ ok: false, error: "yyb-go.exe not found" });
+          try {
+            const out = fs.openSync(path.join(yybDir, "yyb-go.log"), "a");
+            const err = fs.openSync(path.join(yybDir, "yyb-go.err.log"), "a");
+            child = spawn(exePath, ["-host", "127.0.0.1", "-port", "8000"], {
+              cwd: yybDir,
+              stdio: ["ignore", out, err],
+              windowsHide: true,
+            });
+            child.on("exit", () => { child = null; });
+            return send({ ok: true });
+          } catch (e) {
+            return send({ ok: false, error: String(e) });
+          }
+        }
+        if (url === "/stop") {
+          // 先走服务自身的优雅停机接口，子进程兼底 kill
+          try {
+            await new Promise((resolve) => {
+              const r = http.request("http://127.0.0.1:8000/shutdown", { method: "POST", timeout: 3000 }, (resp) => { resp.resume(); resp.on("end", resolve); });
+              r.on("error", resolve);
+              r.on("timeout", () => { r.destroy(); resolve(); });
+              r.end();
+            });
+          } catch { /* ignore */ }
+          if (child && child.exitCode === null) {
+            child.kill();
+            child = null;
+          }
+          return send({ ok: true });
+        }
+        next();
+      });
+    },
+  };
+}
 
 async function safeImport(moduleName, humanName) {
   try {
@@ -94,6 +167,7 @@ export default defineConfig(async () => {
   });
 
   const plugins = [
+    yybServiceDevPlugin(),
     routerPlugin && { ...routerPlugin, enforce: "pre" },
     vue(),
     vueDevToolsPlugin,

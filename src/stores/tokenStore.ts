@@ -11,6 +11,7 @@ import { XyzwWebSocketClient } from "@/utils/xyzwWebSocket";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { generateRandomSeed } from "@/utils/randomSeed";
 import { transformToken } from "@/utils/token";
+import { saveBinBackup } from "@/utils/binBackup";
 import { emitPlus } from "./events/index.js";
 import router from "@/router";
 
@@ -23,8 +24,11 @@ declare interface TokenData {
   wsUrl: string | null; // 可选的自定义WebSocket URL
   server: string;
   remark?: string; // 备注信息
-  importMethod?: "manual" | "bin" | "url" | "wxQrcode"; // 导入方式：manual（手动）、bin文件或url链接
+  importMethod?: "manual" | "bin" | "url" | "wxQrcode" | "yybQrcode"; // 导入方式：manual（手动）、bin文件、url链接、微信扫码或应用宝扫码
   sourceUrl?: string; // 当importMethod为url时，存储url链接
+  yybOpenid?: string; // 当importMethod为yybQrcode时，应用宝账号openid（用于免扫码续期）
+  yybServer?: string; // 当importMethod为yybQrcode时，应用宝协议服务地址
+  yybAppId?: string; // 当importMethod为yybQrcode时，小程序AppID
   avatar?: string; // 用户头像URL
   upgradedToPermanent?: boolean; // 是否升级为长期有效
   upgradedAt?: string; // 升级时间
@@ -276,6 +280,10 @@ export const useTokenStore = defineStore("tokens", () => {
       sourceUrl: tokenData.sourceUrl, // Token 来源 URL（用于刷新）
       importMethod: tokenData.importMethod || "manual", // 导入方式：manual 或 url
       avatar: tokenData.avatar || "", // 用户头像
+      // 应用宝扫码相关信息（用于免扫码续期）
+      yybOpenid: tokenData.yybOpenid,
+      yybServer: tokenData.yybServer,
+      yybAppId: tokenData.yybAppId,
     };
 
     gameTokens.value.push(newToken);
@@ -300,7 +308,7 @@ export const useTokenStore = defineStore("tokens", () => {
         updatedToken.expiresAt = expiresAt.toISOString();
       }
 
-      gameTokens.value[index] = updatedToken;
+      gameTokens.value[index] = updatedToken as TokenData;
       return true;
     }
     return false;
@@ -727,10 +735,69 @@ export const useTokenStore = defineStore("tokens", () => {
       } else if (
         gameToken.importMethod === "bin"
         || gameToken.importMethod === "wxQrcode"
+        || gameToken.importMethod === "yybQrcode"
       ) {
         // Bin形式token刷新
         wsLogger.debug(`从 BIN数据刷新Token`);
-        let userToken: ArrayBuffer | null = await getArrayBuffer(tokenId);
+
+        // 应用宝扫码导入的Token：优先通过应用宝协议服务免扫码重新登录，生成全新BIN
+        // （getCode 内部会自动完成 MSDK 凭证续期，实现长期免扫码保活）
+        if (
+          gameToken.importMethod === "yybQrcode"
+          && gameToken.yybOpenid
+          && gameToken.yybServer
+        ) {
+          try {
+            wsLogger.info(`尝试通过应用宝服务免扫码刷新Token: ${gameToken.name}`);
+            const { yybLoginForBin, YYB_DEFAULT_APPID } = await import("@/utils/yybApi");
+            const newBin = await yybLoginForBin(
+              gameToken.yybServer,
+              gameToken.yybOpenid,
+              // 旧版小游戏 appid 已废弃：续期取码必须用 APP 微信开放平台 appid 配对 app-we 通道
+              gameToken.yybAppId && gameToken.yybAppId !== "wx0840558555a454ed"
+                ? gameToken.yybAppId
+                : YYB_DEFAULT_APPID,
+            );
+            const newBinBuffer = newBin.buffer as ArrayBuffer;
+            // 应用宝重新登录返回的BIN serverId 为空，需沿用原角色的区服
+            const oldBinBuffer = await getArrayBuffer(tokenId);
+            let finalBin: ArrayBuffer | Uint8Array = newBin;
+            if (oldBinBuffer) {
+              const parseBin = (buf: ArrayBuffer) => {
+                const msg = g_utils.parse(buf);
+                let data = msg.getData();
+                if (!data && (msg as any)._raw) {
+                  data = { ...(msg as any)._raw };
+                }
+                return data;
+              };
+              const oldData = parseBin(oldBinBuffer);
+              const newData = parseBin(newBinBuffer);
+              if (!oldData?.serverId || !newData) {
+                // 无法保留区服信息时抛出，走外层 catch 回退本地BIN刷新
+                throw new Error("无法合并应用宝BIN的区服信息");
+              }
+              newData.serverId = oldData.serverId;
+              finalBin = g_utils.encode(newData) as ArrayBuffer;
+            }
+            const finalBuffer = finalBin instanceof Uint8Array ? finalBin.buffer as ArrayBuffer : finalBin;
+            await storeArrayBuffer(tokenId, finalBuffer);
+            saveBinBackup(tokenId, finalBuffer);
+            const token = await transformToken(finalBuffer);
+            updateToken(tokenId, {
+              ...gameToken,
+              token,
+              lastRefreshAt: new Date().toISOString(),
+            });
+            refreshSuccess = true;
+            wsLogger.info(`应用宝免扫码刷新Token成功: ${gameToken.name}`);
+          } catch (yybError) {
+            // 应用宝服务不可用或凭证失效时，回退到本地BIN刷新
+            wsLogger.warn(`应用宝免扫码刷新失败，回退本地BIN刷新 [${tokenId}]: ${(yybError as Error).message}`);
+          }
+        }
+
+        let userToken: ArrayBuffer | null = refreshSuccess ? null : await getArrayBuffer(tokenId);
         let usedOldKey = false;
 
         if (!userToken) {
@@ -1432,7 +1499,7 @@ export const useTokenStore = defineStore("tokens", () => {
           // 判断是否需要触发Token刷新
           const refreshCount = disconnectRefreshCount.value[tokenId] || 0;
           const gameToken = gameTokens.value.find((t) => t.id === tokenId);
-          const canRefresh = (gameToken?.importMethod === "bin" || gameToken?.importMethod === "wxQrcode" || gameToken?.importMethod === "url")
+          const canRefresh = (gameToken?.importMethod === "bin" || gameToken?.importMethod === "wxQrcode" || gameToken?.importMethod === "yybQrcode" || gameToken?.importMethod === "url")
             && !refreshingTokenIds.value.has(tokenId)
             && refreshCount < MAX_DISCONNECT_REFRESH;
 
@@ -1945,6 +2012,7 @@ export const useTokenStore = defineStore("tokens", () => {
         token.importMethod === "url"
         || token.importMethod === "bin"
         || token.importMethod === "wxQrcode"
+        || token.importMethod === "yybQrcode"
         || token.upgradedToPermanent
       ) {
         return false;
@@ -1973,6 +2041,7 @@ export const useTokenStore = defineStore("tokens", () => {
       && token.importMethod !== "url"
       && token.importMethod !== "bin"
       && token.importMethod !== "wxQrcode"
+      && token.importMethod !== "yybQrcode"
     ) {
       updateToken(tokenId, {
         upgradedToPermanent: true,

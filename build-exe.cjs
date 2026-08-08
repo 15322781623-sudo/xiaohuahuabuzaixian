@@ -33,6 +33,7 @@ const args = process.argv.slice(2);
 const isDebug = args.includes('--debug');
 const isClean = args.includes('--clean');
 const skipBuild = args.includes('--skip-build');
+const noYyb = args.includes('--no-yyb');
 
 // 版本信息
 const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'));
@@ -102,11 +103,63 @@ function buildFrontend() {
   }
 }
 
+// 确保应用宝协议服务 (yyb-go.exe) 存在，缺失时尝试用便携 Go 构建
+// 返回 true 表示随包分发；--no-yyb 或无 Go 工具链时返回 false（打不含服务的包）
+function ensureYybService() {
+  log.step('检查应用宝协议服务 (yyb-go)...');
+  
+  if (noYyb) {
+    log.warn('按 --no-yyb 参数跳过应用宝服务打包');
+    return false;
+  }
+  
+  const yybDir = path.join(__dirname, 'yyb_go.rar');
+  const yybExe = path.join(yybDir, 'yyb-go.exe');
+  if (fs.existsSync(yybExe)) {
+    log.success('yyb-go.exe 已存在，将随 EXE 一同分发');
+    return true;
+  }
+  
+  const goBin = path.join(__dirname, '.tools', 'go', 'bin', 'go.exe');
+  if (!fs.existsSync(goBin)) {
+    log.warn('未找到 yyb-go.exe 且无便携 Go 工具链（.tools/go），本次打包不包含应用宝服务');
+    log.warn('如需包含：先运行 powershell -File .tools/build-yyb.ps1 构建服务');
+    return false;
+  }
+  
+  log.info('正在构建 yyb-go...');
+  try {
+    execSync(`"${goBin}" build -o yyb-go.exe ./cmd/yyb-go`, {
+      cwd: yybDir,
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        GOCACHE: path.join(__dirname, '.tools', 'gocache'),
+        GOPATH: path.join(__dirname, '.tools', 'gopath'),
+        GOPROXY: 'https://goproxy.cn,direct',
+      },
+    });
+    log.success('yyb-go 构建完成');
+    return true;
+  } catch (error) {
+    log.error('yyb-go 构建失败，可使用 --no-yyb 跳过');
+    process.exit(1);
+  }
+}
+
 // 构建 Tauri EXE
-function buildTauri() {
+function buildTauri(withYyb) {
   log.step('开始构建 Tauri EXE...');
   
-  const buildCmd = isDebug ? 'tauri build --debug' : 'tauri build';
+  let buildCmd = isDebug ? 'tauri build --debug' : 'tauri build';
+  
+  // 不打包应用宝服务时，用配置覆盖清空 resources（避免 tauri 因文件缺失报错）
+  if (!withYyb) {
+    const overridePath = path.join(__dirname, '.tools', 'tauri-no-yyb.json');
+    fs.mkdirSync(path.dirname(overridePath), { recursive: true });
+    fs.writeFileSync(overridePath, JSON.stringify({ bundle: { resources: [] } }));
+    buildCmd += ` --config "${overridePath}"`;
+  }
   
   try {
     execSync(buildCmd, {
@@ -117,6 +170,20 @@ function buildTauri() {
   } catch (error) {
     log.error('Tauri EXE 构建失败');
     process.exit(1);
+  }
+}
+
+// 复制 yyb-go.exe 到 EXE 产物同目录（直接运行 target/release 主程序时能被自动启动逻辑找到）
+function copyYybNextToExe(withYyb) {
+  if (!withYyb) return;
+  const buildType = isDebug ? 'debug' : 'release';
+  const src = path.join(__dirname, 'yyb_go.rar', 'yyb-go.exe');
+  const dest = path.join(__dirname, 'src-tauri', 'target', buildType, 'yyb-go.exe');
+  try {
+    fs.copyFileSync(src, dest);
+    log.success(`yyb-go.exe 已复制到 ${dest}`);
+  } catch (e) {
+    log.warn(`复制 yyb-go.exe 到产物目录失败: ${e.message}`);
   }
 }
 
@@ -174,8 +241,14 @@ async function main() {
     // 构建前端
     buildFrontend();
     
+    // 确保应用宝服务可用
+    const withYyb = ensureYybService();
+    
     // 构建 Tauri
-    buildTauri();
+    buildTauri(withYyb);
+    
+    // 复制应用宝服务到产物目录
+    copyYybNextToExe(withYyb);
     
     // 显示结果
     showBuildResult();

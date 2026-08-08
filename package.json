@@ -1,13 +1,15 @@
 {
   "name": "xyzw-token-manager",
-  "version": "2.46.0",
+  "version": "2.47.0",
   "type": "module",
   "description": "XYZW 游戏 Token 管理器 - 支持 Base64 导入和 WebSocket 连接管理",
   "main": "src/main.js",
   "scripts": {
     "testr": "node ./test/roleToken.js",
     "testd": "node ./test/token.js",
+    "predev": "node scripts/start-yyb.cjs",
     "dev": "vite",
+    "build:yyb": "powershell -ExecutionPolicy Bypass -File .tools/build-yyb.ps1",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext .vue,.js,.ts --fix",

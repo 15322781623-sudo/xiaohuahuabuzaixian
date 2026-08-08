@@ -145,3 +145,13 @@ version.json
 *实现代码.md
 *代码实现.mddds.*.asar
 *.asar
+
+# Portable Go toolchain and build artifacts
+.tools/
+
+# yyb-go 服务运行数据与构建产物（账号凭证库严禁入库）
+yyb_go.rar/resource/db/
+yyb_go.rar/resource/avatars/
+yyb_go.rar/resource/qr/
+yyb_go.rar/*.exe
+yyb_go.rar/*.log
