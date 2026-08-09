@@ -21,6 +21,7 @@ declare module 'vue-router/auto-routes' {
     '/BatchDailyTasks': RouteRecordInfo<'/BatchDailyTasks', '/BatchDailyTasks', Record<never, never>, Record<never, never>>,
     '/CardManager': RouteRecordInfo<'/CardManager', '/CardManager', Record<never, never>, Record<never, never>>,
     '/Changelog': RouteRecordInfo<'/Changelog', '/Changelog', Record<never, never>, Record<never, never>>,
+    '/CloudAdmin': RouteRecordInfo<'/CloudAdmin', '/CloudAdmin', Record<never, never>, Record<never, never>>,
     '/DailyTasks': RouteRecordInfo<'/DailyTasks', '/DailyTasks', Record<never, never>, Record<never, never>>,
     '/Dashboard': RouteRecordInfo<'/Dashboard', '/Dashboard', Record<never, never>, Record<never, never>>,
     '/GameFeatures': RouteRecordInfo<'/GameFeatures', '/GameFeatures', Record<never, never>, Record<never, never>>,
@@ -39,5 +40,6 @@ declare module 'vue-router/auto-routes' {
     '/TokenImport/singlebin': RouteRecordInfo<'/TokenImport/singlebin', '/TokenImport/singlebin', Record<never, never>, Record<never, never>>,
     '/TokenImport/url': RouteRecordInfo<'/TokenImport/url', '/TokenImport/url', Record<never, never>, Record<never, never>>,
     '/TokenImport/wxqrcode': RouteRecordInfo<'/TokenImport/wxqrcode', '/TokenImport/wxqrcode', Record<never, never>, Record<never, never>>,
+    '/TokenImport/yybqrcode': RouteRecordInfo<'/TokenImport/yybqrcode', '/TokenImport/yybqrcode', Record<never, never>, Record<never, never>>,
   }
 }

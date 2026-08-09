@@ -1,4 +1,4 @@
-// HSDK.turnpass 最小化 mock - 鸟哥之王 APK
+﻿// HSDK.turnpass 最小化 mock - 肝王之王 APK
 // 原始文件是反外挂验证码系统，APK环境下无需此功能
 window.HSDK = window.HSDK || {};
 window.HSDK.turnpass = window.HSDK.turnpass || {};

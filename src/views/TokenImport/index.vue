@@ -6,11 +6,62 @@
         <div class="header-content">
           <div class="header-top">
             <img alt="XYZW" class="brand-logo" src="/icons/gangzhongwang.png">
+            <!-- 云端同步入口 -->
+            <div style="position: absolute; right: 96px; top: 50%; transform: translateY(-50%);">
+              <n-button quaternary circle size="small" title="云端配置同步" @click="showCloudSync = true">
+                <template #icon>
+                  <n-icon><CloudOutline /></n-icon>
+                </template>
+              </n-button>
+            </div>
+            <!-- 自动跳转设置入口 -->
+            <div style="position: absolute; right: 48px; top: 50%; transform: translateY(-50%);">
+              <n-popover trigger="click" placement="bottom-end" :show-arrow="false">
+                <template #trigger>
+                  <n-button quaternary circle size="small" title="自动跳转设置">
+                    <template #icon>
+                      <n-icon><TimerOutline /></n-icon>
+                    </template>
+                  </n-button>
+                </template>
+                <div style="width: 240px; padding: 4px 0;">
+                  <div v-for="p in redirectPageStates" :key="p.key" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span>{{ p.label }}自动跳转</span>
+                    <n-switch :value="p.enabled" size="small" @update:value="(on) => toggleRedirectPage(p.key, on)" />
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>倒计时（秒）</span>
+                    <n-input-number
+                      v-model:value="autoRedirectSeconds"
+                      :min="10"
+                      :max="3600"
+                      :step="10"
+                      size="small"
+                      style="width: 110px;"
+                      @update:value="saveRedirectSeconds"
+                    />
+                  </div>
+                  <div style="margin-top: 8px; color: var(--text-tertiary, #999); font-size: 12px;">
+                    各页面独立控制，默认仅首页开启
+                  </div>
+                </div>
+              </n-popover>
+            </div>
             <!-- 主题切换按钮 -->
             <ThemeToggle></ThemeToggle>
           </div>
           <h1>游戏Token管理</h1>
         </div>
+      </div>
+
+      <!-- 自动跳转提示（设置开启后显示，可取消） -->
+      <div v-if="countdown > 0" style="display: flex; align-items: center; margin-top: 8px;">
+        <n-tag type="warning" :bordered="false" size="medium">
+          ⏱ {{ countdown }}秒后自动跳转到批量日常页面
+        </n-tag>
+        <n-button size="small" quaternary type="warning" style="margin-left: 8px;" @click="cancelAutoRedirect">
+          取消跳转
+        </n-button>
       </div>
 
       <!-- Token导入区域（n-modal 替代 a-modal，兼容 Android 10 WebView） -->
@@ -22,12 +73,20 @@
         v-model:show="showImportForm"
       >
         <template #header>
-          <h2 style="margin: 0; display: flex; align-items: center; gap: 6px">
-            <NIcon>
-              <Add></Add>
-            </NIcon>
-            添加游戏Token
-          </h2>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="margin: 0; display: flex; align-items: center; gap: 6px">
+              <NIcon>
+                <Add></Add>
+              </NIcon>
+              添加游戏Token
+            </h2>
+            <n-button size="small" quaternary type="primary" title="登录云端账号恢复配置" @click="showCloudSync = true">
+              <template #icon>
+                <n-icon><CloudOutline /></n-icon>
+              </template>
+              云端账号同步
+            </n-button>
+          </div>
         </template>
         <div class="card-header">
           <!-- 导入方式选择 -->
@@ -37,6 +96,7 @@
             v-model:value="importMethod"
           >
             <n-radio-button value="wxQrcode">微信扫码</n-radio-button>
+            <n-radio-button value="yybQrcode">应用宝扫码</n-radio-button>
             <n-radio-button value="bin">BIN多角色</n-radio-button>
             <n-radio-button value="singlebin">BIN单角色</n-radio-button>
             <n-radio-button value="manual">手动输入</n-radio-button>
@@ -59,6 +119,12 @@
             @cancel="() => (showImportForm = false)"
             @ok="() => (showImportForm = false)"
           ></WxQrcodeForm>
+          <YybQrcodeForm
+            v-if="importMethod === 'yybQrcode'"
+            @cancel="() => (showImportForm = false)"
+            @ok="() => (showImportForm = false)"
+            @switch-wx="() => (importMethod = 'wxQrcode')"
+          ></YybQrcodeForm>
           <BinTokenForm
             v-if="importMethod === 'bin'"
             @cancel="() => (showImportForm = false)"
@@ -312,6 +378,7 @@
                       token.importMethod === 'url'
                         || token.importMethod === 'bin'
                         || token.importMethod === 'wxQrcode'
+                        || token.importMethod === 'yybQrcode'
                         || token.upgradedToPermanent
                         ? 'success'
                         : 'warning'
@@ -321,6 +388,7 @@
                       token.importMethod === "url"
                         || token.importMethod === "bin"
                         || token.importMethod === "wxQrcode"
+                        || token.importMethod === "yybQrcode"
                         || token.upgradedToPermanent
                         ? "长期有效"
                         : "临时存储"
@@ -335,6 +403,7 @@
                       token.importMethod === 'url'
                       || token.importMethod === 'bin'
                       || token.importMethod === 'wxQrcode'
+                      || token.importMethod === 'yybQrcode'
                       || token.upgradedToPermanent
                     )
                   "
@@ -458,13 +527,13 @@
             <div class="item-right">
               <n-tag
                 size="small"
-                :type="token.importMethod === 'url' || token.importMethod === 'bin' || token.importMethod === 'wxQrcode' || token.upgradedToPermanent ? 'success' : 'warning'"
+                :type="token.importMethod === 'url' || token.importMethod === 'bin' || token.importMethod === 'wxQrcode' || token.importMethod === 'yybQrcode' || token.upgradedToPermanent ? 'success' : 'warning'"
                 round
               >
-                {{ token.importMethod === "url" || token.importMethod === "bin" || token.importMethod === "wxQrcode" || token.upgradedToPermanent ? "长期" : "临时" }}
+                {{ token.importMethod === "url" || token.importMethod === "bin" || token.importMethod === "wxQrcode" || token.importMethod === "yybQrcode" || token.upgradedToPermanent ? "长期" : "临时" }}
               </n-tag>
               <n-button
-                v-if="!(token.importMethod === 'url' || token.importMethod === 'bin' || token.importMethod === 'wxQrcode' || token.upgradedToPermanent)"
+                v-if="!(token.importMethod === 'url' || token.importMethod === 'bin' || token.importMethod === 'wxQrcode' || token.importMethod === 'yybQrcode' || token.upgradedToPermanent)"
                 ghost
                 size="tiny"
                 type="success"
@@ -569,6 +638,9 @@
         </div>
       </template>
     </n-modal>
+
+    <!-- 云端配置同步弹窗 -->
+    <CloudSyncModal v-model:show="showCloudSync" />
   </div>
 </template>
 
@@ -578,6 +650,7 @@ import UrlTokenForm from "./url.vue";
 import BinTokenForm from "./bin.vue";
 import singleBinTokenForm from "./singlebin.vue";
 import WxQrcodeForm from "./wxqrcode.vue";
+import YybQrcodeForm from "./yybqrcode.vue";
 
 import { selectedTokenId, useTokenStore } from "@/stores/tokenStore";
 import {
@@ -592,12 +665,16 @@ import {
   Star,
   SyncCircle,
   TrashBin,
+  TimerOutline,
+  CloudOutline,
 } from "@vicons/ionicons5";
 import { NIcon, useDialog, useMessage } from "naive-ui";
 import { h, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { transformToken } from "@/utils/token";
 import useIndexedDB from "@/hooks/useIndexedDB";
+import { useAutoRedirect, useAutoRedirectSettings } from "@/composables/useAutoRedirect";
+import CloudSyncModal from "@/components/Common/CloudSyncModal.vue";
 
 // 接收路由参数
 const props = defineProps({
@@ -903,6 +980,15 @@ const refreshToken = async (token) => {
           );
         }, 500);
       }
+    } else if (
+      token.importMethod === "yybQrcode"
+    ) {
+      // 应用宝扫码导入的Token：通过应用宝协议服务免扫码重新登录（内部失败时自动回退本地BIN刷新）
+      const yybSuccess = await tokenStore.attemptTokenRefresh(token.id, true);
+      if (!yybSuccess) {
+        throw new Error("应用宝免扫码刷新失败，请确认应用宝服务已启动或稍后再试");
+      }
+      message.success("Token刷新成功");
     } else if (
       token.importMethod === "wxQrcode"
       || token.importMethod === "bin"
@@ -1318,6 +1404,7 @@ const refreshAllTokens = async () => {
     (token) =>
       token.importMethod === "url"
       || token.importMethod === "wxQrcode"
+      || token.importMethod === "yybQrcode"
       || token.importMethod === "bin",
   );
   const manualTokens = tokenStore.gameTokens.filter(
@@ -1761,6 +1848,15 @@ const handleUrlParams = async () => {
 // 监听路由参数变化
 watch(() => [props.token, props.api], handleUrlParams, { immediate: false });
 
+// 自动跳转到批量日常页面（Token管理页独立开关，默认关闭）
+const { countdown, startAutoRedirect, cancelAutoRedirect } = useAutoRedirect("tokens");
+
+// 自动跳转设置（各页面独立，与导航栏/个人设置页共用同一配置）
+const { pageStates: redirectPageStates, seconds: autoRedirectSeconds, togglePage: toggleRedirectPage, saveSeconds: saveRedirectSeconds } = useAutoRedirectSettings();
+
+// 云端配置同步弹窗
+const showCloudSync = ref(false);
+
 // 生命周期
 onMounted(async () => {
   tokenStore.initTokenStore();
@@ -1772,6 +1868,9 @@ onMounted(async () => {
   if (!tokenStore.hasTokens && !props.token && !props.api) {
     showImportForm.value = true;
   }
+
+  // 有Token时按配置启动自动跳转倒计时（默认关闭）
+  if (tokenStore.hasTokens) startAutoRedirect();
 });
 </script>
 

@@ -1,4 +1,4 @@
-// patch.js - 鸟哥之王 v11.12
+﻿// patch.js - 肝王之王 v11.12
 // ★ v11.12: 完整 Tampermonkey GM API 兼容层
 //   GM_xmlhttpRequest (fetch实现 + 过滤Accept-Encoding + responseHeaders字符串)
 //   GM_getValue/GM_setValue/GM_deleteValue/GM_listValues (localStorage)

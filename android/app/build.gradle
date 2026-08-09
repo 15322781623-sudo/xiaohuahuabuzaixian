@@ -30,6 +30,13 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    packagingOptions {
+        jniLibs {
+            // libyybgo.so 是可执行文件而非共享库：必须提取到磁盘且不strip
+            useLegacyPackaging = true
+            keepDebugSymbols += ['**/libyybgo.so']
+        }
+    }
     signingConfigs {
         release {
             if (keystorePropertiesFile.exists()) {

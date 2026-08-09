@@ -594,6 +594,20 @@
                 </n-button>
                 <n-button
                   size="small"
+                  @click="executeManualTaskWithRecord('newSkinChallenge', '新区一键换皮闯关', newSkinChallenge)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  新区一键换皮闯关
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('newSkinTreasure', '新区一键换皮寻宝', newSkinTreasure)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  新区一键换皮寻宝
+                </n-button>
+                <n-button
+                  size="small"
                   @click="executeManualTaskWithRecord('batchClaimPeachTasks', '一键领取蟠桃园任务', batchClaimPeachTasks)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
@@ -2017,6 +2031,10 @@
         <div class="st-section">
           <div class="st-section-title"><span class="st-section-icon">⚔️</span>战斗次数</div>
           <div class="st-section-grid st-grid-2">
+            <div class="st-field">
+              <label class="st-label">竞技场</label>
+              <n-select v-model:value="currentTemplate.arenaFightCount" :options="arenaFightCountOptions" size="small" />
+            </div>
             <div class="st-field">
               <label class="st-label">俱乐部BOSS</label>
               <n-select v-model:value="currentTemplate.bossTimes" :options="bossTimesOptions" size="small" />
@@ -4785,7 +4803,7 @@
         <div class="settings-grid" style="display: block;">
           <!-- 获取列表区域 -->
           <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-            <n-button type="primary" @click="fetchApexVoteList" :loading="apexCheerLoading" style="width: 200px; margin-bottom: 0;">
+            <n-button type="primary" @click="fetchApexVoteList" :loading="apexCheerLoading" style="width: 200px; max-width: 100%; margin-bottom: 0;">
               {{ apexCheerLoading ? '加载中...' : '获取可助威俱乐部列表' }}
             </n-button>
             <span style="font-size: 16px;">期次：</span>
@@ -4811,14 +4829,14 @@
           </div>
 
           <!-- 投票数量设置 -->
-          <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+          <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
             <span style="font-size: 16px;">赠送数量：</span>
             <n-input-number 
               v-model:value="apexVoteCount" 
               placeholder="0=全部赠送" 
               :min="0" 
               :max="maxApexVoteCount > 0 ? maxApexVoteCount : 999999" 
-              style="width: 200px"
+              style="width: 200px; max-width: 100%"
             />
             <n-text type="info" style="font-size: 14px;">
               {{ apexVoteCount === 0 ? '全部赠送' : `赠送 ${apexVoteCount} 次` }} | 当前助威币：{{ maxApexVoteCount }}
@@ -4831,7 +4849,7 @@
               v-model:value="apexClubSearch"
               placeholder="搜索俱乐部名称或ID..."
               clearable
-              style="width: 300px"
+              style="width: 300px; max-width: 100%"
               size="small"
             />
           </div>
@@ -4845,11 +4863,12 @@
             :checked-row-keys="selectedApexTeamId ? [selectedApexTeamId] : []"
             @update:checked-row-keys="(keys) => selectedApexTeamId = keys[0]"
             :row-props="apexVoteRowProps"
-            style="height: 500px; flex: 1;"
+            class="apex-cheer-table"
+            style="flex: 1;"
             flex-height
           />
         </div>
-        <div class="modal-actions" style="margin-top: 20px; text-align: right">
+        <div class="modal-actions" style="margin-top: 20px; text-align: right; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px;">
           <n-button @click="applyApexVote" type="primary" :disabled="!selectedApexTeamId || isRunning">
             {{ selectedApexTeamId ? `对队伍"${getSelectedTeamName()}"${apexVoteCount === 0 ? '全部赠送' : `赠送 ${apexVoteCount} 次`}` : '请先选择一个俱乐部' }}
           </n-button>
@@ -5446,6 +5465,7 @@
             class="import-method-tabs"
           >
             <n-radio-button value="wxQrcode">微信扫码</n-radio-button>
+            <n-radio-button value="yybQrcode">应用宝扫码</n-radio-button>
             <n-radio-button value="bin">BIN多角色</n-radio-button>
             <n-radio-button value="singlebin">BIN单角色</n-radio-button>
             <n-radio-button value="manual">手动输入</n-radio-button>
@@ -5468,6 +5488,12 @@
           v-if="addTokenImportMethod === 'wxQrcode'"
           @cancel="() => (showAddTokenModal = false)"
           @ok="() => (showAddTokenModal = false)"
+        />
+        <YybQrcodeForm
+          v-if="addTokenImportMethod === 'yybQrcode'"
+          @cancel="() => (showAddTokenModal = false)"
+          @ok="() => (showAddTokenModal = false)"
+          @switch-wx="() => (addTokenImportMethod = 'wxQrcode')"
         />
         <BinTokenForm
           v-if="addTokenImportMethod === 'bin'"
@@ -5986,6 +6012,7 @@ import UrlTokenForm from "@/views/TokenImport/url.vue";
 import BinTokenForm from "@/views/TokenImport/bin.vue";
 import SingleBinTokenForm from "@/views/TokenImport/singlebin.vue";
 import WxQrcodeForm from "@/views/TokenImport/wxqrcode.vue";
+import YybQrcodeForm from "@/views/TokenImport/yybqrcode.vue";
 import NightmareChallengeCard from "@/components/cards/NightmareChallengeCard.vue";
 import StarTeamCard from "@/components/cards/StarTeamCard.vue";
 import ConsumeActivityCard from "@/components/cards/ConsumeActivityCard.vue";
@@ -6723,23 +6750,26 @@ const filteredApexVoteList = computed(() => {
 });
 
 // 列定义
-const apexVoteColumns = [
+// 手机端适配：窄屏下缩小列宽，队伍名称自适应剩余宽度
+const apexCheerIsMobile = ref(window.innerWidth <= 768);
+const handleApexCheerResize = () => { apexCheerIsMobile.value = window.innerWidth <= 768; };
+const apexVoteColumns = computed(() => [
   {
     type: 'selection',
     multiple: false,
   },
-  { title: 'ID', key: 'teamId', width: 150 },
+  { title: 'ID', key: 'teamId', width: apexCheerIsMobile.value ? 90 : 150, ellipsis: { tooltip: true } },
   { title: '头像', key: 'logo', render(row) {
       return h('img', { src: row.logo, style: { width: '36px', height: '36px', borderRadius: '4px' } });
-  }, width: 80 },
-  { title: '队伍名称', key: 'name', width: 150 },
-  { title: '战力', key: 'power', width: 140, render(row) {
+  }, width: apexCheerIsMobile.value ? 56 : 80 },
+  { title: '队伍名称', key: 'name', ellipsis: { tooltip: true } },
+  { title: '战力', key: 'power', width: apexCheerIsMobile.value ? 90 : 140, render(row) {
       return h('div', null, [formatPower(row.power)]);
     }},
-  { title: '已获助力', key: 'cheerCnt', width: 120, render(row) {
+  { title: '已获助力', key: 'cheerCnt', width: apexCheerIsMobile.value ? 90 : 120, render(row) {
       return h('div', null, [(row.cheerCnt || 0).toLocaleString()]);
     }},
-];
+]);
 
 // 助威商店
 const showLegionStoreModal = ref(false);
@@ -8951,7 +8981,7 @@ const fetchTaskSaltRoadOpponents = async () => {
 const taskGroupDefinitions = [
   { name: 'daily', label: '日常', tasks: ['startBatch', 'batchSimplifiedDaily', 'claimHangUpRewards', 'batchAddHangUpTime', 'batchHangUpUpgrade', 'resetBottles', 'batchlingguanzi', 'batchclubsign', 'batchLegionSignup', 'batchPayloadSignup', 'switchSaltFieldPeachFormation', 'batchStudy', 'batcharenafight', 'batchSmartSendCar', 'batchClaimCars', 'batchCarResearchUpgrade', 'store_purchase', 'batch_mail_claim_and_cleanup'] },
   { name: 'welfare', label: '福利', tasks: ['charge_claimaddup_rewards', 'collection_claimfreereward', 'gacha_drawreward', 'claim_recruit_welfare', 'pkroom_appoint', 'saltcup26_openstarpack_use'] },
-  { name: 'dungeon', label: '副本', tasks: ['climbTower', 'batchmengjing', 'skinChallenge', 'skinTreasure', 'batchClaimPeachTasks', 'batchBuyDreamItems'] },
+  { name: 'dungeon', label: '副本', tasks: ['climbTower', 'batchmengjing', 'skinChallenge', 'skinTreasure', 'newSkinChallenge', 'newSkinTreasure', 'batchClaimPeachTasks', 'batchBuyDreamItems'] },
   { name: 'baoku', label: '宝库', tasks: ['batchbaoku13', 'batchbaoku45'] },
   { name: 'weirdTower', label: '怪异塔', tasks: ['climbWeirdTower', 'batchUseItems', 'batchMergeItems', 'batchClaimFreeEnergy', 'claim_weird_tower_all', 'claim_weird_tower_pass'] },
   { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
@@ -12250,6 +12280,9 @@ const startScheduler = () => {
 
             // ✅ 不上线时段检查（调度器层：最早拦截，避免任何副作用执行）
             if (task.offlineTimeEnabled && isInOfflineTime()) {
+              // 写入触发时间戳：同一分钟内后续 tick 会被上方防重复逻辑静默拦截，
+              // 避免每10秒重复打印一次跳过日志（一分钟内会出现6次）
+              try { localStorage.setItem(`lastTaskExecution_${task.id}`, Date.now().toString()); } catch (e) { /* ignore */ }
               addLog({
                 time: currentTime,
                 message: `🚫 定时任务 ${task.name} 处于不上线时段，跳过执行`,
@@ -12488,6 +12521,8 @@ const setupResponsiveColumns = () => {
 // Debug: Log initial state when component mounts
 onMounted(() => {
   _componentUnmounted = false; // HMR 重新挂载时重置标志
+  // 监听窗口尺寸变化，用于竞技大厅助威弹窗移动端自适应
+  window.addEventListener('resize', handleApexCheerResize);
   // 初始化防休眠支持检测
   wakeLockSupported.value = wakeLockManager.isSupported();
   const envInfo = wakeLockManager.getEnvironmentInfo();
@@ -12577,6 +12612,7 @@ watch(() => route.query.openNightmare, (val) => {
 // Cleanup countdown interval on unmount
 onBeforeUnmount(() => {
   _componentUnmounted = true; // 标记组件已卸载，阻止 interval 回调继续执行
+  window.removeEventListener('resize', handleApexCheerResize);
   if (countdownInterval) {
     clearInterval(countdownInterval);
     countdownInterval = null;
@@ -13213,6 +13249,120 @@ const executeScheduledTask = async (task) => {
         if (precheckSlotHeld) { try { releaseConnectionSlot(); } catch {} precheckSlotHeld = false; }
       }
       } // end of if (!skipDueToNegativeCache)
+    }
+
+    // ✅ 新区换皮检测：通过 towers_getinfo 判断新区闯关是否开启（负缓存防重，同换皮闯关范式）
+    const newSkinTasks = ["newSkinChallenge", "newSkinTreasure"];
+    const hasNewSkinTask = activeTasks.some(t => newSkinTasks.includes(t));
+    if (hasNewSkinTask && availableTokens.length > 0) {
+      const NEW_SKIN_NEGATIVE_CACHE_KEY = 'newSkinChallenge_negativeCache';
+      const NEW_SKIN_NEGATIVE_TTL = 10 * 60 * 1000; // 10 分钟
+      let newSkinSkipDueToNegativeCache = false;
+      try {
+        const negCache = JSON.parse(localStorage.getItem(NEW_SKIN_NEGATIVE_CACHE_KEY) || 'null');
+        if (negCache?.timestamp && (Date.now() - negCache.timestamp) < NEW_SKIN_NEGATIVE_TTL) {
+          const minsAgo = Math.round((Date.now() - negCache.timestamp) / 60000);
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `⏭️ 新区闯关检测：${minsAgo}分钟前已确认活动未开启，10分钟内不再重复检测，直接跳过`,
+            type: "warning",
+          });
+          newSkinSkipDueToNegativeCache = true;
+          return false; // ✅ 直接短路，不建立连接
+        }
+      } catch {}
+
+      if (!newSkinSkipDueToNegativeCache) {
+        // 新区换皮闯关兜底种子 actId（与 tasksTower.js 的 NEW_SERVER_TOWERS_ACT_ID 一致，抓包获取）；优先从 commonActivityInfo 最高 key 推导（maxKey - 2）
+        const NEW_SERVER_TOWERS_ACT_ID = 2603131;
+        const newSkinTestTokenId = availableTokens[0];
+        let newSkinSlotHeld = false; // ✅ 跟踪预检测连接槽位，防止重复释放破坏连接池计数
+        try {
+          await ensureConnection(newSkinTestTokenId);
+          newSkinSlotHeld = true;
+          // ✅ 先从 activity_get commonActivityInfo 最高 key 推导本周新区闯关 actId（maxKey - 2），推导失败回退抓包种子
+          let newSkinActId = NEW_SERVER_TOWERS_ACT_ID;
+          try {
+            const actRes = await tokenStore.sendMessageWithPromise(newSkinTestTokenId, "activity_get", {}, 5000);
+            const commonActivityInfo = actRes?.commonActivityInfo || actRes?.activity?.commonActivityInfo || {};
+            // ✅ 排除普通闯关礼包 key（actEGameInfo.actId + 1），取新区礼包 key 推导 actId = maxKey - 2
+            const actEGameInfo = actRes?.activity?.actEGameInfo || actRes?.actEGameInfo;
+            const normalKey = actEGameInfo?.actId ? String(Number(actEGameInfo.actId) + 1) : null;
+            const giftKeys = Object.keys(commonActivityInfo).filter(k => /\d{6,7}3$/.test(k) && k !== normalKey);
+            if (giftKeys.length > 0) {
+              giftKeys.sort((a, b) => Number(b) - Number(a));
+              newSkinActId = Number(giftKeys[0]) - 2;
+            } else {
+              // ✅ 无新区礼包 key：活动未开启，写入负缓存
+              try {
+                localStorage.setItem(NEW_SKIN_NEGATIVE_CACHE_KEY, JSON.stringify({
+                  timestamp: Date.now(),
+                  reason: 'commonActivityInfo 无新区礼包 key',
+                }));
+              } catch {}
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `=== 定时任务 ${task.name} 包含新区换皮任务，但 commonActivityInfo 无新区礼包 key，新区闯关活动未开启，取消执行（10分钟内不再重复检测） ===`,
+                type: "warning",
+              });
+              try { tokenStore.closeWebSocketConnection(newSkinTestTokenId); } catch {}
+              if (newSkinSlotHeld) { try { releaseConnectionSlot(); } catch {} newSkinSlotHeld = false; }
+              return false;
+            }
+          } catch (deriveErr) {
+            // ✅ activity_get 失败不阻断，回退抓包种子交由 towers_getinfo 判定
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `⚠️ 新区闯关 actId 推导失败: ${deriveErr?.message || deriveErr}，回退抓包种子 ${NEW_SERVER_TOWERS_ACT_ID}`,
+              type: "warning",
+            });
+          }
+          // ✅ towers_getinfo 成功返回即判定新区闯关活动已开启
+          await tokenStore.sendMessageWithPromise(
+            newSkinTestTokenId,
+            "towers_getinfo",
+            { actId: newSkinActId },
+            5000,
+          );
+          // ✅ 服务器确认活动开启，清除负缓存
+          try { localStorage.removeItem(NEW_SKIN_NEGATIVE_CACHE_KEY); } catch {}
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `✅ 新区换皮闯关活动已开启（towers_getinfo actId: ${newSkinActId}）`,
+            type: "success",
+          });
+          tokenStore.closeWebSocketConnection(newSkinTestTokenId);
+          releaseConnectionSlot();
+          newSkinSlotHeld = false;
+        } catch (err) {
+          const errMsg = err?.message || '';
+          if (errMsg.includes('7900021') || errMsg.includes('7900022')) {
+            // ✅ 活动未开启：写入负缓存，10 分钟内不再重复检测
+            try {
+              localStorage.setItem(NEW_SKIN_NEGATIVE_CACHE_KEY, JSON.stringify({
+                timestamp: Date.now(),
+                reason: '新区闯关活动未开启',
+              }));
+            } catch {}
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `=== 定时任务 ${task.name} 包含新区换皮任务，但新区闯关活动未开启（7900021/7900022），取消执行（10分钟内不再重复检测） ===`,
+              type: "warning",
+            });
+            try { tokenStore.closeWebSocketConnection(newSkinTestTokenId); } catch {}
+            if (newSkinSlotHeld) { try { releaseConnectionSlot(); } catch {} newSkinSlotHeld = false; }
+            return false;
+          }
+          // ✅ 其他错误（超时/限流等）不阻断，交由任务函数内部重试验证
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `⚠️ 新区闯关检测请求失败: ${errMsg}，继续执行任务（内部会再次验证）`,
+            type: "warning",
+          });
+          try { tokenStore.closeWebSocketConnection(newSkinTestTokenId); } catch {}
+          if (newSkinSlotHeld) { try { releaseConnectionSlot(); } catch {} newSkinSlotHeld = false; }
+        }
+      }
     }
 
     // 检查任务是否包含宝箱周限制的任务
@@ -17033,7 +17183,7 @@ const tasksBottle = wrapTaskFunctions(createTasksBottle(createTaskDeps()));
 const { resetBottles, batchlingguanzi } = tasksBottle;
 
 const tasksTower = wrapTaskFunctions(createTasksTower(createTaskDeps()));
-const { climbTower, climbWeirdTower, batchClaimFreeEnergy, skinChallenge, skinTreasure, batchUseItems, batchMergeItems } = tasksTower;
+const { climbTower, climbWeirdTower, batchClaimFreeEnergy, skinChallenge, skinTreasure, newSkinChallenge, newSkinTreasure, batchUseItems, batchMergeItems } = tasksTower;
 
 const tasksCar = wrapTaskFunctions(createTasksCar(createTaskDeps()));
 const { batchSmartSendCar, batchClaimCars, batchCarResearchUpgrade } = tasksCar;
@@ -22822,5 +22972,15 @@ html[data-theme="dark"] .st-section-toggle {
   color: #ccc;
   padding: 20px 0;
   font-size: 12px;
+}
+
+/* 竞技大厅助威弹窗 - 俱乐部列表高度移动端自适应 */
+.apex-cheer-table {
+  height: 500px;
+}
+@media (max-width: 768px) {
+  .apex-cheer-table {
+    height: 50vh;
+  }
 }
 </style>

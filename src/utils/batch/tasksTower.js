@@ -1456,10 +1456,17 @@ export function createTasksTower(deps) {
     message.success("批量领取免费道具结束");
   };
 
+  // 新区换皮活动兜底种子参数（抓包获取 2026-08-09：towers_getinfo actId=2603131）
+  // 新区模式优先从 activity_get commonActivityInfo 最高 key（新区免费礼包 key，尾号3）推导闯关 actId = maxKey - 2；礼包 key 未命中时回退该种子
+  // 寻宝活动ID = 闯关actId + 1（即 maxKey - 1）
+  const NEW_SERVER_TOWERS_ACT_ID = 2603131;
+
   /**
   * 换皮闯关（分批并发执行）
+  * @param {Object} [options] - 可选 { fixedActId: 兜底活动ID, newServer: 新区模式(从 commonActivityInfo 最高 key 推导 actId，跳过日期校验), label: 日志名称 }
    */
-  const skinChallenge = async () => {
+  const skinChallenge = async (options = {}) => {
+    const { fixedActId = null, newServer = false, label = '换皮闯关' } = (options && typeof options === 'object') ? options : {};
     if (selectedTokens.value.length === 0) return;
 
     isRunning.value = true;
@@ -1480,7 +1487,7 @@ export function createTasksTower(deps) {
       const token = tokens.value.find((t) => t.id === tokenId);
       const tokenSettings = loadSettings ? (loadSettings(tokenId) || currentSettings) : currentSettings;
 
-      let actId = null;
+      let actId = fixedActId && !newServer ? Number(fixedActId) : null; // 新区模式 fixedActId 仅作兜底种子，优先 commonActivityInfo 推导
 
       // ✅ 单账号整体超时保护（防止 ensureConnection 或 WebSocket 无响应导致永远挂起）
       const SINGLE_ACCOUNT_TIMEOUT = 8 * 60 * 1000; // 8分钟超时
@@ -1495,16 +1502,44 @@ export function createTasksTower(deps) {
       try {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `=== 换皮闯关: ${token.name} ===`,
+          message: `=== ${label}: ${token.name} ===`,
           type: "info",
         });
 
         await ensureConnection(tokenId);
 
-        // 先获取活动信息，从 actEGameInfo.actId 获取换皮闯关活动 ID
-        try {
+        // 先获取活动信息：普通模式从 actEGameInfo.actId 推导换皮闯关 actId；新区模式从 commonActivityInfo 最高 key 推导（maxKey - 2）
+        if (!actId) try {
           const activityRes = await callWithRetry(tokenId, "activity_get", {}, { retries: 1 });
-                    
+
+          if (newServer) {
+            // ✅ 新区模式：排除普通闯关礼包 key（actEGameInfo.actId + 1）后，commonActivityInfo 最高 key 即新区免费礼包 key（尾号3），闯关 actId = maxKey - 2
+            const commonActivityInfo = activityRes?.commonActivityInfo || activityRes?.activity?.commonActivityInfo || {};
+            const actEGameInfo = activityRes?.activity?.actEGameInfo || activityRes?.actEGameInfo;
+            const normalKey = actEGameInfo?.actId ? String(Number(actEGameInfo.actId) + 1) : null;
+            const giftKeys = Object.keys(commonActivityInfo).filter(k => /\d{6,7}3$/.test(k) && k !== normalKey);
+            if (giftKeys.length > 0) {
+              giftKeys.sort((a, b) => Number(b) - Number(a));
+              const maxKey = giftKeys[0];
+              actId = Number(maxKey) - 2;
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} commonActivityInfo 最高 key ${maxKey} 推导新区闯关 actId=${actId}`,
+                type: "info",
+              });
+              console.log(`[${token.name}] 新区闯关从 commonActivityInfo 最高 key ${maxKey} 推导 actId: ${actId}`);
+            } else if (fixedActId) {
+              // ✅ 兜底：礼包 key 完全未命中时使用抓包种子，交由 towers_getinfo 验证
+              actId = Number(fixedActId);
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} commonActivityInfo 无新区礼包 key，回退抓包种子 actId=${actId}，交由 towers_getinfo 验证`,
+                type: "warning",
+              });
+            } else {
+              console.log(`[${token.name}] commonActivityInfo 无新区礼包 key，新区闯关未开启`);
+            }
+          } else {
           // 从 actEGameInfo 获取换皮闯关活动 ID
           // actEGameInfo.actId 为本周活动 ID，减 1 即为 towers_getinfo 的 actId
           const actEGameInfo = activityRes?.activity?.actEGameInfo || activityRes?.actEGameInfo;
@@ -1539,10 +1574,20 @@ export function createTasksTower(deps) {
               }
             } catch {}
           }
+          }
         } catch (e) {
           console.log(`[${token.name}] activity_get 失败:`, e.message);
-          // ✅ 回退：请求失败时也检查缓存
-          try {
+          // ✅ 新区模式兜底：activity_get 失败时使用抓包种子，交由 towers_getinfo 验证
+          if (newServer && !actId && fixedActId) {
+            actId = Number(fixedActId);
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} activity_get 失败，回退抓包种子 actId=${actId}，交由 towers_getinfo 验证`,
+              type: "warning",
+            });
+          }
+          // ✅ 回退：请求失败时也检查缓存（仅普通模式）
+          if (!newServer) try {
             const cache = JSON.parse(localStorage.getItem('skinChallenge_activityCache') || 'null');
             if (cache?.actId && cache?.timestamp && (Date.now() - cache.timestamp) < 24 * 60 * 60 * 1000) {
               actId = Number(cache.actId) - 1;
@@ -1563,7 +1608,7 @@ export function createTasksTower(deps) {
           }
         }
 
-        // 获取换皮闯关信息（传入 actId）
+        // 获取换皮闯关信息（传入 actId，towers_getinfo 实测抓数据动态赋值；7900021/7900022 判定未开启）
         let res;
         let activityNotOpenFlag = false;
         if (actId) {
@@ -1589,10 +1634,10 @@ export function createTasksTower(deps) {
             }
           }
         } else {
-          // actEGameInfo 不存在，活动未开启
+          // 未推导出活动ID，活动未开启
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `${token.name} 换皮闯关活动未开启 (actEGameInfo 不存在)`,
+            message: `${token.name} ${label}活动未开启 (未推导出活动ID)`,
             type: "warning",
           });
           tokenStatus.value[tokenId] = "completed";
@@ -1611,9 +1656,19 @@ export function createTasksTower(deps) {
           throw new Error("获取活动信息失败");
         }
 
-        // 检查活动时间
+        // ✅ 直接用 towers_getinfo 响应返回的 actId 动态赋值，后续 towers_start/towers_fight/刷新均使用服务器实际返回值
+        if (Number(towerData.actId) !== Number(actId)) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} towers_getinfo 返回 actId=${towerData.actId}，已动态替换请求值 ${actId}`,
+            type: "info",
+          });
+        }
+        actId = Number(towerData.actId);
+
+        // 检查活动时间（新区模式跳过，actId 不含有效日期）
         const resActId = String(towerData.actId);
-        if (resActId.length >= 6) {
+        if (!newServer && !fixedActId && resActId.length >= 6) {
           const year = 2000 + parseInt(resActId.substring(0, 2));
           const month = parseInt(resActId.substring(2, 4)) - 1;
           const day = parseInt(resActId.substring(4, 6));
@@ -1647,7 +1702,7 @@ export function createTasksTower(deps) {
           4: [1, 2, 3, 4, 5, 6]  // Thursday
         };
         
-        const todayOpenTowers = openTowerMap[todayWeekDay] || [];
+        const todayOpenTowers = newServer ? [1, 2, 3, 4, 5, 6] : (openTowerMap[todayWeekDay] || []); // ✅ 新区模式：旧赛季换皮不适用星期硬编码，轮巡尝试全部 BOSS，未开放的由 towers_start 错误码（200020/7900021）自动跳过
 
         const isTowerCleared = (type, map) => {
           const key = `${type}008`;
@@ -1690,7 +1745,7 @@ export function createTasksTower(deps) {
           let needStart = true;
           let loop = true;
           let failCount = 0;
-          const MAX_FAIL = batchSettings.skinChallengeMaxFail || 5;
+          const MAX_FAIL = newServer ? 1 : (batchSettings.skinChallengeMaxFail || 5); // ✅ 新区轮巡模式：一次不行就下一个，不重复重试浪费轮巡时间
 
           while (loop && !shouldStop.value && failCount < MAX_FAIL) {
             try {
@@ -1874,7 +1929,7 @@ export function createTasksTower(deps) {
         tokenStatus.value[tokenId] = "completed";
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `=== ${token.name} 换皮闯关结束 ===`,
+          message: `=== ${token.name} ${label}结束 ===`,
           type: "success",
         });
 
@@ -1980,7 +2035,7 @@ export function createTasksTower(deps) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `⚠️ ${token.name} 换皮闯关超时(${elapsed}s)，强制结束: ${timeoutErr.message}`,
+          message: `⚠️ ${token.name} ${label}超时(${elapsed}s)，强制结束: ${timeoutErr.message}`,
           type: "error",
         });
         tokenStatus.value[tokenId] = "failed";
@@ -2060,7 +2115,7 @@ export function createTasksTower(deps) {
     
     isRunning.value = false;
     currentRunningTokenId.value = null;
-    message.success("批量换皮闯关结束");
+    message.success(`批量${label}结束`);
 
     } finally {
       // ✅ 兜底：无论任何异常，确保 isRunning 一定被重置
@@ -2071,8 +2126,10 @@ export function createTasksTower(deps) {
 
   /**
    * 换皮寻宝（寻宝发射 + 闯关免费礼包）
+   * @param {Object} [options] - 可选 { fixedTreasureActId: 兜底寻宝活动ID, newServer: 新区模式(从 commonActivityInfo 最高 key 推导寻宝 actId), label: 日志名称 }
    */
-  const skinTreasure = async () => {
+  const skinTreasure = async (options = {}) => {
+    const { fixedTreasureActId = null, newServer = false, label = '换皮寻宝' } = (options && typeof options === 'object') ? options : {};
     if (selectedTokens.value.length === 0) return;
 
     isRunning.value = true;
@@ -2091,7 +2148,7 @@ export function createTasksTower(deps) {
       try {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `=== 换皮寻宝: ${token.name} ===`,
+          message: `=== ${label}: ${token.name} ===`,
           type: "info",
         });
 
@@ -2102,6 +2159,8 @@ export function createTasksTower(deps) {
         // commonActivityInfo yymmdd3 = 免费礼包界面ID，拼接1 = goodsId（用于 activity_commonbuygoods）
         let treasureActId = null;
         let giftGoodsId = null;
+        let latestGiftKey = null; // ✅ commonActivityInfo 最高 key（新区模式推导寻宝 actId = maxKey - 1）
+        let newServerDeriveFailed = false; // ✅ activity_get 失败标记（新区模式仅此时回退抓包种子）
         try {
           const activityRes = await callWithRetry(tokenId, "activity_get", {}, { retries: 1 });
           // ✅ 移除冗余 debug 日志（2026-07-13 清理）
@@ -2123,10 +2182,18 @@ export function createTasksTower(deps) {
           const commonActivityInfo = activityRes?.commonActivityInfo || activityRes?.activity?.commonActivityInfo || {};
           const giftKeys = Object.keys(commonActivityInfo).filter(k => /\d{6,7}3$/.test(k));
           if (giftKeys.length > 0) {
-            // 取数值最大的 key（即最新的）
+            // 取数值最大的 key（即最新的）；新区模式先排除普通闯关礼包 key（actEGameInfo.actId + 1）取新区礼包 key
             giftKeys.sort((a, b) => Number(b) - Number(a));
-            const latestKey = giftKeys[0];
-            giftGoodsId = Number(`${latestKey}1`);
+            let latestKey = giftKeys[0];
+            if (newServer) {
+              const actEGameInfo = activityRes?.activity?.actEGameInfo || activityRes?.actEGameInfo;
+              const normalKey = actEGameInfo?.actId ? String(Number(actEGameInfo.actId) + 1) : null;
+              latestKey = giftKeys.find(k => k !== normalKey) || null;
+            }
+            if (latestKey) {
+              latestGiftKey = latestKey;
+              giftGoodsId = Number(`${latestKey}1`);
+            }
           } else {
             addLog({
               time: new Date().toLocaleTimeString(),
@@ -2135,11 +2202,46 @@ export function createTasksTower(deps) {
             });
           }
         } catch (e) {
+          newServerDeriveFailed = true;
           addLog({
             time: new Date().toLocaleTimeString(),
             message: `${token.name} 获取寻宝信息失败：${e.message}`,
             type: "warning",
           });
+        }
+
+        // 新区模式：寻宝 actId = commonActivityInfo 最高 key - 1（即推导闯关 actId + 1）；无礼包 key 时回退抓包固定值
+        if (newServer) {
+          if (latestGiftKey) {
+            treasureActId = Number(latestGiftKey) - 1;
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} commonActivityInfo 最高 key ${latestGiftKey} 推导新区寻宝 actId=${treasureActId}`,
+              type: "info",
+            });
+          } else if (newServerDeriveFailed && fixedTreasureActId) {
+            treasureActId = Number(fixedTreasureActId);
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} activity_get 失败，回退抓包种子寻宝 actId=${treasureActId}`,
+              type: "warning",
+            });
+          } else {
+            treasureActId = null; // ✅ 新区礼包 key 不存在，视为活动未开启
+          }
+        } else if (fixedTreasureActId) {
+          treasureActId = Number(fixedTreasureActId);
+        }
+
+        // ✅ 新区模式未推导出新区礼包 key：视为活动未开启，跳过（防止误用普通寻宝数据）
+        if (newServer && !treasureActId) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} ${label}活动未开启 (commonActivityInfo 无新区礼包 key)`,
+            type: "warning",
+          });
+          tokenStatus.value[tokenId] = "completed";
+          return;
         }
 
         // 寻宝发射
@@ -2286,7 +2388,7 @@ export function createTasksTower(deps) {
         tokenStatus.value[tokenId] = "completed";
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `=== ${token.name} 换皮寻宝结束 ===`,
+          message: `=== ${token.name} ${label}结束 ===`,
           type: "success",
         });
 
@@ -2294,7 +2396,7 @@ export function createTasksTower(deps) {
         tokenStatus.value[tokenId] = "failed";
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} 换皮寻宝出错: ${error.message?.substring(0, 100)}`,
+          message: `${token.name} ${label}出错: ${error.message?.substring(0, 100)}`,
           type: "error",
         });
       } finally {
@@ -2304,7 +2406,7 @@ export function createTasksTower(deps) {
 
     isRunning.value = false;
     currentRunningTokenId.value = null;
-    message.success("批量换皮寻宝结束");
+    message.success(`批量${label}结束`);
   };
 
   /**
@@ -2635,6 +2737,9 @@ export function createTasksTower(deps) {
     batchClaimFreeEnergy,
     skinChallenge,
     skinTreasure,
+    // 新区换皮（commonActivityInfo 最高 key 推导 actId=maxKey-2 经 towers_getinfo 验证；寻宝=maxKey-1；礼包 key 未命中时回退抓包种子 2603131）
+    newSkinChallenge: () => skinChallenge({ fixedActId: NEW_SERVER_TOWERS_ACT_ID, newServer: true, label: '新区换皮闯关' }),
+    newSkinTreasure: () => skinTreasure({ fixedTreasureActId: NEW_SERVER_TOWERS_ACT_ID + 1, newServer: true, label: '新区换皮寻宝' }),
     batchUseItems,
     batchMergeItems,
   };

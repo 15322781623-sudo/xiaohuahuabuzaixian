@@ -9,10 +9,11 @@ import java.util.ArrayList;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        
-        // 注册自定义插件
+        // 注册自定义插件（Capacitor 5+ 要求在 super.onCreate 之前调用，否则桥接已初始化导致注册无效）
         registerPlugin(ApkInstallerPlugin.class);
+        registerPlugin(YybServicePlugin.class);
+
+        super.onCreate(savedInstanceState);
         
         // 启用 WebView 调试功能
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {

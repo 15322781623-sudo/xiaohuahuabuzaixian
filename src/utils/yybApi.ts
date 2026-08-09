@@ -28,6 +28,8 @@ const requestFetch: typeof window.fetch = isTauri ? tauriFetch : window.fetch.bi
 
 /** 默认服务地址 */
 export const YYB_DEFAULT_SERVER = "http://127.0.0.1:8000";
+/** Web 生产环境（Pages/worker 无法拉起本地 yyb-go）自动连接的公共代理服务 */
+export const YYB_WEB_FALLBACK_SERVER = "https://8000-d4eb5f34f1c67fdd.monkeycode-ai.online";
 /** 咸鱼之王 Android APP 微信开放平台 AppID（getCode 默认目标，配对 app-we 通道产出游戏服认可的长凭证） */
 export const YYB_DEFAULT_APPID = "wxfb0d5667e5cb1c44";
 /** 旧版小游戏 AppID（仅用于 localStorage 迁移识别） */

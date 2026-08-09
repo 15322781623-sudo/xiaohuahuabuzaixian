@@ -240,6 +240,410 @@ async function getVersionInfo(env) {
   return info;
 }
 
+// ==================== 云端配置同步（登录 + 全量配置上云） ====================
+
+/** 生成随机 hex 字符串 */
+function randomHex(bytes) {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** SHA-256 hex */
+async function sha256Hex(text) {
+  const data = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function cloudJsonResp(obj, status, corsHeaders) {
+  return new Response(JSON.stringify(obj), {
+    status: status || 200,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+/** 通过 Authorization Bearer apiToken 反查用户名 */
+async function authCloudUser(env, request) {
+  const auth = request.headers.get('Authorization') || '';
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  if (!m) return null;
+  const apiToken = m[1].trim();
+  const username = await env.CARD_KV.get(`cloudauthtoken:${apiToken}`);
+  return username || null;
+}
+
+// ==================== 云端配置存储：R2 主存储（CFG_BUCKET），KV 兜底 + 懒迁移 ====================
+const CFG_R2_KEY = (username) => `cloudcfg/${username}`;
+const CFG_KV_KEY = (username) => `cloudcfg:${username}`;
+
+// ---------- 多设备快照：R2 key = cloudcfg/{username}/dev/{device} ----------
+const CFG_SNAPSHOT_PREFIX = (username) => `cloudcfg/${username}/dev/`;
+const sanitizeDeviceName = (device) => String(device || '').trim();
+const isValidDeviceName = (d) => /^[\u4e00-\u9fa5A-Za-z0-9_-]{1,20}$/.test(d);
+const isReservedDeviceName = (d) => d === '默认配置' || d === 'default';
+
+/** 读取配置序列化串：先读 R2；未命中回退 KV 并懒迁移到 R2（迁移后删除 KV 副本释放额度） */
+async function getCloudCfgRaw(env, username) {
+  const bucket = env.CFG_BUCKET;
+  if (bucket) {
+    try {
+      const obj = await bucket.get(CFG_R2_KEY(username));
+      if (obj) return await obj.text();
+    } catch { /* R2 异常回退 KV */ }
+  }
+  const raw = await env.CARD_KV.get(CFG_KV_KEY(username));
+  if (raw && bucket) {
+    try {
+      await bucket.put(CFG_R2_KEY(username), raw);
+      await env.CARD_KV.delete(CFG_KV_KEY(username));
+    } catch { /* 迁移失败保留 KV，下次重试 */ }
+  }
+  return raw;
+}
+
+/** 写入配置：写 R2 并清理 KV 旧副本；未绑定 R2 时回退 KV */
+async function putCloudCfgRaw(env, username, serialized) {
+  if (env.CFG_BUCKET) {
+    await env.CFG_BUCKET.put(CFG_R2_KEY(username), serialized);
+    try { await env.CARD_KV.delete(CFG_KV_KEY(username)); } catch { /* ignore */ }
+  } else {
+    await env.CARD_KV.put(CFG_KV_KEY(username), serialized);
+  }
+}
+
+/** 删除配置：R2 与 KV 同时清理 */
+async function deleteCloudCfg(env, username) {
+  try { if (env.CFG_BUCKET) await env.CFG_BUCKET.delete(CFG_R2_KEY(username)); } catch { /* ignore */ }
+  try { await env.CARD_KV.delete(CFG_KV_KEY(username)); } catch { /* ignore */ }
+}
+
+/** 读取指定设备快照（「默认配置」为旧版单配置别名） */
+async function getCloudCfgSnapshot(env, username, device) {
+  if (device === '默认配置') return await getCloudCfgRaw(env, username);
+  if (!env.CFG_BUCKET) return null;
+  try {
+    const obj = await env.CFG_BUCKET.get(CFG_SNAPSHOT_PREFIX(username) + device);
+    return obj ? await obj.text() : null;
+  } catch { return null; }
+}
+
+/** 写入指定设备快照 */
+async function putCloudCfgSnapshot(env, username, device, serialized, updatedAt) {
+  if (!env.CFG_BUCKET) throw new Error('CFG_BUCKET 未绑定');
+  await env.CFG_BUCKET.put(CFG_SNAPSHOT_PREFIX(username) + device, serialized, {
+    customMetadata: { updatedAt: updatedAt || '' },
+  });
+}
+
+/** 删除指定设备快照（「默认配置」为旧版单配置别名） */
+async function deleteCloudCfgSnapshot(env, username, device) {
+  if (device === '默认配置') { await deleteCloudCfg(env, username); return; }
+  try { if (env.CFG_BUCKET) await env.CFG_BUCKET.delete(CFG_SNAPSHOT_PREFIX(username) + device); } catch { /* ignore */ }
+}
+
+/** 列出全部设备快照（含旧版单配置作为「默认配置」），按更新时间倒序 */
+async function listCloudCfgSnapshots(env, username) {
+  const list = [];
+  if (env.CFG_BUCKET) {
+    try {
+      const page = await env.CFG_BUCKET.list({ prefix: CFG_SNAPSHOT_PREFIX(username) });
+      for (const obj of page.objects) {
+        let updatedAt = (obj.customMetadata && obj.customMetadata.updatedAt) || '';
+        if (!updatedAt) {
+          try { updatedAt = JSON.parse(await obj.text()).updatedAt || ''; } catch { /* ignore */ }
+        }
+        list.push({ name: obj.key.slice(CFG_SNAPSHOT_PREFIX(username).length), updatedAt, size: obj.size });
+      }
+    } catch { /* ignore */ }
+  }
+  // 旧版单配置兼容：作为「默认配置」快照展示
+  try {
+    const legacy = await getCloudCfgRaw(env, username);
+    if (legacy) {
+      let updatedAt = '';
+      try { updatedAt = JSON.parse(legacy).updatedAt || ''; } catch { /* ignore */ }
+      list.push({ name: '默认配置', updatedAt, size: legacy.length, legacy: true });
+    }
+  } catch { /* ignore */ }
+  list.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+  return list;
+}
+
+/** 云端配置同步路由；非 /api/cloud/* 返回 null 交给后续路由 */
+async function handleCloudApi(request, env, url, corsHeaders) {
+  const path = url.pathname;
+  if (!path.startsWith('/api/cloud/')) return null;
+  const kv = env.CARD_KV;
+  if (!kv) return cloudJsonResp({ error: 'KV 未绑定' }, 500, corsHeaders);
+
+  // 注册
+  if (path === '/api/cloud/register' && request.method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return cloudJsonResp({ error: '请求体格式错误' }, 400, corsHeaders); }
+    const username = String(body.username || '').trim();
+    const password = String(body.password || '');
+    if (!/^[a-zA-Z0-9_\u4e00-\u9fa5]{3,20}$/.test(username)) {
+      return cloudJsonResp({ error: '用户名需为3-20位（中文/字母/数字/下划线）' }, 400, corsHeaders);
+    }
+    if (password.length < 6) return cloudJsonResp({ error: '密码至少6位' }, 400, corsHeaders);
+    // 重复用户名校验（大小写不敏感，防止 Admin/admin 重复注册）
+    const lowerName = username.toLowerCase();
+    let dupFound = false;
+    {
+      let cursor;
+      do {
+        const page = await kv.list({ prefix: 'clouduser:', cursor });
+        for (const k of page.keys) {
+          if (k.name.slice('clouduser:'.length).toLowerCase() === lowerName) { dupFound = true; break; }
+        }
+        cursor = page.list_complete ? undefined : page.cursor;
+      } while (cursor && !dupFound);
+    }
+    if (dupFound) return cloudJsonResp({ error: '用户名已存在（不区分大小写）' }, 400, corsHeaders);
+    const salt = randomHex(16);
+    const hash = await sha256Hex(salt + password);
+    const apiToken = randomHex(32);
+    await kv.put(`clouduser:${username}`, JSON.stringify({ salt, hash, apiToken, createdAt: new Date().toISOString(), approved: false }));
+    await kv.put(`cloudauthtoken:${apiToken}`, username);
+    return cloudJsonResp({ apiToken, username, approved: false }, 200, corsHeaders);
+  }
+
+  // 登录
+  if (path === '/api/cloud/login' && request.method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return cloudJsonResp({ error: '请求体格式错误' }, 400, corsHeaders); }
+    const username = String(body.username || '').trim();
+    const password = String(body.password || '');
+    let userKey = `clouduser:${username}`;
+    let raw = await kv.get(userKey);
+    if (!raw) {
+      // 大小写不敏感：找回实际注册的用户名
+      const lowerName = username.toLowerCase();
+      let cursor;
+      lookup: do {
+        const page = await kv.list({ prefix: 'clouduser:', cursor });
+        for (const k of page.keys) {
+          if (k.name.slice('clouduser:'.length).toLowerCase() === lowerName) { userKey = k.name; break lookup; }
+        }
+        cursor = page.list_complete ? undefined : page.cursor;
+      } while (cursor);
+      if (userKey !== `clouduser:${username}`) raw = await kv.get(userKey);
+    }
+    if (!raw) return cloudJsonResp({ error: '用户名或密码错误' }, 401, corsHeaders);
+    let user;
+    try { user = JSON.parse(raw); } catch { return cloudJsonResp({ error: '账号数据损坏' }, 500, corsHeaders); }
+    const hash = await sha256Hex(user.salt + password);
+    if (hash !== user.hash) return cloudJsonResp({ error: '用户名或密码错误' }, 401, corsHeaders);
+    let hasConfig = false;
+    let configUpdatedAt = null;
+    let configs = [];
+    try { configs = await listCloudCfgSnapshots(env, username); } catch { /* ignore */ }
+    if (configs.length > 0) {
+      hasConfig = true;
+      configUpdatedAt = configs[0].updatedAt || null;
+    }
+    return cloudJsonResp({ apiToken: user.apiToken, username, hasConfig, configUpdatedAt, configs, approved: !!user.approved }, 200, corsHeaders);
+  }
+
+  // 修改密码（需登录，验证旧密码）
+  if (path === '/api/cloud/change-password' && request.method === 'POST') {
+    const username = await authCloudUser(env, request);
+    if (!username) return cloudJsonResp({ error: '未登录或登录已失效' }, 401, corsHeaders);
+    let body;
+    try { body = await request.json(); } catch { return cloudJsonResp({ error: '请求体格式错误' }, 400, corsHeaders); }
+    const oldPassword = String(body.oldPassword || '');
+    const newPassword = String(body.newPassword || '');
+    if (newPassword.length < 6) return cloudJsonResp({ error: '新密码至少6位' }, 400, corsHeaders);
+    const raw = await kv.get(`clouduser:${username}`);
+    if (!raw) return cloudJsonResp({ error: '账号不存在' }, 404, corsHeaders);
+    let user;
+    try { user = JSON.parse(raw); } catch { return cloudJsonResp({ error: '账号数据损坏' }, 500, corsHeaders); }
+    const oldHash = await sha256Hex(user.salt + oldPassword);
+    if (oldHash !== user.hash) return cloudJsonResp({ error: '旧密码错误' }, 401, corsHeaders);
+    user.salt = randomHex(16);
+    user.hash = await sha256Hex(user.salt + newPassword);
+    await kv.put(`clouduser:${username}`, JSON.stringify(user));
+    return cloudJsonResp({ ok: true }, 200, corsHeaders);
+  }
+
+  // 配置读取/上传/快照列表（需登录）
+  if (path === '/api/cloud/config' || path === '/api/cloud/config-list') {
+    const username = await authCloudUser(env, request);
+    if (!username) return cloudJsonResp({ error: '未登录或登录已失效' }, 401, corsHeaders);
+    // 授权校验：未授权账号禁止上传/下载
+    let approved = false;
+    try {
+      const uRaw = await kv.get(`clouduser:${username}`);
+      if (uRaw) approved = !!JSON.parse(uRaw).approved;
+    } catch { /* ignore */ }
+    if (!approved) return cloudJsonResp({ error: '账号未授权，请联系管理员在云端后台开通后重试' }, 403, corsHeaders);
+
+    // 多设备快照列表
+    if (request.method === 'GET' && path === '/api/cloud/config-list') {
+      const configs = await listCloudCfgSnapshots(env, username);
+      return cloudJsonResp({ configs }, 200, corsHeaders);
+    }
+
+    const device = sanitizeDeviceName(url.searchParams.get('device') || '');
+
+    if (request.method === 'GET') {
+      if (!device) {
+        // 兼容旧客户端：返回最近更新的一份快照
+        const configs = await listCloudCfgSnapshots(env, username);
+        if (!configs.length) return cloudJsonResp({ error: '云端暂无配置' }, 404, corsHeaders);
+        const raw = await getCloudCfgSnapshot(env, username, configs[0].name);
+        if (!raw) return cloudJsonResp({ error: '云端暂无配置' }, 404, corsHeaders);
+        return new Response(raw, { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const raw = await getCloudCfgSnapshot(env, username, device);
+      if (!raw) return cloudJsonResp({ error: '该设备配置不存在' }, 404, corsHeaders);
+      return new Response(raw, { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    if (request.method === 'PUT') {
+      if (!isValidDeviceName(device)) {
+        return cloudJsonResp({ error: '设备名需为1-20位（中文/字母/数字/_/-）' }, 400, corsHeaders);
+      }
+      if (isReservedDeviceName(device)) {
+        return cloudJsonResp({ error: '该设备名为保留名称，请换一个' }, 400, corsHeaders);
+      }
+      let body;
+      try { body = await request.json(); } catch { return cloudJsonResp({ error: '请求体格式错误' }, 400, corsHeaders); }
+      if (!body || typeof body.data !== 'object' || body.data === null) {
+        return cloudJsonResp({ error: '缺少配置数据' }, 400, corsHeaders);
+      }
+      const payload = { updatedAt: new Date().toISOString(), data: body.data };
+      const serialized = JSON.stringify(payload);
+      if (serialized.length > 4 * 1024 * 1024) {
+        return cloudJsonResp({ error: '配置大小超过4MB限制' }, 413, corsHeaders);
+      }
+      await putCloudCfgSnapshot(env, username, device, serialized, payload.updatedAt);
+      return cloudJsonResp({ updatedAt: payload.updatedAt }, 200, corsHeaders);
+    }
+
+    if (request.method === 'DELETE') {
+      if (!device) return cloudJsonResp({ error: '缺少设备名' }, 400, corsHeaders);
+      await deleteCloudCfgSnapshot(env, username, device);
+      return cloudJsonResp({ ok: true }, 200, corsHeaders);
+    }
+  }
+
+  // ==================== 云端账号后台（管理员） ====================
+  if (path.startsWith('/api/cloud/admin/')) {
+    const adminPwd = request.headers.get('X-Admin-Password');
+    if (!verifyAdminPassword(adminPwd, env)) {
+      return cloudJsonResp({ error: '管理员密码错误' }, 403, corsHeaders);
+    }
+
+    // 账号列表 + 数据存入情况
+    if (path === '/api/cloud/admin/users' && request.method === 'GET') {
+      const users = [];
+      let cursor;
+      do {
+        const page = await kv.list({ prefix: 'clouduser:', cursor });
+        for (const k of page.keys) {
+          const uname = k.name.slice('clouduser:'.length);
+          let user = {};
+          try { user = JSON.parse(await kv.get(k.name)) || {}; } catch { /* ignore */ }
+          let hasConfig = false;
+          let configUpdatedAt = null;
+          let configSize = 0;
+          let configKeys = 0;
+          try {
+            const cfgs = await listCloudCfgSnapshots(env, uname);
+            hasConfig = cfgs.length > 0;
+            configKeys = cfgs.length; // 快照（设备）数
+            configSize = cfgs.reduce((s, c) => s + (c.size || 0), 0);
+            configUpdatedAt = cfgs[0]?.updatedAt || null;
+          } catch { /* ignore */ }
+          users.push({
+            username: uname,
+            createdAt: user.createdAt || null,
+            approved: !!user.approved,
+            hasConfig,
+            configUpdatedAt,
+            configSize,
+            configKeys,
+          });
+        }
+        cursor = page.list_complete ? undefined : page.cursor;
+      } while (cursor);
+      users.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      return cloudJsonResp({ users }, 200, corsHeaders);
+    }
+
+    // 查看某账号完整配置
+    if (path === '/api/cloud/admin/config' && request.method === 'GET') {
+      const uname = url.searchParams.get('username') || '';
+      if (!uname) return cloudJsonResp({ error: '缺少 username 参数' }, 400, corsHeaders);
+      const device = sanitizeDeviceName(url.searchParams.get('device') || '');
+      if (device) {
+        const raw = await getCloudCfgSnapshot(env, uname, device);
+        if (!raw) return cloudJsonResp({ error: '该设备配置不存在' }, 404, corsHeaders);
+        return new Response(raw, { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const cfgs = await listCloudCfgSnapshots(env, uname);
+      if (!cfgs.length) return cloudJsonResp({ error: '该账号云端暂无配置' }, 404, corsHeaders);
+      const raw = await getCloudCfgSnapshot(env, uname, cfgs[0].name);
+      if (!raw) return cloudJsonResp({ error: '该账号云端暂无配置' }, 404, corsHeaders);
+      return new Response(raw, { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // 授权/取消授权账号
+    if (path === '/api/cloud/admin/approve' && request.method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return cloudJsonResp({ error: '请求体格式错误' }, 400, corsHeaders); }
+      const uname = String(body.username || '').trim();
+      if (!uname) return cloudJsonResp({ error: '缺少 username 参数' }, 400, corsHeaders);
+      const raw = await kv.get(`clouduser:${uname}`);
+      if (!raw) return cloudJsonResp({ error: '账号不存在' }, 404, corsHeaders);
+      let user;
+      try { user = JSON.parse(raw); } catch { return cloudJsonResp({ error: '账号数据损坏' }, 500, corsHeaders); }
+      user.approved = !!body.approved;
+      await kv.put(`clouduser:${uname}`, JSON.stringify(user));
+      return cloudJsonResp({ ok: true, approved: user.approved }, 200, corsHeaders);
+    }
+
+    // 重置账号密码（不传 newPassword 则自动生成随机密码）
+    if (path === '/api/cloud/admin/reset-password' && request.method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return cloudJsonResp({ error: '请求体格式错误' }, 400, corsHeaders); }
+      const uname = String(body.username || '').trim();
+      if (!uname) return cloudJsonResp({ error: '缺少 username 参数' }, 400, corsHeaders);
+      let newPassword = String(body.newPassword || '');
+      if (newPassword && newPassword.length < 6) return cloudJsonResp({ error: '新密码至少6位' }, 400, corsHeaders);
+      if (!newPassword) newPassword = randomHex(6); // 12位随机十六进制密码
+      const raw = await kv.get(`clouduser:${uname}`);
+      if (!raw) return cloudJsonResp({ error: '账号不存在' }, 404, corsHeaders);
+      let user;
+      try { user = JSON.parse(raw); } catch { return cloudJsonResp({ error: '账号数据损坏' }, 500, corsHeaders); }
+      user.salt = randomHex(16);
+      user.hash = await sha256Hex(user.salt + newPassword);
+      await kv.put(`clouduser:${uname}`, JSON.stringify(user));
+      return cloudJsonResp({ ok: true, newPassword }, 200, corsHeaders);
+    }
+
+    // 删除账号（含配置与凭据索引）
+    if (path === '/api/cloud/admin/user' && request.method === 'DELETE') {
+      const uname = url.searchParams.get('username') || '';
+      if (!uname) return cloudJsonResp({ error: '缺少 username 参数' }, 400, corsHeaders);
+      const raw = await kv.get(`clouduser:${uname}`);
+      if (raw) {
+        try {
+          const user = JSON.parse(raw);
+          if (user.apiToken) await kv.delete(`cloudauthtoken:${user.apiToken}`);
+        } catch { /* ignore */ }
+      }
+      await kv.delete(`clouduser:${uname}`);
+      await deleteCloudCfg(env, uname);
+      return cloudJsonResp({ ok: true }, 200, corsHeaders);
+    }
+  }
+
+  return cloudJsonResp({ error: '接口不存在' }, 404, corsHeaders);
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -247,7 +651,7 @@ export default {
     // CORS headers
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Admin-Password, X-Device-Id, X-Card-Key',
     };
 
@@ -255,6 +659,10 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
     }
+
+    // ==================== 云端配置同步接口 ====================
+    const cloudResp = await handleCloudApi(request, env, url, corsHeaders);
+    if (cloudResp) return cloudResp;
 
     // ==================== APK 版本管理接口 ====================
     

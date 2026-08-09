@@ -95,6 +95,26 @@
             <n-switch v-model:value="preferences.autoExecute"></n-switch>
             <template #extra> 默认开启任务自动执行 </template>
           </a-form-item>
+          <a-form-item label="自动跳转">
+            <div style="display: flex; gap: 24px; align-items: center; flex-wrap: wrap;">
+              <span v-for="p in redirectPageStates" :key="p.key" style="display: inline-flex; align-items: center; gap: 8px;">
+                {{ p.label }}
+                <n-switch :value="p.enabled" @update:value="(on) => toggleRedirectPage(p.key, on)"></n-switch>
+              </span>
+            </div>
+            <template #extra> 各页面独立控制，开启后倒计时结束自动跳转到批量日常页面（默认仅首页开启） </template>
+          </a-form-item>
+          <a-form-item label="跳转倒计时">
+            <n-input-number
+              v-model:value="autoRedirectSeconds"
+              :min="10"
+              :max="3600"
+              :step="10"
+              style="width: 160px"
+              @update:value="saveRedirectSeconds"
+            ></n-input-number>
+            <template #extra> 自动跳转等待秒数（10-3600，默认120秒） </template>
+          </a-form-item>
         </a-form>
       </a-card>
 
@@ -146,6 +166,7 @@ import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useDialog, useMessage } from "naive-ui";
 import { useAuthStore } from "@/stores/auth";
+import { useAutoRedirectSettings } from "@/composables/useAutoRedirect";
 
 const router = useRouter();
 const message = useMessage();
@@ -176,6 +197,9 @@ const preferences = reactive({
   notifications: true,
   autoExecute: false,
 });
+
+// 自动跳转配置（各页面独立开关，默认仅首页开启，持久化到 localStorage）
+const { pageStates: redirectPageStates, seconds: autoRedirectSeconds, togglePage: toggleRedirectPage, saveSeconds: saveRedirectSeconds } = useAutoRedirectSettings();
 
 // 密码验证规则
 const passwordRules = {

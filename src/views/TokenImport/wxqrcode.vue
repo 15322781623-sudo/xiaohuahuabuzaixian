@@ -566,16 +566,10 @@ const checkScanStatus = async () => {
       }
 
       if (text.includes("window.wx_errcode=408")) {
-        stopScanMonitoring();
-        updateStatus("二维码已过期，正在自动刷新...", "info");
-        // 自动刷新二维码（最多自动刷新1次）
-        if (autoRefreshCount.value < 1) {
-          autoRefreshCount.value++;
-          await autoRefreshQRCode();
-        } else {
-          updateStatus("已自动刷新1次，请手动点击获取二维码", "error");
-          resetQRCode();
-        }
+        // 408是长轮询的正常等待响应（服务端挂起约15秒后返回），不代表二维码过期。
+        // Web端XHR有5秒超时会走ontimeout分支收不到408；
+        // APK端原生HTTP无超时会真实收到408，不能当作过期处理，否则每10秒左右就会误触发自动刷新。
+        // 仅在本地等待超时（elapsed>timeout，上方已判断）才刷新，此处继续轮询即可。
         return;
       }
     }
@@ -897,9 +891,9 @@ const saveAccount = async (arrBuf: ArrayBuffer, nickname = "") => {
     }
     console.log("Server List:", parsedList);
     message.success("获取服务器角色列表成功，请选择角色添加");
-  } catch (err) {
+  } catch (err: any) {
     console.error("Failed to get server list", err);
-    message.warning("获取服务器角色列表失败");
+    message.warning("获取服务器角色列表失败：" + (err?.message || "未知错误"));
     serverListData.value = [];
   }
   // 尝试解析 bin 文件内容

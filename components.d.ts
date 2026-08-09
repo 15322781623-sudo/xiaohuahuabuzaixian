@@ -28,6 +28,7 @@ declare module 'vue' {
     CarScoreInfo: typeof import('./src/components/Club/CarScoreInfo.vue')['default']
     CarTaskCard: typeof import('./src/components/CarTaskCard.vue')['default']
     ChangelogCard: typeof import('./src/components/ChangelogCard.vue')['default']
+    CloudSyncModal: typeof import('./src/components/Common/CloudSyncModal.vue')['default']
     ClubBattleRecords: typeof import('./src/components/Club/ClubBattleRecords.vue')['default']
     ClubCarKing: typeof import('./src/components/ClubCarKing.vue')['default']
     ClubHistoryRecords: typeof import('./src/components/Club/ClubHistoryRecords.vue')['default']

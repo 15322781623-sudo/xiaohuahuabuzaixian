@@ -259,9 +259,10 @@
 </template>
 
 <script setup>
-import { markRaw, onMounted, onUnmounted, ref } from "vue";
+import { markRaw, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { useAutoRedirect } from "@/composables/useAutoRedirect";
 import { Cube, Menu, PersonCircle, Ribbon, Settings } from "@vicons/ionicons5";
 
 const router = useRouter();
@@ -269,8 +270,8 @@ const authStore = useAuthStore();
 const featuresSection = ref(null);
 const isMobileMenuOpen = ref(false);
 
-// 2分钟后自动跳转到批量日常页面
-let autoRedirectTimer = null;
+// 自动跳转到批量日常页面（首页独立开关，默认开启）
+const { startAutoRedirect } = useAutoRedirect("home");
 
 
 // 功能卡片数据
@@ -344,18 +345,8 @@ onMounted(() => {
   // 初始化认证状态
   authStore.initAuth();
 
-  // 2 分钟后自动跳转到批量日常页面
-  autoRedirectTimer = setTimeout(() => {
-    router.push("/admin/batch-daily-tasks");
-  }, 120000); // 2 分钟
-});
-
-onUnmounted(() => {
-  // 组件销毁时清除定时器，防止内存泄漏
-  if (autoRedirectTimer) {
-    clearTimeout(autoRedirectTimer);
-    autoRedirectTimer = null;
-  }
+  // 按配置启动自动跳转倒计时（默认关闭）
+  startAutoRedirect();
 });
 </script>
 

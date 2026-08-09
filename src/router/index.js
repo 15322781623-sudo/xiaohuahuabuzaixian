@@ -149,6 +149,15 @@ const my_routes = [
       requiresToken: true,
     },
   },
+  {
+    path: "/gwydpz-admin",
+    name: "CloudAdmin",
+    component: () => import("@/views/CloudAdmin.vue"),
+    meta: {
+      title: "云端后台",
+      requiresToken: false,
+    },
+  },
   // 兼容旧路由，重定向到新的token管理页面
   {
     path: "/login",

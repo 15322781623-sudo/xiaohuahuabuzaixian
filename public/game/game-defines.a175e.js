@@ -1,4 +1,4 @@
-'use strict'
+﻿'use strict'
 const gt =
   typeof globalThis === 'object' ? globalThis : typeof window === 'object' ? window : global
 gt.PLATFORM = 'h5'
@@ -8,7 +8,7 @@ gt.APPID = 'wx0840558555a454ed'
 gt.APPID = ''
 gt.CDN = 'https://xxz-xyzw-res.hortorgames.com'
 gt.SERVER = 'https://xxz-xyzw.hortorgames.com'
-gt.GAME_NAME = '鸟哥之王'
+gt.GAME_NAME = '肝王之王'
 gt.GAME_ID = 'xyzw_mix'
 gt.GAME_VERSION = '2.29.2-wx'
 gt.CODE_VERSION = '2.29.2'

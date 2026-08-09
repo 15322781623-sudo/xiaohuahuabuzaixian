@@ -73,6 +73,8 @@ export const availableTasks = [
   { label: "领取怪异塔通行证", value: "claim_weird_tower_pass" },
   { label: "一键换皮闯关", value: "skinChallenge" },
   { label: "一键换皮寻宝", value: "skinTreasure" },
+  { label: "新区一键换皮闯关", value: "newSkinChallenge" },
+  { label: "新区一键换皮寻宝", value: "newSkinTreasure" },
   { label: "一键购买四圣碎片", value: "legion_storebuygoods" },
   { label: "一键购买俱乐部5皮肤币", value: "legionStoreBuySkinCoins" },
   { label: "黑市周购买", value: "weekly_market_buy" },

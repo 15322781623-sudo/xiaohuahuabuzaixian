@@ -156,16 +156,23 @@ export const getServerList = async (arrayBuffer: ArrayBuffer) => {
 
   if (!responseData || (responseData as ArrayBuffer).byteLength === 0) {
     console.error("serverlist: empty response");
-    return JSON.stringify({});
+    throw new Error("serverlist: 服务器返回空响应，请稍后重试");
   }
 
   const msg = g_utils.parse(responseData);
   const data = msg.getData();
+  const raw: any = (msg as any)._raw;
   console.log("serverlist data keys:", data ? Object.keys(data) : "null");
   console.log("serverlist data JSON:", JSON.stringify(data));
 
   if (!data || !data.roles) {
-    console.error("serverlist: invalid data structure", { data });
+    console.error("serverlist: invalid data structure", { data, raw });
+    // 服务器返回业务错误码（如 -10001 登录凭证校验失败）时向上抛出，便于 UI 给出明确提示
+    const code = raw?.code;
+    if (code !== undefined && code !== null && code !== 0) {
+      const errorText = raw?.error ? `：${raw.error}` : "";
+      throw new Error(`服务器拒绝该登录凭证（错误码 ${code}${errorText}）`);
+    }
     return JSON.stringify({});
   }
 

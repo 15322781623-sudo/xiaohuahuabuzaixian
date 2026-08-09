@@ -42,7 +42,7 @@
         </n-tag>
       </div>
       <div class="yyb-service-hint">
-        {{ isTauriEnv ? "服务已内置，进入页面自动启动，开关可手动启停并记忆" : "Web 开发版进入页面自动启动服务；APK 需先在电脑上执行 yyb-go.exe -host 0.0.0.0 并填写电脑 IP" }}
+        {{ isTauriEnv ? "服务已内置，进入页面自动启动，开关可手动启停并记忆" : isCapacitorEnv ? "服务已内置于 APK，进入页面自动在本机启动，开关可手动启停" : isPlainWebProd ? "Web 版无法拉起本地服务，自动连接公共代理服务（地址可手动修改）" : "Web 开发版进入页面自动启动服务；也可在电脑上执行 yyb-go.exe -host 0.0.0.0 并填写电脑 IP" }}
       </div>
     </div>
 
@@ -164,6 +164,7 @@ import { ref, onMounted, onUnmounted, reactive, watch } from "vue";
 import { Scan, Refresh, Close, CloudUpload } from "@vicons/ionicons5";
 import { NIcon, NTag, useMessage, NButton, NForm, NFormItem, NInput, NAlert, NSwitch } from "naive-ui";
 import { invoke, isTauri as tauriIsTauri } from "@tauri-apps/api/core";
+import { Capacitor } from "@capacitor/core";
 import { getTokenId, transformToken, getServerList } from "@/utils/token";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { saveBinBackup } from "@/utils/binBackup";
@@ -172,6 +173,7 @@ import { useTokenStore } from "@/stores/tokenStore";
 import { downloadFile } from "@/utils/imageExport";
 import {
   YYB_DEFAULT_SERVER,
+  YYB_WEB_FALLBACK_SERVER,
   YYB_DEFAULT_APPID,
   YYB_LEGACY_MINIGAME_APPID,
   yybCreateQr,
@@ -199,8 +201,27 @@ const importForm = reactive({
 // 定义事件
 const emit = defineEmits(["cancel", "ok", "switch-wx"]);
 
+// ---------- 环境检测（需在配置初始化前，决定默认服务地址） ----------
+const isTauriEnv = (() => {
+  try {
+    return tauriIsTauri();
+  } catch {
+    return false;
+  }
+})();
+// APK 环境：服务二进制已内置（Java 插件 YybService 托管本机进程）
+const isCapacitorEnv = (() => {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+})();
+// 纯 Web 生产环境（Pages/worker 无法拉起本地 exe）：默认连接公共代理服务
+const isPlainWebProd = !isTauriEnv && !isCapacitorEnv && !import.meta.env.DEV;
+
 // 应用宝服务配置（持久化到 localStorage）
-const yybServer = ref(localStorage.getItem("yybServerUrl") || YYB_DEFAULT_SERVER);
+const yybServer = ref(localStorage.getItem("yybServerUrl") || (isPlainWebProd ? YYB_WEB_FALLBACK_SERVER : YYB_DEFAULT_SERVER));
 const yybAppId = ref((() => {
   const stored = localStorage.getItem("yybAppId");
   // 旧版小游戏 appid 产出的短凭证被游戏服拒绝（-10001），迁移到 app-we 通道的 APP appid
@@ -218,13 +239,6 @@ const saveYybConfig = () => {
 };
 
 // ---------- 应用宝协议服务开关（Tauri 桌面版） ----------
-const isTauriEnv = (() => {
-  try {
-    return tauriIsTauri();
-  } catch {
-    return false;
-  }
-})();
 const yybServiceOn = ref(false);
 const yybServiceRunning = ref(false);
 const isTogglingService = ref(false);
@@ -250,20 +264,35 @@ const refreshYybServiceStatus = async () => {
 /**
  * 静默自动拉起服务（默认直接可连接，无需手动开关）：
  * - Tauri EXE：invoke 原生命令启动内置托管的 yyb-go.exe
+ * - APK：通过原生插件 YybService 拉起内置服务（本机 127.0.0.1:8000）
  * - Web dev：通过 dev server 托管接口 spawn yyb-go.exe
- * - APK / 生产 Web：无托管能力，静默跳过（依赖外部服务）
+ * - 生产 Web：无托管能力，静默跳过（依赖外部服务）
  * @returns 服务是否已就绪
  */
 const autoEnsureYybService = async (): Promise<boolean> => {
   let ok = await yybHealth(yybServer.value);
   if (ok) return true;
   try {
-    if (isTauriEnv) {
+    if (isCapacitorEnv) {
+      const started = await tryStartBuiltinYyb();
+      if (!started) return false;
+      // 内置服务监听本机，配置的地址不可达时切回本机默认地址
+      if (!(await yybHealth(yybServer.value))) {
+        yybServer.value = YYB_DEFAULT_SERVER;
+        saveYybConfig();
+      }
+    } else if (isTauriEnv) {
       const r = await invoke<string>("start_yyb_service_cmd");
       if (r === "not-found") return false;
     } else {
       const started = await tryDevServerStartYyb();
-      if (!started) return false;
+      if (!started) {
+        // 生产 Web 无托管拉起能力（worker 无法启动 yyb-go.exe）：公共代理服务可达时自动切换
+        if (!(await yybHealth(YYB_WEB_FALLBACK_SERVER))) return false;
+        yybServer.value = YYB_WEB_FALLBACK_SERVER;
+        saveYybConfig();
+        return true;
+      }
     }
   } catch {
     return false;
@@ -274,6 +303,13 @@ const autoEnsureYybService = async (): Promise<boolean> => {
     ok = await yybHealth(yybServer.value);
   }
   return ok;
+};
+
+/** APK 环境：通过原生插件 YybService 拉起内置应用宝服务（Java 托管进程，失败时抛错透传真实原因） */
+const tryStartBuiltinYyb = async (): Promise<boolean> => {
+  const YybService = Capacitor.registerPlugin<{ start(): Promise<{ running: boolean }> }>("YybService");
+  const r = await YybService.start();
+  return !!r?.running;
 };
 
 /** Web dev 环境：通过 dev server 托管接口拉起应用宝服务（生产环境/APK 无此端点会静默失败） */
@@ -322,6 +358,27 @@ const toggleYybService = async (on: boolean) => {
       // Web/APK：无法杀外部进程，开启=检测连接，关闭=调用 /shutdown 让服务自行退出
       saveYybConfig();
       if (on) {
+        if (isCapacitorEnv) {
+          // APK：启停内置服务进程
+          let started = false;
+          try {
+            started = await tryStartBuiltinYyb();
+          } catch (err: any) {
+            yybServiceRunning.value = false;
+            yybServiceOn.value = false;
+            message.error("启动内置应用宝服务失败：" + (err?.message || err));
+            return;
+          }
+          yybServiceRunning.value = started;
+          yybServiceOn.value = started;
+          if (started) {
+            message.success("应用宝服务已启动（本机内置）");
+            loadAccounts();
+          } else {
+            message.error("启动内置应用宝服务失败（服务未在5秒内就绪）");
+          }
+          return;
+        }
         let ok = await yybHealth(yybServer.value);
         if (!ok) {
           // 服务未运行：Web dev 环境尝试由 dev server 直接拉起（免手动启动）
@@ -343,6 +400,12 @@ const toggleYybService = async (on: boolean) => {
         }
       } else {
         const ok = await yybShutdown(yybServer.value);
+        if (isCapacitorEnv) {
+          // APK：内置服务由 Java 插件托管，额外销毁进程确保彻底停止
+          try {
+            await (Capacitor.registerPlugin<{ stop(): Promise<{ stopped: boolean }> }>("YybService")).stop();
+          } catch { /* ignore */ }
+        }
         if (!ok) {
           message.warning("停机请求未成功，请确认服务地址正确且服务正在运行");
         }

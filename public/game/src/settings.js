@@ -1,4 +1,4 @@
-// settings.js - 鸟哥之王 APK
+﻿// settings.js - 肝王之王 APK
 // 基于原始 settings.da7ef.js，启用 CDN 资源加载
 window._CCSettings = {
   platform: 'web-mobile',

@@ -61,10 +61,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
 import { useTokenStore } from "@/stores/tokenStore";
+import { useAutoRedirect } from "@/composables/useAutoRedirect";
 import {
   Add,
   CheckmarkCircle,
@@ -76,11 +77,8 @@ const router = useRouter();
 const message = useMessage();
 const tokenStore = useTokenStore();
 
-// 2分钟后自动跳转到批量日常页面
-let autoRedirectTimer = null;
-let countdownTimer = null;
-const countdown = ref(120); // 120秒 = 2分钟
-const AUTO_REDIRECT_DELAY = 2 * 60 * 1000; // 2分钟
+// 自动跳转到批量日常页面（控制台独立开关，默认关闭）
+const { countdown, startAutoRedirect, cancelAutoRedirect } = useAutoRedirect("dashboard");
 
 // 响应式数据
 // const recentActivities = ref([]);
@@ -197,19 +195,6 @@ const formatTime = (timestamp) => {
 };
 */
 
-const cancelAutoRedirect = () => {
-  if (autoRedirectTimer) {
-    clearTimeout(autoRedirectTimer);
-    autoRedirectTimer = null;
-  }
-  if (countdownTimer) {
-    clearInterval(countdownTimer);
-    countdownTimer = null;
-  }
-  countdown.value = 0;
-  message.info("已取消自动跳转");
-};
-
 // 生命周期
 onMounted(async () => {
   // 确保有Token
@@ -221,31 +206,8 @@ onMounted(async () => {
   // 初始化 Token 数据
   tokenStore.initTokenStore();
 
-  // 倒计时更新
-  countdownTimer = setInterval(() => {
-    countdown.value--;
-    if (countdown.value <= 0) {
-      clearInterval(countdownTimer);
-      countdownTimer = null;
-    }
-  }, 1000);
-
-  // 2分钟后自动跳转到批量日常页面
-  autoRedirectTimer = setTimeout(() => {
-    router.push("/admin/batch-daily-tasks");
-  }, AUTO_REDIRECT_DELAY);
-});
-
-onUnmounted(() => {
-  // 组件销毁时清除定时器，防止内存泄漏
-  if (autoRedirectTimer) {
-    clearTimeout(autoRedirectTimer);
-    autoRedirectTimer = null;
-  }
-  if (countdownTimer) {
-    clearInterval(countdownTimer);
-    countdownTimer = null;
-  }
+  // 按配置启动自动跳转倒计时（默认关闭）
+  startAutoRedirect();
 });
 </script>
 

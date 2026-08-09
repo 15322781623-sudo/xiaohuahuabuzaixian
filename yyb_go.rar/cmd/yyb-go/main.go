@@ -5,17 +5,51 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
 	"yyb_go/internal/httpapi"
 )
 
+// ensureDNSResolver 修复 Android 下纯 Go（CGO_ENABLED=0）二进制无法解析域名的问题：
+// Android 系统没有 /etc/resolv.conf，Go 内置解析器会回退到 [::1]:53 导致 connection refused。
+// 检测到 resolv.conf 缺失时，切换为内置公共 DNS 解析器。
+func ensureDNSResolver() {
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		return
+	}
+	if data, err := os.ReadFile("/etc/resolv.conf"); err == nil && strings.Contains(string(data), "nameserver") {
+		return
+	}
+	servers := []string{"223.5.5.5:53", "119.29.29.29:53", "8.8.8.8:53"}
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			d := net.Dialer{Timeout: 3 * time.Second}
+			var lastErr error
+			for _, s := range servers {
+				conn, err := d.DialContext(ctx, "udp", s)
+				if err == nil {
+					return conn, nil
+				}
+				lastErr = err
+			}
+			return nil, lastErr
+		},
+	}
+	log.Printf("未检测到系统 resolv.conf，已启用内置公共 DNS 解析器")
+}
+
 func main() {
+	ensureDNSResolver()
+
 	host := flag.String("host", "127.0.0.1", "listen host")
 	port := flag.Int("port", 8000, "listen port")
 	resourceRoot := flag.String("resource-root", filepath.Join(".", "resource"), "runtime resource directory")

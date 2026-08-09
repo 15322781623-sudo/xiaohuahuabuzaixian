@@ -222,7 +222,8 @@ export function createTasksHangUp(deps) {
    */
   const batchWithRetry = async (tokenIds, operationName, operation) => {
     const MAX_RETRIES = batchSettings.defaultRetryCount !== undefined ? batchSettings.defaultRetryCount : 2;
-    const RETRYABLE_CODES = ["400340", "200750", "11800010", "200020", "2000150"];
+    // ✅ 请求超时的账号同样加入重试队列（与收车模块一致），避免超时直接跳过
+    const RETRYABLE_CODES = ["400340", "200750", "11800010", "200020", "2000150", "请求超时"];
     const isRetryableError = (msg) => RETRYABLE_CODES.some(code => msg?.includes(code));
     const getMatchedCode = (msg) => RETRYABLE_CODES.find(code => msg?.includes(code)) || '';
 
@@ -932,6 +933,8 @@ export function createTasksHangUp(deps) {
         } catch (e) {
           if (e.message && e.message.includes('2300280')) {
             addLog({ time: new Date().toLocaleTimeString(), message: `ℹ️ ${token.name} 已报名，无需重复报名`, type: "info" });
+          } else if (e.message && e.message.includes('2300290')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `ℹ️ ${token.name} 当前盐场报名已报名或不在报名时间内`, type: "info" });
           } else {
             throw e;
           }

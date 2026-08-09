@@ -89,6 +89,43 @@
         </div>
 
         <div class="nav-user">
+          <!-- 云端同步入口 -->
+          <n-button quaternary circle size="small" title="云端配置同步" @click="showCloudSync = true">
+            <template #icon>
+              <n-icon><CloudOutline /></n-icon>
+            </template>
+          </n-button>
+          <!-- 自动跳转设置入口 -->
+          <n-popover trigger="click" placement="bottom-end" :show-arrow="false">
+            <template #trigger>
+              <n-button quaternary circle size="small" title="自动跳转设置">
+                <template #icon>
+                  <n-icon><TimerOutline /></n-icon>
+                </template>
+              </n-button>
+            </template>
+            <div style="width: 240px; padding: 4px 0;">
+              <div v-for="p in redirectPageStates" :key="p.key" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span>{{ p.label }}自动跳转</span>
+                <n-switch :value="p.enabled" size="small" @update:value="(on) => toggleRedirectPage(p.key, on)" />
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>倒计时（秒）</span>
+                <n-input-number
+                  v-model:value="autoRedirectSeconds"
+                  :min="10"
+                  :max="3600"
+                  :step="10"
+                  size="small"
+                  style="width: 110px;"
+                  @update:value="saveRedirectSeconds"
+                />
+              </div>
+              <div style="margin-top: 8px; color: var(--text-tertiary, #999); font-size: 12px;">
+                各页面独立控制，默认仅首页开启
+              </div>
+            </div>
+          </n-popover>
           <!-- 主题切换按钮 -->
           <ThemeToggle></ThemeToggle>
 
@@ -217,6 +254,9 @@
     <div class="main">
       <router-view></router-view>
     </div>
+
+    <!-- 云端配置同步弹窗 -->
+    <CloudSyncModal v-model:show="showCloudSync" />
   </div>
 </template>
 
@@ -226,6 +266,7 @@ import {
   useTokenStore,
 } from "@/stores/tokenStore";
 import ThemeToggle from "@/components/Common/ThemeToggle.vue";
+import CloudSyncModal from "@/components/Common/CloudSyncModal.vue";
 import {
   ChatbubbleEllipsesSharp,
   ChevronDown,
@@ -238,12 +279,15 @@ import {
   PersonCircle,
   Settings,
   GameController,
+  TimerOutline,
+  CloudOutline,
 } from "@vicons/ionicons5";
 
 import { useRouter } from "vue-router";
 import { useDialog, useMessage } from "naive-ui";
 import { ref } from "vue";
 import { isNowInLegionWarTime } from "@/utils/clubBattleUtils";
+import { useAutoRedirectSettings } from "@/composables/useAutoRedirect";
 
 const tokenStore = useTokenStore();
 const router = useRouter();
@@ -251,6 +295,10 @@ const message = useMessage();
 const dialog = useDialog();
 
 const isMobileMenuOpen = ref(false);
+const showCloudSync = ref(false);
+
+// 自动跳转设置（各页面独立，默认仅首页开启，与 Token 管理页/个人设置页共用同一配置）
+const { pageStates: redirectPageStates, seconds: autoRedirectSeconds, togglePage: toggleRedirectPage, saveSeconds: saveRedirectSeconds } = useAutoRedirectSettings();
 
 const userMenuOptions = [
   {

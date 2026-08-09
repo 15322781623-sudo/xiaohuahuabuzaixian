@@ -11,3 +11,8 @@ bucket_name = "apk-bucket"
 [[kv_namespaces]]
 binding = "CARD_KV"
 id = "219f0da6a5494c14a87b44fc3992dcc4"
+
+# R2 存储桶（云端配置，容量/写入额度远高于 KV）
+[[r2_buckets]]
+binding = "CFG_BUCKET"
+bucket_name = "cloud-cfg-bucket"
