@@ -543,6 +543,7 @@ import { getQuestionCount, preloadQuestions } from "@/utils/studyQuestionsFromJS
 import { storage } from "@/utils/crossPlatformStorage";
 import { useRouter } from "vue-router";
 import useIndexedDB from "@/hooks/useIndexedDB";
+import { getBinBackupWithFallback } from "@/utils/binBackup";
 import { g_utils } from "@/utils/bonProtocol";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useGameWindowManager } from "@/composables/useGameWindowManager";
@@ -2018,148 +2019,187 @@ const handleStarChallenge = async () => {
         continue;
       }
 
-      addLog({
-        message: `== 关卡 ${level} 挑战开始（预设阵容） ==`,
-        type: "info",
-      });
+      // 所有关卡均可挑战（游戏已取消前置关卡限制），每关最多尝试3次，3次失败后停止
+      const MAX_ATTEMPTS = 3;
+      let levelCompleted = false;
 
-      // 执行挑战
-      const typ = 100 + level;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        if (!isConnected.value) break;
 
-      // 步骤1: 获取预设阵容信息
-      const typeRes = await tokenStore.sendMessageWithPromise(
-        tokenId,
-        "presetteam_typegetinfo",
-        { types: [typ] },
-        5000,
-      ).catch(() => null);
+        addLog({
+          message: `== 关卡 ${level} 挑战开始（第${attempt}次尝试，预设阵容） ==`,
+          type: "info",
+        });
 
-      await new Promise((resolve) => setTimeout(resolve, 300));
+        // 执行挑战
+        const typ = 100 + level;
 
-      // 构造 battleTeam
-      let battleTeam = {};
-      let lordWeaponId = 0;
+        // 步骤1: 获取预设阵容信息
+        const typeRes = await tokenStore.sendMessageWithPromise(
+          tokenId,
+          "presetteam_typegetinfo",
+          { types: [typ] },
+          5000,
+        ).catch(() => null);
 
-      if (typeRes) {
-        const body = typeRes.presetTeamMap || typeRes.body?.presetTeamMap || typeRes;
-        const typeData = body[String(typ)] || body[typ];
+        await new Promise((resolve) => setTimeout(resolve, 300));
 
-        if (typeData?.weapon?.weaponId !== undefined) {
-          lordWeaponId = typeData.weapon.weaponId;
-        }
+        // 构造 battleTeam
+        let battleTeam = {};
+        let lordWeaponId = 0;
 
-        // 扁平化构造 battleTeam
-        if (typeData?.teamInfo) {
-          const teamInfo = typeData.teamInfo;
-          battleTeam = {};
-          for (const [pos, hero] of Object.entries(teamInfo)) {
-            if (hero && hero.heroId) {
-              battleTeam[pos] = {
-                heroId: hero.heroId,
-                level: hero.level || 1,
-                star: hero.star || 1,
-                skill: hero.skill || 0,
-                equip: hero.equip || {},
-                pet: hero.pet || null,
-                holyBeast: hero.holyBeast || null,
-                artifact: hero.artifact || null,
-              };
+        if (typeRes) {
+          const body = typeRes.presetTeamMap || typeRes.body?.presetTeamMap || typeRes;
+          const typeData = body[String(typ)] || body[typ];
+
+          if (typeData?.weapon?.weaponId !== undefined) {
+            lordWeaponId = typeData.weapon.weaponId;
+          }
+
+          // 扁平化构造 battleTeam
+          if (typeData?.teamInfo) {
+            const teamInfo = typeData.teamInfo;
+            battleTeam = {};
+            for (const [pos, hero] of Object.entries(teamInfo)) {
+              if (hero && hero.heroId) {
+                battleTeam[pos] = {
+                  heroId: hero.heroId,
+                  level: hero.level || 1,
+                  star: hero.star || 1,
+                  skill: hero.skill || 0,
+                  equip: hero.equip || {},
+                  pet: hero.pet || null,
+                  holyBeast: hero.holyBeast || null,
+                  artifact: hero.artifact || null,
+                };
+              }
             }
           }
         }
-      }
 
-      if (Object.keys(battleTeam).length === 0) {
-        addLog({
-          message: `第${level}关挑战失败,请游戏内检查阵容后重试。`,
-          type: "error",
-        });
-        break;
-      }
+        if (Object.keys(battleTeam).length === 0) {
+          addLog({
+            message: `第${level}关挑战失败,请游戏内检查阵容后重试。`,
+            type: "error",
+          });
+          if (attempt >= MAX_ATTEMPTS) {
+            addLog({
+              message: `关卡 ${level} 连续${MAX_ATTEMPTS}次挑战失败,停止挑战`,
+              type: "error",
+            });
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          continue;
+        }
 
-      // 步骤2: 计算战力
-      await tokenStore.sendMessageWithPromise(
-        tokenId,
-        "hero_calcpowerbyteam",
-        { battleTeam, lordWeaponId },
-        5000,
-      ).catch(() => {});
-
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      // 步骤3: 开始挑战(发送2次)
-      const bossResults = await Promise.all([
-        tokenStore.sendMessageWithPromise(
+        // 步骤2: 计算战力
+        await tokenStore.sendMessageWithPromise(
           tokenId,
-          "nmext_startboss",
-          { bossId: level, battleTeam, lordWeaponId, presetTeamType: 0 },
-          8000,
-        ).catch((err) => ({ __error: true, message: err.message })),
-        tokenStore.sendMessageWithPromise(
-          tokenId,
-          "nmext_startboss",
-          { bossId: level, battleTeam, lordWeaponId, presetTeamType: 0 },
-          8000,
-        ).catch((err) => ({ __error: true, message: err.message })),
-      ]);
+          "hero_calcpowerbyteam",
+          { battleTeam, lordWeaponId },
+          5000,
+        ).catch(() => {});
 
-      await new Promise((resolve) => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 300));
 
-      // 找到成功的结果
-      const bossRes = bossResults.find((r) => r && !r.__error) || null;
+        // 步骤3: 开始挑战(发送2次)
+        const bossResults = await Promise.all([
+          tokenStore.sendMessageWithPromise(
+            tokenId,
+            "nmext_startboss",
+            { bossId: level, battleTeam, lordWeaponId, presetTeamType: 0 },
+            8000,
+          ).catch((err) => ({ __error: true, message: err.message })),
+          tokenStore.sendMessageWithPromise(
+            tokenId,
+            "nmext_startboss",
+            { bossId: level, battleTeam, lordWeaponId, presetTeamType: 0 },
+            8000,
+          ).catch((err) => ({ __error: true, message: err.message })),
+        ]);
 
-      if (!bossRes) {
-        addLog({
-          message: `关卡 ${level} 无法挑战,请先通过十殿8之后再运行`,
-          type: "warning",
-        });
-        break;
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        // 找到成功的结果
+        const bossRes = bossResults.find((r) => r && !r.__error) || null;
+
+        if (!bossRes) {
+          addLog({
+            message: `关卡 ${level} 无法挑战,请先通过十殿8之后再运行`,
+            type: "warning",
+          });
+          break;
+        }
+
+        // 解析结果
+        const body = bossRes.body || bossRes || {};
+        const result = body.result || body;
+        const isWin = result.isWin ?? result.iswin ?? result.win;
+
+        if (!isWin) {
+          // 挑战失败
+          addLog({
+            message: `第${level}关挑战失败,请游戏内检查阵容后重试。`,
+            type: "error",
+          });
+          if (attempt >= MAX_ATTEMPTS) {
+            addLog({
+              message: `关卡 ${level} 连续${MAX_ATTEMPTS}次挑战失败,停止挑战`,
+              type: "error",
+            });
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          continue;
+        }
+
+        // 解析获得星数
+        const resCompleteMap = result.starBossCompleteMap || body.starBossCompleteMap
+          || bossRes?.roleNMExt?.starBossCompleteMap || body.roleNMExt?.starBossCompleteMap;
+        const lvData = resCompleteMap
+          ? (resCompleteMap[String(level)] || resCompleteMap[level])
+          : null;
+
+        const starCount = lvData
+          ? (() => {
+              const trueKeys = Object.entries(lvData)
+                .filter(([, v]) => v === true)
+                .map(([k]) => Number.parseInt(k, 10))
+                .filter((k) => !isNaN(k));
+              return trueKeys.length > 0 ? Math.max(...trueKeys) + 1 : 0;
+            })()
+          : 0;
+
+        if (starCount >= 1) {
+          addLog({
+            message: `关卡 ${level} 挑战成功,获得 ${starCount} 星`,
+            type: "success",
+          });
+
+          // 更新本地星数记录
+          levelStarsMap[level] = starCount;
+          levelCompleted = true;
+          break;
+        } else {
+          addLog({
+            message: `第${level}关挑战失败,请游戏内检查阵容后重试。`,
+            type: "error",
+          });
+          if (attempt >= MAX_ATTEMPTS) {
+            addLog({
+              message: `关卡 ${level} 连续${MAX_ATTEMPTS}次挑战失败,停止挑战`,
+              type: "error",
+            });
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          continue;
+        }
       }
 
-      // 解析结果
-      const body = bossRes.body || bossRes || {};
-      const result = body.result || body;
-      const isWin = result.isWin ?? result.iswin ?? result.win;
-
-      if (!isWin) {
-        // 挑战失败
-        addLog({
-          message: `第${level}关挑战失败,请游戏内检查阵容后重试。`,
-          type: "error",
-        });
-        break;
-      }
-
-      // 解析获得星数
-      const resCompleteMap = result.starBossCompleteMap || body.starBossCompleteMap
-        || bossRes?.roleNMExt?.starBossCompleteMap || body.roleNMExt?.starBossCompleteMap;
-      const lvData = resCompleteMap
-        ? (resCompleteMap[String(level)] || resCompleteMap[level])
-        : null;
-
-      const starCount = lvData
-        ? (() => {
-            const trueKeys = Object.entries(lvData)
-              .filter(([, v]) => v === true)
-              .map(([k]) => Number.parseInt(k, 10))
-              .filter((k) => !isNaN(k));
-            return trueKeys.length > 0 ? Math.max(...trueKeys) + 1 : 0;
-          })()
-        : 0;
-
-      if (starCount >= 1) {
-        addLog({
-          message: `关卡 ${level} 挑战成功,获得 ${starCount} 星`,
-          type: "success",
-        });
-
-        // 更新本地星数记录
-        levelStarsMap[level] = starCount;
-      } else {
-        addLog({
-          message: `第${level}关挑战失败,请游戏内检查阵容后重试。`,
-          type: "error",
-        });
+      // 3次尝试失败,停止整个挑战流程
+      if (!levelCompleted) {
         break;
       }
 
@@ -3027,6 +3067,10 @@ const jumpGame = async () => {
     if (!binData) {
       // 尝试使用名称作为键
       binData = await getArrayBuffer(token.name);
+    }
+    if (!binData) {
+      // 兜底：从 localStorage 备份读取（云端恢复后 IndexedDB 可能为空）
+      binData = await getBinBackupWithFallback(token.id, token.name);
     }
     if (!binData) {
       message.error(`${token.name}: 未找到BIN数据，无法登录游戏`);

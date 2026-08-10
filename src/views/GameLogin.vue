@@ -488,6 +488,7 @@ import { useTokenStore, gameTokens } from '@/stores/tokenStore';
 import { useMessage } from 'naive-ui';
 import { useRouter, useRoute } from 'vue-router';
 import useIndexedDB from '@/hooks/useIndexedDB';
+import { getBinBackupWithFallback } from '@/utils/binBackup';
 import { g_utils } from '@/utils/bonProtocol';
 import ManualTokenForm from '@/views/TokenImport/manual.vue';
 import UrlTokenForm from '@/views/TokenImport/url.vue';
@@ -676,6 +677,7 @@ async function exportLoginGroups() {
     try {
       let binData = await getArrayBuffer(t.id);
       if (!binData) binData = await getArrayBuffer(t.name);
+      if (!binData) binData = await getBinBackupWithFallback(t.id, t.name); // 兜底：localStorage 备份
       if (binData) {
         const bytes = new Uint8Array(binData);
         let binary = '';
@@ -1717,6 +1719,7 @@ function getStatusLabel(tokenId) {
 async function decodeBinForToken(token) {
   let binData = await getArrayBuffer(token.id);
   if (!binData) binData = await getArrayBuffer(token.name);
+  if (!binData) binData = await getBinBackupWithFallback(token.id, token.name); // 兜底：localStorage 备份（云端恢复后 IndexedDB 可能为空）
   if (!binData) throw new Error('BIN数据不存在');
 
   const u8 = new Uint8Array(binData);

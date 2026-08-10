@@ -4134,21 +4134,21 @@
               </n-alert>
               <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
                 <div style="display: flex; align-items: center;">
-                  <span style="font-size: 14px; margin-right: 8px;">期次：</span>
-                  <n-select
-                    v-model:value="taskForm.apexGuessSeason"
-                    :options="[{ label: '第一期', value: 1 }, { label: '第二期', value: 2 }]"
-                    size="small"
-                    style="width: 100px;"
-                  />
-                </div>
-                <div style="display: flex; align-items: center;">
                   <span style="font-size: 14px; margin-right: 8px;">赛程：</span>
                   <n-select
                     v-model:value="taskForm.apexGuessScheduleId"
-                    :options="taskFormApexScheduleOptions"
+                    :options="[{ label: '64强', value: 20 }, { label: '32强', value: 21 }, { label: '16强', value: 22 }, { label: '8强', value: 23 }, { label: '4强', value: 24 }, { label: '季军赛', value: 25 }, { label: '决赛', value: 26 }]"
                     size="small"
-                    style="width: 120px;"
+                    style="width: 110px;"
+                  />
+                </div>
+                <div style="display: flex; align-items: center;">
+                  <span style="font-size: 14px; margin-right: 8px;">期次：</span>
+                  <n-select
+                    v-model:value="taskForm.apexGuessGroupId"
+                    :options="[{ label: '第一期', value: 0 }, { label: '第二期', value: 1 }, { label: '第三期', value: 2 }, { label: '第四期', value: 3 }, { label: '第五期', value: 4 }, { label: '第六期', value: 5 }, { label: '第七期', value: 6 }]"
+                    size="small"
+                    style="width: 110px;"
                   />
                 </div>
                 <div>
@@ -4721,25 +4721,26 @@
     >
       <div class="settings-content">
         <div class="settings-grid" style="display: block;">
-          <!-- 顶部操作栏：赛程选择 + 批量操作 -->
+          <!-- 顶部操作栏：赛程/期次选择 + 批量操作 -->
           <div style="margin-bottom: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <n-select
-              v-model:value="apexGuessSeason"
-              :options="[{ label: '第一期', value: 1 }, { label: '第二期', value: 2 }]"
-              style="width: 90px"
-              size="small"
-            />
+            <span style="font-size: 13px; color: #666;">赛程：</span>
             <n-select
               v-model:value="apexGuessScheduleId"
-              :options="apexGuessScheduleOptions"
+              :options="[{ label: '64强', value: 20 }, { label: '32强', value: 21 }, { label: '16强', value: 22 }, { label: '8强', value: 23 }, { label: '4强', value: 24 }, { label: '季军赛', value: 25 }, { label: '决赛', value: 26 }]"
               style="width: 110px"
+              size="small"
+            />
+            <span style="font-size: 13px; color: #666;">期次：</span>
+            <n-select
+              v-model:value="apexGuessGroupId"
+              :options="[{ label: '第一期', value: 0 }, { label: '第二期', value: 1 }, { label: '第三期', value: 2 }, { label: '第四期', value: 3 }, { label: '第五期', value: 4 }, { label: '第六期', value: 5 }, { label: '第七期', value: 6 }]"
+              style="width: 100px"
               size="small"
             />
             <n-button type="primary" size="small" @click="fetchApexGuessList" :loading="apexGuessLoading">
               获取对阵列表
             </n-button>
             <span v-if="apexGuessLoading" style="color: #999; font-size: 12px;">加载中...</span>
-            <span v-if="apexGuessDetectedScheduleId > 0 && apexGuessScheduleId === 0 && !apexGuessLoading" style="color: #18a058; font-size: 12px;">✓ 已检测到：{{ allApexScheduleLabels[apexGuessDetectedScheduleId] || apexGuessDetectedScheduleId }}</span>
             <div style="flex: 1; min-width: 8px;"></div>
             <n-button size="tiny" :type="'info'" ghost :disabled="apexGuessMatchList.length === 0" @click="apexGuessPickAll('left')">全押蓝方</n-button>
             <n-button size="tiny" :type="'error'" ghost :disabled="apexGuessMatchList.length === 0" @click="apexGuessPickAll('right')">全押红方</n-button>
@@ -6574,38 +6575,10 @@ const saltCupBetLoading = ref(false);
 // ======================
 const showApexGuessModal = ref(false);
 const apexGuessLoading = ref(false);
-// 期次配置：每期7个赛程，scheduleId = seasonBase + offset(0~6)
-const APEX_SEASONS = [
-  { value: 1, label: '第一期', base: 20 },
-  { value: 2, label: '第二期', base: 27 },
-];
-const APEX_ROUND_NAMES = ['64强', '32强', '16强', '8强', '4强', '季军赛', '决赛'];
-const apexGuessSeason = ref(2); // 默认第二期
-const apexGuessScheduleId = ref(0); // 0=自动检测
-const apexGuessDetectedScheduleId = ref(0); // 自动检测后实际使用的赛程ID
+const apexGuessScheduleId = ref(20); // 淘汰赛局部编号: 20=64强…26=决赛（真实scheduleId = 期次序号*26 + 局部编号）
+const apexGuessGroupId = ref(1); // 期次：0=第一期, 1=第二期, 2=第三期…
 const apexGuessMatchList = ref([]); // [{ left, right, picked: 'left'|'right'|null }]
 const apexGuessPickedCount = computed(() => apexGuessMatchList.value.filter(m => m.picked).length);
-// 根据选定期次动态生成赛程选项
-const apexGuessScheduleOptions = computed(() => {
-  const season = APEX_SEASONS.find(s => s.value === apexGuessSeason.value) || APEX_SEASONS[APEX_SEASONS.length - 1];
-  const opts = [{ label: '自动检测', value: 0 }];
-  APEX_ROUND_NAMES.forEach((name, i) => opts.push({ label: name, value: season.base + i }));
-  return opts;
-});
-// 所有期次的赛程标签（用于日志显示）
-const allApexScheduleLabels = computed(() => {
-  const labels = { 0: '自动检测' };
-  APEX_SEASONS.forEach(s => {
-    APEX_ROUND_NAMES.forEach((name, i) => { labels[s.base + i] = `${s.label}${name}`; });
-  });
-  return labels;
-});
-// 切换期次时重置赛程选择和检测结果，避免赛程ID与新期次不匹配
-watch(apexGuessSeason, () => {
-  apexGuessScheduleId.value = 0;
-  apexGuessDetectedScheduleId.value = 0;
-  apexGuessMatchList.value = [];
-});
 
 // ======================
 // Apex Cheering Feature (竞技大厅助威)
@@ -7797,7 +7770,10 @@ const handleSaltCupBet = async (matchId, pick) => {
 const openApexGuessModal = () => {
   showApexGuessModal.value = true;
   apexGuessMatchList.value = [];
-  apexGuessDetectedScheduleId.value = 0;
+  // 打开弹窗自动获取一次对阵列表（已选账号时）
+  if (selectedTokens.value.length > 0) {
+    fetchApexGuessList();
+  }
 };
 
 const fetchApexGuessList = async () => {
@@ -7824,52 +7800,17 @@ const fetchApexGuessList = async () => {
       await new Promise(r => setTimeout(r, 2000));
     }
 
-    // ✅ 自动检测赛程：当选择“自动检测”时，根据选定的期次范围从高到低尝试
-    let actualScheduleId = apexGuessScheduleId.value;
-    const _season = APEX_SEASONS.find(s => s.value === apexGuessSeason.value) || APEX_SEASONS[APEX_SEASONS.length - 1];
-    const _roundLabels = {};
-    APEX_ROUND_NAMES.forEach((name, i) => { _roundLabels[_season.base + i] = name; });
-    if (actualScheduleId === 0) {
-      // 从决赛到64强降序尝试
-      const candidateSchedules = [];
-      for (let i = APEX_ROUND_NAMES.length - 1; i >= 0; i--) candidateSchedules.push(_season.base + i);
-      let detected = false;
-      for (const candidateId of candidateSchedules) {
-        try {
-          const testRes = await tokenStore.sendMessageWithPromise(tokenId, "apex_getguesslist", { scheduleId: candidateId, idx: 0 }, 5000);
-          if (testRes?.apexGuessList && testRes.apexGuessList.length > 0) {
-            actualScheduleId = candidateId;
-            apexGuessDetectedScheduleId.value = candidateId;
-            detected = true;
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `✅ 自动检测到当前活跃赛程：${_season.label}${_roundLabels[candidateId]}`,
-              type: "success",
-            });
-            break;
-          }
-        } catch (e) {
-          // 该赛程无数据或出错，继续尝试下一个
-        }
-      }
-      if (!detected) {
-        apexGuessDetectedScheduleId.value = 0;
-        message.warning("自动检测未找到活跃赛程");
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `⚠️ 自动检测未找到活跃赛程`,
-          type: "warning",
-        });
-        return;
-      }
-    } else {
-      apexGuessDetectedScheduleId.value = actualScheduleId;
-    }
-
     const matches = [];
     let idx = 0;
+    // 编码规则: scheduleId = (期次-1)*26 + 局部编号，期次从1开始，groupId=期次-1
+    const realScheduleId = apexGuessGroupId.value * 26 + apexGuessScheduleId.value;
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `⚔️ 逐鹿盐山竞猜：第${apexGuessGroupId.value + 1}期（scheduleId=${realScheduleId}）拉取对阵列表`,
+      type: "info",
+    });
     for (let page = 0; page < 40; page++) {
-      const res = await tokenStore.sendMessageWithPromise(tokenId, "apex_getguesslist", { scheduleId: actualScheduleId, idx }, 5000);
+      const res = await tokenStore.sendMessageWithPromise(tokenId, "apex_getguesslist", { scheduleId: realScheduleId, groupId: apexGuessGroupId.value, idx }, 5000);
       const list = res?.apexGuessList;
       if (!Array.isArray(list) || list.length === 0) break;
       for (const pair of list) {
@@ -7922,9 +7863,24 @@ const handleApexGuess = async () => {
     return;
   }
   showApexGuessModal.value = false;
-  // 使用自动检测后的实际赛程ID
-  const finalScheduleId = apexGuessScheduleId.value === 0 ? apexGuessDetectedScheduleId.value : apexGuessScheduleId.value;
-  await batchApexGuess(finalScheduleId, teamIds);
+  // 单账号智能加速：与 executeManualTaskWithRecord 一致，仅选 1 个账号时自动降低延迟
+  const wasSingleMode = batchSettings.singleAccountMode;
+  if (batchSettings.singleAccountSpeedUp && selectedTokens.value.length === 1) {
+    batchSettings.singleAccountMode = true;
+    const mult = batchSettings.singleAccountMultiplier;
+    const singleToken = tokens.value.find(t => t.id === selectedTokens.value[0]);
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `⚡ ${singleToken?.name || '单账号'} 单账号加速模式（延迟×${mult}）`,
+      type: 'info',
+    });
+  }
+  try {
+    // 下注用真实scheduleId = 期次序号*26 + 淘汰赛局部编号
+    await batchApexGuess(apexGuessGroupId.value * 26 + apexGuessScheduleId.value, teamIds, 0, apexGuessGroupId.value);
+  } finally {
+    batchSettings.singleAccountMode = wasSingleMode;
+  }
 };
 
 // 预设护卫成员状态（账号单独设置弹窗）
@@ -8888,8 +8844,8 @@ const taskForm = reactive({
   nightmarePresetIds: [], // 十殿阎罗挑战预设ID列表
   nightmarePresetDelay: 10, // 预设间执行间隔（秒），默认10秒
   saltCupBetPick: 1, // 比赛竞猜选项: 1=主胜, 2=平局, 3=客胜
-  apexGuessSeason: 2, // 逐鹿盐山竞猜期次: 1=第一期 2=第二期
-  apexGuessScheduleId: 0, // 逐鹿盐山竞猜赛程: 0=自动检测
+  apexGuessScheduleId: 20, // 逐鹿盐山竞猜淘汰赛局部编号: 20=64强…26=决赛（真实scheduleId=期次序号*26+局部）
+  apexGuessGroupId: 1, // 逐鹿盐山竞猜期次: 0=第一期, 1=第二期, 2=第三期…
   apexGuessStrategy: 'power', // 逐鹿盐山竞猜策略: left=全押蓝方 right=全押红方 power=押高战力 cheer=押多助威
   saltRoadBattlefieldId: '', // 天宫助威战场ID（已废弃，保留兼容）
   saltRoadSide: 1, // 天宫助威方向: 1=左军, 2=右军
@@ -8901,17 +8857,7 @@ const taskForm = reactive({
   maxActive: 0, // 任务级并发控制：0=使用全局设置，>0=使用此任务的并发数
 });
 
-// 定时任务配置 - 根据选定期次动态生成赛程选项
-const taskFormApexScheduleOptions = computed(() => {
-  const season = APEX_SEASONS.find(s => s.value === taskForm.apexGuessSeason) || APEX_SEASONS[APEX_SEASONS.length - 1];
-  const opts = [{ label: '自动检测', value: 0 }];
-  APEX_ROUND_NAMES.forEach((name, i) => opts.push({ label: name, value: season.base + i }));
-  return opts;
-});
-// 定时任务配置：切换期次时重置赛程选择
-watch(() => taskForm.apexGuessSeason, () => {
-  taskForm.apexGuessScheduleId = 0;
-});
+// 定时任务配置 - 天宫助威对阵列表获取
 const taskSaltRoadOpponents = ref([]);
 const taskSaltRoadLoading = ref(false);
 
@@ -9300,8 +9246,8 @@ const cancelTaskEdit = () => {
     taskForm.nightmarePresetIds = [];
     taskForm.nightmarePresetDelay = 10;
     taskForm.saltCupBetPick = 1;
-    taskForm.apexGuessSeason = 2;
-    taskForm.apexGuessScheduleId = 0;
+    taskForm.apexGuessScheduleId = 20;
+    taskForm.apexGuessGroupId = 1;
     taskForm.apexGuessStrategy = 'power';
     taskForm.saltRoadBattlefieldId = '';
     taskForm.saltRoadSide = 1;
@@ -9424,8 +9370,8 @@ const openTaskModal = () => {
   taskForm.nightmarePresetIds = [];
   taskForm.nightmarePresetDelay = 10;
   taskForm.saltCupBetPick = 1;
-  taskForm.apexGuessSeason = 2;
-  taskForm.apexGuessScheduleId = 0;
+  taskForm.apexGuessScheduleId = 20;
+  taskForm.apexGuessGroupId = 1;
   taskForm.apexGuessStrategy = 'power';
   taskForm.saltRoadBattlefieldId = '';
   taskForm.saltRoadSide = 1;
@@ -9626,8 +9572,8 @@ const editTask = (task) => {
     nightmarePresetIds: task.nightmarePresetIds || [],
     nightmarePresetDelay: task.nightmarePresetDelay || 10,
     saltCupBetPick: task.saltCupBetPick !== undefined ? task.saltCupBetPick : 1,
-    apexGuessSeason: task.apexGuessSeason !== undefined ? task.apexGuessSeason : 2,
-    apexGuessScheduleId: task.apexGuessScheduleId !== undefined ? task.apexGuessScheduleId : 0,
+    apexGuessScheduleId: task.apexGuessScheduleId !== undefined ? (task.apexGuessScheduleId >= 46 ? task.apexGuessScheduleId - 26 : task.apexGuessScheduleId) : 20,
+    apexGuessGroupId: task.apexGuessGroupId !== undefined ? task.apexGuessGroupId : 1,
     apexGuessStrategy: task.apexGuessStrategy || 'power',
     saltRoadBattlefieldId: task.saltRoadBattlefieldId || '',
     saltRoadSide: task.saltRoadSide !== undefined ? task.saltRoadSide : 1,
@@ -9913,8 +9859,8 @@ const saveTask = () => {
     nightmarePresetIds: [...(taskForm.nightmarePresetIds || [])],
     nightmarePresetDelay: taskForm.nightmarePresetDelay || 10,
     saltCupBetPick: taskForm.saltCupBetPick || 1,
-    apexGuessSeason: taskForm.apexGuessSeason ?? 2,
-    apexGuessScheduleId: taskForm.apexGuessScheduleId ?? 0,
+    apexGuessScheduleId: taskForm.apexGuessScheduleId || 20,
+    apexGuessGroupId: taskForm.apexGuessGroupId !== undefined ? taskForm.apexGuessGroupId : 1,
     apexGuessStrategy: taskForm.apexGuessStrategy || 'power',
     saltRoadBattlefieldId: taskForm.saltRoadBattlefieldId || '',
     saltRoadSide: taskForm.saltRoadSide || 1,
@@ -13926,13 +13872,20 @@ const executeScheduledTask = async (task) => {
               await taskFunction(null, pickVal, taskMaxConcurrent);
             } else if (taskName === 'batchApexGuess') {
               // 逐鹿盐山竞猜：自动拉取对阵并按策略择队
-              let scheduleId = task.apexGuessScheduleId || 0;
+              // 淘汰赛局部编号（20-26），兼容旧存的绝对编号46-52
+              let stage = task.apexGuessScheduleId || 20;
+              if (stage >= 46) stage -= 26;
+              const groupId = task.apexGuessGroupId !== undefined ? task.apexGuessGroupId : 1;
+              // 编码规则: scheduleId = (期次-1)*26 + 局部编号
+              const scheduleId = groupId * 26 + stage;
               const strategy = task.apexGuessStrategy || 'power';
               const strategyLabels = { left: '全押蓝方', right: '全押红方', power: '押高战力', cheer: '押多助威' };
-              // 根据期次配置计算赛程范围
-              const _taskSeason = task.apexGuessSeason || 2;
-              const _seasonCfg = APEX_SEASONS.find(s => s.value === _taskSeason) || APEX_SEASONS[APEX_SEASONS.length - 1];
-              const scheduleLabels = allApexScheduleLabels.value;
+              const scheduleLabels = { 20: '64强', 21: '32强', 22: '16强', 23: '8强', 24: '4强', 25: '季军赛', 26: '决赛' };
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `⚔️ 逐鹿盐山竞猜：第${groupId + 1}期 ${scheduleLabels[stage] || stage}（scheduleId=${scheduleId}） 按【${strategyLabels[strategy] || strategy}】自动择队`,
+                type: "info",
+              });
               // 用第一个账号拉取对阵列表
               const fetchTokenId = availableTokens[0];
               const fetchToken = tokens.value.find(t => t.id === fetchTokenId);
@@ -13958,47 +13911,10 @@ const executeScheduledTask = async (task) => {
               } else {
                 fetchReady = true;
               }
-              // ✅ 自动检测赛程：根据期次范围从高到低尝试
-              if (fetchReady && scheduleId === 0) {
-                const candidateSchedules = [];
-                for (let i = APEX_ROUND_NAMES.length - 1; i >= 0; i--) candidateSchedules.push(_seasonCfg.base + i);
-                for (const candidateId of candidateSchedules) {
-                  try {
-                    const testRes = await tokenStore.sendMessageWithPromise(fetchTokenId, "apex_getguesslist", { scheduleId: candidateId, idx: 0 }, 5000);
-                    if (testRes?.apexGuessList && testRes.apexGuessList.length > 0) {
-                      scheduleId = candidateId;
-                      addLog({
-                        time: new Date().toLocaleTimeString(),
-                        message: `✅ 自动检测到当前活跃赛程：${scheduleLabels[candidateId]}`,
-                        type: "success",
-                      });
-                      break;
-                    }
-                  } catch (e) {
-                    // 该赛程无数据或出错，继续尝试下一个
-                  }
-                }
-                if (scheduleId === 0) {
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `⚠️ 自动检测未找到活跃赛程，跳过竞猜`,
-                    type: "warning",
-                  });
-                }
-              }
-              // 自动检测失败，跳过竞猜
-              if (scheduleId === 0) {
-                // 已在上方记录警告日志
-              } else {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `⚔️ 逐鹿盐山竞猜：${scheduleLabels[scheduleId] || scheduleId} 按【${strategyLabels[strategy] || strategy}】自动择队`,
-                type: "info",
-              });
               const guessTeamIds = [];
               let guessIdx = 0;
               for (let page = 0; fetchReady && page < 40; page++) {
-                const res = await tokenStore.sendMessageWithPromise(fetchTokenId, "apex_getguesslist", { scheduleId, idx: guessIdx }, 5000);
+                const res = await tokenStore.sendMessageWithPromise(fetchTokenId, "apex_getguesslist", { scheduleId, groupId, idx: guessIdx }, 5000);
                 const list = res?.apexGuessList;
                 if (!Array.isArray(list) || list.length === 0) break;
                 for (const pair of list) {
@@ -14030,9 +13946,8 @@ const executeScheduledTask = async (task) => {
                   type: "info",
                 });
                 // ✅ 修复：显式把任务级并发数传给 batchApexGuess→runStreaming，避免仅靠 batchSettings.maxActive 隐式中继
-                await taskFunction(scheduleId, guessTeamIds, taskMaxConcurrent);
+                await taskFunction(scheduleId, guessTeamIds, taskMaxConcurrent, groupId);
               }
-              } // end else (scheduleId !== 0)
             } else if (taskName === 'batchSaltRoadCheer') {
               // 天宫助威：支持预选军团ID或自动按方向获取
               const side = task.saltRoadSide || 1;

@@ -2525,11 +2525,12 @@ export function createTasksStore(deps) {
 
   /**
    * 批量逐鹿盐山竞猜
-   * @param {number} scheduleId - 赛程ID (20=64强, 21=32强, 22=16强, 23=8强, 24=4强, 25=季军赛, 26=决赛)
+   * @param {number} scheduleId - 赛程ID（新协议，如46）
    * @param {string[]} teamIds - 按选中顺序的队伍ID列表
    * @param {number} [maxConcurrent] - 并发数（定时任务级并发控制，0 或不传则使用全局 batchSettings.maxActive）
+   * @param {number} [groupId] - 期次（0=第一期, 1=第二期, 2=第三期…，默认1）
    */
-  const batchApexGuess = async (scheduleId, teamIds, maxConcurrent = 0) => {
+  const batchApexGuess = async (scheduleId, teamIds, maxConcurrent = 0, groupId = 1) => {
     if (selectedTokens.value.length === 0) {
       message.warning("请先选择账号");
       return;
@@ -2563,7 +2564,7 @@ export function createTasksStore(deps) {
           if (shouldStop.value) break;
 
           try {
-            const result = await tokenStore.sendMessageWithPromise(tokenId, "apex_guess", { teamId }, 5000);
+            const result = await tokenStore.sendMessageWithPromise(tokenId, "apex_guess", { teamId, scheduleId, groupId }, 5000);
             if (result?.error) {
               const errMsg = String(result.error);
               if (errMsg.includes('12800040')) {
@@ -2647,6 +2648,13 @@ export function createTasksStore(deps) {
         const guessClaimMap = roleInfo?.apexRoleInfo?.guessClaimMap || roleInfo?.guessClaimMap || {};
 
         // 收集猜中且未领奖的队伍：名称不以下划线开头且值为 false
+        // 解码规则: scheduleId=(期次-1)*26+局部编号，局部20-26=淘汰赛64强~决赛
+        const stageLabels = { 20: '64强', 21: '32强', 22: '16强', 23: '8强', 24: '4强', 25: '季军赛', 26: '决赛' };
+        const decodeSchedule = (id) => {
+          const period = Math.floor((id - 1) / 26) + 1;
+          const local = (id - 1) % 26 + 1;
+          return `第${period}期${stageLabels[local] || `局部${local}`}`;
+        };
         const claimList = [];
         for (const scheduleId of Object.keys(guessClaimMap)) {
           const teamMap = guessClaimMap[scheduleId];
@@ -2673,14 +2681,14 @@ export function createTasksStore(deps) {
             const result = await tokenStore.sendMessageWithPromise(tokenId, "apex_guessclaim", { scheduleId, teamId }, 5000);
             if (result?.error) {
               failCount++;
-              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领奖失败(${scheduleId}/${teamId}): ${result.error}`, type: "error" });
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领奖失败(${decodeSchedule(scheduleId)}/${scheduleId}/${teamId}): ${result.error}`, type: "error" });
             } else {
               successCount++;
-              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领奖成功: 赛程${scheduleId} 队伍${teamId}`, type: "success" });
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领奖成功: ${decodeSchedule(scheduleId)}(${scheduleId}) 队伍${teamId}`, type: "success" });
             }
           } catch (e) {
             failCount++;
-            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领奖异常(${scheduleId}/${teamId}): ${e.message}`, type: "error" });
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 领奖异常(${decodeSchedule(scheduleId)}/${scheduleId}/${teamId}): ${e.message}`, type: "error" });
           }
 
           await new Promise(r => setTimeout(r, _getModuleDelay('club')));
@@ -5761,9 +5769,9 @@ export function createTasksStore(deps) {
   /**
    * 批量十殿星级挑战（一键挑战）
    * 逻辑：
-   * - 从第1关顺序执行到第8关
-   * - 某关次数已满（5次）或已是3星 → 跳过继续下一关
-   * - 关卡2~8需要前一关至少1星，否则终止
+   * - 从第1关顺序执行到第8关，所有关卡均可挑战（游戏已取消前置关卡限制）
+   * - 某关次数已满（5次）或已有星级 → 跳过继续下一关
+   * - 每关最多尝试3次，3次失败后停止
    * - 挑战成功且获得至少1星 → 继续下一关
    * - 挑战失败 / 0星 / 无阵容 / 异常 → 该账号终止
    */
@@ -5910,18 +5918,7 @@ export function createTasksStore(deps) {
               continue;
             }
 
-            // 检查前置关卡是否解锁（关卡2~8需要前一关至少1星）（使用初始快照）
-            if (level > 1) {
-              const prevStars = initialStarsMap[level - 1] || 0;
-              if (prevStars < 1) {
-                addLog({
-                  time: new Date().toLocaleTimeString(),
-                  message: `关卡 ${level} 未解锁（需要关卡${level - 1}至少1星）`,
-                  type: "warning",
-                });
-                break;
-              }
-            }
+            // 游戏已取消前置关卡限制，所有关卡均可直接挑战
 
             const typ = 100 + level;
             let levelCompleted = false; // 标记当前关卡是否完成（获得1-3星）
@@ -6088,10 +6085,6 @@ export function createTasksStore(deps) {
                 // 更新本地 starsMap 和 fightCntMap
                 starsMap[level] = Math.max(starsMap[level] || 0, starCount);
                 fightCntMap[level] = (fightCntMap[String(level)] || fightCntMap[level] || 0) + 1;
-
-                // 同步更新快照，确保后续关卡解锁判断正确
-                initialStarsMap[level] = Math.max(initialStarsMap[level] || 0, starCount);
-                initialFightCntMap[level] = (initialFightCntMap[String(level)] || initialFightCntMap[level] || 0) + 1;
 
                 levelCompleted = true; // 标记关卡完成
               } else {

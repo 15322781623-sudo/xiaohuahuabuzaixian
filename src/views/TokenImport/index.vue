@@ -673,6 +673,7 @@ import { h, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { transformToken } from "@/utils/token";
 import useIndexedDB from "@/hooks/useIndexedDB";
+import { getBinBackupWithFallback, saveBinBackup } from "@/utils/binBackup";
 import { useAutoRedirect, useAutoRedirectSettings } from "@/composables/useAutoRedirect";
 import CloudSyncModal from "@/components/Common/CloudSyncModal.vue";
 
@@ -998,6 +999,14 @@ const refreshToken = async (token) => {
       if (!userToken) {
         userToken = await getArrayBuffer(token.name);
         usedOldKey = true;
+      }
+      if (!userToken) {
+        // 兜底：从 localStorage 备份读取（云端恢复后 IndexedDB 可能为空），并回填 IndexedDB
+        userToken = await getBinBackupWithFallback(token.id, token.name);
+        if (userToken) {
+          await storeArrayBuffer(token.id, userToken);
+          saveBinBackup(token.id, userToken);
+        }
       }
       if (!userToken) {
         throw new Error(`无法在本地存储中找到Token "${token.name}" 的原始数据，请重新导入Token`);

@@ -509,14 +509,25 @@ async function handleCloudApi(request, env, url, corsHeaders) {
         return cloudJsonResp({ error: '该设备名为保留名称，请换一个' }, 400, corsHeaders);
       }
       let body;
-      try { body = await request.json(); } catch { return cloudJsonResp({ error: '请求体格式错误' }, 400, corsHeaders); }
+      try {
+        // 支持 gzip 二进制上传（含 BIN 数据的快照较大，压缩后传输），兼容旧版纯 JSON
+        if ((request.headers.get('X-Cfg-Encoding') || '').toLowerCase() === 'gzip') {
+          const buf = await request.arrayBuffer();
+          const text = await new Response(
+            new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))
+          ).text();
+          body = JSON.parse(text);
+        } else {
+          body = await request.json();
+        }
+      } catch { return cloudJsonResp({ error: '请求体格式错误' }, 400, corsHeaders); }
       if (!body || typeof body.data !== 'object' || body.data === null) {
         return cloudJsonResp({ error: '缺少配置数据' }, 400, corsHeaders);
       }
       const payload = { updatedAt: new Date().toISOString(), data: body.data };
       const serialized = JSON.stringify(payload);
-      if (serialized.length > 4 * 1024 * 1024) {
-        return cloudJsonResp({ error: '配置大小超过4MB限制' }, 413, corsHeaders);
+      if (serialized.length > 20 * 1024 * 1024) {
+        return cloudJsonResp({ error: '配置大小超过20MB限制' }, 413, corsHeaders);
       }
       await putCloudCfgSnapshot(env, username, device, serialized, payload.updatedAt);
       return cloudJsonResp({ updatedAt: payload.updatedAt }, 200, corsHeaders);
@@ -652,7 +663,7 @@ export default {
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Admin-Password, X-Device-Id, X-Card-Key',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Admin-Password, X-Device-Id, X-Card-Key, X-Cfg-Encoding',
     };
 
     // Handle OPTIONS request

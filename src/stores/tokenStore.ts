@@ -11,7 +11,7 @@ import { XyzwWebSocketClient } from "@/utils/xyzwWebSocket";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { generateRandomSeed } from "@/utils/randomSeed";
 import { transformToken } from "@/utils/token";
-import { saveBinBackup } from "@/utils/binBackup";
+import { saveBinBackup, getBinBackupWithFallback } from "@/utils/binBackup";
 import { emitPlus } from "./events/index.js";
 import router from "@/router";
 
@@ -808,8 +808,16 @@ export const useTokenStore = defineStore("tokens", () => {
             usedOldKey = true;
             wsLogger.info(`使用名称作为键找到BIN数据: ${gameToken.name}`);
           } else {
-            errorMessage = "未找到BIN数据";
-            wsLogger.error(`Token刷新失败: ${errorMessage} [${tokenId}]`);
+            // 兜底：从 localStorage 备份读取（云端恢复后 IndexedDB 可能为空）
+            const backupBuffer = await getBinBackupWithFallback(tokenId, gameToken.name);
+            if (backupBuffer) {
+              userToken = backupBuffer;
+              await storeArrayBuffer(tokenId, backupBuffer); // 回填 IndexedDB
+              wsLogger.info(`从 localStorage 备份找到BIN数据: ${gameToken.name}`);
+            } else {
+              errorMessage = "未找到BIN数据";
+              wsLogger.error(`Token刷新失败: ${errorMessage} [${tokenId}]`);
+            }
           }
         }
 
