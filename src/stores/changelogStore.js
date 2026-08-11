@@ -14,6 +14,44 @@ export const useChangelogStore = defineStore("changelog", () => {
    */
   const changelogs = ref([
     {
+      version: "v2.48.4",
+      date: "2026-08-11",
+      type: "patch",
+      title: "BIN 存储四层防护、云端同步日志化、默认启动页可配置、游戏界面防顶号",
+      fixes: [
+        "BIN 数据存储升级为四层防护：IndexedDB 主存储 → localStorage gzip 压缩备份（节省 60-80% 空间）→ localStorage 原始 base64 备份（兼容回退）→ 云端配置快照（跨设备恢复）；应用启动 2 秒后自动校验补齐备份、旧格式迁移、孤儿备份清理",
+        "云端同步全面接入执行日志：云端恢复结果（BIN 成功/失败数、Token 数量差异）恢复后自动输出到执行日志、控制台分组展示；手动上传与自动同步上传均输出 Token/BIN 数及传输大小（含 gzip 压缩率）到执行日志",
+        "修复云端恢复 BIN 日志被 location.reload() 清空不可见：恢复前将结果写入 sessionStorage 跨 reload 保留，页面重启后在 App.vue 读取并以醒目 console.group 展示，同时自动对比云端 BIN 与本地 Token 数量差异并告警",
+        "修复云端恢复后 BIN 写回遗漏与备份缺失：restoreBinData 预校验 base64 后再事务写入，15 秒超时保护；恢复后自动补齐 localStorage BIN 备份兜底；collectBinData 采集时自动对比 IndexedDB 与 Token 数量",
+        "新增游戏界面防顶号：打开游戏（Tauri 窗口 / iframe / 批量登录）前自动断开助手 WebSocket 连接，避免游戏内连接与助手连接同账号冲突被踢下线；执行日志输出断开原因",
+        "新增默认启动页可配置：设置面板新增「默认启动页」下拉（Token管理 / 首页），首页路径映射为 /admin/dashboard 控制台；路由守卫无 Token 时自动跳转默认页",
+      ],
+    },
+    {
+      version: "v2.48.3",
+      date: "2026-08-10",
+      type: "patch",
+      title: "逐鹿盐山竞猜：期次/赛程顺序调整、切换期次自动探测最新赛程、选中值 localStorage 持久化",
+      fixes: [
+        "逐鹿盐山竞猜弹窗及定时任务配置卡片期次/赛程顺序调整：期次选择器移至赛程之前，更符合先选期次再选赛程的直觉操作顺序",
+        "切换期次自动探测最新赛程：从决赛(26)→64强(20)逆序试探 apex_getguesslist，找到首个有对阵数据的赛程自动选中并输出日志；探测期间显示 ⏳ 提示且获取按钮禁用防重复操作；全部无数据时默认回落 64强",
+        "期次与赛程选中值 localStorage 持久化：键名 saltHillGuessStage / saltHillGuessScheduleId，页面加载时自动恢复上次选中值，每次变更实时写入，下次打开弹窗无需重新选择",
+      ],
+    },
+    {
+      version: "v2.48.2",
+      date: "2026-08-10",
+      type: "patch",
+      title: "EXE本地HTTP/WS代理补齐wx_mini_1协议伪装、日常任务竞技场次数读取账号设置、Cron定时刷新",
+      fixes: [
+        "新增 EXE 本地 HTTP+WebSocket 代理（方案 B）：Tauri Rust 层启动 127.0.0.1:19863 代理服务，前端自动拦截游戏域名请求（hortorgames.com/servicewechat.com）转发至代理，代理以原生 HTTP 请求补齐微信小程序 Origin=https://servicewechat.com、Referer、PC 微信 UA、xweb_xhr=1 等完整请求头，WebSocket 同样支持 ws:// 代理双向转发；突破浏览器禁止设置 Origin/Referer/UA 的硬限制，EXE 端实现与 APK 一致的请求头伪装",
+        "代理 CORS 兼容：所有代理响应添加 Access-Control-Allow-Origin 头，OPTIONS 预检返回 204 并允许 X-Target-Url/X-Target-Method 自定义头，确保 Tauri WebView 跨域请求不被浏览器拦截",
+        "修复批量任务设置弹窗及模板弹窗中竞技场次数无法自定义输入：n-select 的下拉选项点击「自定义...」后无输入框弹出，不能输入数字；现改为 n-input-number 组件（min=1 max=100），可直接编辑次数",
+        "日常任务竞技场战斗次数统一读取账号设置：每日任务执行器（dailyTaskRunner.js）原先硬编码 3 次，现改为读取账号设置 arenaFightCount；单账号设置卡片（DailyTaskStatus.vue）新增竞技场次数数字输入（紧挨竞技场开关）；批量页手动竞技场按钮同样改为读取账号设置而非工具栏下拉独立值，三条路径统一",
+        "新增 Cron 表达式定时刷新页面：设置面板「Cron定时刷新」开关（默认关闭），开启后输入 cron 表达式（如 0 8 * * *），实时校验并显示未来 5 次执行时间；调度器每 10 秒检查表达式是否命中当前分钟，命中则触发页面刷新（复用防任务中断安全检查）",
+      ],
+    },
+    {
       version: "v2.48.1",
       date: "2026-08-09",
       type: "patch",

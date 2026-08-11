@@ -3,6 +3,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::process::Child;
 
+mod proxy;
+
 // 应用宝协议服务子进程（随主程序生命周期管理）
 static YYB_CHILD: Mutex<Option<Child>> = Mutex::new(None);
 
@@ -276,6 +278,101 @@ pub fn run() {
         do_start_yyb_service(app.handle());
       } else {
         log::info!("应用宝服务自启动已关闭，跳过自动启动");
+      }
+
+      // ★ wx_mini_1 方案 B: 启动 Rust 本地代理，补齐 Origin/Referer/UA
+      proxy::start_proxy_server();
+
+      // ★ 注入 JS Hook：XHR/fetch/WebSocket 重定向到本地代理
+      if let Some(window) = app.get_webview_window("main") {
+        let script = format!(r#"
+(function() {{
+    'use strict';
+    if (window.__WX_PROXY_INJECTED__) return;
+    window.__WX_PROXY_INJECTED__ = true;
+
+    var PROXY_HTTP = 'http://127.0.0.1:{port}/proxy';
+    var PROXY_WS   = 'ws://127.0.0.1:{port}/ws';
+
+    function isGameDomain(url) {{
+        if (!url) return false;
+        var s = String(url);
+        return s.indexOf('hortorgames.com') !== -1 ||
+               s.indexOf('servicewechat.com') !== -1;
+    }}
+
+    // ── Hook XMLHttpRequest ──
+    var OrigXHR = window.XMLHttpRequest;
+    window.XMLHttpRequest = function() {{
+        var xhr = new OrigXHR();
+        var origOpen = xhr.open;
+        xhr.open = function(method, url, async, user, password) {{
+            this.__wx_url = url;
+            this.__wx_method = method;
+            this.__wx_is_game = isGameDomain(url);
+            if (this.__wx_is_game) url = PROXY_HTTP;
+            return origOpen.call(this, method, url, async, user, password);
+        }};
+        var origSetHeader = xhr.setRequestHeader;
+        xhr.setRequestHeader = function(name, value) {{
+            var lower = String(name).toLowerCase();
+            if (lower === 'origin' || lower === 'referer' || lower === 'user-agent' ||
+                lower === 'xweb_xhr' || lower === 'x-requested-with') return;
+            return origSetHeader.apply(this, arguments);
+        }};
+        var origSend = xhr.send;
+        xhr.send = function(body) {{
+            if (this.__wx_is_game) {{
+                try {{
+                    origSetHeader.call(this, 'X-Target-Url', this.__wx_url);
+                    origSetHeader.call(this, 'X-Target-Method', this.__wx_method);
+                }} catch(e) {{}}
+            }}
+            return origSend.apply(this, arguments);
+        }};
+        return xhr;
+    }};
+    window.XMLHttpRequest.prototype = OrigXHR.prototype;
+
+    // ── Hook fetch ──
+    var origFetch = window.fetch;
+    window.fetch = function(input, init) {{
+        var url = typeof input === 'string' ? input : (input && input.url);
+        if (isGameDomain(url)) {{
+            init = init || {{}};
+            init.headers = init.headers || {{}};
+            if (init.headers instanceof Headers) {{
+                init.headers.set('X-Target-Url', url);
+                init.headers.set('X-Target-Method', (init.method || 'GET').toUpperCase());
+                init.headers.delete('Origin');
+                init.headers.delete('Referer');
+                init.headers.delete('User-Agent');
+            }} else {{
+                init.headers['X-Target-Url'] = url;
+                init.headers['X-Target-Method'] = (init.method || 'GET').toUpperCase();
+                delete init.headers['Origin'];
+                delete init.headers['Referer'];
+                delete init.headers['User-Agent'];
+            }}
+            input = PROXY_HTTP;
+        }}
+        return origFetch.call(this, input, init);
+    }};
+
+    // ── Hook WebSocket ──
+    var OrigWS = window.WebSocket;
+    window.WebSocket = function(url, protocols) {{
+        if (isGameDomain(url)) {{
+            url = PROXY_WS + '?target=' + encodeURIComponent(url);
+        }}
+        return protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+    }};
+    window.WebSocket.prototype = OrigWS.prototype;
+
+    console.log('[wx_proxy] XHR/fetch/WS 已重定向到本地代理 :{port}');
+}})();
+"#, port = proxy::PROXY_PORT);
+        let _ = window.eval(&script);
       }
 
       Ok(())

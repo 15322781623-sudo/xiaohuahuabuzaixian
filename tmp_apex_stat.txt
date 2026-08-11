@@ -1,0 +1,18 @@
+commit b2d17f3f5947fabaff5c1ef2e662964d478c880f
+Author: Developer <developer@xyzw-web-helper.local>
+Date:   Wed Aug 5 16:51:45 2026 +0800
+
+    v2.46.0: 娌圭尨鍏煎灞傞噸鏋勩€丣S鑴氭湰IndexedDB瀛樺偍銆侀€愰箍绔炵寽鏈熸閫夋嫨鍣ㄣ€佷换鍔¤褰曚紭鍖?
+ package-lock.json              | 165 +++-----------------
+ package.json                   |   3 +-
+ public/game/patch.js           | 227 +++++++++++++++++++++++++++-
+ src-tauri/tauri.conf.json      |   2 +-
+ src/components/TokenCard.vue   |   4 -
+ src/stores/changelogStore.js   |  36 +++++
+ src/utils/batch/carUtils.js    |  44 ++++--
+ src/utils/batch/tasksCar.js    |  15 +-
+ src/utils/batch/tasksLegacy.js |   6 +-
+ src/utils/dailyTaskRunner.js   |  15 +-
+ src/views/BatchDailyTasks.vue  | 335 ++++++++++++++++++++++++++++++++++-------
+ src/views/GameLogin.vue        |  42 +++++-
+ 12 files changed, 641 insertions(+), 253 deletions(-)

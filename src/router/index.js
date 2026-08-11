@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import * as autoRoutes from "vue-router/auto-routes";
 import { useTokenStore } from "@/stores/tokenStore";
 import { isNowInLegionWarTime } from "@/utils/clubBattleUtils";
+import { getDefaultStartPagePath } from "@/composables/useAutoRedirect";
 
 const generatedRoutes = autoRoutes.routes ?? [];
 
@@ -213,13 +214,9 @@ router.beforeEach((to, from, next) => {
   // if (to.meta.requiresToken  && tokenStore.getWebSocketStatus(tokenStore.selectedToken.id)=="disconnected") {
   if (to.meta.requiresToken && !tokenStore.hasTokens) {
     next("/tokens");
-  } else if (to.path === "/" && tokenStore.hasTokens) {
-    // 首页重定向逻辑
-    if (tokenStore.selectedToken) {
-      next("/admin/dashboard");
-    } else {
-      next("/tokens");
-    }
+  } else if (to.path === "/") {
+    // 首页：根据用户设置的默认启动页跳转
+    next(getDefaultStartPagePath());
   } else {
     next();
   }

@@ -17,6 +17,7 @@ export function createTasksStore(deps) {
     selectedTokens,
     tokens,
     tokenStatus,
+    tokenFailReasons,
     isRunning,
     shouldStop,
     ensureConnection,
@@ -6467,7 +6468,9 @@ export function createTasksStore(deps) {
           await new Promise((r) => setTimeout(r, _getModuleDelay('club')));
           if (!opponentResp || !opponentResp.opponentList || opponentResp.opponentList.length === 0) {
             addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ❌ 获取对阵列表为空，无法助威`, type: "error" });
-            tokenStatus.value[tokenId] = "error";
+            // ✅ 修复："error" 非有效状态，任务完成统计无法识别，改用 failed 并记录原因
+            tokenStatus.value[tokenId] = "failed";
+            tokenFailReasons.value[tokenId] = '获取对阵列表为空';
             return;
           }
 
@@ -6478,7 +6481,8 @@ export function createTasksStore(deps) {
 
         if (!legionId) {
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ❌ 无法获取${sideLabel}军团 ID`, type: "error" });
-          tokenStatus.value[tokenId] = "error";
+          tokenStatus.value[tokenId] = "failed";
+          tokenFailReasons.value[tokenId] = `无法获取${sideLabel}军团ID`;
           return;
         }
 
@@ -6499,7 +6503,8 @@ export function createTasksStore(deps) {
             tokenStatus.value[tokenId] = "completed";
           } else {
             addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ❌ 天宫助威失败：${result.error}`, type: "error" });
-            tokenStatus.value[tokenId] = "error";
+            tokenStatus.value[tokenId] = "failed";
+            tokenFailReasons.value[tokenId] = String(result.error);
           }
         } else {
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ✅ 天宫助威成功！对 ${legionName} 助威`, type: "success" });
@@ -6512,7 +6517,8 @@ export function createTasksStore(deps) {
           tokenStatus.value[tokenId] = "completed";
         } else {
           addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ❌ 天宫助威异常：${e.message}`, type: "error" });
-          tokenStatus.value[tokenId] = "error";
+          tokenStatus.value[tokenId] = "failed";
+          tokenFailReasons.value[tokenId] = e.message;
         }
       } finally {
         tokenStore.closeWebSocketConnection(tokenId);

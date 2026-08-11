@@ -1,0 +1,62 @@
+﻿--- [launcher] "web"===
+    is._verifyHelper&&this._verifyHelper.init(t.platformUId))},O.prototype.onLoad=function(){r.prototype.onLoad.call(this),this.isDev?"web"===PLATFORM?this._platform=new y.PlatformBrowser:this._platform=new s.PlatformDev:this.isH5?this._platform=new c.PlatformH5:t
+--- [launcher] "web"!==
+    arKey.IsLastVersion,!!this.isNative||null!=(u=r.isLast)&&u),r.bundleVers&&(0<r.bundleVers.length||"object"==typeof r.bundleVers)&&"web"!==PLATFORM&&!p.instance.isH5){if(s=cc.assetManager.downloader.bundleVers,l=globalThis.ccInternalRemoteBundles,t.bundleVersio
+--- [launcher] "web"!==
+    t bundle versions.",t.bundleVersions)}else console.info("Empty Asset bundle versions.");return r.dataBundleVer&&"dev"!==PLATFORM&&"web"!==PLATFORM&&(t.bundleVersions=null!=(d=t.bundleVersions)?d:{},t.bundleVersions.config=r.dataBundleVer,l=globalThis.ccInterna
+--- [launcher] "h5"===
+    _platform.platformType},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"oriPlatformType",{get:function(){return"h5"===this.subPlatform?"h5web":""},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"platformName",{get:function
+--- [launcher] "web"===
+    rn cc.sys.os===cc.sys.OS_ANDROID},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isWeb",{get:function(){return"web"===PLATFORM},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isDevOnly",{get:function(){return"dev"===PLAT
+--- [launcher] "web"===
+    ev"===PLATFORM},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isDev",{get:function(){return"dev"===PLATFORM||"web"===PLATFORM},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isWeChat",{get:function(){return"wx"===PLATFO
+--- [launcher] "wx"===
+    ===PLATFORM||"web"===PLATFORM},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isWeChat",{get:function(){return"wx"===PLATFORM},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isHuaWei",{get:function(){return"huawei"===PLA
+--- [launcher] "qq"===
+    ction(){return"huawei"===PLATFORM},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isQQ",{get:function(){return"qq"===PLATFORM},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isByteDance",{get:function(){return"bytedance"
+--- [launcher] "h5"===
+    atform.isDouyinNewCustomService()},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isH5",{get:function(){return"h5"===PLATFORM||"h5web"===PLATFORM},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isWXAndQQ",{get:function()
+--- [launcher] "h5web"===
+    wCustomService()},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isH5",{get:function(){return"h5"===PLATFORM||"h5web"===PLATFORM},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isWXAndQQ",{get:function(){return"wx"===PLA
+--- [launcher] "wx"===
+    PLATFORM||"h5web"===PLATFORM},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isWXAndQQ",{get:function(){return"wx"===PLATFORM||"qq"===PLATFORM},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isWechatFamiliy",{get:functio
+--- [launcher] "qq"===
+    ===PLATFORM},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isWXAndQQ",{get:function(){return"wx"===PLATFORM||"qq"===PLATFORM},enumerable:!1,configurable:!0}),Object.defineProperty(O.prototype,"isWechatFamiliy",{get:function(){return this.i
+--- [launcher] "qq"===
+    mponent,__extends(r,o),r.prototype.onLoad=function(){var n=this,e=i.GlobalVarManager.instance.language,t="bytedance"===PLATFORM,o="qq"===PLATFORM,r="policy",t=(t?r="policy_bytedance":o&&(r="policy_qq"),"_"+e),o=this.isPolicy?"/"+r+"/policy"+t+".txt":"/"+r+"/ag
+--- [launcher] "web"===
+    SwitchId.CloseRFTask:case s.C_SwitchId.LeagueWarReplay:case s.C_SwitchId.LPWarReplay:return!1;case s.C_SwitchId.ClientDVCDN:return"web"===PLATFORM;case a.SwitchId.SERVER_TRANSFER:case s.C_SwitchId.PartLoad:case s.C_SwitchId.SpineEmptyContent:case a.SwitchId.CO
+--- [launcher] "qq"!==
+    lipboardData=function(){for(var e=[],t=0;t<arguments.length;t++)e[t]=arguments[t];wx.setClipboardData&&(wx.setClipboardData(e[0]),"qq"!==PLATFORM&&"bytedance"!==PLATFORM||e[0].success&&e[0].success())},c.prototype.exitGame=function(){for(var e=0;e<arguments.le
+--- [game] "qq"===
+    lect:!1,renderer:function(e,t){t.m_text.text=i._lines[e]}})},h.prototype.onShown=function(){var o=this,e="bytedance"===PLATFORM,t="qq"===PLATFORM,i="policy",e=(e?i="policy_bytedance":t&&(i="policy_qq"),"_"+l.GlobalVarManager.instance.language),t=this.pageType=
+--- [game] "qq"===
+    ines;t.length=0,t.push.apply(t,e),o.ui.m_list.numItems=t.length,o.ui.m_list.scrollToView(0)}var o=this,e="bytedance"===PLATFORM,t="qq"===PLATFORM,n="huawei"===PLATFORM,a="policy_huawei",e=(e?a="policy_bytedance":t?a="policy_qq":n&&(a="policy_huawei"),"_"+l.Glo
+--- [game] "h5"===
+    .location&&window.location.search)&&!!ie.GlobalVarManager.instance.has("channel")&&(e=ie.GlobalVarManager.instance.get("channel"),"h5"===PLATFORM||"douyincps"===e)},w.prototype._openCardShowDialog=function(){this.ui;var e,t=this.model.get(y.ModelConst.ROLE_INF
+--- [game] "qq"!==
+    er"),e=(o=t.BaseModule,__extends(u,o),u.prototype._checkPlatform=function(e){var t=n.PlatformManager.instance.platformExt;return!("qq"!==t&&"default"!==e||"qq"===t&&"qq"!==e)},u.prototype._tarServerHaveRole=function(){var e=_.GET_MODULE(c.ModuleType.SELECT_SER
+--- [game] "qq"===
+    extends(u,o),u.prototype._checkPlatform=function(e){var t=n.PlatformManager.instance.platformExt;return!("qq"!==t&&"default"!==e||"qq"===t&&"qq"!==e)},u.prototype._tarServerHaveRole=function(){var e=_.GET_MODULE(c.ModuleType.SELECT_SERVER).lastLoginArea;if(e&&
+--- [game] "qq"!==
+    o),u.prototype._checkPlatform=function(e){var t=n.PlatformManager.instance.platformExt;return!("qq"!==t&&"default"!==e||"qq"===t&&"qq"!==e)},u.prototype._tarServerHaveRole=function(){var e=_.GET_MODULE(c.ModuleType.SELECT_SERVER).lastLoginArea;if(e&&void 0!==e
+--- [game] "web"===
+    __awaiter(this,void 0,void 0,function(){var t,i,o,n,a;return __generator(this,function(e){switch(e.label){case 0:t=null,i=0,o=3,n="web"===PLATFORM,e.label=1;case 1:return n?[4,this.loadDataVersion()]:[3,4];case 2:if((a=e.sent())&&a.json&&a.json.version&&(conso
+--- [game] "h5web"===
+    function a(){this.old=!1,this.new=!1}i.SwitchStatus=n;r=t.UIDialog,__extends(s,r),s.prototype._canSelectServer=function(){return!("h5web"===PLATFORM&&window&&window.location&&window.location.search&&b.GlobalVarManager.instance.has("channel")&&"douyincps"===b.G
+
+
+======== PLATFORM 鍦?game bundle 鐨勪娇鐢?========
+--- nction(e,t){t.m_text.text=i._lines[e]}})},h.prototype.onShown=function(){var o=this,e="bytedance"===PLATFORM,t="qq"===PLATFORM,i="policy",e=(e?i="policy_bytedance":t&&(i="policy_qq"),"_"+l.GlobalVarManager.instance.langu
+--- xt.text=i._lines[e]}})},h.prototype.onShown=function(){var o=this,e="bytedance"===PLATFORM,t="qq"===PLATFORM,i="policy",e=(e?i="policy_bytedance":t&&(i="policy_qq"),"_"+l.GlobalVarManager.instance.language),t=this.pageTy
+--- ush.apply(t,e),o.ui.m_list.numItems=t.length,o.ui.m_list.scrollToView(0)}var o=this,e="bytedance"===PLATFORM,t="qq"===PLATFORM,n="huawei"===PLATFORM,a="policy_huawei",e=(e?a="policy_bytedance":t?a="policy_qq":n&&(a="poli
+--- i.m_list.numItems=t.length,o.ui.m_list.scrollToView(0)}var o=this,e="bytedance"===PLATFORM,t="qq"===PLATFORM,n="huawei"===PLATFORM,a="policy_huawei",e=(e?a="policy_bytedance":t?a="policy_qq":n&&(a="policy_huawei"),"_"+l.
+--- ngth,o.ui.m_list.scrollToView(0)}var o=this,e="bytedance"===PLATFORM,t="qq"===PLATFORM,n="huawei"===PLATFORM,a="policy_huawei",e=(e?a="policy_bytedance":t?a="policy_qq":n&&(a="policy_huawei"),"_"+l.GlobalVarManager.insta
+--- _generator(this,function(){return n.IS_PROD()?[2,r.SystemService.claimCdkReward({key:e,platformType:PLATFORM})]:[2,r.SystemService.claimCdkReward({key:e,platformType:"h5"})]})})},s.prototype.hasKey=function(e){return a.R
+--- ,t=l.GET_MODULE(s.ModuleType.EXCITING_ACTIVITY),o=l.GET_MODULE(s.ModuleType.FIRST_CHARGE),n="ios"===PLATFORM&&r.PlatformManager.instance.checkSwitch(s.SwitchId.CHECK_AUDIT),a=this;this._activityList=s.ActivityConf.list.f
+--- Items=this._dataList.length,n.PlatformManager.instance.isWechatFamiliy);t.m_platform.selectedPage=e?PLATFORM:"default"},C.prototype._refreshCell=function(e,t){var i=e.type;if(i!=r.BriefreportType.NONE){t.m_isEmpty.select
+--- n("閲嶆柊鐧婚檰:"+a.roleId):(console.warn("USER_ID:"+a.uid),console.warn("ROLE_ID:"+a.roleId),console.warn("PLATFORM_ID:"+a.platformUId),console.warn("IS_WHITE_ROLE:",r),I.LocalStorage.instance.setId(a.roleId)),f.WaitingDialog.h
+--- !ie.GlobalVarManager.instance.has("channel")&&(e=ie.GlobalVarManager.instance.get("channel"),"h5"===PLATFORM||"douyincps"===e)},w.prototype._openCardShowDialog=function(){this.ui;var e,t=this.model.get(y.ModelConst.ROLE_
+--- r t,i,o,n,a,r,s;return __generator(this,function(e){switch(e.label){case 0:t=null,i=0,o=3,n="dev"===PLATFORM,a=!u.PlatformManager.instance.checkSwitch(h.C_SwitchId.ClientDVCDN),e.label=1;case 1:return a||n?[3,3]:[4,this.
+--- ){var t,i,o,n,a;return __generator(this,function(e){switch(e.label){case 0:t=null,i=0,o=3,n="web"===PLATFORM,e.label=1;case 1:return n?[4,this.loadDataVersion()]:[3,4];case 2:if((a=e.sent())&&a.json&&a.json.version&&(con
+--- witchStatus=n;r=t.UIDialog,__extends(s,r),s.prototype._canSelectServer=function(){return!("h5web"===PLATFORM&&window&&window.location&&window.location.search&&b.GlobalVarManager.instance.has("channel")&&"douyincps"===b.G

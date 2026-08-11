@@ -155,6 +155,7 @@
             <div class="st-switch-item">
               <span class="st-switch-text">竞技场</span>
               <n-switch v-model:value="settings.arenaEnable" size="small" />
+              <n-input-number v-model:value="settings.arenaFightCount" :min="1" :max="100" :step="1" size="small" style="width: 60px; margin-left: 4px;" />
             </div>
             <div class="st-switch-item">
               <span class="st-switch-text">开宝箱</span>
@@ -303,6 +304,7 @@ const settings = reactive({
   payRecruit: true,
   openBox: true,
   arenaEnable: true,
+  arenaFightCount: 3,
   claimHangUp: true,
   claimEmail: true,
   blackMarketPurchase: true,

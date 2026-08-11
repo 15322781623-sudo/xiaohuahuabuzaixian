@@ -24,6 +24,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { darkTheme } from "naive-ui";
 import { useTheme } from "@/composables/useTheme";
+import { useTokenStore } from "@/stores/tokenStore";
 import ApkUpdateHandler from "@/components/ApkUpdateHandler.vue";
 import CardKeyDialog from "@/components/CardKeyDialog.vue";
 import { isActivated } from "@/utils/deviceFingerprint";
@@ -49,6 +50,62 @@ const handleThemeChange = () => {
 };
 
 onMounted(() => {
+  // 云恢复结果日志：applySnapshot 中 location.reload() 会清空 console，
+  // 因此恢复结果被写入 sessionStorage，启动时在此读取打印
+  try {
+    const raw = sessionStorage.getItem("__cloudRestoreResult__");
+    if (raw) {
+      const result = JSON.parse(raw);
+      const { totalBin, succeeded, failed, failedDetails, timestamp } = result;
+      console.group("%c[云同步] 云端配置恢复结果", "font-weight:bold;color:#4fc3f7");
+      console.info(`恢复时间: ${timestamp || "未知"}`);
+      console.info(`云端 BIN 总数: ${totalBin}`);
+      console.info(`成功写入: ${succeeded} 条`);
+      if (failed > 0) {
+        console.error(`失败: ${failed} 条`, failedDetails);
+      } else {
+        console.info("%c✅ 全部 BIN 数据恢复成功", "color:#66bb6a");
+      }
+      // 同时比对 localStorage 中 token 与 IndexedDB BIN 数量，提示差异
+      try {
+        const tokens = JSON.parse(localStorage.getItem("gameTokens") || "[]");
+        if (tokens.length > 0 && totalBin !== tokens.length) {
+          console.warn(
+            `%c⚠️ 数量不一致：云端 BIN ${totalBin} 条 vs 本地 Token ${tokens.length} 条（差值 ${tokens.length - totalBin}）。`,
+            "color:#ffa726"
+          );
+          if (totalBin < tokens.length) {
+            console.warn(
+              `缺少 ${tokens.length - totalBin} 个账号的 BIN 数据，这些账号将无法连接。`
+            );
+          }
+        }
+      } catch { /* ignore */ }
+      console.groupEnd();
+      // 同步推送到 UI 执行日志
+      try {
+        const tokenStore = useTokenStore();
+        if (failed > 0) {
+          tokenStore.pushGlobalLog(
+            `⚠️ 云端恢复：${succeeded} 个BIN成功，${failed} 个失败`,
+            "error"
+          );
+        } else if (totalBin > 0) {
+          tokenStore.pushGlobalLog(
+            `✅ 云端配置恢复完成：${succeeded} 个BIN数据已恢复`,
+            "info"
+          );
+        } else {
+          tokenStore.pushGlobalLog(
+            `⚠️ 云端快照中无 BIN 数据，${tokens?.length || 0} 个账号无法连接`,
+            "warn"
+          );
+        }
+      } catch { /* ignore */ }
+      sessionStorage.removeItem("__cloudRestoreResult__");
+    }
+  } catch { /* ignore */ }
+
   initTheme();
   setupSystemThemeListener();
 

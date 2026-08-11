@@ -104,6 +104,15 @@
             </div>
             <template #extra> 各页面独立控制，开启后倒计时结束自动跳转到批量日常页面（默认仅首页开启） </template>
           </a-form-item>
+          <a-form-item label="默认启动页">
+            <n-select
+              :value="defaultStartPage"
+              :options="DEFAULT_START_PAGES.map(p => ({ label: p.label, value: p.key }))"
+              style="width: 160px"
+              @update:value="saveDefaultStartPage"
+            />
+            <template #extra> 打开应用时默认显示的页面，默认为 Token 管理 </template>
+          </a-form-item>
           <a-form-item label="跳转倒计时">
             <n-input-number
               v-model:value="autoRedirectSeconds"
@@ -166,7 +175,7 @@ import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useDialog, useMessage } from "naive-ui";
 import { useAuthStore } from "@/stores/auth";
-import { useAutoRedirectSettings } from "@/composables/useAutoRedirect";
+import { useAutoRedirectSettings, DEFAULT_START_PAGES } from "@/composables/useAutoRedirect";
 
 const router = useRouter();
 const message = useMessage();
@@ -199,7 +208,7 @@ const preferences = reactive({
 });
 
 // 自动跳转配置（各页面独立开关，默认仅首页开启，持久化到 localStorage）
-const { pageStates: redirectPageStates, seconds: autoRedirectSeconds, togglePage: toggleRedirectPage, saveSeconds: saveRedirectSeconds } = useAutoRedirectSettings();
+const { pageStates: redirectPageStates, seconds: autoRedirectSeconds, startPage: defaultStartPage, togglePage: toggleRedirectPage, saveSeconds: saveRedirectSeconds, saveStartPage: saveDefaultStartPage } = useAutoRedirectSettings();
 
 // 密码验证规则
 const passwordRules = {

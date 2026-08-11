@@ -1,0 +1,636 @@
+commit b2d17f3f5947fabaff5c1ef2e662964d478c880f
+Author: Developer <developer@xyzw-web-helper.local>
+Date:   Wed Aug 5 16:51:45 2026 +0800
+
+    v2.46.0: 娌圭尨鍏煎灞傞噸鏋勩€丣S鑴氭湰IndexedDB瀛樺偍銆侀€愰箍绔炵寽鏈熸閫夋嫨鍣ㄣ€佷换鍔¤褰曚紭鍖?
+diff --git a/src/views/BatchDailyTasks.vue b/src/views/BatchDailyTasks.vue
+index 268b7dc..4be8679 100644
+--- a/src/views/BatchDailyTasks.vue
++++ b/src/views/BatchDailyTasks.vue
+@@ -3305,6 +3305,12 @@
+                 </template>
+                 缂栬緫
+               </n-button>
++              <n-button size="small" @click="copyTask(task)">
++                <template #icon>
++                  <n-icon><CopyOutline /></n-icon>
++                </template>
++                澶嶅埗
++              </n-button>
+               <n-button
+                 size="small"
+                 type="info"
+@@ -3964,7 +3970,7 @@
+               </n-alert>
+               <div class="settings-grid-responsive">
+                 <div class="setting-item-responsive">
+-                  <label class="setting-label-responsive">鏈€浣庡搧璐?/label>
++                  <label class="setting-label-responsive" title="杞﹁締鍝佽川杈惧埌姝ょ瓑绾у嵆鍙彂杞︼紝0涓轰笉闄愬埗鍝佽川">鏈€浣庡搧璐?/label>
+                   <n-select
+                     v-model:value="taskForm.smartDeparture.carMinColor"
+                     :options="[
+@@ -3980,19 +3986,19 @@
+                   />
+                 </div>
+                 <div class="setting-item-responsive">
+-                  <label class="setting-label-responsive">閲戠爾 >=</label>
++                  <label class="setting-label-responsive" title="杞﹁締濂栧姳涓惈閲戠爾鏁伴噺杈惧埌姝ゅ€兼墠婊¤冻鏉′欢锛?涓轰笉闄愬埗">閲戠爾 >=</label>
+                   <n-input-number v-model:value="taskForm.smartDeparture.goldThreshold" :min="0" :step="100" size="small" class="input-responsive" />
+                 </div>
+                 <div class="setting-item-responsive">
+-                  <label class="setting-label-responsive">鎷涘嫙浠?>=</label>
++                  <label class="setting-label-responsive" title="杞﹁締濂栧姳涓嫑鍕熶护鏁伴噺杈惧埌姝ゅ€兼墠婊¤冻鏉′欢锛?涓轰笉闄愬埗">鎷涘嫙浠?>=</label>
+                   <n-input-number v-model:value="taskForm.smartDeparture.recruitThreshold" :min="0" :step="10" size="small" class="input-responsive" />
+                 </div>
+                 <div class="setting-item-responsive">
+-                  <label class="setting-label-responsive">鐧界帀 >=</label>
++                  <label class="setting-label-responsive" title="杞﹁締濂栧姳涓櫧鐜夋暟閲忚揪鍒版鍊兼墠婊¤冻鏉′欢锛?涓轰笉闄愬埗">鐧界帀 >=</label>
+                   <n-input-number v-model:value="taskForm.smartDeparture.jadeThreshold" :min="0" :step="100" size="small" class="input-responsive" />
+                 </div>
+                 <div class="setting-item-responsive">
+-                  <label class="setting-label-responsive">鍒锋柊鍒?>=</label>
++                  <label class="setting-label-responsive" title="杞﹁締濂栧姳涓埛鏂板埜鏁伴噺杈惧埌姝ゅ€兼墠婊¤冻鏉′欢锛?涓轰笉闄愬埗">鍒锋柊鍒?>=</label>
+                   <n-input-number v-model:value="taskForm.smartDeparture.ticketThreshold" :min="0" :step="1" size="small" class="input-responsive" />
+                 </div>
+                 <div class="setting-item-responsive">
+@@ -4006,6 +4012,13 @@
+                     <template #unchecked>鍏?/template>
+                   </n-switch>
+                 </div>
++                <div class="setting-item-responsive">
++                  <label class="setting-label-responsive" title="寮€鍚悗锛屽繀椤绘弧瓒宠嚜瀹氫箟鏉′欢鎵嶅彂杞︼紱鍏抽棴鍚庯紝鑷畾涔夋潯浠舵垨鍝佽川浠讳竴婊¤冻鍗冲彂杞?>鑷畾涔変紭鍏?/label>
++                  <n-switch v-model:value="taskForm.smartDeparture.customPriority" size="small">
++                    <template #checked>寮€</template>
++                    <template #unchecked>鍏?/template>
++                  </n-switch>
++                </div>
+                 <div class="setting-item-responsive">
+                   <label class="setting-label-responsive" title="寮€鍚悗锛岃嚜鍔ㄥ彂杞︽病绁ㄦ椂浣跨敤閲戠爾鍒锋柊锛涘叧闂椂浣跨敤鍘熸湁閫昏緫">寮哄埗鐢ㄩ噾鐮栧埛鏂?/label>
+                   <n-switch v-model:value="taskForm.smartDeparture.useGoldRefreshFallback" size="small">
+@@ -4102,11 +4115,20 @@
+                 鎵ц鏃惰嚜鍔ㄦ媺鍙栨墍閫夎禌绋嬪叏閮ㄥ闃碉紝骞舵寜绛栫暐鑷姩鎷╅槦绔炵寽锛堝凡鍙備笌鐨勫満娆¤嚜鍔ㄨ烦杩囷級
+               </n-alert>
+               <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
++                <div style="display: flex; align-items: center;">
++                  <span style="font-size: 14px; margin-right: 8px;">鏈熸锛?/span>
++                  <n-select
++                    v-model:value="taskForm.apexGuessSeason"
++                    :options="[{ label: '绗竴鏈?, value: 1 }, { label: '绗簩鏈?, value: 2 }]"
++                    size="small"
++                    style="width: 100px;"
++                  />
++                </div>
+                 <div style="display: flex; align-items: center;">
+                   <span style="font-size: 14px; margin-right: 8px;">璧涚▼锛?/span>
+                   <n-select
+                     v-model:value="taskForm.apexGuessScheduleId"
+-                    :options="[{ label: '64寮?, value: 20 }, { label: '32寮?, value: 21 }, { label: '16寮?, value: 22 }, { label: '8寮?, value: 23 }, { label: '4寮?, value: 24 }, { label: '瀛ｅ啗璧?, value: 25 }, { label: '鍐宠禌', value: 26 }]"
++                    :options="taskFormApexScheduleOptions"
+                     size="small"
+                     style="width: 120px;"
+                   />
+@@ -4262,14 +4284,14 @@
+             </n-divider>
+             <div class="settings-grid-responsive">
+               <div class="setting-item-responsive">
+-                <label class="setting-label-responsive">鍚敤鏉′欢妫€鏌?/label>
++                <label class="setting-label-responsive" title="鎬诲紑鍏筹紝寮€鍚悗鎵嶄細妫€鏌ヤ笅鏂圭殑鑷畾涔夋潯浠?閲戠爾/鎷涘嫙浠?鐧界帀/鍒锋柊鍒?锛屽叧闂垯鍙寜淇濆簳鍝佽川鍒ゆ柇">鍚敤鏉′欢妫€鏌?/label>
+                 <n-switch v-model:value="batchSettings.smartDepartureEnabled" size="small" @update:value="autoSaveBatchSettings">
+                   <template #checked>寮€</template>
+                   <template #unchecked>鍏?/template>
+                 </n-switch>
+               </div>
+               <div class="setting-item-responsive">
+-                <label class="setting-label-responsive">淇濆簳杞﹁締棰滆壊</label>
++                <label class="setting-label-responsive" title="杞﹁締鍝佽川杈惧埌姝ょ瓑绾у嵆鍙彂杞︼紝0涓轰笉闄愬埗鍝佽川">淇濆簳杞﹁締棰滆壊</label>
+                 <n-select
+                   v-model:value="batchSettings.carMinColor"
+                   :options="[
+@@ -4285,19 +4307,19 @@
+                 />
+               </div>
+               <div class="setting-item-responsive">
+-                <label class="setting-label-responsive">閲戠爾 >=</label>
++                <label class="setting-label-responsive" title="杞﹁締濂栧姳涓惈閲戠爾鏁伴噺杈惧埌姝ゅ€兼墠婊¤冻鏉′欢锛?涓轰笉闄愬埗">閲戠爾 >=</label>
+                 <n-input-number v-model:value="batchSettings.smartDepartureGoldThreshold" :min="0" :step="100" size="small" class="input-responsive" />
+               </div>
+               <div class="setting-item-responsive">
+-                <label class="setting-label-responsive">鎷涘嫙浠?>=</label>
++                <label class="setting-label-responsive" title="杞﹁締濂栧姳涓嫑鍕熶护鏁伴噺杈惧埌姝ゅ€兼墠婊¤冻鏉′欢锛?涓轰笉闄愬埗">鎷涘嫙浠?>=</label>
+                 <n-input-number v-model:value="batchSettings.smartDepartureRecruitThreshold" :min="0" :step="10" size="small" class="input-responsive" />
+               </div>
+               <div class="setting-item-responsive">
+-                <label class="setting-label-responsive">鐧界帀 >=</label>
++                <label class="setting-label-responsive" title="杞﹁締濂栧姳涓櫧鐜夋暟閲忚揪鍒版鍊兼墠婊¤冻鏉′欢锛?涓轰笉闄愬埗">鐧界帀 >=</label>
+                 <n-input-number v-model:value="batchSettings.smartDepartureJadeThreshold" :min="0" :step="100" size="small" class="input-responsive" />
+               </div>
+               <div class="setting-item-responsive">
+-                <label class="setting-label-responsive">鍒锋柊鍒?>=</label>
++                <label class="setting-label-responsive" title="杞﹁締濂栧姳涓埛鏂板埜鏁伴噺杈惧埌姝ゅ€兼墠婊¤冻鏉′欢锛?涓轰笉闄愬埗">鍒锋柊鍒?>=</label>
+                 <n-input-number v-model:value="batchSettings.smartDepartureTicketThreshold" :min="0" :step="1" size="small" class="input-responsive" />
+               </div>
+               <div class="setting-item-responsive">
+@@ -4307,6 +4329,13 @@
+                   <template #unchecked>鍏?/template>
+                 </n-switch>
+               </div>
++              <div class="setting-item-responsive">
++                <label class="setting-label-responsive" title="寮€鍚悗锛屽繀椤绘弧瓒宠嚜瀹氫箟鏉′欢鎵嶅彂杞︼紱鍏抽棴鍚庯紝鑷畾涔夋潯浠舵垨鍝佽川浠讳竴婊¤冻鍗冲彂杞?>鑷畾涔変紭鍏?/label>
++                <n-switch v-model:value="batchSettings.customPriority" size="small" @update:value="autoSaveBatchSettings">
++                  <template #checked>寮€</template>
++                  <template #unchecked>鍏?/template>
++                </n-switch>
++              </div>
+               <div class="setting-item-responsive">
+                 <label class="setting-label-responsive" title="寮€鍚悗锛岃嚜鍔ㄥ彂杞︽病绁ㄦ椂浣跨敤閲戠爾鍒锋柊锛涘叧闂椂浣跨敤鍘熸湁閫昏緫">寮哄埗鐢ㄩ噾鐮栧埛鏂?/label>
+                 <n-switch v-model:value="batchSettings.useGoldRefreshFallback" size="small" @update:value="autoSaveBatchSettings">
+@@ -4462,22 +4491,11 @@
+               </div>
+             </div>
+             
+-            <!-- 鍚堝苟鏄剧ず锛氭寕鏈烘椂闂存帶鍒?+ 鎹㈢毊闂叧璁剧疆 + 鍔熸硶璧犻€佽缃?-->
++            <!-- 鎹㈢毊闂叧璁剧疆 + 鍔熸硶璧犻€佽缃?-->
+             <n-divider title-placement="left" style="margin: 16px 0 12px 0">
+-              <span style="font-size: 14px; font-weight: 600;">鈴?鎸傛満鏃堕棿鎺у埗 | 鈿旓笍 鎹㈢毊闂叧璁剧疆 | 馃捇 鍔熸硶璧犻€佽缃?/span>
++              <span style="font-size: 14px; font-weight: 600;">鈿旓笍 鎹㈢毊闂叧璁剧疆 | 馃捇 鍔熸硶璧犻€佽缃?/span>
+             </n-divider>
+             <div class="settings-grid-responsive-3cols">
+-              <!-- 鎸傛満鏃堕棿鎺у埗 -->
+-              <div class="setting-group-merged">
+-                <div class="setting-item-responsive">
+-                  <label class="setting-label-responsive" title="鏄惁鍚敤鎸傛満鏃堕棿鎺у埗">鍚敤鏃堕棿鎺у埗</label>
+-                  <n-switch v-model:value="batchSettings.hangUpTimeControlEnabled" @update:value="autoSaveBatchSettings" />
+-                </div>
+-                <div class="setting-item-responsive" v-if="batchSettings.hangUpTimeControlEnabled">
+-                  <label class="setting-label-responsive" title="棰嗗彇鎸傛満濂栧姳鍜屽姞閽熺殑鏈€灏忔寕鏈烘椂闂?>鏈€灏忔寕鏈烘椂闂?(灏忔椂)</label>
+-                  <n-input-number v-model:value="batchSettings.hangUpMinTime" :min="1" :max="24" :step="1" size="small" class="input-responsive" />
+-                </div>
+-              </div>
+               
+               <!-- 鎹㈢毊闂叧璁剧疆 -->
+               <div class="setting-group-merged">
+@@ -4687,9 +4705,15 @@
+         <div class="settings-grid" style="display: block;">
+           <!-- 椤堕儴鎿嶄綔鏍忥細璧涚▼閫夋嫨 + 鎵归噺鎿嶄綔 -->
+           <div style="margin-bottom: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
++            <n-select
++              v-model:value="apexGuessSeason"
++              :options="[{ label: '绗竴鏈?, value: 1 }, { label: '绗簩鏈?, value: 2 }]"
++              style="width: 90px"
++              size="small"
++            />
+             <n-select
+               v-model:value="apexGuessScheduleId"
+-              :options="[{ label: '64寮?, value: 20 }, { label: '32寮?, value: 21 }, { label: '16寮?, value: 22 }, { label: '8寮?, value: 23 }, { label: '4寮?, value: 24 }, { label: '瀛ｅ啗璧?, value: 25 }, { label: '鍐宠禌', value: 26 }]"
++              :options="apexGuessScheduleOptions"
+               style="width: 110px"
+               size="small"
+             />
+@@ -4697,6 +4721,7 @@
+               鑾峰彇瀵归樀鍒楄〃
+             </n-button>
+             <span v-if="apexGuessLoading" style="color: #999; font-size: 12px;">鍔犺浇涓?..</span>
++            <span v-if="apexGuessDetectedScheduleId > 0 && apexGuessScheduleId === 0 && !apexGuessLoading" style="color: #18a058; font-size: 12px;">鉁?宸叉娴嬪埌锛歿{ allApexScheduleLabels[apexGuessDetectedScheduleId] || apexGuessDetectedScheduleId }}</span>
+             <div style="flex: 1; min-width: 8px;"></div>
+             <n-button size="tiny" :type="'info'" ghost :disabled="apexGuessMatchList.length === 0" @click="apexGuessPickAll('left')">鍏ㄦ娂钃濇柟</n-button>
+             <n-button size="tiny" :type="'error'" ghost :disabled="apexGuessMatchList.length === 0" @click="apexGuessPickAll('right')">鍏ㄦ娂绾㈡柟</n-button>
+@@ -6522,9 +6547,38 @@ const saltCupBetLoading = ref(false);
+ // ======================
+ const showApexGuessModal = ref(false);
+ const apexGuessLoading = ref(false);
+-const apexGuessScheduleId = ref(21); // 20=64寮?21=32寮?22=16寮?23=8寮?24=4寮?25=瀛ｅ啗璧?26=鍐宠禌
++// 鏈熸閰嶇疆锛氭瘡鏈?涓禌绋嬶紝scheduleId = seasonBase + offset(0~6)
++const APEX_SEASONS = [
++  { value: 1, label: '绗竴鏈?, base: 20 },
++  { value: 2, label: '绗簩鏈?, base: 27 },
++];
++const APEX_ROUND_NAMES = ['64寮?, '32寮?, '16寮?, '8寮?, '4寮?, '瀛ｅ啗璧?, '鍐宠禌'];
++const apexGuessSeason = ref(2); // 榛樿绗簩鏈?+const apexGuessScheduleId = ref(0); // 0=鑷姩妫€娴?+const apexGuessDetectedScheduleId = ref(0); // 鑷姩妫€娴嬪悗瀹為檯浣跨敤鐨勮禌绋婭D
+ const apexGuessMatchList = ref([]); // [{ left, right, picked: 'left'|'right'|null }]
+ const apexGuessPickedCount = computed(() => apexGuessMatchList.value.filter(m => m.picked).length);
++// 鏍规嵁閫夊畾鏈熸鍔ㄦ€佺敓鎴愯禌绋嬮€夐」
++const apexGuessScheduleOptions = computed(() => {
++  const season = APEX_SEASONS.find(s => s.value === apexGuessSeason.value) || APEX_SEASONS[APEX_SEASONS.length - 1];
++  const opts = [{ label: '鑷姩妫€娴?, value: 0 }];
++  APEX_ROUND_NAMES.forEach((name, i) => opts.push({ label: name, value: season.base + i }));
++  return opts;
++});
++// 鎵€鏈夋湡娆＄殑璧涚▼鏍囩锛堢敤浜庢棩蹇楁樉绀猴級
++const allApexScheduleLabels = computed(() => {
++  const labels = { 0: '鑷姩妫€娴? };
++  APEX_SEASONS.forEach(s => {
++    APEX_ROUND_NAMES.forEach((name, i) => { labels[s.base + i] = `${s.label}${name}`; });
++  });
++  return labels;
++});
++// 鍒囨崲鏈熸鏃堕噸缃禌绋嬮€夋嫨鍜屾娴嬬粨鏋滐紝閬垮厤璧涚▼ID涓庢柊鏈熸涓嶅尮閰?+watch(apexGuessSeason, () => {
++  apexGuessScheduleId.value = 0;
++  apexGuessDetectedScheduleId.value = 0;
++  apexGuessMatchList.value = [];
++});
+ 
+ // ======================
+ // Apex Cheering Feature (绔炴妧澶у巺鍔╁▉)
+@@ -6997,10 +7051,36 @@ const applyApexVote = async () => {
+   }
+ 
+   const isAllVote = apexVoteCount.value === 0;
++  const availableTokens = [...selectedTokens.value];
++  const taskStartTime = Date.now();
+ 
+-  for (const tokenId of selectedTokens.value) {
++  // 鉁?鍒濆鍖栨墍鏈夎处鍙风姸鎬佷负 waiting
++  availableTokens.forEach(id => { tokenStatus.value[id] = 'waiting'; });
++
++  // 鉁?鍒涘缓浠诲姟璁板綍
++  const taskRecordIndex = taskExecutionRecords.value.push({
++    name: '绔炴妧澶у巺鍔╁▉',
++    startTime: taskStartTime,
++    endTime: null,
++    elapsedStr: null,
++    status: 'running',
++    totalAccounts: availableTokens.length,
++    successCount: 0,
++    failCount: 0,
++    runningCount: availableTokens.length,
++    progressPercent: 0,
++    failedAccounts: [],
++    scheduledTime: null,
++    isManual: true,
++  }) - 1;
++
++  // 鉁?娓呯悊澶辫触鍘熷洜缂撳瓨
++  availableTokens.forEach(tokenId => { delete tokenFailReasons.value[tokenId]; });
++
++  for (const tokenId of availableTokens) {
+     const token = tokens.value.find(t => t.id === tokenId);
+-    
++    tokenStatus.value[tokenId] = 'running';
++
+     // Ensure connection
+     const status = tokenStore.getWebSocketStatus(tokenId);
+     if (status === "connecting") {
+@@ -7094,6 +7174,7 @@ const applyApexVote = async () => {
+         message: `[${token.name}] 鉁?鍔╁▉鎴愬姛锛佽禒閫?${voteCnt} 娆,
+         type: "success",
+       });
++      tokenStatus.value[tokenId] = 'completed';
+ 
+       await new Promise(r => setTimeout(r, 500)); // 闃叉闄愭祦
+     } catch (error) {
+@@ -7106,14 +7187,46 @@ const applyApexVote = async () => {
+         message: `[${token.name}] 鉂?鍔╁▉澶辫触锛?{errMsg}`,
+         type: "error",
+       });
++      tokenStatus.value[tokenId] = 'failed';
++      tokenFailReasons.value[tokenId] = errMsg;
+     }
+   }
+ 
+-  // 鍏抽棴鎵€鏈夎处鍙风殑杩炴帴锛岄噴鏀捐繛鎺ユЫ
+-  for (const tokenId of selectedTokens.value) {
++  // 鉁?鍏抽棴鎵€鏈夎处鍙风殑杩炴帴锛岄噴鏀捐繛鎺ユЫ
++  for (const tokenId of availableTokens) {
+     tokenStore.closeWebSocketConnection(tokenId);
+   }
+ 
++  // 鉁?鏇存柊浠诲姟璁板綍
++  const taskElapsed = Date.now() - taskStartTime;
++  const taskElapsedStr = taskElapsed >= 60000
++    ? `${Math.floor(taskElapsed / 60000)}鍒?{Math.floor((taskElapsed % 60000) / 1000)}绉抈
++    : `${(taskElapsed / 1000).toFixed(1)}绉抈;
++
++  let successCount = 0, failCount = 0;
++  const failedAccounts = [];
++  availableTokens.forEach(id => {
++    if (tokenStatus.value[id] === 'completed') successCount++;
++    else if (tokenStatus.value[id] === 'failed') {
++      failCount++;
++      const t = tokens.value.find(t => t.id === id);
++      failedAccounts.push({ name: t?.name || '鏈煡', error: tokenFailReasons.value[id] || '鏈煡閿欒', time: new Date().toLocaleTimeString() });
++    }
++  });
++
++  const record = taskExecutionRecords.value[taskRecordIndex];
++  if (record) {
++    record.endTime = Date.now();
++    record.elapsedStr = taskElapsedStr;
++    record.successCount = successCount;
++    record.failCount = failCount;
++    record.runningCount = 0;
++    record.progressPercent = 100;
++    record.failedAccounts = failedAccounts;
++    record.status = failCount === 0 ? 'success' : (successCount > 0 ? 'partial' : 'fail');
++  }
++  saveTaskExecutionRecordsToStorage();
++
+   // 鍏抽棴寮圭獥
+   showApexCheerModal.value = false;
+   message.success(`鎵€鏈夎处鍙峰姪濞佸畬鎴恅);
+@@ -7654,6 +7767,7 @@ const handleSaltCupBet = async (matchId, pick) => {
+ const openApexGuessModal = () => {
+   showApexGuessModal.value = true;
+   apexGuessMatchList.value = [];
++  apexGuessDetectedScheduleId.value = 0;
+ };
+ 
+ const fetchApexGuessList = async () => {
+@@ -7680,10 +7794,52 @@ const fetchApexGuessList = async () => {
+       await new Promise(r => setTimeout(r, 2000));
+     }
+ 
++    // 鉁?鑷姩妫€娴嬭禌绋嬶細褰撻€夋嫨鈥滆嚜鍔ㄦ娴嬧€濇椂锛屾牴鎹€夊畾鐨勬湡娆¤寖鍥翠粠楂樺埌浣庡皾璇?+    let actualScheduleId = apexGuessScheduleId.value;
++    const _season = APEX_SEASONS.find(s => s.value === apexGuessSeason.value) || APEX_SEASONS[APEX_SEASONS.length - 1];
++    const _roundLabels = {};
++    APEX_ROUND_NAMES.forEach((name, i) => { _roundLabels[_season.base + i] = name; });
++    if (actualScheduleId === 0) {
++      // 浠庡喅璧涘埌64寮洪檷搴忓皾璇?+      const candidateSchedules = [];
++      for (let i = APEX_ROUND_NAMES.length - 1; i >= 0; i--) candidateSchedules.push(_season.base + i);
++      let detected = false;
++      for (const candidateId of candidateSchedules) {
++        try {
++          const testRes = await tokenStore.sendMessageWithPromise(tokenId, "apex_getguesslist", { scheduleId: candidateId, idx: 0 }, 5000);
++          if (testRes?.apexGuessList && testRes.apexGuessList.length > 0) {
++            actualScheduleId = candidateId;
++            apexGuessDetectedScheduleId.value = candidateId;
++            detected = true;
++            addLog({
++              time: new Date().toLocaleTimeString(),
++              message: `鉁?鑷姩妫€娴嬪埌褰撳墠娲昏穬璧涚▼锛?{_season.label}${_roundLabels[candidateId]}`,
++              type: "success",
++            });
++            break;
++          }
++        } catch (e) {
++          // 璇ヨ禌绋嬫棤鏁版嵁鎴栧嚭閿欙紝缁х画灏濊瘯涓嬩竴涓?+        }
++      }
++      if (!detected) {
++        apexGuessDetectedScheduleId.value = 0;
++        message.warning("鑷姩妫€娴嬫湭鎵惧埌娲昏穬璧涚▼");
++        addLog({
++          time: new Date().toLocaleTimeString(),
++          message: `鈿狅笍 鑷姩妫€娴嬫湭鎵惧埌娲昏穬璧涚▼`,
++          type: "warning",
++        });
++        return;
++      }
++    } else {
++      apexGuessDetectedScheduleId.value = actualScheduleId;
++    }
++
+     const matches = [];
+     let idx = 0;
+     for (let page = 0; page < 40; page++) {
+-      const res = await tokenStore.sendMessageWithPromise(tokenId, "apex_getguesslist", { scheduleId: apexGuessScheduleId.value, idx }, 5000);
++      const res = await tokenStore.sendMessageWithPromise(tokenId, "apex_getguesslist", { scheduleId: actualScheduleId, idx }, 5000);
+       const list = res?.apexGuessList;
+       if (!Array.isArray(list) || list.length === 0) break;
+       for (const pair of list) {
+@@ -7736,7 +7892,9 @@ const handleApexGuess = async () => {
+     return;
+   }
+   showApexGuessModal.value = false;
+-  await batchApexGuess(apexGuessScheduleId.value, teamIds);
++  // 浣跨敤鑷姩妫€娴嬪悗鐨勫疄闄呰禌绋婭D
++  const finalScheduleId = apexGuessScheduleId.value === 0 ? apexGuessDetectedScheduleId.value : apexGuessScheduleId.value;
++  await batchApexGuess(finalScheduleId, teamIds);
+ };
+ 
+ // 棰勮鎶ゅ崼鎴愬憳鐘舵€侊紙璐﹀彿鍗曠嫭璁剧疆寮圭獥锛?@@ -8306,6 +8464,7 @@ const batchSettings = reactive({
+   smartDepartureJadeThreshold: 1500,
+   smartDepartureTicketThreshold: 4,
+   requireMinColorWithConditions: false, // 婊¤冻鑷畾涔夋潯浠舵椂鏄惁杩樺繀椤绘弧瓒虫渶浣庡搧璐?+  customPriority: false, // 鑷畾涔変紭鍏堟ā寮忥細寮€鍚悗蹇呴』婊¤冻鑷畾涔夋潯浠舵墠鍙戣溅
+   // 鍒嗛〉閰嶇疆
+   tokensPerPage: 20,      // 璐﹀彿姣忛〉鏄剧ず鏁伴噺
+   logPageSize: 100,       // 鏃ュ織铏氭嫙婊氬姩姣忛〉鏁伴噺
+@@ -8315,11 +8474,8 @@ const batchSettings = reactive({
+   defaultRetryCount: 2,             // 榛樿閲嶈瘯娆℃暟
+   retryDelay: 10000,                 // 閲嶈瘯寤惰繜(ms)
+   accountRetryInterval: 5000,       // 璐﹀彿闂撮噸璇曢棿闅?ms)
+-  // 鎸傛満鏃堕棿鎺у埗閰嶇疆
+-  hangUpMinTime: 9,                 // 鏈€灏忔寕鏈烘椂闂达紙灏忔椂锛夛紝榛樿9灏忔椂
+-  hangUpTimeControlEnabled: false,  // 鏄惁鍚敤鎸傛満鏃堕棿鎺у埗锛岄粯璁ゅ叧闂?   // 瀹犵墿鍚堟垚绛夌骇闄愬埗
+-  petMergeMaxLevelEnabled: false,   // 鏄惁鍚敤瀹犵墿鍚堟垚绛夌骇闄愬埗锛岄粯璁ゅ叧闂?+  petMergeMaxLevelEnabled: true,    // 鏄惁鍚敤瀹犵墿鍚堟垚绛夌骇闄愬埗锛岄粯璁ゅ紑鍚?   petMergeMaxLevel: 4,              // 鍚堟垚绛夌骇涓婇檺锛?-7锛夛紝榛樿4绾?   // 鍏戞崲鐮?   cdkCode: '',                      // 鍏戞崲鐮侊紙瀹氭椂浠诲姟浣跨敤锛?@@ -8696,12 +8852,14 @@ const taskForm = reactive({
+     carMinColor: 4,
+     refreshDelay: 2, // 鍒锋柊鍚庣瓑寰呭悓姝ュ欢杩燂紙绉掞級
+     requireMinColorWithConditions: false, // 婊¤冻鑷畾涔夋潯浠舵椂鏄惁杩樺繀椤绘弧瓒虫渶浣庡搧璐?+    customPriority: false, // 鑷畾涔変紭鍏堟ā寮?     useGoldRefreshFallback: false, // 寮哄埗鐢ㄩ噾鐮栧埛鏂?   },
+   nightmarePresetIds: [], // 鍗佹闃庣綏鎸戞垬棰勮ID鍒楄〃
+   nightmarePresetDelay: 10, // 棰勮闂存墽琛岄棿闅旓紙绉掞級锛岄粯璁?0绉?   saltCupBetPick: 1, // 姣旇禌绔炵寽閫夐」: 1=涓昏儨, 2=骞冲眬, 3=瀹㈣儨
+-  apexGuessScheduleId: 21, // 閫愰箍鐩愬北绔炵寽璧涚▼: 20=64寮?21=32寮?22=16寮?23=8寮?24=4寮?25=瀛ｅ啗璧?26=鍐宠禌
++  apexGuessSeason: 2, // 閫愰箍鐩愬北绔炵寽鏈熸: 1=绗竴鏈?2=绗簩鏈?+  apexGuessScheduleId: 0, // 閫愰箍鐩愬北绔炵寽璧涚▼: 0=鑷姩妫€娴?   apexGuessStrategy: 'power', // 閫愰箍鐩愬北绔炵寽绛栫暐: left=鍏ㄦ娂钃濇柟 right=鍏ㄦ娂绾㈡柟 power=鎶奸珮鎴樺姏 cheer=鎶煎鍔╁▉
+   saltRoadBattlefieldId: '', // 澶╁鍔╁▉鎴樺満ID锛堝凡搴熷純锛屼繚鐣欏吋瀹癸級
+   saltRoadSide: 1, // 澶╁鍔╁▉鏂瑰悜: 1=宸﹀啗, 2=鍙冲啗
+@@ -8713,7 +8871,17 @@ const taskForm = reactive({
+   maxActive: 0, // 浠诲姟绾у苟鍙戞帶鍒讹細0=浣跨敤鍏ㄥ眬璁剧疆锛?0=浣跨敤姝や换鍔＄殑骞跺彂鏁? });
+ 
+-// 瀹氭椂浠诲姟閰嶇疆 - 澶╁鍔╁▉瀵归樀鍒楄〃鑾峰彇
++// 瀹氭椂浠诲姟閰嶇疆 - 鏍规嵁閫夊畾鏈熸鍔ㄦ€佺敓鎴愯禌绋嬮€夐」
++const taskFormApexScheduleOptions = computed(() => {
++  const season = APEX_SEASONS.find(s => s.value === taskForm.apexGuessSeason) || APEX_SEASONS[APEX_SEASONS.length - 1];
++  const opts = [{ label: '鑷姩妫€娴?, value: 0 }];
++  APEX_ROUND_NAMES.forEach((name, i) => opts.push({ label: name, value: season.base + i }));
++  return opts;
++});
++// 瀹氭椂浠诲姟閰嶇疆锛氬垏鎹㈡湡娆℃椂閲嶇疆璧涚▼閫夋嫨
++watch(() => taskForm.apexGuessSeason, () => {
++  taskForm.apexGuessScheduleId = 0;
++});
+ const taskSaltRoadOpponents = ref([]);
+ const taskSaltRoadLoading = ref(false);
+ 
+@@ -8789,10 +8957,10 @@ const taskGroupDefinitions = [
+   { name: 'illustration', label: '鍥鹃壌', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
+   { name: 'pet', label: '瀹犵墿', tasks: ['legion_buy_spotted_egg', 'use_spotted_egg', 'claim_pet_book', 'batch_pet_merge', 'egg_merge_cycle', 'batch_pet_upgrade'] },
+   { name: 'nightmare', label: '鍗佹', tasks: ['batchNightmareChallengePresets', 'nightmare_draw_lottery', 'nightmare_claim_book_reward', 'star_drawturntable', 'batch_star_challenge'] },
+-  { name: 'resource', label: '璧勬簮', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchAutumnUseItem', 'batchClaimCdkReward', 'batchClaimApexRewards', 'batchSaltCupBet'] },
++  { name: 'resource', label: '璧勬簮', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchClaimCdkReward', 'batchClaimApexRewards', 'batchSaltCupBet'] },
+   { name: 'legacy', label: '鍔熸硶', tasks: ['batchLegacyHangup', 'batchLegacyClaim', 'batchLegacyGiftSendEnhanced', 'batchLegacyClaimGiftTask'] },
+   { name: 'monthly', label: '鏈堝害', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items', 'batchSaltRoadCheer', 'batchApexGuess', 'batchApexGuessClaim'] },
+-  { name: 'consumeActivity', label: '娑堣€楁椿鍔?, tasks: ['batchConsumeActivity', 'batchClaimConsumeRewards', 'batchApexCheer', 'batchUseActivityItem', 'batchActivityExchange'] }
++  { name: 'consumeActivity', label: '娑堣€楁椿鍔?, tasks: ['batchConsumeActivity', 'batchClaimConsumeRewards', 'batchApexCheer', 'batchUseActivityItem', 'batchActivityExchange', 'batchAutumnUseItem'] }
+ ];
+ 
+ // 璁＄畻灞炴€э紝鏍规嵁 taskGroupDefinitions 灏?availableTasks 鍒嗙粍
+@@ -9096,12 +9264,14 @@ const cancelTaskEdit = () => {
+       carMinColor: 4,
+       refreshDelay: 2,
+       requireMinColorWithConditions: false,
++      customPriority: false,
+       useGoldRefreshFallback: false,
+     };
+     taskForm.nightmarePresetIds = [];
+     taskForm.nightmarePresetDelay = 10;
+     taskForm.saltCupBetPick = 1;
+-    taskForm.apexGuessScheduleId = 21;
++    taskForm.apexGuessSeason = 2;
++    taskForm.apexGuessScheduleId = 0;
+     taskForm.apexGuessStrategy = 'power';
+     taskForm.saltRoadBattlefieldId = '';
+     taskForm.saltRoadSide = 1;
+@@ -9224,7 +9394,8 @@ const openTaskModal = () => {
+   taskForm.nightmarePresetIds = [];
+   taskForm.nightmarePresetDelay = 10;
+   taskForm.saltCupBetPick = 1;
+-  taskForm.apexGuessScheduleId = 21;
++  taskForm.apexGuessSeason = 2;
++  taskForm.apexGuessScheduleId = 0;
+   taskForm.apexGuessStrategy = 'power';
+   taskForm.saltRoadBattlefieldId = '';
+   taskForm.saltRoadSide = 1;
+@@ -9419,11 +9590,14 @@ const editTask = (task) => {
+       carMinColor: 4,
+       refreshDelay: 2,
+       requireMinColorWithConditions: false,
++      customPriority: false,
++      useGoldRefreshFallback: false,
+     },
+     nightmarePresetIds: task.nightmarePresetIds || [],
+     nightmarePresetDelay: task.nightmarePresetDelay || 10,
+     saltCupBetPick: task.saltCupBetPick !== undefined ? task.saltCupBetPick : 1,
+-    apexGuessScheduleId: task.apexGuessScheduleId !== undefined ? task.apexGuessScheduleId : 21,
++    apexGuessSeason: task.apexGuessSeason !== undefined ? task.apexGuessSeason : 2,
++    apexGuessScheduleId: task.apexGuessScheduleId !== undefined ? task.apexGuessScheduleId : 0,
+     apexGuessStrategy: task.apexGuessStrategy || 'power',
+     saltRoadBattlefieldId: task.saltRoadBattlefieldId || '',
+     saltRoadSide: task.saltRoadSide !== undefined ? task.saltRoadSide : 1,
+@@ -9471,6 +9645,13 @@ const editTask = (task) => {
+   showTaskModal.value = true;
+ };
+ 
++// 澶嶅埗浠诲姟锛氫互鍘熶换鍔￠厤缃负鍩虹鍒涘缓鏂颁换鍔★紙鍚嶇О鍔?(鍓湰)"锛孖D 閲嶆柊鐢熸垚锛?+const copyTask = (task) => {
++  editTask(task);            // 澶嶇敤缂栬緫閫昏緫濉厖琛ㄥ崟
++  editingTask.value = null;  // 鏍囪涓烘柊浠诲姟锛宻aveTask 浼氳蛋鍒涘缓璺緞
++  taskForm.name = (task.name || '鏈懡鍚?) + ' (鍓湰)';
++};
++
+ // 娉? validateCronExpression 宸蹭粠 @/utils/batch 瀵煎叆
+ 
+ // Parse cron expression and calculate next execution times
+@@ -9702,7 +9883,8 @@ const saveTask = () => {
+     nightmarePresetIds: [...(taskForm.nightmarePresetIds || [])],
+     nightmarePresetDelay: taskForm.nightmarePresetDelay || 10,
+     saltCupBetPick: taskForm.saltCupBetPick || 1,
+-    apexGuessScheduleId: taskForm.apexGuessScheduleId || 21,
++    apexGuessSeason: taskForm.apexGuessSeason ?? 2,
++    apexGuessScheduleId: taskForm.apexGuessScheduleId ?? 0,
+     apexGuessStrategy: taskForm.apexGuessStrategy || 'power',
+     saltRoadBattlefieldId: taskForm.saltRoadBattlefieldId || '',
+     saltRoadSide: taskForm.saltRoadSide || 1,
+@@ -10379,6 +10561,7 @@ const getFullBatchSettings = () => ({
+   smartDepartureJadeThreshold: batchSettings.smartDepartureJadeThreshold,
+   smartDepartureTicketThreshold: batchSettings.smartDepartureTicketThreshold,
+   requireMinColorWithConditions: batchSettings.requireMinColorWithConditions,
++  customPriority: batchSettings.customPriority,
+   tokensPerPage: batchSettings.tokensPerPage,
+   logPageSize: batchSettings.logPageSize,
+   defaultCommandTimeout: batchSettings.defaultCommandTimeout,
+@@ -10386,8 +10569,6 @@ const getFullBatchSettings = () => ({
+   defaultRetryCount: batchSettings.defaultRetryCount,
+   retryDelay: batchSettings.retryDelay,
+   accountRetryInterval: batchSettings.accountRetryInterval,
+-  hangUpMinTime: batchSettings.hangUpMinTime,
+-  hangUpTimeControlEnabled: batchSettings.hangUpTimeControlEnabled,
+   petMergeMaxLevelEnabled: batchSettings.petMergeMaxLevelEnabled,
+   petMergeMaxLevel: batchSettings.petMergeMaxLevel,
+   dreamPurchaseList: batchSettings.dreamPurchaseList,
+@@ -11547,9 +11728,10 @@ const executeManualTaskWithRecord = async (taskName, taskLabel, taskFunction) =>
+     });
+   }
+   
+-  // 娓呯悊鏈鎵ц鐩稿叧鐨勫け璐ュ師鍥犵紦瀛?+  // 娓呯悊鏈鎵ц鐩稿叧鐨勫け璐ュ師鍥犵紦瀛?+ 閲嶇疆 tokenStatus锛岄伩鍏嶄笂涓€涓换鍔＄殑娈嬬暀鐘舵€佹薄鏌撴湰娆¤褰?   availableTokens.forEach(tokenId => {
+     delete tokenFailReasons.value[tokenId];
++    tokenStatus.value[tokenId] = 'waiting';
+   });
+   
+   // 娣诲姞浠诲姟璁板綍
+@@ -13594,15 +13776,13 @@ const executeScheduledTask = async (task) => {
+               await taskFunction(null, pickVal, taskMaxConcurrent);
+             } else if (taskName === 'batchApexGuess') {
+               // 閫愰箍鐩愬北绔炵寽锛氳嚜鍔ㄦ媺鍙栧闃靛苟鎸夌瓥鐣ユ嫨闃?-              const scheduleId = task.apexGuessScheduleId || 21;
++              let scheduleId = task.apexGuessScheduleId || 0;
+               const strategy = task.apexGuessStrategy || 'power';
+               const strategyLabels = { left: '鍏ㄦ娂钃濇柟', right: '鍏ㄦ娂绾㈡柟', power: '鎶奸珮鎴樺姏', cheer: '鎶煎鍔╁▉' };
+-              const scheduleLabels = { 20: '64寮?, 21: '32寮?, 22: '16寮?, 23: '8寮?, 24: '4寮?, 25: '瀛ｅ啗璧?, 26: '鍐宠禌' };
+-              addLog({
+-                time: new Date().toLocaleTimeString(),
+-                message: `鈿旓笍 閫愰箍鐩愬北绔炵寽锛?{scheduleLabels[scheduleId] || scheduleId} 鎸夈€?{strategyLabels[strategy] || strategy}銆戣嚜鍔ㄦ嫨闃焋,
+-                type: "info",
+-              });
++              // 鏍规嵁鏈熸閰嶇疆璁＄畻璧涚▼鑼冨洿
++              const _taskSeason = task.apexGuessSeason || 2;
++              const _seasonCfg = APEX_SEASONS.find(s => s.value === _taskSeason) || APEX_SEASONS[APEX_SEASONS.length - 1];
++              const scheduleLabels = allApexScheduleLabels.value;
+               // 鐢ㄧ涓€涓处鍙锋媺鍙栧闃靛垪琛?               const fetchTokenId = availableTokens[0];
+               const fetchToken = tokens.value.find(t => t.id === fetchTokenId);
+@@ -13628,6 +13808,43 @@ const executeScheduledTask = async (task) => {
+               } else {
+                 fetchReady = true;
+               }
++              // 鉁?鑷姩妫€娴嬭禌绋嬶細鏍规嵁鏈熸鑼冨洿浠庨珮鍒颁綆灏濊瘯
++              if (fetchReady && scheduleId === 0) {
++                const candidateSchedules = [];
++                for (let i = APEX_ROUND_NAMES.length - 1; i >= 0; i--) candidateSchedules.push(_seasonCfg.base + i);
++                for (const candidateId of candidateSchedules) {
++                  try {
++                    const testRes = await tokenStore.sendMessageWithPromise(fetchTokenId, "apex_getguesslist", { scheduleId: candidateId, idx: 0 }, 5000);
++                    if (testRes?.apexGuessList && testRes.apexGuessList.length > 0) {
++                      scheduleId = candidateId;
++                      addLog({
++                        time: new Date().toLocaleTimeString(),
++                        message: `鉁?鑷姩妫€娴嬪埌褰撳墠娲昏穬璧涚▼锛?{scheduleLabels[candidateId]}`,
++                        type: "success",
++                      });
++                      break;
++                    }
++                  } catch (e) {
++                    // 璇ヨ禌绋嬫棤鏁版嵁鎴栧嚭閿欙紝缁х画灏濊瘯涓嬩竴涓?+                  }
++                }
++                if (scheduleId === 0) {
++                  addLog({
++                    time: new Date().toLocaleTimeString(),
++                    message: `鈿狅笍 鑷姩妫€娴嬫湭鎵惧埌娲昏穬璧涚▼锛岃烦杩囩珵鐚渀,
++                    type: "warning",
++                  });
++                }
++              }
++              // 鑷姩妫€娴嬪け璐ワ紝璺宠繃绔炵寽
++              if (scheduleId === 0) {
++                // 宸插湪涓婃柟璁板綍璀﹀憡鏃ュ織
++              } else {
++              addLog({
++                time: new Date().toLocaleTimeString(),
++                message: `鈿旓笍 閫愰箍鐩愬北绔炵寽锛?{scheduleLabels[scheduleId] || scheduleId} 鎸夈€?{strategyLabels[strategy] || strategy}銆戣嚜鍔ㄦ嫨闃焋,
++                type: "info",
++              });
+               const guessTeamIds = [];
+               let guessIdx = 0;
+               for (let page = 0; fetchReady && page < 40; page++) {
+@@ -13665,6 +13882,7 @@ const executeScheduledTask = async (task) => {
+                 // 鉁?淇锛氭樉寮忔妸浠诲姟绾у苟鍙戞暟浼犵粰 batchApexGuess鈫抮unStreaming锛岄伩鍏嶄粎闈?batchSettings.maxActive 闅愬紡涓户
+                 await taskFunction(scheduleId, guessTeamIds, taskMaxConcurrent);
+               }
++              } // end else (scheduleId !== 0)
+             } else if (taskName === 'batchSaltRoadCheer') {
+               // 澶╁鍔╁▉锛氭敮鎸侀閫夊啗鍥D鎴栬嚜鍔ㄦ寜鏂瑰悜鑾峰彇
+               const side = task.saltRoadSide || 1;
+@@ -13697,6 +13915,10 @@ const executeScheduledTask = async (task) => {
+                 type: "info",
+               });
+               await taskFunction(keys);
++            } else if (taskName === 'batchLegacyClaimGiftTask') {
++              // 棰嗗彇娈嬪嵎璧犻€佸鍔憋細浼犲叆浠诲姟绾у苟鍙戞暟
++              const taskMaxConcurrent = (task.maxActive > 0) ? task.maxActive : (batchSettings.maxActive || 5);
++              await taskFunction(taskMaxConcurrent);
+             } else {
+               await taskFunction();
+             }
+@@ -18538,9 +18760,10 @@ const startBatch = async () => {
+     });
+   }
+ 
+-  // 娓呯悊鏈鎵ц鐩稿叧鐨勫け璐ュ師鍥犵紦瀛?+  // 娓呯悊鏈鎵ц鐩稿叧鐨勫け璐ュ師鍥犵紦瀛?+ 閲嶇疆 tokenStatus锛岄伩鍏嶄笂涓€涓换鍔＄殑娈嬬暀鐘舵€佹薄鏌撴湰娆¤褰?   availableTokens.forEach(tokenId => {
+     delete tokenFailReasons.value[tokenId];
++    tokenStatus.value[tokenId] = 'waiting';
+   });
+   const _batchTaskRecordIndex = _isFromScheduledTask ? -1 : taskExecutionRecords.value.push({
+     name: '鏃ュ父浠诲姟',

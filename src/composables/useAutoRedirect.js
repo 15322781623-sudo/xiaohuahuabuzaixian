@@ -2,9 +2,10 @@
  * 自动跳转到批量日常页面（各页面独立开关，倒计时可自定义）
  *
  * 配置持久化到 localStorage：
- * - autoRedirectEnabled:home / autoRedirectEnabled:tokens / autoRedirectEnabled:dashboard
+ * - autoRedirectEnabled:home / autoRedirectEnabled:tokens / autoRedirectEnabled:gameFeatures
  *   "1" 开启 / "0" 关闭；未设置时使用各页面默认值（首页开启，其余关闭）
  * - autoRedirectSeconds: 倒计时秒数（10-3600，默认 120，各页面共用）
+ * - defaultStartPage: 默认启动页（tokens | home | dashboard），默认 tokens
  */
 import { ref, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
@@ -17,8 +18,35 @@ export const DEFAULT_AUTO_REDIRECT_SECONDS = 120;
 export const AUTO_REDIRECT_PAGES = [
   { key: "home", label: "首页", defaultEnabled: true },
   { key: "tokens", label: "Token管理", defaultEnabled: false },
-  { key: "dashboard", label: "控制台", defaultEnabled: false },
+  { key: "gameFeatures", label: "游戏功能", defaultEnabled: false },
 ];
+
+// ==================== 默认启动页 ====================
+
+export const DEFAULT_START_PAGE_KEY = "defaultStartPage";
+
+/** 默认启动页可选列表 */
+export const DEFAULT_START_PAGES = [
+  { key: "tokens", label: "Token管理", path: "/tokens" },
+  { key: "home", label: "首页", path: "/admin/dashboard" },
+];
+
+export const getDefaultStartPage = () => {
+  const v = localStorage.getItem(DEFAULT_START_PAGE_KEY);
+  if (v && DEFAULT_START_PAGES.find((p) => p.key === v)) return v;
+  return "tokens"; // 默认跳转到 Token 管理
+};
+
+export const setDefaultStartPage = (key) => {
+  localStorage.setItem(DEFAULT_START_PAGE_KEY, key);
+};
+
+/** 获取默认启动页的 router 路径 */
+export const getDefaultStartPagePath = () => {
+  const key = getDefaultStartPage();
+  const page = DEFAULT_START_PAGES.find((p) => p.key === key);
+  return page ? page.path : "/tokens";
+};
 
 export const isPageRedirectEnabled = (pageKey) => {
   const page = AUTO_REDIRECT_PAGES.find((p) => p.key === pageKey);
@@ -48,6 +76,7 @@ export const useAutoRedirectSettings = () => {
     AUTO_REDIRECT_PAGES.map((p) => ({ ...p, enabled: isPageRedirectEnabled(p.key) })),
   );
   const seconds = ref(getAutoRedirectSeconds());
+  const startPage = ref(getDefaultStartPage());
 
   const togglePage = (key, on) => {
     setPageRedirectEnabled(key, on);
@@ -60,7 +89,12 @@ export const useAutoRedirectSettings = () => {
     setAutoRedirectSeconds(v);
   };
 
-  return { pageStates, seconds, togglePage, saveSeconds };
+  const saveStartPage = (key) => {
+    startPage.value = key;
+    setDefaultStartPage(key);
+  };
+
+  return { pageStates, seconds, startPage, togglePage, saveSeconds, saveStartPage };
 };
 
 /** 页面侧调用：useAutoRedirect("home" | "tokens" | "dashboard") */

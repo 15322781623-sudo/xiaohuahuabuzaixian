@@ -11,7 +11,7 @@ import { XyzwWebSocketClient } from "@/utils/xyzwWebSocket";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { generateRandomSeed } from "@/utils/randomSeed";
 import { transformToken } from "@/utils/token";
-import { saveBinBackup, getBinBackupWithFallback } from "@/utils/binBackup";
+import { saveBinBackup, getBinBackup, getBinBackupWithFallback, verifyAllBinBackups } from "@/utils/binBackup";
 import { emitPlus } from "./events/index.js";
 import router from "@/router";
 
@@ -645,6 +645,23 @@ export const useTokenStore = defineStore("tokens", () => {
     error?: string;
   }>>({});
 
+  // 连接/刷新错误日志（tokenId → 日志条目数组），供 UI 执行日志展示
+  const wsConnectionLogs = ref<Record<string, Array<{ message: string; type: "error" | "warn" | "info" }>>>({});
+  const pushConnectionLog = (tokenId: string, message: string, type: "error" | "warn" | "info" = "error") => {
+    const current = wsConnectionLogs.value[tokenId] || [];
+    const updated = [...current, { message, type }];
+    // 限制每个 token 最多保留 200 条日志
+    wsConnectionLogs.value[tokenId] = updated.length > 200 ? updated.slice(-200) : updated;
+  };
+
+  // 全局日志（云端同步恢复结果等），每个 TokenCard 启动时消费一次
+  const globalLogs = ref<Array<{ message: string; type: "error" | "warn" | "info"; id: string }>>([]);
+  let _globalLogId = 0;
+  const pushGlobalLog = (message: string, type: "error" | "warn" | "info" = "info") => {
+    const id = `glog_${++_globalLogId}_${Date.now()}`;
+    globalLogs.value = [...globalLogs.value.slice(-30), { message, type, id }];
+  };
+
   // 正在刷新的Token集合（防止循环调用）
   const refreshingTokenIds = ref<Set<string>>(new Set());
 
@@ -782,7 +799,7 @@ export const useTokenStore = defineStore("tokens", () => {
             }
             const finalBuffer = finalBin instanceof Uint8Array ? finalBin.buffer as ArrayBuffer : finalBin;
             await storeArrayBuffer(tokenId, finalBuffer);
-            saveBinBackup(tokenId, finalBuffer);
+            saveBinBackup(tokenId, finalBuffer); // fire-and-forget, 不阻塞
             const token = await transformToken(finalBuffer);
             updateToken(tokenId, {
               ...gameToken,
@@ -817,11 +834,21 @@ export const useTokenStore = defineStore("tokens", () => {
             } else {
               errorMessage = "未找到BIN数据";
               wsLogger.error(`Token刷新失败: ${errorMessage} [${tokenId}]`);
+              pushConnectionLog(tokenId, `❌ 账号「${gameToken.name}」连接失败：未找到BIN数据，请重新导入`, "error");
             }
           }
         }
 
         if (userToken) {
+          // 自愈：IndexedDB 中找到了 BIN，确保 localStorage 备份也存在
+          const existingBackup = await getBinBackup(tokenId);
+          if (!existingBackup) {
+            await saveBinBackup(tokenId, userToken);
+            wsLogger.debug(`从 IndexedDB 回填 localStorage BIN 备份 [${tokenId}]`);
+          } else if (usedOldKey) {
+            // 旧键迁移后也确保新键备份
+            await saveBinBackup(tokenId, userToken);
+          }
           try {
             const token = await transformToken(userToken);
             updateToken(tokenId, {
@@ -934,6 +961,15 @@ export const useTokenStore = defineStore("tokens", () => {
       return true;
     } else {
       wsLogger.error(`Token刷新失败，请手动重新导入 [${tokenId}] - ${errorMessage}`);
+      // 推送到 UI 执行日志（仅最终失败时，不在重试期间重复输出）
+      const logName = gameToken?.name || tokenId;
+      if (errorMessage.includes("未找到BIN数据")) {
+        pushConnectionLog(tokenId, `❌ 账号「${logName}」连接失败：BIN数据丢失，请重新导入`, "error");
+      } else if (errorMessage.includes("BIN数据转换失败")) {
+        pushConnectionLog(tokenId, `❌ 账号「${logName}」连接失败：BIN数据损坏(${errorMessage})，请重新导入`, "error");
+      } else {
+        pushConnectionLog(tokenId, `❌ 账号「${logName}」连接失败：${errorMessage}`, "error");
+      }
 
       // BIN数据转换失败时，标记连接为断开并阻止无效重连
       // 因为旧token无效，重连也会被服务器拒绝，避免无限循环
@@ -1193,7 +1229,7 @@ export const useTokenStore = defineStore("tokens", () => {
     } catch (error) {
       return {
         success: false,
-        error: `解析失败：${error.message}`,
+        error: `解析失败：${(error as Error).message}`,
       };
     }
   };
@@ -1240,8 +1276,8 @@ export const useTokenStore = defineStore("tokens", () => {
     } catch (error) {
       return {
         success: false,
-        error: error.message,
-        message: `Token "${name}" 添加失败: ${error.message}`,
+        error: (error as Error).message,
+        message: `Token "${name}" 添加失败: ${(error as Error).message}`,
       };
     }
   };
@@ -1254,7 +1290,7 @@ export const useTokenStore = defineStore("tokens", () => {
   // 获取连接锁
   const acquireConnectionLock = async (
     tokenId: string,
-    operation = "connect",
+    operation: ConnectLock["operation"] = "connect",
   ) => {
     const lockKey = `${tokenId}_${operation}`;
     const connect = connectionLocks.value;
@@ -2329,6 +2365,19 @@ export const useTokenStore = defineStore("tokens", () => {
 
     // 设置跨标签页监听
     setupCrossTabListener();
+
+    // BIN 备份启动完整性校验（延迟 2s 避免阻塞启动）
+    setTimeout(async () => {
+      try {
+        const stats = await verifyAllBinBackups(gameTokens.value);
+        if (stats.repaired > 0) {
+          tokenLogger.info(`BIN 备份启动校验完成: 修复 ${stats.repaired}/${stats.total} 个 (${stats.totalSizeKB}KB)`);
+        }
+      } catch (e) {
+        // 静默，备份校验失败不影响主流程
+      }
+    }, 2000);
+
     tokenLogger.info("Token Store 初始化完成，连接监控已启动");
   };
   const setBattleVersion = (version: number | null) => {
@@ -2517,6 +2566,9 @@ export const useTokenStore = defineStore("tokens", () => {
     wsConnections,
     gameData,
     tokenAutoRefreshStatus,
+    wsConnectionLogs,
+    globalLogs,
+    pushGlobalLog,
     runningTokens,
 
     // 计算属性

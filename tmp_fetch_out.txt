@@ -1,0 +1,16 @@
+﻿node : (node:20584) ExperimentalWarning: The Fetch API is an experimental feature. This feature could change at any tim
+e
+所在位置 行:1 字符: 1
++ node d:\xyzw_web_helper-main\tmp_fetch_remote.mjs 2>&1 | Out-File -En ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:20584) Ex...nge at any time:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(Use `node --trace-warnings ...` to show where the warning was created)
+=== remote game-defines ===
+404 page not found
+
+=== remote settings: platform & bundleVers & remoteBundles ===
+null
+d
+d

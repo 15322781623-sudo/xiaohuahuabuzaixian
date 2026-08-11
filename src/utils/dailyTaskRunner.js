@@ -829,10 +829,12 @@ export class DailyTaskRunner {
           }
         }
 
-        // 执行战斗
-        for (let i = 1; i <= ARENA_TIME.MAX_FIGHTS; i++) {
-          await this.executeArenaFight(i);
-          if (i < ARENA_TIME.MAX_FIGHTS) {
+        // 执行战斗（优先使用账号设置的竞技场次数，否则用默认值）
+        const maxFights = this.settings.arenaFightCount || ARENA_TIME.MAX_FIGHTS;
+        this.info(`竞技场战斗次数：${maxFights} 次`);
+        for (let i = 1; i <= maxFights; i++) {
+          await this.executeArenaFight(i, maxFights);
+          if (i < maxFights) {
             // ✅ 新增独立 delayPriority 链式配置（优先级从高到低）
             const baseDelay = 
               this.batchSettings?.moduleDelays?.arena ||      // 优先使用竞技场专用延迟
@@ -860,8 +862,8 @@ export class DailyTaskRunner {
   /**
    * 执行单次竞技场战斗
    */
-  async executeArenaFight(fightIndex) {
-    this.info(`🔸 第 ${fightIndex}/${ARENA_TIME.MAX_FIGHTS} 场`);
+  async executeArenaFight(fightIndex, maxFights = ARENA_TIME.MAX_FIGHTS) {
+    this.info(`🔸 第 ${fightIndex}/${maxFights} 场`);
     
     // 获取目标
     let targets;

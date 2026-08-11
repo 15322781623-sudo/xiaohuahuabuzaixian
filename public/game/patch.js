@@ -18,6 +18,55 @@
     console.log('[Patch ' + PATCH_VERSION + '] SDK Mock 初始化');
 
     // ══════════════════════════════════════════
+    //  ★ wx API Mock — 浏览器无wx对象, PLATFORM='wx'时PlatformWX.init()需要
+    //    模拟微信小游戏环境, 防止 getSystemInfoSync/getDeviceInfo 等调用崩溃
+    // ══════════════════════════════════════════
+    (function setupWxMock() {
+        if (typeof wx !== 'undefined') return;
+        var winW = window.innerWidth || 1920;
+        var winH = window.innerHeight || 1080;
+        var dpr = window.devicePixelRatio || 1;
+        window.wx = {
+            getSystemInfoSync: function() {
+                return { screenWidth: winW, screenHeight: winH, windowWidth: winW, windowHeight: winH,
+                    pixelRatio: dpr, platform: 'windows', system: 'Windows 10', version: '8.0.5',
+                    SDKVersion: '3.5.0', benchmarkLevel: 50, memorySize: 4096 };
+            },
+            getDeviceInfo: function() {
+                return { benchmarkLevel: 50, memorySize: 4096, platform: 'windows', model: 'windows', system: 'Windows 10' };
+            },
+            getSystemInfo: function(opts) {
+                var info = wx.getSystemInfoSync();
+                if (opts) { if (opts.success) opts.success(info); if (opts.complete) opts.complete(info); }
+            },
+            getDeviceBenchmarkInfo: function(opts) {
+                var info = { benchmarkLevel: 50 };
+                if (opts) { if (opts.success) opts.success(info); if (opts.complete) opts.complete(info); }
+            },
+            getStorageInfo: function(opts) {
+                var info = { keys: [], currentSize: 0, limitSize: 10240 };
+                if (opts && opts.success) opts.success(info);
+            },
+            getStorageInfoSync: function() { return { keys: [], currentSize: 0, limitSize: 10240 }; },
+            clearStorage: function(opts) { if (opts && opts.success) opts.success(); },
+            onNetworkStatusChange: function(cb) { /* noop */ },
+            offNetworkStatusChange: function(cb) {},
+            getNetworkType: function(opts) {
+                if (opts && opts.success) opts.success({ networkType: 'wifi' });
+            },
+            setKeepScreenOn: function(opts) { if (opts && opts.success) opts.success(); },
+            triggerGC: function() {},
+            createRewardedVideoAd: function() { return null; },
+            getRealtimeLogManager: function() { return null; },
+            getOpenDataContext: function() { return null; },
+            getSetting: function(opts) {
+                if (opts) { if (opts.success) opts.success({ authSetting: {} }); if (opts.complete) opts.complete({ authSetting: {} }); }
+            }
+        };
+        console.log('[Patch ' + PATCH_VERSION + '] ✅ wx API Mock 安装 (PlatformWX兼容)');
+    })();
+
+    // ══════════════════════════════════════════
     //  ★ v11.5: 强制 _isRotated = false — 防止 cocos 引擎在缩略图/主控切换时
     //    根据宽高比翻转 UI 方向(settings.orientation=portrait, designResolution=960x640横屏)
     // ══════════════════════════════════════════
@@ -241,10 +290,56 @@
         tga: { track: function() {}, tga: null }
     };
     window.__HORTOR_SDK__.tga.tga = window.__HORTOR_SDK__.tga;
+    // ★ 蟠桃修复: getClientVersion 返回 GAME_VERSION (MD 检查点8)
+    window.__HORTOR_SDK__.getClientVersion = function() {
+        return (typeof globalThis !== 'undefined' && globalThis.GAME_VERSION) || '2.29.2-wx';
+    };
+    // ★ 蟠桃修复: getGameId 返回游戏ID (MD 检查点9)
+    window.__HORTOR_SDK__.getGameId = function() {
+        return (typeof globalThis !== 'undefined' && globalThis.GAME_ID) || 'xyzw_mix';
+    };
 
     window._hsdkInit = 1;
     window.checkUpdate = 1;
     console.log('[Patch ' + PATCH_VERSION + '] 已设置 _hsdkInit=1, checkUpdate=1');
+
+    // ══════════════════════════════════════════
+    //  ★ 蟠桃修复: 拦截 LoginService.manifest() HTTP请求
+    //    PlatformH5.platformType="hortor" → 替换为"wx" (伪装微信身份)
+    //    不改 PLATFORM 避免 CDN 资源路径异常
+    // ══════════════════════════════════════════
+    (function hookManifestPlatform() {
+        var _origSend = XMLHttpRequest.prototype.send;
+        var _origOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url) {
+            this.__url = url;
+            return _origOpen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function(body) {
+            if (this.__url && typeof this.__url === 'string' && this.__url.indexOf('/login/manifest') !== -1 && body && typeof body === 'string') {
+                try {
+                    var data = JSON.parse(body);
+                    var patched = false;
+                    // 格式1: { params: { version, platform } }
+                    if (data.params && data.params.platform === 'hortor') {
+                        data.params.platform = 'wx';
+                        patched = true;
+                    }
+                    // 格式2: { version, platform }
+                    if (data.platform === 'hortor') {
+                        data.platform = 'wx';
+                        patched = true;
+                    }
+                    if (patched) {
+                        console.log('[Patch ' + PATCH_VERSION + '] 🔄 manifest platform: hortor → wx');
+                        body = JSON.stringify(data);
+                    }
+                } catch(e) {}
+            }
+            return _origSend.call(this, body);
+        };
+        console.log('[Patch ' + PATCH_VERSION + '] ✅ manifest platform hook 就绪');
+    })();
 
     // ========== Clipboard ==========
     // ★ v6.20: 全覆盖复制补丁 — 原生桥 + 浏览器API + SDK多路径hook

@@ -109,6 +109,16 @@
                 <span>{{ p.label }}自动跳转</span>
                 <n-switch :value="p.enabled" size="small" @update:value="(on) => toggleRedirectPage(p.key, on)" />
               </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span>默认启动页</span>
+                <n-select
+                  :value="defaultStartPage"
+                  :options="DEFAULT_START_PAGES.map(p => ({ label: p.label, value: p.key }))"
+                  size="small"
+                  style="width: 110px;"
+                  @update:value="saveDefaultStartPage"
+                />
+              </div>
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span>倒计时（秒）</span>
                 <n-input-number
@@ -287,7 +297,7 @@ import { useRouter } from "vue-router";
 import { useDialog, useMessage } from "naive-ui";
 import { ref } from "vue";
 import { isNowInLegionWarTime } from "@/utils/clubBattleUtils";
-import { useAutoRedirectSettings } from "@/composables/useAutoRedirect";
+import { useAutoRedirectSettings, DEFAULT_START_PAGES } from "@/composables/useAutoRedirect";
 
 const tokenStore = useTokenStore();
 const router = useRouter();
@@ -298,7 +308,7 @@ const isMobileMenuOpen = ref(false);
 const showCloudSync = ref(false);
 
 // 自动跳转设置（各页面独立，默认仅首页开启，与 Token 管理页/个人设置页共用同一配置）
-const { pageStates: redirectPageStates, seconds: autoRedirectSeconds, togglePage: toggleRedirectPage, saveSeconds: saveRedirectSeconds } = useAutoRedirectSettings();
+const { pageStates: redirectPageStates, seconds: autoRedirectSeconds, startPage: defaultStartPage, togglePage: toggleRedirectPage, saveSeconds: saveRedirectSeconds, saveStartPage: saveDefaultStartPage } = useAutoRedirectSettings();
 
 const userMenuOptions = [
   {

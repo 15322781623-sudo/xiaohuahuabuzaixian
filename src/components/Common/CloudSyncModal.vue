@@ -156,6 +156,7 @@
 
 <script setup>
 import { ref, watch } from "vue";
+import { useTokenStore } from "@/stores/tokenStore";
 import { useDialog, useMessage } from "naive-ui";
 import {
   isCloudLoggedIn,
@@ -312,12 +313,27 @@ const handleRegister = async () => {
 const handlePush = async () => {
   pushing.value = true;
   try {
-    const result = await pushConfig(deviceName.value);
+    const { result, details } = await pushConfig(deviceName.value);
     cloudUpdatedAt.value = result.updatedAt || "";
+    const sizeStr = details.compressed
+      ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(gzip)`
+      : `${(details.rawBytes / 1024).toFixed(1)}KB`;
     message.success(`已上传为「${deviceName.value}」，不会覆盖其他设备配置`);
+    // 推送执行日志
+    try {
+      const tokenStore = useTokenStore();
+      tokenStore.pushGlobalLog(
+        `☁️ 配置已上传：${details.tokenCount} 个Token，${details.binCount} 个BIN，${sizeStr}`,
+        "info"
+      );
+    } catch { /* ignore */ }
     await loadConfigs();
   } catch (e) {
     message.error(e.message || "上传失败");
+    // 上传失败也推送到执行日志
+    try {
+      useTokenStore().pushGlobalLog(`❌ 云端上传失败：${e.message || "未知错误"}`, "error");
+    } catch { /* ignore */ }
   } finally {
     pushing.value = false;
   }

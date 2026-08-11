@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>咸鱼之王 - 微信授权登录</title>
+<style>
+  :root {
+    --bg: #f0f2f5;
+    --card-bg: #fff;
+    --primary: #e74c3c;
+    --primary-hover: #c0392b;
+    --gold: #f39c12;
+    --text: #2c3e50;
+    --text-secondary: #7f8c8d;
+    --border: #e0e0e0;
+    --success: #27ae60;
+    --error: #e74c3c;
+    --warning: #f39c12;
+    --shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+  }
+  .container {
+    width: 100%;
+    max-width: 900px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    padding: 30px 0;
+    color: #fff;
+  }
+  .header h1 { font-size: 28px; margin-bottom: 6px; }
+  .header .subtitle { font-size: 14px; opacity: .8; }
+
+  /* Card */
+  .card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title .icon { font-size: 22px; }
+
+  /* Login area */
+  .login-area {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 640px) {
+    .login-area { grid-template-columns: 1fr; }
+  }
+
+  .qr-section {
+    text-align: center;
+    padding: 16px;
+    background: #fafafa;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .qr-section .label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+  .qr-section .qr-tip {
+    font-size: 12px;
+    color: var(--warning);
+    margin-top: 12px;
+    line-height: 1.6;
+  }
+
+  .input-section { display: flex; flex-direction: column; justify-content: center; }
+  .input-section .label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+  .input-group {
+    display: flex;
+    gap: 8px;
+  }
+  .input-group input {
+    flex:1;
+    padding: 10px 14px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .input-group input:focus { border-color: var(--primary); }
+  .input-group input::placeholder { color: #bbb; }
+
+  .btn {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+    white-space: nowrap;
+  }
+  .btn:disabled { opacity: .6; cursor: not-allowed; }
+  .btn-primary {
+    background: var(--primary);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+  .btn-outline {
+    background: #fff;
+    color: var(--primary);
+    border: 2px solid var(--primary);
+  }
+  .btn-outline:hover:not(:disabled) { background: #fff5f5; }
+
+  /* Status */
+  .status-bar {
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 12px;
+    display: none;
+  }
+  .status-bar.show { display: block; }
+  .status-bar.loading { background: #eaf2ff; color: #2980b9; border: 1px solid #bee5eb; }
+  .status-bar.success { background: #eafaf1; color: var(--success); border: 1px solid #a3e4bc; }
+  .status-bar.error   { background: #fdedec; color: var(--error); border: 1px solid #f5b7b1; }
+  .status-bar.warning { background: #fef9e7; color: #b7950b; border: 1px solid #f9e79f; }
+
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Result section */
+  .result-section { display: none; }
+  .result-section.show { display: block; }
+
+  /* Raw response */
+  .raw-response {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 16px;
+    border-radius: 8px;
+    font-family: "Cascadia Code","Fira Code",Consolas,monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  /* Role cards */
+  .role-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .role-card {
+    background: linear-gradient(135deg, #fff 0%, #fffdf5 100%);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    transition: all .2s;
+    box-shadow: 0 1px 4px rgba(0,0,0,.04);
+  }
+  .role-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,.1);
+    border-color: var(--gold);
+  }
+  .role-card .role-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .role-card .server {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+  }
+  .role-card .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    font-size: 13px;
+  }
+  .role-card .stat-label { color: var(--text-secondary); }
+  .role-card .stat-value {
+    font-weight: 600;
+    color: var(--text);
+  }
+  .role-card .power {
+    color: var(--primary) !important;
+    font-size: 15px !important;
+  }
+
+  /* Stats summary */
+  .stats-summary {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .stat-chip {
+    background: #f8f9fa;
+    padding: 8px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .stat-chip strong { color: var(--text); margin-left: 4px; }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 16px 0;
+  }
+
+  /* Account Selection Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal-box {
+    background: var(--card-bg);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,.2);
+  }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--card-bg);
+    z-index: 1;
+    border-radius: 12px 12px 0 0;
+  }
+  .modal-header h3 { font-size: 16px; color: var(--text); }
+  .modal-close {
+    width: 32px; height: 32px;
+    border: none;
+    background: #f0f0f0;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--text-secondary);
+    display: grid;
+    place-items: center;
+    transition: background .15s;
+  }
+  .modal-close:hover { background: #e0e0e0; color: var(--text); }
+  .modal-body { padding: 12px 20px 20px; }
+  .modal-empty {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 32px 0;
+    font-size: 14px;
+  }
+  .acct-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .acct-item:hover {
+    background: #f8f4ff;
+    border-color: #764ba2;
+    transform: translateX(2px);
+  }
+  .acct-avatar {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #eee;
+  }
+  .acct-avatar-placeholder {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .acct-info { flex: 1; min-width: 0; }
+  .acct-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .acct-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+  .acct-status {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+  .acct-status.alive { background: #eafaf1; color: #27ae60; }
+  .acct-status.expired { background: #fef9e7; color: #b7950b; }
+  .acct-status.unknown { background: #f0f0f0; color: #999; }
+
+  /* Loading state in modal */
+  .modal-loading {
+    text-align: center;
+    padding: 24px 0;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: #764ba2;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>咸鱼之王 - 应用宝微信授权</h1>
+    <p class="subtitle">应用宝授权 组合登录 角色查询</p>
+  </div>
+
+  <!-- Login Card -->
+  <div class="card">
+    <div class="card-title"><span class="icon">🔑</span> 微信授权登录</div>
+    <div class="login-area">
+
+      <!-- QR Code -->
+      <div class="qr-section">
+        <div class="label" id="qrStatus">📱 正在获取应用宝授权二维码...</div>
+        <img id="qrImg" src="" alt="微信授权二维码" style="width:200px;height:200px;border:1px solid #eee;border-radius:4px;display:none;">
+        <div id="qrFallback" style="display:none;margin-top:8px;font-size:12px;color:var(--warning);line-height:1.8;">
+          ⚠ 二维码获取失败<br>请改用右侧 <b>手动输入 code</b>
+        </div>
+        <button class="btn btn-outline" onclick="loadQR()" style="margin-top:8px;">🔄 刷新二维码</button>
+        <button class="btn btn-outline" onclick="useSavedAccount()" style="margin-top:4px;">📋 使用已保存账号</button>
+      </div>
+
+      <!-- Manual Input -->
+      <div class="input-section">
+        <div class="label">📝 输入微信授权 code</div>
+        <div class="input-group">
+          <input type="text" id="codeInput" placeholder="粘贴微信授权 code...">
+          <button class="btn btn-primary" id="loginBtn" onclick="doLogin()">登录</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status -->
+    <div id="status" class="status-bar"></div>
+  </div>
+
+  <!-- Raw Response Card -->
+  <div class="card" id="rawCard" style="display:none;">
+    <div class="card-title"><span class="icon">📋</span> API 原始响应</div>
+    <div class="raw-response" id="rawResponse"></div>
+  </div>
+
+  <!-- Credential Management Card -->
+  <div class="card" id="credCard" style="display:none;">
+    <div class="card-title"><span class="icon">🔐</span> 永久登录凭据</div>
+    <div id="credInfo" style="font-size:13px;line-height:1.8;color:var(--text-secondary);"></div>
+    <button class="btn btn-primary" onclick="refreshCredential()" style="margin-top:10px;">🔄 刷新 login_buffer</button>
+  </div>
+
+  <!-- Roles Card -->
+  <div class="card result-section" id="rolesCard">
+    <div class="card-title"><span class="icon">🎮</span> 角色列表</div>
+    <div class="stats-summary" id="roleSummary"></div>
+    <hr class="divider">
+    <div class="role-grid" id="roleGrid"></div>
+  </div>
+
+</div>
+
+<!-- Account Selection Modal -->
+<div class="modal-overlay" id="accountModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>📋 选择已保存的账号</h3>
+      <button class="modal-close" onclick="closeAccountModal()" title="关闭">✕</button>
+    </div>
+    <div class="modal-body" id="accountModalBody">
+      <div class="modal-loading">加载中...</div>
+    </div>
+  </div>
+</div>
+
+<script src="bon-crypto-full.js"></script>
+<script>
+// Ld/Ud/Md 等加密算法已从 bon-crypto-full.js 加载
+// ============================================================
+// 工具函数
+// ============================================================
+
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+function getDistinctId() {
+  let id = localStorage.getItem('xyzw_distinct_id');
+  if (!id) {
+    id = 'DID-' + generateUUID();
+    localStorage.setItem('xyzw_distinct_id', id);
+  }
+  return id;
+}
+
+function getDeviceId() {
+  let id = localStorage.getItem('xyzw_device_id');
+  if (!id) {
+    id = 'DID-' + generateUUID();
+    localStorage.setItem('xyzw_device_id', id);
+  }
+  return id;
+}
+
+// ============================================================
+// comb_login 请求体加密（de 函数 - 从源码精确提取）
+// 流程: base64(JSON) → key洗牌6次 → 取每3rd字符 → XOR → base64
+// ============================================================
+
+const CIPHER_KEY = "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";
+
+function _ue(S) { return S ? btoa(unescape(encodeURIComponent(S))) : null; }
+
+function _ie(S, Z) {
+  if (Z <= 0 || S.length === 1) return S;
+  if (S.length % 2 !== 0) {
+    const m = S.substring(0, S.length - 1), E = S.substring(S.length - 1);
+    const k = m.substring(Math.floor(m.length / 2)), J = m.substring(0, Math.floor(m.length / 2));
+    return _ie(k, Z - 1) + _ie(J, Z - 1) + E;
+  }
+  const te = S.substring(Math.floor(S.length / 2)), fe = S.substring(0, Math.floor(S.length / 2));
+  return _ie(te, Z - 1) + _ie(fe, Z - 1);
+}
+
+function _U(S, Z) {
+  const te = S.split(""), fe = [], m = Math.floor(S.length / Z);
+  for (let E = 0; E < m; E++) fe.push(te[E * Z]);
+  return fe.join("");
+}
+
+function _G(S, Z, te) {
+  if (!S || !Z) return null;
+  const fe = S.split(""), m = Z.split(""), E = new Array(fe.length);
+  let k = m.length >> te;
+  for (let J = 0; J < fe.length; J++) {
+    if (k >= m.length) k = 0;
+    E[J] = String.fromCharCode(fe[J].charCodeAt(0) ^ m[k].charCodeAt(0));
+    k++;
+  }
+  return E.join("");
+}
+
+function _le(S, Z, te, fe, m) {
+  const E = _ue(S);
+  const k = _ie(Z, te);
+  if (!k) return null;
+  const J = _U(k, fe);
+  return _G(E, J, m);
+}
+
+// de = S => { const E = le(S, KEY, 6, 3, 1); return ue(E); }
+function encryptBody(jsonStr) {
+  const E = _le(jsonStr, CIPHER_KEY, 6, 3, 1);
+  return _ue(E);
+}
+
+// ============================================================
+// UI 状态管理
+// ============================================================
+
+const statusEl = document.getElementById('status');
+const loginBtn = document.getElementById('loginBtn');
+const codeInput = document.getElementById('codeInput');
+const rawCard = document.getElementById('rawCard');
+const rawResponse = document.getElementById('rawResponse');
+const rolesCard = document.getElementById('rolesCard');
+const roleGrid = document.getElementById('roleGrid');
+const roleSummary = document.getElementById('roleSummary');
+
+function showStatus(type, msg) {
+  statusEl.className = 'status-bar show ' + type;
+  statusEl.innerHTML = type === 'loading'
+    ? '<span class="spinner"></span>' + msg
+    : msg;
+}
+
+function hideStatus() {
+  statusEl.className = 'status-bar';
+}
+
+// ============================================================
+// 应用宝扫码（通过 Go 服务，包含 mmtls → code 全流程）
+// ============================================================
+
+// GO MMTLS 后端地址（生产: 122.51.113.234:8080, 本地开发改为 127.0.0.1:8080）
+const GO_API = 'http://122.51.113.234:8080';
+// Node 代理=同源，用 location.origin 自动适配本地/服务器
+const NODE_API = location.origin;
+
+// ★ 应用宝集成: 从 URL 读取设备ID和账号引用，实现多设备隔离
+const urlParams = new URLSearchParams(location.search);
+const DEVICE_ID = urlParams.get('device_id') || '';
+const ACCOUNT_REF = urlParams.get('ref') || '';
+console.log('[YYB Bridge] device_id:', DEVICE_ID, 'ref:', ACCOUNT_REF);
+
+let pollTimer = null;
+let currentSessionId = null;
+
+async function loadQR() {
+  const img = document.getElementById('qrImg');
+  const statusEl = document.getElementById('qrStatus');
+  const fallback = document.getElementById('qrFallback');
+
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  statusEl.textContent = '📱 正在获取应用宝授权二维码...';
+  img.style.display = 'none';
+  fallback.style.display = 'none';
+
+  try {
+    const res = await fetch(GO_API + '/qr?device_id=' + encodeURIComponent(DEVICE_ID), { method: 'POST' });
+    const data = await res.json();
+    if (data.code !== 0) throw new Error(data.msg || '创建二维码失败');
+
+    currentSessionId = data.data.session_id;
+    console.log('[QR] session_id:', currentSessionId);
+
+    // 通过 fetch 获取图片转 data URI（绕过 CSP img-src 限制）
+    const imgRes = await fetch(GO_API + data.data.image_url);
+    const imgBlob = await imgRes.blob();
+    const reader = new FileReader();
+    img.src = await new Promise(resolve => {
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(imgBlob);
+    });
+    img.style.display = 'inline-block';
+    statusEl.textContent = '✅ 请用微信扫描二维码';
+    startPolling(currentSessionId);
+
+  } catch (e) {
+    console.error('[QR]', e);
+    statusEl.textContent = '❌ 二维码获取失败';
+    fallback.style.display = 'block';
+  }
+}
+
+function startPolling(sid) {
+  const statusEl = document.getElementById('qrStatus');
+  let count = 0;
+  const maxCount = 300;
+
+  pollTimer = setInterval(async () => {
+    count++;
+    if (count > maxCount) {
+      clearInterval(pollTimer); pollTimer = null;
+      statusEl.textContent = '⏰ 二维码已过期，请刷新';
+      return;
+    }
+
+    try {
+      const res = await fetch(GO_API + '/qr/' + sid + '/poll?device_id=' + encodeURIComponent(DEVICE_ID));
+      const data = await res.json();
+      if (data.code !== 0) return;
+
+      const status = data.data.status;
+      console.log('[Poll]', status);
+
+      if (status === 'scanned') {
+        statusEl.textContent = '✅ 已扫码，请在微信中确认';
+      } else if (status === 'authorized' || status === 'confirmed') {
+        clearInterval(pollTimer); pollTimer = null;
+        statusEl.textContent = '✅ 授权成功！正在保存账号...';
+        showStatus('loading', '正在保存账号并获取 code (mmtls)...');
+
+        try {
+          // 确认授权（带 device_id 多设备隔离）
+          const confirmRes = await fetch(GO_API + '/qr/' + sid + '/confirm?device_id=' + encodeURIComponent(DEVICE_ID), { method: 'POST' });
+          const confirmData = await confirmRes.json();
+          console.log('[Confirm]', confirmData);
+
+          if (confirmData.code !== 0) throw new Error(confirmData.msg || '确认失败');
+
+          const openid = confirmData.data.openid || confirmData.data.id;
+          statusEl.textContent = '✅ 账号已保存！正在获取 code (mmtls)...';
+
+          // 通过 mmtls 获取 code（带 device_id）
+          const codeRes = await fetch(GO_API + '/wxapp/getCode?device_id=' + encodeURIComponent(DEVICE_ID), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ref: openid, app_id: 'wxfb0d5667e5cb1c44' })
+          });
+          const codeData = await codeRes.json();
+          console.log('[getCode]', codeData);
+
+          if (codeData.code === 0 && codeData.data?.result?.code) {
+            const wxCode = codeData.data.result.code;
+            document.getElementById('codeInput').value = wxCode;
+            statusEl.textContent = '✅ code 获取成功！';
+            showStatus('success', 'mmtls 获取 code 成功！点击「登录」获取角色列表');
+          } else {
+            throw new Error(codeData.msg || codeData.data?.result?.errMsg || 'getCode 失败');
+          }
+        } catch (e) {
+          console.error('[getCode]', e);
+          showStatus('error', '获取 code 失败: ' + e.message);
+        }
+      } else if (status === 'expired' || status === 'cancelled') {
+        clearInterval(pollTimer); pollTimer = null;
+        statusEl.textContent = status === 'expired' ? '⏰ 二维码已过期' : '❌ 已取消';
+      } else {
+        const remaining = maxCount - count;
+        if (remaining % 15 === 0) {
+          statusEl.textContent = '⏳ 等待扫码... ' + Math.floor(remaining/60) + ':' + String(remaining%60).padStart(2,'0');
+        }
+      }
+    } catch (e) {
+      console.error('[Poll]', e);
+    }
+  }, 1500);
+}
+
+// ★ 应用宝集成: 页面启动逻辑
+// - 如果有 ref 参数 → 自动选中账号、获取 code、登录
+// - 否则 → 正常扫码
+document.addEventListener('DOMContentLoaded', function() {
+  if (ACCOUNT_REF) {
+    console.log('[YYB Bridge] 自动恢复账号:', ACCOUNT_REF);
+    autoRestoreAccount(ACCOUNT_REF);
+  } else {
+    loadQR();
+  }
+});
+
+// 自动从 ACCOUNT_REF 恢复账号: 获取 code → 填充 → 登录
+async function autoRestoreAccount(ref) {
+  document.getElementById('qrStatus').textContent = '🔄 正在恢复账号...';
+  try {
+    // 1. 获取账号列表（按 device_id 隔离）
+    const acctRes = await fetch(GO_API + '/accounts?device_id=' + encodeURIComponent(DEVICE_ID));
+    const acctData = await acctRes.json();
+    if (acctData.code !== 0 || !acctData.data || acctData.data.length === 0) {
+      document.getElementById('qrStatus').textContent = '⚠️ 未找到已保存的账号，请扫码';
+      loadQR();
+      return;
+    }
+
+    // 2. 找到 ref 对应的账号（ref = openid）
+    const account = acctData.data.find(a => a.ref === ref || a.openid === ref);
+    if (!account) {
+      console.log('[YYB Bridge] 未找到 ref 对应账号，回退扫码');
+      document.getElementById('qrStatus').textContent = '⚠️ 未找到对应账号，请扫码';
+      loadQR();
+      return;
+    }
+
+    // 3. 通过 mmtls 获取 code
+    document.getElementById('qrStatus').textContent = '🔄 正在获取 code...';
+    const codeRes = await fetch(GO_API + '/wxapp/getCode?device_id=' + encodeURIComponent(DEVICE_ID), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: account.ref, app_id: 'wxfb0d5667e5cb1c44' })
+    });
+    const codeData = await codeRes.json();
+
+    if (codeData.code !== 0 || !codeData.data?.result?.code) {
+      throw new Error(codeData.msg || codeData.data?.result?.errMsg || 'getCode 失败');
+    }
+
+    // 4. 填充 code 到输入框
+    const wxCode = codeData.data.result.code;
+    savedOpenid = account.ref;
+    document.getElementById('codeInput').value = wxCode;
+    document.getElementById('qrStatus').textContent = '✅ code 已获取，正在登录...';
+
+    // 5. 自动触发登录 → 获取角色列表
+    console.log('[YYB Bridge] 自动登录, code:', wxCode.substring(0, 10) + '...');
+    await combLogin(wxCode);
+
+    showStatus('success', `✅ 账号「${account.name}」已恢复，选择角色下载BIN`);
+
+  } catch (e) {
+    console.error('[YYB Bridge] 自动恢复失败:', e);
+    document.getElementById('qrStatus').textContent = '❌ 自动恢复失败，请扫码';
+    showStatus('error', '恢复账号失败: ' + e.message);
+    loadQR();
+  }
+}
+
+// ============================================================
+// 账号选择弹窗
+// ============================================================
+
+async function fetchWithTimeout(url, options = {}, ms = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function useSavedAccount() {
+  const modal = document.getElementById('accountModal');
+  const body = document.getElementById('accountModalBody');
+  modal.classList.add('show');
+  body.innerHTML = '<div class="modal-loading"><span class="spinner"></span>加载中...</div>';
+
+  try {
+    console.log('[useSavedAccount] fetching', GO_API + '/accounts?device_id=' + DEVICE_ID);
+    const res = await fetchWithTimeout(GO_API + '/accounts?device_id=' + encodeURIComponent(DEVICE_ID), {}, 10000);
+    const text = await res.text();
+    console.log('[useSavedAccount] raw response:', text.substring(0, 500));
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr) {
+      throw new Error('返回不是有效 JSON: ' + text.substring(0, 100));
+    }
+
+    if (data.code !== 0 || !data.data || data.data.length === 0) {
+      body.innerHTML = '<div class="modal-empty">⚠️ 没有已保存的账号<br><br>请先扫码授权后再使用此功能</div>';
+      return;
+    }
+
+    const accounts = data.data;
+    body.innerHTML = accounts.map(acc => {
+      const name = acc.nickname || acc.alias || '未命名';
+      const statusText = acc.status === 'alive' ? '在线' : acc.status === 'expired' ? '过期' : (acc.status || '未知');
+      const statusCls = acc.status === 'alive' ? 'alive' : acc.status === 'expired' ? 'expired' : 'unknown';
+      const uinStr = acc.uin ? `UIN: ${acc.uin}` : '';
+      const checkedStr = acc.last_checked_at
+        ? `上次检查: ${new Date(acc.last_checked_at * 1000).toLocaleDateString()}`
+        : '';
+      const meta = [uinStr, checkedStr].filter(Boolean).join(' · ') || '暂无信息';
+      const initial = (name || '?').charAt(0).toUpperCase();
+      const safeName = name.replace(/[\\'"]/g, '\\$&');
+
+      return `
+        <div class="acct-item" onclick="selectSavedAccount('${acc.openid}', '${safeName}')">
+          <span class="acct-avatar-placeholder">${initial}</span>
+          <div class="acct-info">
+            <div class="acct-name">${esc(name)}</div>
+            <div class="acct-meta">${meta}</div>
+          </div>
+          <span class="acct-status ${statusCls}">${statusText}</span>
+        </div>
+      `;
+    }).join('');
+
+  } catch (e) {
+    console.error('[useSavedAccount] error:', e);
+    const isCors = location.protocol === 'file:';
+    const corsTip = isCors
+      ? '<br><br>💡 你当前是本地文件打开（file://），浏览器可能拦截跨域请求。<br>请尝试在浏览器访问：<b>http://127.0.0.1:4567</b>'
+      : '';
+    body.innerHTML = `<div class="modal-empty">❌ 获取账号列表失败<br><br>${esc(e.message || String(e))}${corsTip}</div>`;
+  }
+}
+
+function closeAccountModal() {
+  document.getElementById('accountModal').classList.remove('show');
+}
+
+// 点击遮罩关闭
+document.addEventListener('click', function(e) {
+  if (e.target.id === 'accountModal') closeAccountModal();
+});
+
+async function selectSavedAccount(openid, name) {
+  closeAccountModal();
+  showStatus('loading', `正在使用账号 "${name}" 获取 code (mmtls)...`);
+  document.getElementById('qrStatus').textContent = '🔄 正在获取 code...';
+  try {
+    const codeRes = await fetch(GO_API + '/wxapp/getCode?device_id=' + encodeURIComponent(DEVICE_ID), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: openid, app_id: 'wxfb0d5667e5cb1c44' })
+    });
+    const codeData = await codeRes.json();
+    console.log('[getCode]', codeData);
+
+    if (codeData.code === 0 && codeData.data?.result?.code) {
+      document.getElementById('codeInput').value = codeData.data.result.code;
+      showStatus('success', `✅ 账号「${name}」code 获取成功！点击「登录」获取角色列表`);
+      document.getElementById('qrStatus').textContent = `✅ 已选择账号：${name}`;
+    } else {
+      throw new Error(codeData.msg || codeData.data?.result?.errMsg || 'getCode 失败');
+    }
+  } catch (e) {
+    console.error('[selectSavedAccount]', e);
+    showStatus('error', `获取 code 失败: ${e.message}`);
+    document.getElementById('qrStatus').textContent = '❌ code 获取失败';
+  }
+}
+
+async function combLogin(code) {
+  const loginBody = {
+    gameId: 'xyzwapp', code: code, gameTp: 'app',
+    sysInfo: JSON.stringify({ system:'Android', hortorSDKVersion:'4.0.6-cn', model:'22081212C', brand:'Redmi' }),
+    channel: 'android', appFrom: 'com.tencent.mm', noLogin: '2',
+    distinctId: getDistinctId(), state: 'hortor',
+    packageName: 'com.hortor.games.xyzw', tp: 'app-we',
+    signPrint: 'E6:F7:FE:A9:EC:8E:24:D0:4F:2A:32:50:28:78:E1:C5:5E:70:81:13'
+  };
+
+  const loginJson = JSON.stringify(loginBody);
+  const encryptedStr = encryptBody(loginJson);  // de 函数加密，返回 base64 字符串
+  console.log('[comb_login] 加密后:', encryptedStr?.substring(0, 50) + '...');
+
+  const params = new URLSearchParams({
+    gameId:'xyzwapp', timestamp:Date.now().toString(),
+    version:'android-4.2.1-cn-release', cryptVersion:'1.1.0',
+    gameTp:'app', system:'android', deviceUniqueId:getDeviceId(),
+    packageName:'com.hortor.games.xyzw'
+  });
+  const targetUrl = 'https://comb-platform.hortorgames.com/comb-login-server/api/v1/login?' + params;
+
+  // 通过代理发送（加密后的字符串直接作为 body 文本）
+  const proxyRes = await fetch(NODE_API + '/api/comb-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      url: targetUrl,
+      body: encryptedStr,  // 直接发送加密字符串
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Origin': 'https://open.weixin.qq.com',
+        'Referer': 'https://open.weixin.qq.com/',
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 12; wv) AppleWebKit/537.36'
+      }
+    })
+  });
+
+  const data = await proxyRes.json();
+  if (data.error) throw new Error(data.error);
+
+  // 解码响应
+  const respBuf = Uint8Array.from(atob(data.body), c => c.charCodeAt(0));
+  let text = new TextDecoder().decode(respBuf);
+
+  // 尝试解析 JSON
+  try { JSON.parse(text); return { raw: text, decrypted: false }; } catch(e) {}
+
+  // 尝试 Ld 解密
+  try {
+    text = new TextDecoder().decode(Ld.decrypt(respBuf));
+    return { raw: text, decrypted: true };
+  } catch(e2) {
+    throw new Error('无法解析服务器响应');
+  }
+}
+
+// ============================================================
+// 角色数据解析
+// ============================================================
+
+function getServerName(serverId) {
+  let id = Number(serverId);
+  let type = '';
+  if (id >= 2000000) { type = '[三区]'; id -= 2000000; }
+  else if (id >= 1000000) { type = '[二区]'; id -= 1000000; }
+  else { type = '[一区]'; }
+  return type + ' ' + (id - 27) + '服';
+}
+
+function parseRoleList(data) {
+  // 尝试多种路径提取角色数据
+  const attempts = [
+    // 直接从 data 顶层提取
+    () => {
+      if (Array.isArray(data)) return data;
+      if (data && typeof data === 'object') {
+        return Object.values(data).filter(v => v && typeof v === 'object' && v.roleId);
+      }
+      return null;
+    },
+    // data.roles
+    () => data?.data?.roles ? Object.values(data.data.roles) : null,
+    // data.data (如果是对象)
+    () => data?.data && typeof data.data === 'object' && !Array.isArray(data.data)
+      ? Object.values(data.data).filter(v => v && v.roleId)
+      : null,
+    // 递归查找
+    () => {
+      function findRoles(obj, depth) {
+        if (!obj || typeof obj !== 'object' || depth > 5) return null;
+        if (Array.isArray(obj) && obj.length > 0 && obj[0].roleId) return obj;
+        if (obj.roleId) return [obj];
+        for (const key of Object.keys(obj)) {
+          const val = obj[key];
+          if (!val || typeof val !== 'object') continue;
+          if (Array.isArray(val) && val.length > 0 && val[0].roleId) return val;
+          if (val.roleId) return [val];
+          if (typeof val === 'object') {
+            const found = findRoles(val, depth + 1);
+            if (found) return found;
+          }
+        }
+        return null;
+      }
+      return findRoles(data, 0);
+    }
+  ];
+
+  for (const attempt of attempts) {
+    const result = attempt();
+    if (result && result.length > 0) return result;
+  }
+  return [];
+}
+
+function extractRoleFields(item) {
+  return {
+    serverId: item.serverId || item.server_id || '',
+    roleId: item.roleId || item.role_id || '',
+    name: item.name || item.roleName || item.nickname || '未知',
+    level: item.level || 0,
+    power: item.power || item.combatPower || 0,
+    vipLevel: item.vipLevel || item.vip_level || 0,
+    serverName: item.serverId ? getServerName(item.serverId) : (item.serverName || ''),
+  };
+}
+
+// ============================================================
+// 主登录流程
+// ============================================================
+
+let savedCombUser = null;  // 保存 combUser 用于生成 bin 文件
+
+async function doLogin() {
+  const code = codeInput.value.trim();
+  if (!code) {
+    showStatus('error', '请先输入微信授权 code');
+    codeInput.focus();
+    return;
+  }
+
+  // 重置UI
+  rawCard.style.display = 'none';
+  rolesCard.classList.remove('show');
+  hideStatus();
+  loginBtn.disabled = true;
+  codeInput.disabled = true;
+  showStatus('loading', '正在调用 comb_login API...');
+
+  try {
+    // Step 1: comb_login
+    showStatus('loading', '正在登录 (comb_login)...');
+    const result = await combLogin(code);
+
+    console.log('[comb_login] 响应:', result.raw.substring(0, 500));
+    showStatus('success', result.decrypted
+      ? '登录成功（响应已 Ld 解密）'
+      : 'API 调用成功');
+
+    // 显示原始响应
+    rawCard.style.display = 'block';
+    let parsed;
+    try {
+      parsed = JSON.parse(result.raw);
+      rawResponse.textContent = JSON.stringify(parsed, null, 2);
+    } catch (e) {
+      rawResponse.textContent = result.raw;
+      showStatus('warning', '响应不是有效 JSON，请查看原始数据');
+      loginBtn.disabled = false;
+      codeInput.disabled = false;
+      return;
+    }
+
+    // 检查错误
+    if (parsed.meta && parsed.meta.errCode !== 0) {
+      const errMsg = parsed.meta.errMsg || '未知错误';
+      const errCode = parsed.meta.errCode;
+      showStatus('error', `登录失败 [${errCode}]: ${errMsg}`);
+      loginBtn.disabled = false;
+      codeInput.disabled = false;
+      return;
+    }
+
+    // Step 2: 从 comb_login 响应中提取 combUser
+    const combUser = parsed.data?.combUser || parsed.combUser;
+    savedCombUser = combUser;  // 保存用于生成 bin 文件
+    if (!combUser) {
+      showStatus('warning', '响应中未找到 combUser，请查看原始数据');
+      return;
+    }
+
+    // Step 3: 调用 serverlist 获取角色列表
+    showStatus('loading', '正在获取角色列表 (serverlist)...');
+    try {
+      // 构建 platform 数据
+      const platformData = {
+        platform: "hortor",
+        platformExt: "mix",
+        info: combUser,
+        serverId: null,
+        scene: 0,
+        referrerInfo: ""
+      };
+
+      // BON 编码 + lx 加密
+      const bonData = Mt.encode(platformData, false);
+      const encrypted = At("lx").encrypt(bonData);
+      const encryptedB64 = btoa(String.fromCharCode(...new Uint8Array(encrypted)));
+
+      // 通过代理调用 serverlist（同源请求，NODE_API = location.origin）
+      const slRes = await fetch(NODE_API + '/api/serverlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: encryptedB64 })
+      });
+      const slData = await slRes.json();
+      if (slData.error) throw new Error(slData.error);
+
+      // 解析响应
+      const respBuf = Uint8Array.from(atob(slData.body), c => c.charCodeAt(0));
+      const parsed_sl = at.parse(respBuf);
+      const roleData = parsed_sl.getData();
+      console.log('[serverlist] 角色数据:', roleData);
+
+      // 提取角色列表
+      const roles = Object.values(roleData.roles || roleData || {})
+        .filter(r => r && typeof r === 'object' && r.roleId)
+        .map(extractRoleFields);
+
+      if (roles.length > 0) {
+        renderRoles(roles);
+        showStatus('success', `获取到 ${roles.length} 个角色`);
+      } else {
+        // 显示原始数据
+        rawResponse.textContent = JSON.stringify(roleData, null, 2);
+        showStatus('warning', 'serverlist 返回但未找到角色，请查看原始数据');
+      }
+    } catch (slError) {
+      console.error('[serverlist] 错误:', slError);
+      showStatus('error', '获取角色列表失败: ' + slError.message);
+      // 显示 combUser 信息作为 fallback
+      rawResponse.textContent = JSON.stringify({combUser, error: slError.message}, null, 2);
+    }
+
+  } catch (error) {
+    console.error('[登录] 错误:', error);
+    showStatus('error', '请求失败: ' + error.message);
+  } finally {
+    loginBtn.disabled = false;
+    codeInput.disabled = false;
+  }
+}
+
+// ============================================================
+// 角色渲染
+// ============================================================
+
+function renderRoles(roles) {
+  // 按战力降序
+  roles.sort((a, b) => (b.power || 0) - (a.power || 0));
+
+  // 统计摘要
+  const totalPower = roles.reduce((sum, r) => sum + (r.power || 0), 0);
+  const maxLevel = Math.max(...roles.map(r => r.level || 0));
+  roleSummary.innerHTML = `
+    <div class="stat-chip">总角色数 <strong>${roles.length}</strong></div>
+    <div class="stat-chip">总战力 <strong>${totalPower.toLocaleString()}</strong></div>
+    <div class="stat-chip">最高等级 <strong>${maxLevel}</strong></div>
+  `;
+
+  // 渲染卡片
+  roleGrid.innerHTML = roles.map(r => `
+    <div class="role-card">
+      <div class="role-name">${esc(r.name)}</div>
+      <div class="server">${esc(r.serverName)}</div>
+      <div class="stats">
+        <div><span class="stat-label">等级</span> <span class="stat-value">${r.level}</span></div>
+        <div><span class="stat-label">战力</span> <span class="stat-value power">${(r.power || 0).toLocaleString()}</span></div>
+        <div><span class="stat-label">VIP</span> <span class="stat-value">${r.vipLevel}</span></div>
+        <div><span class="stat-label">roleId</span> <span class="stat-value" style="font-size:11px;">${r.roleId}</span></div>
+      </div>
+      <button class="btn btn-primary" style="margin-top:8px;width:100%;padding:6px;font-size:13px;" onclick="sendBinToApp('${r.serverId}', '${r.roleId}', '${esc(r.name)}')">📥 发送到App</button>
+    </div>
+  `).join('');
+
+  rolesCard.classList.add('show');
+}
+
+function esc(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+// ============================================================
+// ★ 应用宝集成: postMessage 发送 BIN 到 App.vue（替代本地下载）
+// ============================================================
+
+async function sendBinToApp(serverId, roleId, roleName) {
+  if (!savedCombUser) {
+    showStatus('error', 'combUser 数据丢失，请重新登录');
+    return;
+  }
+
+  showStatus('loading', `正在生成 ${roleName} 的 bin 文件...`);
+
+  try {
+    // 构建 platform 数据（与源码一致）
+    const platformData = {
+      platform: "hortor",
+      platformExt: "mix",
+      info: savedCombUser,
+      serverId: Number(serverId),  // 必须是数字
+      scene: 0,
+      referrerInfo: ""
+    };
+
+    console.log('[bin] platformData:', platformData);
+
+    // at.encode(data, "lx") = BON 编码 + lx 加密
+    const binData = at.encode(platformData, "lx");
+    const binBytes = new Uint8Array(binData);
+    const binB64 = btoa(String.fromCharCode(...binBytes));
+
+    console.log('[bin] 生成成功, 大小:', binBytes.length, 'bytes');
+
+    // ★ 通过 postMessage 发送给父窗口 (App.vue)，不走 Blob 下载
+    parent.postMessage({
+      type: 'SAVE_BIN',
+      fileName: `${roleName}_${serverId}`,
+      b64Data: binB64,
+      source: 'yyb'
+    }, '*');
+
+    showStatus('success', `✅ ${roleName} 的 bin 文件已发送到App (${binBytes.length} bytes)`);
+
+    // 通知 App 导入完成
+    setTimeout(() => {
+      parent.postMessage({ type: 'YYB_IMPORT_DONE', roleName, serverId }, '*');
+    }, 600);
+  } catch (e) {
+    console.error('[bin] 生成失败:', e);
+    showStatus('error', 'bin 文件生成失败: ' + e.message);
+  }
+}
+
+// ============================================================
+// 键盘快捷键: Enter 触发登录
+// ============================================================
+
+codeInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doLogin();
+});
+
+// ============================================================
+// 凭据管理：刷新 login_buffer
+// ============================================================
+
+function showCredentialCard() {
+  const cred = JSON.parse(localStorage.getItem('xyzw_yyb_credential') || 'null');
+  if (!cred) return;
+
+  const card = document.getElementById('credCard');
+  const info = document.getElementById('credInfo');
+  card.style.display = 'block';
+
+  const exp = cred.refresh_expires_at ? new Date(cred.refresh_expires_at) : null;
+  const remaining = exp ? Math.floor((exp - Date.now()) / 86400000) : 0;
+
+  info.innerHTML = `
+    <b>openid:</b> ${cred.openid || 'N/A'}<br>
+    <b>accesstoken:</b> ${(cred.accesstoken || '').substring(0,30)}...<br>
+    <b>refreshtoken:</b> ${(cred.refreshtoken || '').substring(0,30)}...<br>
+    <b>login_buffer:</b> ${cred.login_buffer ? '✅ 已获取' : '❌ 未获取'}<br>
+    <b>刷新令牌有效期:</b> 剩余 ${remaining} 天
+  `;
+}
+
+async function refreshCredential() {
+  const cred = JSON.parse(localStorage.getItem('xyzw_yyb_credential') || 'null');
+  if (!cred) {
+    showStatus('error', '未找到已存储的凭据，请先扫码登录');
+    return;
+  }
+
+  showStatus('loading', '正在刷新 login_buffer...');
+
+  try {
+    const res = await fetch(NODE_API + '/api/yyb/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cred)
+    });
+    const data = await res.json();
+
+    // 展示响应
+    const rawCard = document.getElementById('rawCard');
+    document.getElementById('rawResponse').textContent = JSON.stringify(data, null, 2);
+    rawCard.style.display = 'block';
+
+    if (data.success && data.result) {
+      const r = data.result;
+      // 检查是否返回了 login_buffer
+      if (r.login_buffer || r.data?.login_buffer) {
+        cred.login_buffer = r.login_buffer || r.data.login_buffer;
+        localStorage.setItem('xyzw_yyb_credential', JSON.stringify(cred));
+        showStatus('success', '✅ 刷新成功！login_buffer 已获取并存储');
+      } else {
+        showStatus('warning', '刷新接口返回成功但未包含 login_buffer，请查看响应');
+      }
+    } else {
+      showStatus('warning', '刷新未成功，请查看响应详情');
+    }
+
+    showCredentialCard();
+  } catch (e) {
+    showStatus('error', '刷新失败: ' + e.message);
+  }
+}
+
+// ★ 应用宝集成: 监听父窗口 (App.vue) 的 postMessage
+window.addEventListener('message', function(event) {
+  const msg = event.data;
+  if (!msg || typeof msg.type !== 'string') return;
+
+  console.log('[YYB Bridge] 收到 postMessage:', msg.type, msg);
+
+  switch (msg.type) {
+    case 'ACCOUNT_REF':
+      // App.vue 要求恢复指定账号
+      if (msg.ref && msg.ref !== ACCOUNT_REF) {
+        console.log('[YYB Bridge] 切换账号 ref:', msg.ref);
+        if (savedCombUser) {
+          // 已有登录数据，直接重新获取code
+          document.getElementById('qrStatus').textContent = '🔄 正在切换账号...';
+          fetch(GO_API + '/wxapp/getCode?device_id=' + encodeURIComponent(DEVICE_ID), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ref: msg.ref, app_id: 'wxfb0d5667e5cb1c44' })
+          }).then(r => r.json()).then(data => {
+            if (data.code === 0 && data.data?.result?.code) {
+              document.getElementById('codeInput').value = data.data.result.code;
+              savedOpenid = msg.ref;
+              document.getElementById('qrStatus').textContent = '✅ 已切换到账号: ' + (msg.roleName || msg.ref);
+              combLogin(data.data.result.code);
+            } else {
+              showStatus('error', '切换账号失败: ' + (data.msg || '未知错误'));
+            }
+          }).catch(e => {
+            showStatus('error', '切换账号异常: ' + e.message);
+          });
+        } else {
+          // 无登录数据，重新加载页面（带新 ref）
+          location.search = '?device_id=' + encodeURIComponent(DEVICE_ID) + '&ref=' + encodeURIComponent(msg.ref);
+        }
+      }
+      break;
+
+    case 'CLOSE_PAGE':
+      showStatus('info', '请关闭此页面，回到App');
+      document.getElementById('qrStatus').textContent = '✅ 操作完成，可关闭此页面';
+      break;
+  }
+});
+
+// 页面加载时检查已存储的凭据
+document.addEventListener('DOMContentLoaded', function() {
+  setTimeout(showCredentialCard, 500);
+});
+</script>
+</body>
+</html>

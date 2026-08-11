@@ -1,6 +1,6 @@
 [package]
 name = "肝王之王"
-version = "2.48.1"
+version = "2.48.3"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -24,6 +24,9 @@ log = "0.4"
 tauri = { version = "2.11.0", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-http = "2"
+ureq = { version = "2.12", features = ["native-tls"] }
+tungstenite = "0.24"
+http = "1"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winbase"] }

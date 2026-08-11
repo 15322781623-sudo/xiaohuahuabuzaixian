@@ -887,6 +887,22 @@ watch(goldFishStatus, (status) => {
   }
 }, { deep: true });
 
+// 监听 tokenStore 连接/刷新错误日志，转发到 UI 执行日志
+const _wsLogCursor = {};
+watch(
+  () => tokenStore.wsConnectionLogs[props.token.id]?.length || 0,
+  () => {
+    const logs = tokenStore.wsConnectionLogs[props.token.id];
+    if (!logs || !logs.length) return;
+    // 只推送新增的日志（从上次已处理位置开始）
+    const lastProcessed = _wsLogCursor[props.token.id] || 0;
+    for (let i = lastProcessed; i < logs.length; i++) {
+      addLog(logs[i]);
+    }
+    _wsLogCursor[props.token.id] = logs.length;
+  }
+);
+
 // 显示用的答题信息(智能合并服务器数据和本地数据)
 const displayStudyInfo = computed(() => {
   const serverData = studyInfo.value;
@@ -3153,6 +3169,16 @@ const jumpGame = async () => {
     }, 3000);
 
     const gameUrl = `${window.location.origin}/game.html?token=${encodeURIComponent(token.id)}`;
+
+    // 断开助手WebSocket，避免与游戏内连接冲突导致顶号
+    const wsStatus = tokenStore.getWebSocketStatus(token.id);
+    if (wsStatus === "connected" || wsStatus === "connecting") {
+      tokenStore.closeWebSocketConnection(token.id);
+      addLog({
+        message: `🔌 ${token.name}: 已断开助手连接，切换到游戏界面`,
+        type: "info",
+      });
+    }
 
     // 6. 打开游戏界面
     const isApk = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());

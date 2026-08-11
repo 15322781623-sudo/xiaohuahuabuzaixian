@@ -81,6 +81,16 @@
       </div>
     </div>
 
+    <!-- 自动跳转提示（设置开启后显示，可取消） -->
+    <div v-if="countdown > 0" style="display: flex; align-items: center; justify-content: center; padding: 6px 0;">
+      <n-tag type="warning" :bordered="false" size="medium">
+        ⏱ {{ countdown }}秒后自动跳转到批量日常页面
+      </n-tag>
+      <n-button size="small" quaternary type="warning" style="margin-left: 8px;" @click="cancelAutoRedirect">
+        取消跳转
+      </n-button>
+    </div>
+
     <!-- 反馈提示区域 -->
     <div v-if="showFeedback" class="feedback-section"></div>
 
@@ -98,6 +108,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
 import { useTokenStore } from "@/stores/tokenStore";
+import { useAutoRedirect } from "@/composables/useAutoRedirect";
 import { CloudDone, Refresh, SwapHorizontal, ArrowBack } from "@vicons/ionicons5";
 
 const router = useRouter();
@@ -109,6 +120,9 @@ const showFeedback = ref(true);
 const lastActivity = ref(null);
 const isSwitchingToken = ref(false);
 const isRefreshingUser = ref(false);
+
+// 自动跳转到批量日常页面（受「游戏功能自动跳转」开关控制，默认关闭）
+const { countdown, startAutoRedirect, cancelAutoRedirect } = useAutoRedirect("gameFeatures");
 
 // 计算属性
 const connectionStatus = computed(() => {
@@ -383,6 +397,9 @@ const toggleConnection = () => {
 
 // 生命周期
 onMounted(() => {
+  // 按配置启动自动跳转倒计时（默认关闭）
+  startAutoRedirect();
+
   // 检查是否需要连接 WebSocket
   if (tokenStore.selectedToken) {
     const status = tokenStore.getWebSocketStatus(tokenStore.selectedToken.id);

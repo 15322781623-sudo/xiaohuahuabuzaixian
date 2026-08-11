@@ -505,6 +505,14 @@
     };
     window.__HORTOR_SDK__ = window.__HORTOR_SDK__ || { tga: { track: function(){}, tga: null } };
     window.__HORTOR_SDK__.tga.tga = window.__HORTOR_SDK__.tga;
+    // ★ 蟠桃修复: getClientVersion 返回 GAME_VERSION (MD 检查点8)
+    window.__HORTOR_SDK__.getClientVersion = function() {
+        return (typeof globalThis !== 'undefined' && globalThis.GAME_VERSION) || '2.29.2-wx';
+    };
+    // ★ 蟠桃修复: getGameId 返回游戏ID (MD 检查点9)
+    window.__HORTOR_SDK__.getGameId = function() {
+        return (typeof globalThis !== 'undefined' && globalThis.GAME_ID) || 'xyzw_mix';
+    };
     window._hsdkInit = 1;
     window.checkUpdate = 1;
     // 拦截阻塞对话框

@@ -1758,6 +1758,13 @@ async function decodeBinForToken(token) {
 async function loginInIframe(token) {
   if (hasIframe(token.id)) return;
 
+  // 断开助手WebSocket，避免与游戏内连接冲突导致顶号
+  const wsStatus = tokenStore.getWebSocketStatus(token.id);
+  if (wsStatus === "connected" || wsStatus === "connecting") {
+    tokenStore.closeWebSocketConnection(token.id);
+    addLog(`🔌 ${token.name}: 已断开助手连接，切换到游戏界面`, "info");
+  }
+
   // APK 环境窗口数限制警告
   if (isApk() && iframeList.value.length >= APK_MAX_WINDOWS) {
     addLog(`⚠ APK环境已开启 ${iframeList.value.length} 个窗口，继续开启可能导致内存不足崩溃`, 'warning');

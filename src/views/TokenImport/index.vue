@@ -29,6 +29,16 @@
                     <span>{{ p.label }}自动跳转</span>
                     <n-switch :value="p.enabled" size="small" @update:value="(on) => toggleRedirectPage(p.key, on)" />
                   </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span>默认启动页</span>
+                    <n-select
+                      :value="defaultStartPage"
+                      :options="DEFAULT_START_PAGES.map(p => ({ label: p.label, value: p.key }))"
+                      size="small"
+                      style="width: 110px;"
+                      @update:value="saveDefaultStartPage"
+                    />
+                  </div>
                   <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span>倒计时（秒）</span>
                     <n-input-number
@@ -674,7 +684,7 @@ import { useRouter } from "vue-router";
 import { transformToken } from "@/utils/token";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { getBinBackupWithFallback, saveBinBackup } from "@/utils/binBackup";
-import { useAutoRedirect, useAutoRedirectSettings } from "@/composables/useAutoRedirect";
+import { useAutoRedirect, useAutoRedirectSettings, DEFAULT_START_PAGES } from "@/composables/useAutoRedirect";
 import CloudSyncModal from "@/components/Common/CloudSyncModal.vue";
 
 // 接收路由参数
@@ -1861,7 +1871,7 @@ watch(() => [props.token, props.api], handleUrlParams, { immediate: false });
 const { countdown, startAutoRedirect, cancelAutoRedirect } = useAutoRedirect("tokens");
 
 // 自动跳转设置（各页面独立，与导航栏/个人设置页共用同一配置）
-const { pageStates: redirectPageStates, seconds: autoRedirectSeconds, togglePage: toggleRedirectPage, saveSeconds: saveRedirectSeconds } = useAutoRedirectSettings();
+const { pageStates: redirectPageStates, seconds: autoRedirectSeconds, startPage: defaultStartPage, togglePage: toggleRedirectPage, saveSeconds: saveRedirectSeconds, saveStartPage: saveDefaultStartPage } = useAutoRedirectSettings();
 
 // 云端配置同步弹窗
 const showCloudSync = ref(false);

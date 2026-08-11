@@ -6,6 +6,9 @@
  * - 同步范围：localStorage 全量快照（排除易失/设备相关 key）
  */
 
+import { saveBinBackup } from "@/utils/binBackup";
+import { useTokenStore } from "@/stores/tokenStore";
+
 export const CLOUD_API_BASE = "https://apk.xiaohuaxyzw.top";
 
 const AUTH_USER_KEY = "cloudAuthUser";
@@ -218,6 +221,16 @@ const collectBinData = async () => {
         map[r.id] = arrayBufferToBase64(r.data);
       }
       console.info(`[云同步] BIN 采集完成：${Object.keys(map).length} 条，共 ${(totalBytes / 1024 / 1024).toFixed(2)} MB`);
+      // 对比 token 数量，发现差异时告警
+      try {
+        const tokens = JSON.parse(localStorage.getItem("gameTokens") || "[]");
+        if (tokens.length > 0 && Object.keys(map).length !== tokens.length) {
+          const diff = tokens.length - Object.keys(map).length;
+          console.warn(
+            `[云同步] ⚠️ BIN 与 Token 数量不一致：BIN ${Object.keys(map).length} 条 vs Token ${tokens.length} 条（缺少 ${diff} 个 BIN）`
+          );
+        }
+      } catch { /* ignore */ }
       return map;
     } catch (e) {
       console.error("[云同步] 读取本地 BIN 数据失败，本次快照不含 BIN:", e);
@@ -232,36 +245,90 @@ const collectBinData = async () => {
   return result;
 };
 
-/** 将快照中的 BIN 数据写回 IndexedDB（先清空旧 BIN 再写入，全量覆盖）；15秒超时保护 */
+/** 将快照中的 BIN 数据写回 IndexedDB（先清空旧 BIN 再写入，全量覆盖）；15秒超时保护
+ *  @returns {{ succeeded: string[], failed: {id:string,reason:string}[] }} */
 const restoreBinData = async (map) => {
+  const ids = Object.keys(map || {});
+
+  // 无 BIN 数据时仍需清空 IndexedDB，保证全量覆盖语义
+  if (!ids.length) {
+    try {
+      const db = await openBinDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(BIN_STORE, "readwrite");
+        const req = tx.objectStore(BIN_STORE).clear();
+        tx.oncomplete = () => resolve(undefined);
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error || new Error("事务中止"));
+      });
+      db.close();
+      console.info("[云同步] BIN 数据为空，已清空 IndexedDB");
+    } catch (e) {
+      console.error("[云同步] 清空 BIN 失败:", e);
+    }
+    return { succeeded: [], failed: [] };
+  }
+
+  // 预校验：提前解码 base64，避免事务内静默失败导致部分记录丢失
+  const decoded = {};
+  const failed = [];
+  for (const id of ids) {
+    try {
+      decoded[id] = base64ToArrayBuffer(map[id]);
+    } catch (e) {
+      failed.push({ id, reason: `base64解码失败: ${e.message}` });
+      console.error(`[云同步] BIN 解码失败 [${id}]:`, e.message);
+    }
+  }
+
+  const validIds = Object.keys(decoded);
+  if (!validIds.length) {
+    console.error(`[云同步] 所有 ${ids.length} 条 BIN 解码均失败，IndexedDB 保持不变`);
+    return { succeeded: [], failed };
+  }
+
   try {
     const db = await openBinDb();
     const work = new Promise((resolve, reject) => {
       const tx = db.transaction(BIN_STORE, "readwrite");
       const store = tx.objectStore(BIN_STORE);
-      store.clear(); // 全量恢复：先清旧，避免旧 BIN 残留
-      const now = new Date();
-      let count = 0;
-      for (const id of Object.keys(map || {})) {
-        try {
-          store.put({ id, data: base64ToArrayBuffer(map[id]), createdAt: now, updatedAt: now });
-          count++;
-        } catch { /* 单条损坏跳过 */ }
-      }
-      tx.oncomplete = () => resolve(count);
+
+      // 先等 clear 完成，再放入 put 操作，避免顺序错乱
+      const clearReq = store.clear();
+      clearReq.onsuccess = () => {
+        const now = new Date();
+        for (const id of validIds) {
+          store.put({ id, data: decoded[id], createdAt: now, updatedAt: now });
+        }
+      };
+      clearReq.onerror = () => reject(clearReq.error);
+
+      tx.oncomplete = () => resolve(validIds.length);
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error || new Error("事务中止"));
     });
+
     const timeout = new Promise((resolve) => setTimeout(() => resolve(-1), 15000));
     const n = await Promise.race([work, timeout]);
     db.close();
+
     if (n === -1) {
       console.error("[云同步] BIN 写回超时，恢复后账号可能无法连接，请重新恢复一次");
-    } else {
-      console.info(`[云同步] BIN 写回完成：${n} 条`);
+      failed.push(...validIds.map((id) => ({ id, reason: "超时" })));
+      return { succeeded: [], failed };
     }
+
+    if (failed.length) {
+      console.warn(`[云同步] BIN 写回：${validIds.length} 条成功，${failed.length} 条预校验失败`);
+    } else {
+      console.info(`[云同步] BIN 写回完成：${validIds.length} 条`);
+    }
+
+    return { succeeded: validIds, failed };
   } catch (e) {
-    console.error("[云同步] BIN 写回失败:", e);
+    console.error("[云同步] BIN 写回事务失败:", e);
+    failed.push(...validIds.map((id) => ({ id, reason: `事务失败: ${e.message}` })));
+    return { succeeded: [], failed };
   }
 };
 
@@ -335,31 +402,73 @@ export const applySnapshot = async (data, adoptDeviceName) => {
     }
     localStorage.setItem(key, value);
   });
-  await restoreBinData(binMap || {});
+  const { succeeded, failed } = await restoreBinData(binMap || {});
+  // 恢复后自动补齐 localStorage BIN 备份（兜底保护：即使 IndexedDB 异常，备份仍在）
+  if (succeeded.length) {
+    const backupPromises = succeeded.map((id) =>
+      saveBinBackup(id, base64ToArrayBuffer(binMap[id])).catch(() => {})
+    );
+    await Promise.allSettled(backupPromises);
+    console.info(`[云同步] BIN 备份已补齐：${succeeded.length} 条`);
+  }
+  if (failed.length) {
+    console.error(`[云同步] BIN 恢复失败 ${failed.length} 条:`, failed.map((f) => f.id).join(", "));
+  }
+  // 将恢复结果写入 sessionStorage（跨 location.reload 保留），
+  // 页面重启后在 App.vue 中读取并打印，避免 reload 清空 console 导致日志丢失
+  try {
+    sessionStorage.setItem(
+      "__cloudRestoreResult__",
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        totalBin: Object.keys(binMap || {}).length,
+        succeeded: succeeded.length,
+        failed: failed.length,
+        failedDetails: failed.slice(0, 20),
+      })
+    );
+  } catch { /* ignore */ }
   location.reload();
 };
 
 // ==================== 上传/下载（多设备快照，按设备名区分） ====================
 
-/** 上传本机快照到指定设备名（默认本机设备名）；支持 CompressionStream 时 gzip 压缩二进制上传 */
+/** 上传本机快照到指定设备名（默认本机设备名）；支持 CompressionStream 时 gzip 压缩二进制上传
+ *  @returns {{ result: object, details: { binCount: number, tokenCount: number, rawBytes: number, compressedBytes: number, compressed: boolean } }} */
 export const pushConfig = async (deviceName = getDeviceName()) => {
   const data = await collectSnapshot();
   const jsonStr = JSON.stringify({ data });
+  const rawBytes = new TextEncoder().encode(jsonStr).length;
+  // 提取快照详情
+  let binCount = 0;
+  try {
+    const binRaw = data[BIN_SNAPSHOT_KEY];
+    if (binRaw) binCount = Object.keys(JSON.parse(binRaw)).length;
+  } catch { /* ignore */ }
+  let tokenCount = 0;
+  try {
+    tokenCount = (JSON.parse(data["gameTokens"] || "[]")).length;
+  } catch { /* ignore */ }
+
   let options;
+  let compressedBytes = rawBytes;
+  let compressed = false;
   if (typeof CompressionStream !== "undefined") {
     // gzip 压缩后以二进制上传，大幅缩小含 BIN 快照的传输体积
-    const compressed = await gzipCompress(jsonStr);
+    const compressedBuf = await gzipCompress(jsonStr);
+    compressedBytes = compressedBuf.length;
+    compressed = true;
     options = {
       method: "PUT",
       headers: { "Content-Type": "application/octet-stream", "X-Cfg-Encoding": "gzip" },
-      body: compressed,
+      body: compressedBuf,
     };
   } else {
     options = { method: "PUT", body: jsonStr };
   }
   const result = await cloudRequest(`/api/cloud/config?device=${encodeURIComponent(deviceName)}`, options);
   lastPushedHash = quickHash(jsonStr);
-  return result;
+  return { result, details: { binCount, tokenCount, rawBytes, compressedBytes, compressed } };
 };
 
 /** 字符串 → gzip 字节（CompressionStream） */
@@ -414,10 +523,21 @@ export const startAutoSync = () => {
     if (hash !== lastPushedHash) {
       lastPushedHash = hash; // 先更新避免重复触发
       if (pushDebounceTimer) clearTimeout(pushDebounceTimer);
-      pushDebounceTimer = setTimeout(() => {
-        pushConfig().catch(() => {
+      pushDebounceTimer = setTimeout(async () => {
+        try {
+          const { details } = await pushConfig();
+          const sizeStr = details.compressed
+            ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(gzip)`
+            : `${(details.rawBytes / 1024).toFixed(1)}KB`;
+          try {
+            useTokenStore().pushGlobalLog(
+              `☁️ 自动同步：${details.tokenCount} Token，${details.binCount} BIN，${sizeStr}`,
+              "info"
+            );
+          } catch { /* ignore */ }
+        } catch {
           /* 自动同步失败静默，等待下次 */
-        });
+        }
       }, 60 * 60 * 1000); // 1小时防抖
     }
   }, 5 * 60 * 60 * 1000); // 5小时检测一次

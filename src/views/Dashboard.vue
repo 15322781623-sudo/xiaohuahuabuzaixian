@@ -77,8 +77,8 @@ const router = useRouter();
 const message = useMessage();
 const tokenStore = useTokenStore();
 
-// 自动跳转到批量日常页面（控制台独立开关，默认关闭）
-const { countdown, startAutoRedirect, cancelAutoRedirect } = useAutoRedirect("dashboard");
+// 自动跳转到批量日常页面（受「首页自动跳转」开关控制，默认开启）
+const { countdown, startAutoRedirect, cancelAutoRedirect } = useAutoRedirect("home");
 
 // 响应式数据
 // const recentActivities = ref([]);

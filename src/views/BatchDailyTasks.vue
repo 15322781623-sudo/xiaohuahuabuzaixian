@@ -394,7 +394,7 @@
                       isRunning || selectedTokens.length === 0 || !isarenaActivityOpen
                     "
                   >
-                    一键竞技场战斗{{ arenaFightCount }}次
+                    一键竞技场战斗{{ currentSettings.arenaFightCount }}次
                   </n-button>
                   <n-dropdown 
                     :options="arenaFightCountOptions" 
@@ -1818,7 +1818,7 @@
           <div class="st-section-grid st-grid-2">
             <div class="st-field">
               <label class="st-label">竞技场</label>
-              <n-select v-model:value="currentSettings.arenaFightCount" :options="arenaFightCountOptions" size="small" />
+              <n-input-number v-model:value="currentSettings.arenaFightCount" :min="1" :max="100" :step="1" size="small" style="width: 100%;" />
             </div>
             <div class="st-field">
               <label class="st-label">俱乐部 BOSS</label>
@@ -2033,7 +2033,7 @@
           <div class="st-section-grid st-grid-2">
             <div class="st-field">
               <label class="st-label">竞技场</label>
-              <n-select v-model:value="currentTemplate.arenaFightCount" :options="arenaFightCountOptions" size="small" />
+              <n-input-number v-model:value="currentTemplate.arenaFightCount" :min="1" :max="100" :step="1" size="small" style="width: 100%;" />
             </div>
             <div class="st-field">
               <label class="st-label">俱乐部BOSS</label>
@@ -4134,19 +4134,19 @@
               </n-alert>
               <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
                 <div style="display: flex; align-items: center;">
-                  <span style="font-size: 14px; margin-right: 8px;">赛程：</span>
+                  <span style="font-size: 14px; margin-right: 8px;">期次：</span>
                   <n-select
-                    v-model:value="taskForm.apexGuessScheduleId"
-                    :options="[{ label: '64强', value: 20 }, { label: '32强', value: 21 }, { label: '16强', value: 22 }, { label: '8强', value: 23 }, { label: '4强', value: 24 }, { label: '季军赛', value: 25 }, { label: '决赛', value: 26 }]"
+                    v-model:value="taskForm.apexGuessGroupId"
+                    :options="[{ label: '第一期', value: 0 }, { label: '第二期', value: 1 }, { label: '第三期', value: 2 }, { label: '第四期', value: 3 }, { label: '第五期', value: 4 }, { label: '第六期', value: 5 }, { label: '第七期', value: 6 }]"
                     size="small"
                     style="width: 110px;"
                   />
                 </div>
                 <div style="display: flex; align-items: center;">
-                  <span style="font-size: 14px; margin-right: 8px;">期次：</span>
+                  <span style="font-size: 14px; margin-right: 8px;">赛程：</span>
                   <n-select
-                    v-model:value="taskForm.apexGuessGroupId"
-                    :options="[{ label: '第一期', value: 0 }, { label: '第二期', value: 1 }, { label: '第三期', value: 2 }, { label: '第四期', value: 3 }, { label: '第五期', value: 4 }, { label: '第六期', value: 5 }, { label: '第七期', value: 6 }]"
+                    v-model:value="taskForm.apexGuessScheduleId"
+                    :options="[{ label: '64强', value: 20 }, { label: '32强', value: 21 }, { label: '16强', value: 22 }, { label: '8强', value: 23 }, { label: '4强', value: 24 }, { label: '季军赛', value: 25 }, { label: '决赛', value: 26 }]"
                     size="small"
                     style="width: 110px;"
                   />
@@ -4585,6 +4585,38 @@
                 <label class="setting-label-responsive">刷新间隔(分钟)</label>
                 <n-input-number v-model:value="batchSettings.refreshInterval" :min="1" :max="1440" :step="1" size="small" class="input-responsive" />
               </div>
+              <div class="setting-item-responsive">
+                <label class="setting-label-responsive">Cron定时刷新</label>
+                <n-switch v-model:value="batchSettings.enableCronRefresh" @update:value="autoSaveBatchSettings" />
+              </div>
+              <div class="setting-item-responsive" v-if="batchSettings.enableCronRefresh">
+                <label class="setting-label-responsive">Cron表达式</label>
+                <n-input
+                  v-model:value="batchSettings.cronRefreshExpression"
+                  placeholder="例: 0 8 * * *"
+                  @input="parseCronRefreshExpression"
+                  size="small"
+                  class="input-responsive"
+                />
+                <div class="cron-parser" v-if="batchSettings.cronRefreshExpression" style="margin-top: 8px;">
+                  <n-alert :type="cronRefreshValidation.valid ? 'success' : 'error'" size="small" style="margin-bottom: 8px;">
+                    <template #icon>
+                      <span>{{ cronRefreshValidation.valid ? '✓' : '✗' }}</span>
+                    </template>
+                    {{ cronRefreshValidation.message }}
+                  </n-alert>
+                  <n-alert v-if="cronRefreshValidation.valid && cronRefreshNextRuns.length > 0" type="info" size="small">
+                    <template #header>
+                      <span style="font-size: 12px;">📅 未来5次执行时间</span>
+                    </template>
+                    <div style="font-size: 11px; line-height: 1.8;">
+                      <div v-for="(run, index) in cronRefreshNextRuns" :key="index">
+                        {{ index + 1 }}. {{ run }}
+                      </div>
+                    </div>
+                  </n-alert>
+                </div>
+              </div>
             </div>
           </n-grid-item>
         </n-grid>
@@ -4721,15 +4753,8 @@
     >
       <div class="settings-content">
         <div class="settings-grid" style="display: block;">
-          <!-- 顶部操作栏：赛程/期次选择 + 批量操作 -->
+          <!-- 顶部操作栏：期次/赛程选择 + 批量操作 -->
           <div style="margin-bottom: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <span style="font-size: 13px; color: #666;">赛程：</span>
-            <n-select
-              v-model:value="apexGuessScheduleId"
-              :options="[{ label: '64强', value: 20 }, { label: '32强', value: 21 }, { label: '16强', value: 22 }, { label: '8强', value: 23 }, { label: '4强', value: 24 }, { label: '季军赛', value: 25 }, { label: '决赛', value: 26 }]"
-              style="width: 110px"
-              size="small"
-            />
             <span style="font-size: 13px; color: #666;">期次：</span>
             <n-select
               v-model:value="apexGuessGroupId"
@@ -4737,7 +4762,15 @@
               style="width: 100px"
               size="small"
             />
-            <n-button type="primary" size="small" @click="fetchApexGuessList" :loading="apexGuessLoading">
+            <span style="font-size: 13px; color: #666;">赛程：</span>
+            <n-select
+              v-model:value="apexGuessScheduleId"
+              :options="[{ label: '64强', value: 20 }, { label: '32强', value: 21 }, { label: '16强', value: 22 }, { label: '8强', value: 23 }, { label: '4强', value: 24 }, { label: '季军赛', value: 25 }, { label: '决赛', value: 26 }]"
+              style="width: 110px"
+              size="small"
+            />
+            <span v-if="apexScheduleDetecting" style="color: #2080f0; font-size: 12px;">⏳ 探测赛程中...</span>
+            <n-button type="primary" size="small" @click="fetchApexGuessList" :loading="apexGuessLoading" :disabled="apexScheduleDetecting">
               获取对阵列表
             </n-button>
             <span v-if="apexGuessLoading" style="color: #999; font-size: 12px;">加载中...</span>
@@ -6575,10 +6608,69 @@ const saltCupBetLoading = ref(false);
 // ======================
 const showApexGuessModal = ref(false);
 const apexGuessLoading = ref(false);
-const apexGuessScheduleId = ref(20); // 淘汰赛局部编号: 20=64强…26=决赛（真实scheduleId = 期次序号*26 + 局部编号）
-const apexGuessGroupId = ref(1); // 期次：0=第一期, 1=第二期, 2=第三期…
+// localStorage 持久化期次/赛程选中值，下次打开弹窗自动恢复
+const apexGuessScheduleId = ref(Number(localStorage.getItem("saltHillGuessScheduleId")) || 20);
+const apexGuessGroupId = ref(Number(localStorage.getItem("saltHillGuessStage")) || 1);
 const apexGuessMatchList = ref([]); // [{ left, right, picked: 'left'|'right'|null }]
 const apexGuessPickedCount = computed(() => apexGuessMatchList.value.filter(m => m.picked).length);
+
+// 选中值变化时自动保存到 localStorage，下次打开弹窗恢复
+watch(apexGuessGroupId, (val) => { localStorage.setItem("saltHillGuessStage", val); });
+watch(apexGuessScheduleId, (val) => { localStorage.setItem("saltHillGuessScheduleId", val); });
+
+// 期次变化时自动探测最新赛程（从决赛→64强逆序试探，第一个返回数据的即为当前赛程）
+const apexScheduleDetecting = ref(false);
+watch(apexGuessGroupId, async (newGroupId, oldGroupId) => {
+  if (!showApexGuessModal.value) return;
+  if (newGroupId === oldGroupId) return;
+
+  apexScheduleDetecting.value = true;
+  apexGuessMatchList.value = [];
+
+  const tokenId = selectedTokens.value[0];
+  if (!tokenId) {
+    apexGuessScheduleId.value = 20;
+    apexScheduleDetecting.value = false;
+    return;
+  }
+
+  const status = tokenStore.getWebSocketStatus(tokenId);
+  if (status !== "connected") {
+    apexGuessScheduleId.value = 20;
+    apexScheduleDetecting.value = false;
+    return;
+  }
+
+  // 从决赛(26)→64强(20)逆序试探，找到首个有数据的赛程
+  for (let sId = 26; sId >= 20; sId--) {
+    const realScheduleId = newGroupId * 26 + sId;
+    try {
+      const res = await tokenStore.sendMessageWithPromise(
+        tokenId,
+        "apex_getguesslist",
+        { scheduleId: realScheduleId, groupId: newGroupId, idx: 0 },
+        5000
+      );
+      const list = res?.apexGuessList;
+      if (Array.isArray(list) && list.length > 0) {
+        apexGuessScheduleId.value = sId;
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `🔍 第${newGroupId + 1}期自动探测到最新赛程：${["64强","32强","16强","8强","4强","季军赛","决赛"][sId - 20]}（scheduleId=${realScheduleId}）`,
+          type: "info",
+        });
+        apexScheduleDetecting.value = false;
+        return;
+      }
+    } catch (e) {
+      // 该赛程无数据，继续试探更早的赛程
+    }
+  }
+
+  // 全部赛程均无数据（可能新期次未开赛），默认 64强
+  apexGuessScheduleId.value = 20;
+  apexScheduleDetecting.value = false;
+});
 
 // ======================
 // Apex Cheering Feature (竞技大厅助威)
@@ -7052,33 +7144,19 @@ const applyApexVote = async () => {
     message.warning("请先选择一个队伍");
     return;
   }
+  if (selectedTokens.value.length === 0) {
+    message.warning("请先选择账号");
+    return;
+  }
+  // ✅ 修复：统一走 executeManualTaskWithRecord，确保「任务完成情况」显示完成时间/用时（原自维护记录无异常保护，异常时记录永远停在“执行中”）
+    await executeManualTaskWithRecord('applyApexVote', '竞技大厅助威', applyApexVoteCore);
+  // 关闭弹窗
+  showApexCheerModal.value = false;
+};
 
+const applyApexVoteCore = async () => {
   const isAllVote = apexVoteCount.value === 0;
   const availableTokens = [...selectedTokens.value];
-  const taskStartTime = Date.now();
-
-  // ✅ 初始化所有账号状态为 waiting
-  availableTokens.forEach(id => { tokenStatus.value[id] = 'waiting'; });
-
-  // ✅ 创建任务记录
-  const taskRecordIndex = taskExecutionRecords.value.push({
-    name: '竞技大厅助威',
-    startTime: taskStartTime,
-    endTime: null,
-    elapsedStr: null,
-    status: 'running',
-    totalAccounts: availableTokens.length,
-    successCount: 0,
-    failCount: 0,
-    runningCount: availableTokens.length,
-    progressPercent: 0,
-    failedAccounts: [],
-    scheduledTime: null,
-    isManual: true,
-  }) - 1;
-
-  // ✅ 清理失败原因缓存
-  availableTokens.forEach(tokenId => { delete tokenFailReasons.value[tokenId]; });
 
   for (const tokenId of availableTokens) {
     const token = tokens.value.find(t => t.id === tokenId);
@@ -7199,40 +7277,6 @@ const applyApexVote = async () => {
   for (const tokenId of availableTokens) {
     tokenStore.closeWebSocketConnection(tokenId);
   }
-
-  // ✅ 更新任务记录
-  const taskElapsed = Date.now() - taskStartTime;
-  const taskElapsedStr = taskElapsed >= 60000
-    ? `${Math.floor(taskElapsed / 60000)}分${Math.floor((taskElapsed % 60000) / 1000)}秒`
-    : `${(taskElapsed / 1000).toFixed(1)}秒`;
-
-  let successCount = 0, failCount = 0;
-  const failedAccounts = [];
-  availableTokens.forEach(id => {
-    if (tokenStatus.value[id] === 'completed') successCount++;
-    else if (tokenStatus.value[id] === 'failed') {
-      failCount++;
-      const t = tokens.value.find(t => t.id === id);
-      failedAccounts.push({ name: t?.name || '未知', error: tokenFailReasons.value[id] || '未知错误', time: new Date().toLocaleTimeString() });
-    }
-  });
-
-  const record = taskExecutionRecords.value[taskRecordIndex];
-  if (record) {
-    record.endTime = Date.now();
-    record.elapsedStr = taskElapsedStr;
-    record.successCount = successCount;
-    record.failCount = failCount;
-    record.runningCount = 0;
-    record.progressPercent = 100;
-    record.failedAccounts = failedAccounts;
-    record.status = failCount === 0 ? 'success' : (successCount > 0 ? 'partial' : 'fail');
-  }
-  saveTaskExecutionRecordsToStorage();
-
-  // 关闭弹窗
-  showApexCheerModal.value = false;
-  message.success(`所有账号助威完成`);
 };
 
 // ======================
@@ -7495,8 +7539,10 @@ const applySaltRoadCheer = async () => {
     return;
   }
 
-  // 调用批量助威任务（自动获取 phase 和对阵列表）
-  await batchSaltRoadCheer(selectedSaltRoadSideValue.value, saltRoadVoteCount.value);
+  // ✅ 修复：走 executeManualTaskWithRecord 创建任务完成记录（原直接调用无任何记录/完成时间）
+    await executeManualTaskWithRecord('batchSaltRoadCheer', '天宫助威', () =>
+    batchSaltRoadCheer(selectedSaltRoadSideValue.value, saltRoadVoteCount.value)
+  );
 
   // 关闭弹窗
   closeSaltRoadCheerModal();
@@ -7613,8 +7659,8 @@ const handleLegionStoreBuy = async () => {
   // 关闭弹窗
   showLegionStoreModal.value = false;
   
-  // 调用购买函数
-  await legion_buy_store_items(selectedItems, buyCounts);
+  // ✅ 修复：走 executeManualTaskWithRecord 创建任务完成记录（原直接调用无任何记录/完成时间）
+    await executeManualTaskWithRecord('legion_buy_store_items', '助威商店购买', () => legion_buy_store_items(selectedItems, buyCounts));
 };
 
 const fetchWarGuessRank = async () => {
@@ -7678,10 +7724,10 @@ const handleWarGuessCheer = async () => {
     }
     // Close modal
     showWarGuessModal.value = false;
-    // Call the batch function
-    await batchWarGuessCheer(selectedWarGuessLegionId.value, warGuessCoin.value);
-    
-    
+    // ✅ 修复：走 executeManualTaskWithRecord 创建任务完成记录（原直接调用无任何记录/完成时间）
+      await executeManualTaskWithRecord('batchWarGuessCheer', '月赛助威', () =>
+        batchWarGuessCheer(selectedWarGuessLegionId.value, warGuessCoin.value)
+    );
 };
 
 // SaltCup Bet Functions (比赛竞猜)
@@ -7763,7 +7809,8 @@ const fetchSaltCupBetData = async () => {
 
 const handleSaltCupBet = async (matchId, pick) => {
   showSaltCupBetModal.value = false;
-  await batchSaltCupBet(matchId, pick);
+  // ✅ 修复：走 executeManualTaskWithRecord 创建任务完成记录（原直接调用无任何记录/完成时间）
+    await executeManualTaskWithRecord('batchSaltCupBet', '比赛竞猜', () => batchSaltCupBet(matchId, pick));
 };
 
 // Apex Guess Functions (逐鹿盐山竞猜)
@@ -7863,24 +7910,11 @@ const handleApexGuess = async () => {
     return;
   }
   showApexGuessModal.value = false;
-  // 单账号智能加速：与 executeManualTaskWithRecord 一致，仅选 1 个账号时自动降低延迟
-  const wasSingleMode = batchSettings.singleAccountMode;
-  if (batchSettings.singleAccountSpeedUp && selectedTokens.value.length === 1) {
-    batchSettings.singleAccountMode = true;
-    const mult = batchSettings.singleAccountMultiplier;
-    const singleToken = tokens.value.find(t => t.id === selectedTokens.value[0]);
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `⚡ ${singleToken?.name || '单账号'} 单账号加速模式（延迟×${mult}）`,
-      type: 'info',
-    });
-  }
-  try {
+  // ✅ 修复：走 executeManualTaskWithRecord 创建任务完成记录（原直接调用 batchApexGuess 导致「任务完成情况」不显示；单账号加速由其内部统一处理）
+    await executeManualTaskWithRecord('batchApexGuess', '逐鹿盐山竞猜', () =>
     // 下注用真实scheduleId = 期次序号*26 + 淘汰赛局部编号
-    await batchApexGuess(apexGuessGroupId.value * 26 + apexGuessScheduleId.value, teamIds, 0, apexGuessGroupId.value);
-  } finally {
-    batchSettings.singleAccountMode = wasSingleMode;
-  }
+    batchApexGuess(apexGuessGroupId.value * 26 + apexGuessScheduleId.value, teamIds, 0, apexGuessGroupId.value)
+  );
 };
 
 // 预设护卫成员状态（账号单独设置弹窗）
@@ -8191,9 +8225,6 @@ const manualBuyItemOptions = [
 ];
 
 // === 竞技场次数选择相关 ===
-const arenaFightCount = ref(3); // 默认竞技场战斗次数
-const showArenaFightCountModal = ref(false); // 显示次数输入弹窗
-
 // 竞技场次数选项（预设值）
 const arenaFightCountOptions = [
   { label: '1次', key: 1 },
@@ -8208,18 +8239,18 @@ const arenaFightCountOptions = [
 const handleArenaFightCountSelect = (key) => {
   if (key === 'custom') {
     // 弹出输入框让用户输入
-    const inputCount = prompt('请输入竞技场战斗次数（1-100）:', arenaFightCount.value);
+    const inputCount = prompt('请输入竞技场战斗次数（1-100）:', currentSettings.arenaFightCount);
     if (inputCount !== null) {
       const count = parseInt(inputCount);
       if (!isNaN(count) && count >= 1 && count <= 100) {
-        arenaFightCount.value = count;
+        currentSettings.arenaFightCount = count;
         executeArenaFight();
       } else {
         message.warning('请输入1-100之间的数字');
       }
     }
   } else {
-    arenaFightCount.value = key;
+    currentSettings.arenaFightCount = key;
     executeArenaFight();
   }
 };
@@ -8227,11 +8258,12 @@ const handleArenaFightCountSelect = (key) => {
 // 执行竞技场战斗（带参数）
 const executeArenaFight = async () => {
   try {
+    const fightCount = currentSettings.arenaFightCount || 3;
     // 调用 executeManualTaskWithRecord，并传递竞技场次数参数
     await executeManualTaskWithRecord(
       'batcharenafight', 
-      `一键竞技场战斗${arenaFightCount.value}次`, 
-      () => batcharenafight(arenaFightCount.value)
+      `一键竞技场战斗${fightCount}次`, 
+      () => batcharenafight(fightCount)
     );
   } catch (error) {
     console.error('竞技场战斗执行失败:', error);
@@ -8444,6 +8476,9 @@ const batchSettings = reactive({
   // 页面刷新配置
   enableRefresh: true,
   refreshInterval: 360, // 分钟
+  // Cron定时刷新
+  enableCronRefresh: false,
+  cronRefreshExpression: '',
   smartDepartureEnabled: true,
   smartDepartureGoldThreshold: 800,
   smartDepartureRecruitThreshold: 20,
@@ -8973,6 +9008,10 @@ const taskLabels = computed(() => {
 // Cron表达式解析相关变量
 const cronValidation = ref({ valid: true, message: "" });
 const cronNextRuns = ref([]);
+
+// Cron定时刷新解析变量
+const cronRefreshValidation = ref({ valid: true, message: "" });
+const cronRefreshNextRuns = ref([]);
 
 // 注: availableTasks, CarresearchItem, taskColumns 已从 @/utils/batch 导入
 
@@ -9656,6 +9695,26 @@ const parseCronExpression = (expression) => {
     5,
   );
   cronNextRuns.value = nextRuns;
+};
+
+// 解析 Cron 定时刷新表达式
+const parseCronRefreshExpression = () => {
+  const expression = batchSettings.cronRefreshExpression;
+  if (!expression || !expression.trim()) {
+    cronRefreshValidation.value = { valid: true, message: '' };
+    cronRefreshNextRuns.value = [];
+    return;
+  }
+  const validation = validateCronExpression(expression);
+  cronRefreshValidation.value = validation;
+  if (!validation.valid) {
+    cronRefreshNextRuns.value = [];
+    return;
+  }
+  const cronParts = expression.split(" ").filter(Boolean);
+  const [minuteField, hourField, dayOfMonthField, monthField, dayOfWeekField] = cronParts;
+  const nextRuns = calculateNextRuns(minuteField, hourField, dayOfMonthField, monthField, dayOfWeekField, 5);
+  cronRefreshNextRuns.value = nextRuns;
 };
 
 // 注: calculateNextRuns 已从 @/utils/batch 导入
@@ -12146,6 +12205,23 @@ const healthCheck = () => {
          // 标记需要在任务完成后刷新
          shouldRefreshAfterTask.value = true;
       }
+    }
+  }
+  // Check for Cron 定时刷新
+  if (batchSettings.enableCronRefresh && batchSettings.cronRefreshExpression) {
+    try {
+      if (matchesCronExpression(batchSettings.cronRefreshExpression, new Date())) {
+        const refreshCheck = isSafeToRefreshPage();
+        if (refreshCheck.safe) {
+          console.log(`[${new Date().toISOString()}] Cron refresh triggered: ${batchSettings.cronRefreshExpression}`);
+          window.location.reload();
+        } else {
+          console.log(`[${new Date().toISOString()}] Cron refresh postponed: ${refreshCheck.reason}, will refresh after task completion`);
+          shouldRefreshAfterTask.value = true;
+        }
+      }
+    } catch (e) {
+      // cron 解析失败忽略
     }
   }
 };
@@ -16652,6 +16728,27 @@ const addLog = (log) => {
     }
   }
 };
+
+// 监听 tokenStore 全局日志（云端恢复等），转发到 UI 执行日志
+const _globalLogProcessed = ref(new Set());
+watch(
+  () => tokenStore.globalLogs.length,
+  () => {
+    const gLogs = tokenStore.globalLogs;
+    if (!gLogs || !gLogs.length) return;
+    for (const gLog of gLogs) {
+      if (!_globalLogProcessed.value.has(gLog.id)) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: gLog.message,
+          type: gLog.type === "error" ? "error" : gLog.type === "warn" ? "warning" : "info",
+        });
+        _globalLogProcessed.value.add(gLog.id);
+      }
+    }
+  },
+  { immediate: true }
+);
 
 watch(autoScrollLog, (newValue, oldValue) => {
   console.log(`[自动滚动] 状态变化: ${oldValue} -> ${newValue}`);

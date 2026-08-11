@@ -29,7 +29,7 @@
             } catch(e) {}
 
             var xhr = new XMLHttpRequest();
-            var manifestUrl = 'https://xxz-xyzw.hortorgames.com/login/manifest?platform=hortor&version=0.32.0-android';
+            var manifestUrl = 'https://xxz-xyzw.hortorgames.com/login/manifest?platform=wx&version=0.32.0-android';
             console.log('[boot v1.0] POST', manifestUrl);
 
             xhr.open('POST', manifestUrl, true);
@@ -126,7 +126,7 @@
         settings.codeVersion = ver;
         globalThis.GAME_VERSION = gameVer;
         globalThis.ENV = 'Prod';
-        globalThis.GAME_ID = 'xyzw';
+        globalThis.GAME_ID = 'xyzw_mix';
         globalThis.COMMIT_ID = commitId;
 
         console.log('[boot v1.0] ✅ 版本信息已锁定:');

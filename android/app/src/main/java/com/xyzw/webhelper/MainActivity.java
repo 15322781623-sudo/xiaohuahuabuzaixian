@@ -15,16 +15,19 @@ public class MainActivity extends BridgeActivity {
 
         super.onCreate(savedInstanceState);
         
+        // 获取 WebView 实例
+        WebView webView = getBridge().getWebView();
+        
+        // 注册 NativeHttpBridge — 绕过WebView CORS + wx_mini_1 请求头伪装
+        if (webView != null) {
+            webView.addJavascriptInterface(new NativeHttpBridge(this), "NativeHttpBridge");
+            // 固定 WebView 文字缩放为 100%，不跟随系统字体大小设置
+            webView.getSettings().setTextZoom(100);
+        }
+        
         // 启用 WebView 调试功能
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             WebView.setWebContentsDebuggingEnabled(true);
-        }
-
-        // 固定 WebView 文字缩放为 100%，不跟随系统字体大小设置
-        // 否则系统大字体会导致页面文字被放大、布局错乱（标题竖排、按钮重叠）
-        WebView webView = getBridge().getWebView();
-        if (webView != null) {
-            webView.getSettings().setTextZoom(100);
         }
     }
 }
