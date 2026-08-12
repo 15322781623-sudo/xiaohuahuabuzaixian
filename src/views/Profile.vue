@@ -91,6 +91,10 @@
             <n-switch v-model:value="preferences.notifications"></n-switch>
             <template #extra> 接收任务完成通知 </template>
           </a-form-item>
+          <a-form-item label="开发者模式">
+            <n-switch v-model:value="isDevMode"></n-switch>
+            <template #extra> 开启后显示移动端调试控制台，可查看日志/网络/存储等数据（需联网加载） </template>
+          </a-form-item>
           <a-form-item label="自动执行">
             <n-switch v-model:value="preferences.autoExecute"></n-switch>
             <template #extra> 默认开启任务自动执行 </template>
@@ -176,6 +180,7 @@ import { useRouter } from "vue-router";
 import { useDialog, useMessage } from "naive-ui";
 import { useAuthStore } from "@/stores/auth";
 import { useAutoRedirectSettings, DEFAULT_START_PAGES } from "@/composables/useAutoRedirect";
+import { useDeveloperMode } from "@/composables/useDeveloperMode";
 
 const router = useRouter();
 const message = useMessage();
@@ -209,6 +214,9 @@ const preferences = reactive({
 
 // 自动跳转配置（各页面独立开关，默认仅首页开启，持久化到 localStorage）
 const { pageStates: redirectPageStates, seconds: autoRedirectSeconds, startPage: defaultStartPage, togglePage: toggleRedirectPage, saveSeconds: saveRedirectSeconds, saveStartPage: saveDefaultStartPage } = useAutoRedirectSettings();
+
+// 开发者模式
+const { isDevMode } = useDeveloperMode();
 
 // 密码验证规则
 const passwordRules = {

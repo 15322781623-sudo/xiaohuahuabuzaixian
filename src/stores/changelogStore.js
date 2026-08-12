@@ -14,6 +14,28 @@ export const useChangelogStore = defineStore("changelog", () => {
    */
   const changelogs = ref([
     {
+      version: "v2.49.1",
+      date: "2026-08-12",
+      type: "patch",
+      title: "云顿配置授权提示：赞助弹窗、云端同步弹窗新增赞助授权指引",
+      fixes: [
+        "赞助弹窗（批量任务页、卡密弹窗）新增提示「赞助30以上可联系我授权云顿配置功能」，以橙色加粗样式置于赞助方案说明与激活码规则之间，引导用户了解云端配置授权获取方式",
+        "云端同步弹窗中，未授权账号在「需管理员开通授权」警告下方新增相同赞助授权提示，打通云端配置功能与赞助体系的认知路径",
+      ],
+    },
+    {
+      version: "v2.49.0",
+      date: "2026-08-11",
+      type: "minor",
+      title: "请求头伪装方案统一管理、品牌文字优化、移动端UI适配、微信扫码流程文档",
+      fixes: [
+        "新增请求头伪装统一配置模块：从 Cloudflare Worker (_worker.js) 的代理伪装方案中提取 4 套端点配置（微信 OAuth / 微信长轮询 / Hortor / Ucenter），创建 src/utils/spoofedHeaders.ts 集中管理 Android 设备 UA、Referer、Origin、Host 等伪装头；wxqrcode.vue 与 hortorLogin.ts 的硬编码头迁移至共享模块，消除重复代码；新增 UCENTER_HEADERS 端点配置，为后续接入游戏用户中心接口提供伪装能力",
+        "品牌文字优化：导航栏品牌名由「XYZW 控制台」简化为「控制台」，字体大小改为 clamp(14px, 3.5vw, 20px) 响应式缩放配合 white-space: nowrap 防止窄屏换行",
+        "APK 移动端 UI 适配修复：批量日常任务页按钮内的 emoji 图标因内联 style 固定 16px 无法随移动端 CSS 缩放，改为 class 控制并通过媒体查询在 768px/400px 两档自动缩小至 14px/12px；排序按钮（名称/服务器/创建时间等）标题溢出添加 text-overflow 保护；底部操作按钮（开始执行/停止/设置等）在移动端自动缩小字号与高度",
+        "新增微信扫码登录角色获取流程文档：docs/wechat-scan-role-logic.md 覆盖从二维码生成、OAuth 扫码轮询、Hortor 登录加密编码、BIN 生成、服务器角色列表获取、选服生成 Token 到三层持久化存储的完整链路，含三端适配说明",
+      ],
+    },
+    {
       version: "v2.48.4",
       date: "2026-08-11",
       type: "patch",

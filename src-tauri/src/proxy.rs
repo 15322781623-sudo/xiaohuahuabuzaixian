@@ -56,6 +56,40 @@ pub fn start_proxy_server() {
 }
 
 // ══════════════════════════════════════════
+//  预读前缀流：将已读取的 buffer 重放到流最前面
+//  解决 dispatch() 预读后 tungstenite::accept() 读不到 WebSocket 升级请求的问题
+// ══════════════════════════════════════════
+
+struct PrefixedStream {
+    prefix: Vec<u8>,
+    pos: usize,
+    stream: TcpStream,
+}
+
+impl Read for PrefixedStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.pos < self.prefix.len() {
+            let remaining = &self.prefix[self.pos..];
+            let n = remaining.len().min(buf.len());
+            buf[..n].copy_from_slice(&remaining[..n]);
+            self.pos += n;
+            Ok(n)
+        } else {
+            self.stream.read(buf)
+        }
+    }
+}
+
+impl Write for PrefixedStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.stream.write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.stream.flush()
+    }
+}
+
+// ══════════════════════════════════════════
 //  连接分发：HTTP / WebSocket
 // ══════════════════════════════════════════
 fn dispatch(mut stream: TcpStream) {
@@ -68,7 +102,10 @@ fn dispatch(mut stream: TcpStream) {
 
     let text = String::from_utf8_lossy(&buf);
     if text.contains("Upgrade: websocket") || text.contains("upgrade: websocket") {
-        proxy_ws(stream, &text);
+        // 使用 PrefixedStream 重放预读数据，确保 tungstenite::accept() 能读到完整升级请求
+        let text_owned = text.to_string();
+        let prefixed = PrefixedStream { prefix: buf, pos: 0, stream };
+        proxy_ws(prefixed, &text_owned);
     } else {
         proxy_http(stream, &buf);
     }
@@ -179,7 +216,7 @@ Connection: close\r\n\r\n{}",
 //  WebSocket 代理（Arc<Mutex<>> 双向转发）
 // ══════════════════════════════════════════
 
-fn proxy_ws(stream: TcpStream, head_text: &str) {
+fn proxy_ws(stream: impl Read + Write + Send + 'static, head_text: &str) {
     let target_url = match extract_ws_target(head_text) {
         Some(u) => u,
         None => {

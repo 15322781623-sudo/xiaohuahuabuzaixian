@@ -1,0 +1,9 @@
+{
+  "latestVersion": "2.49.1",
+  "versionCode": 24901,
+  "downloadUrl": "https://xyzw-apk-updater.15322781623.workers.dev/api/apk/download",
+  "downloadUrlOriginal": "https://github.com/15322781623-sudo/xiaohuahuabuzaixian/releases/latest/download/肝王之王.apk",
+  "changelog": "v2.38.0: 竞技场阵容切换集成 & 全量导出导入v2.5 & 定时任务执行记录修复（2.32.0-2.37.0版本必须更新到本版本才能继续使用）",
+  "minVersionCode": 23800,
+  "forceUpdate": true
+}

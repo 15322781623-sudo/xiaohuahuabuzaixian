@@ -359,17 +359,17 @@ pub fn run() {
         return origFetch.call(this, input, init);
     }};
 
-    // ── Hook WebSocket ──
-    var OrigWS = window.WebSocket;
-    window.WebSocket = function(url, protocols) {{
-        if (isGameDomain(url)) {{
-            url = PROXY_WS + '?target=' + encodeURIComponent(url);
-        }}
-        return protocols ? new OrigWS(url, protocols) : new OrigWS(url);
-    }};
-    window.WebSocket.prototype = OrigWS.prototype;
+    // ── Hook WebSocket（已禁用，WS 直连游戏服务器）──
+    // var OrigWS = window.WebSocket;
+    // window.WebSocket = function(url, protocols) {{
+    //     if (isGameDomain(url)) {{
+    //         url = PROXY_WS + '?target=' + encodeURIComponent(url);
+    //     }}
+    //     return protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+    // }};
+    // window.WebSocket.prototype = OrigWS.prototype;
 
-    console.log('[wx_proxy] XHR/fetch/WS 已重定向到本地代理 :{port}');
+    console.log('[wx_proxy] XHR/fetch 已重定向到本地代理 :{port}（WS 直连）');
 }})();
 "#, port = proxy::PROXY_PORT);
         let _ = window.eval(&script);

@@ -11,6 +11,7 @@
 import { isTauri as tauriIsTauri } from "@tauri-apps/api/core";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { Capacitor } from "@capacitor/core";
+import { HORTOR_HEADERS as SPOOFED_HORTOR_HEADERS } from "@/utils/spoofedHeaders";
 
 // 检测运行环境
 const isTauri = (() => {
@@ -28,14 +29,8 @@ const useDirectRequest = isTauri || isCapacitor;
 
 const requestFetch: typeof window.fetch = isTauri ? tauriFetch : window.fetch.bind(window);
 
-const HORTOR_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Linux; Android 12; 23117RK66C Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/95.0.4638.74 Mobile Safari/537.36",
-  Accept: "*/*",
-  "Content-Type": "text/plain; charset=utf-8",
-  Origin: "https://open.weixin.qq.com",
-  Referer: "https://open.weixin.qq.com/",
-};
+// hortor 直连伪装头（与 _worker.js /api/hortor 保持一致）
+const HORTOR_HEADERS = SPOOFED_HORTOR_HEADERS;
 
 /**
  * 将登录JSON文本编码成最终payload

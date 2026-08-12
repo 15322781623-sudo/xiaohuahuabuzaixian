@@ -88,7 +88,8 @@
         <p style="margin-bottom: 4px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">10元</b> = 1个激活码</p>
         <p style="margin-bottom: 4px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">20元</b> = 3个激活码</p>
         <p style="margin-bottom: 8px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">30元</b> = 5个激活码</p>
-        <p style="margin-bottom: 8px; color: #999; font-size: 12px;">（每人最高5个激活码，避免倒卖）</p>
+        <p style="margin-bottom: 4px; color: #999; font-size: 12px;">（每人最高5个激活码，避免倒卖）</p>
+        <p style="margin-bottom: 8px; color: #e67e22; font-size: 13px; font-weight: bold;">💡 赞助30以上可联系我授权云顿配置功能</p>
         <p style="margin-bottom: 4px; color: #333; font-size: 13px;">🔄 激活码永久有效，可重置：在另一台设备输入激活码点击「重置卡密」即可</p>
         <p style="color: #333; font-size: 13px;">🎁 残卷赠送ID：<b style="color:#e74c3c;">83203221</b></p>
       </div>

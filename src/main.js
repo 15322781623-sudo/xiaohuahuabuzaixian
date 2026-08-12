@@ -11,6 +11,7 @@ import naive from "naive-ui";
 import router from "./router";
 import App from "./App.vue";
 import { initCloudSync } from "@/utils/cloudSync";
+import { initDeveloperMode } from "@/composables/useDeveloperMode";
 // import { i18n } from './locales';
 
 // 创建应用实例
@@ -57,6 +58,9 @@ applyTheme();
 
 // 云端配置同步：已登录且开启自动同步时启动后台检测
 initCloudSync();
+
+// 开发者模式：启动时恢复上次开关状态
+initDeveloperMode();
 
 // 挂载应用
 app.mount("#app");

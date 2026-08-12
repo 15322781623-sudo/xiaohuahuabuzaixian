@@ -8,6 +8,7 @@
 
 import { saveBinBackup } from "@/utils/binBackup";
 import { useTokenStore } from "@/stores/tokenStore";
+import { Capacitor, CapacitorHttp } from "@capacitor/core";
 
 export const CLOUD_API_BASE = "https://apk.xiaohuaxyzw.top";
 
@@ -466,6 +467,47 @@ export const pushConfig = async (deviceName = getDeviceName()) => {
   } else {
     options = { method: "PUT", body: jsonStr };
   }
+
+  // APK（Capacitor）环境：CapacitorHttp 拦截 fetch 时对 Uint8Array body 处理异常，
+  // 直接使用 CapacitorHttp.put() 以 base64 + dataType:'file' 方式可靠发送二进制数据
+  if (typeof Capacitor !== "undefined" && Capacitor.isNativePlatform && Capacitor.isNativePlatform()) {
+    const { apiToken } = getCloudAuth();
+    const url = `${CLOUD_API_BASE}/api/cloud/config?device=${encodeURIComponent(deviceName)}`;
+    let capResult;
+    if (compressed) {
+      const base64Compressed = arrayBufferToBase64(options.body.buffer);
+      capResult = await CapacitorHttp.put({
+        url,
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Cfg-Encoding": "gzip",
+          Authorization: `Bearer ${apiToken}`,
+        },
+        data: base64Compressed,
+        dataType: "file",
+        connectTimeout: 90000,
+        readTimeout: 90000,
+      });
+    } else {
+      capResult = await CapacitorHttp.put({
+        url,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiToken}`,
+        },
+        data: options.body,
+        connectTimeout: 90000,
+        readTimeout: 90000,
+      });
+    }
+    const respData = typeof capResult.data === "string" ? JSON.parse(capResult.data) : capResult.data;
+    if (capResult.status < 200 || capResult.status >= 300) {
+      throw new Error((respData && respData.error) || `请求失败（${capResult.status}）`);
+    }
+    lastPushedHash = quickHash(jsonStr);
+    return { result: respData, details: { binCount, tokenCount, rawBytes, compressedBytes, compressed } };
+  }
+
   const result = await cloudRequest(`/api/cloud/config?device=${encodeURIComponent(deviceName)}`, options);
   lastPushedHash = quickHash(jsonStr);
   return { result, details: { binCount, tokenCount, rawBytes, compressedBytes, compressed } };

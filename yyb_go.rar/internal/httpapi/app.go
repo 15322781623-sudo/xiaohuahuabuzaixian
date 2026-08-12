@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 
+	"yyb_go/internal/httputil"
 	"yyb_go/internal/protocol"
 	"yyb_go/internal/qr"
 	"yyb_go/internal/store"
@@ -747,7 +748,7 @@ func downloadAvatar(ctx context.Context, url, dest string, timeout time.Duration
 	if err != nil {
 		return false
 	}
-	client := &http.Client{Timeout: timeout}
+	client := httputil.NewClient(timeout)
 	resp, err := client.Do(req)
 	if err != nil {
 		return false

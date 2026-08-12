@@ -11,6 +11,8 @@ import (
 	"math/rand"
 	"net/http"
 	"time"
+
+	"yyb_go/internal/httputil"
 )
 
 const (
@@ -74,7 +76,7 @@ type LoginBufferClient struct {
 
 func NewLoginBufferClient(timeout time.Duration) *LoginBufferClient {
 	return &LoginBufferClient{
-		httpClient: &http.Client{Timeout: timeout},
+		httpClient: httputil.NewClient(timeout),
 		timeout:    timeout,
 	}
 }

@@ -9,7 +9,7 @@
             <n-icon>
               <Menu></Menu>
             </n-icon>
-            <span class="brand-text">XYZW 控制台</span>
+            <span class="brand-text">控制台</span>
           </div>
         </div>
 
@@ -370,9 +370,10 @@ const handleUserAction = async (key) => {
 }
 
 .brand-text {
-  font-size: var(--font-size-lg);
+  font-size: clamp(14px, 3.5vw, 20px);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .brand-toggle {

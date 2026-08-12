@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"yyb_go/internal/httputil"
 	"yyb_go/internal/protocol"
 )
 
@@ -95,7 +96,7 @@ func (c *Client) CreateSession(ctx context.Context) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	hc := &http.Client{Timeout: c.timeout, Jar: jar}
+	hc := httputil.NewClientWithJar(c.timeout, jar)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, oauthURL, nil)
 	if err != nil {
 		return nil, err
@@ -167,7 +168,7 @@ func (c *Client) PollQRCode(ctx context.Context, sess *Session) (PollResult, err
 	// 长轮询使用独立 client：sess.HTTPClient.Timeout 为普通请求超时（8s），
 	// 会在微信长轮询保持期间提前触发 Client.Timeout exceeded 导致 502；
 	// 这里仅用 reqCtx（35s）控制超时，Jar 复用会话 Cookie
-	pollClient := &http.Client{Jar: sess.Jar}
+	pollClient := httputil.NewClientWithJar(0, sess.Jar)
 	resp, err := pollClient.Do(req)
 	if err != nil {
 		// 微信长轮询窗口内无状态变化时可能不返回 408 直接挂起，

@@ -59,7 +59,7 @@
                   style="flex: 1; color: white;"
                 >
                   <template #icon>
-                    <span style="font-size: 16px;">➕</span>
+                    <span class="btn-emoji-icon">➕</span>
                   </template>
                   新增任务
                 </n-button>
@@ -70,7 +70,7 @@
                   style="flex: 1; color: white;"
                 >
                   <template #icon>
-                    <span style="font-size: 16px;">📋</span>
+                    <span class="btn-emoji-icon">📋</span>
                   </template>
                   查看任务
                 </n-button>
@@ -85,7 +85,7 @@
                   style="flex: 1; color: white;"
                 >
                   <template #icon>
-                    <span style="font-size: 16px;">▶️</span>
+                    <span class="btn-emoji-icon">▶️</span>
                   </template>
                   开启时段
                 </n-button>
@@ -96,7 +96,7 @@
                   style="flex: 1; color: white;"
                 >
                   <template #icon>
-                    <span style="font-size: 16px;">⏸️</span>
+                    <span class="btn-emoji-icon">⏸️</span>
                   </template>
                   关闭时段
                 </n-button>
@@ -110,7 +110,7 @@
                   style="flex: 1; color: white;"
                 >
                   <template #icon>
-                    <span style="font-size: 16px;">📥</span>
+                    <span class="btn-emoji-icon">📥</span>
                   </template>
                   导入任务
                 </n-button>
@@ -121,7 +121,7 @@
                   style="flex: 1; color: white;"
                 >
                   <template #icon>
-                    <span style="font-size: 16px;">📤</span>
+                    <span class="btn-emoji-icon">📤</span>
                   </template>
                   导出任务
                 </n-button>
@@ -131,7 +131,7 @@
                   style="flex: 1; color: white;"
                 >
                   <template #icon>
-                    <span style="font-size: 16px;">📥</span>
+                    <span class="btn-emoji-icon">📥</span>
                   </template>
                   导入账号
                 </n-button>
@@ -142,7 +142,7 @@
                   style="flex: 1; color: white;"
                 >
                   <template #icon>
-                    <span style="font-size: 16px;">📤</span>
+                    <span class="btn-emoji-icon">📤</span>
                   </template>
                   导出账号
                 </n-button>
@@ -155,7 +155,7 @@
                   style="flex: 1; color: white;"
                 >
                   <template #icon>
-                    <span style="font-size: 16px;">📦</span>
+                    <span class="btn-emoji-icon">📦</span>
                   </template>
                   全量导入
                 </n-button>
@@ -166,7 +166,7 @@
                   style="flex: 1; color: white;"
                 >
                   <template #icon>
-                    <span style="font-size: 16px;">📦</span>
+                    <span class="btn-emoji-icon">📦</span>
                   </template>
                   全量导出
                 </n-button>
@@ -215,7 +215,7 @@
               style="flex: 1; min-width: 120px; border-radius: 8px; font-weight: 500; background: rgba(255, 255, 255, 0.3); border-color: rgba(255, 255, 255, 0.3); color: white;"
             >
               <template #icon>
-                <span style="font-size: 16px;">▶️</span>
+                <span class="btn-emoji-icon">▶️</span>
               </template>
               {{ isRunning ? "执行中..." : "开始执行" }}
             </n-button>
@@ -226,7 +226,7 @@
               style="flex: 1; min-width: 120px; border-radius: 8px; font-weight: 500; background: rgba(255, 255, 255, 0.3); border-color: rgba(255, 255, 255, 0.3); color: white;"
             >
               <template #icon>
-                <span style="font-size: 16px;">⏹️</span>
+                <span class="btn-emoji-icon">⏹️</span>
               </template>
               停止
             </n-button>
@@ -236,13 +236,13 @@
               style="flex: 1; min-width: 120px; border-radius: 8px; font-weight: 500; background: rgba(255, 255, 255, 0.3); border-color: rgba(255, 255, 255, 0.3); color: white;"
             >
               <template #icon>
-                <span style="font-size: 16px;">📥</span>
+                <span class="btn-emoji-icon">📥</span>
               </template>
               任务模板
             </n-button>
             <n-button @click="openBatchSettings" size="medium" style="flex: 1; min-width: 120px; border-radius: 8px; font-weight: 500; background: rgba(255, 255, 255, 0.3); border-color: rgba(255, 255, 255, 0.3); color: white;">
               <template #icon>
-                <span style="font-size: 16px;">⚙️</span>
+                <span class="btn-emoji-icon">⚙️</span>
               </template>
               设置
             </n-button>
@@ -253,7 +253,7 @@
               style="flex: 1; min-width: 120px; border-radius: 8px; font-weight: 500; background: rgba(255, 255, 255, 0.3); border-color: rgba(255, 255, 255, 0.3); color: white;"
             >
               <template #icon>
-                <span style="font-size: 16px;">🔗</span>
+                <span class="btn-emoji-icon">🔗</span>
               </template>
               连接
             </n-button>
@@ -264,7 +264,7 @@
               style="flex: 1; min-width: 120px; border-radius: 8px; font-weight: 500; background: rgba(255, 255, 255, 0.3); border-color: rgba(255, 255, 255, 0.3); color: white;"
             >
               <template #icon>
-                <span style="font-size: 16px;">🔌</span>
+                <span class="btn-emoji-icon">🔌</span>
               </template>
               断开
             </n-button>
@@ -4840,7 +4840,7 @@
             <n-button type="primary" @click="fetchApexVoteList" :loading="apexCheerLoading" style="width: 200px; max-width: 100%; margin-bottom: 0;">
               {{ apexCheerLoading ? '加载中...' : '获取可助威俱乐部列表' }}
             </n-button>
-            <span style="font-size: 16px;">期次：</span>
+            <span class="btn-emoji-icon">期次：</span>
             <n-select
               v-model:value="selectedApexRound"
               :options="[{ label: '第一期', value: 1 }, { label: '第二期', value: 2 }, { label: '第三期', value: 3 }, { label: '第四期', value: 4 }, { label: '第五期', value: 5 }, { label: '第六期', value: 6 }, { label: '第七期', value: 7 }]"
@@ -4853,7 +4853,7 @@
             <n-tag v-if="apexRoundDetected" size="small" type="success" :bordered="false">
               当前活跃：第{{ apexRoundDetected }}期
             </n-tag>
-            <span style="font-size: 16px;">分组：</span>
+            <span class="btn-emoji-icon">分组：</span>
             <n-select
               v-model:value="selectedApexGroupId"
               :options="[{ label: '第1组', value: 1 }, { label: '第2组', value: 2 }, { label: '第3组', value: 3 }, { label: '第4组', value: 4 }, { label: '第5组', value: 5 }, { label: '第6组', value: 6 }, { label: '第7组', value: 7 }, { label: '第8组', value: 8 }, { label: '第9组', value: 9 }, { label: '第10组', value: 10 }, { label: '第11组', value: 11 }, { label: '第12组', value: 12 }, { label: '第13组', value: 13 }, { label: '第14组', value: 14 }, { label: '第15组', value: 15 }, { label: '第16组', value: 16 }, { label: '第17组', value: 17 }, { label: '第18组', value: 18 }, { label: '第19组', value: 19 }, { label: '第20组', value: 20 }, { label: '第21组', value: 21 }, { label: '第22组', value: 22 }, { label: '第23组', value: 23 }, { label: '第24组', value: 24 }, { label: '第25组', value: 25 }, { label: '第26组', value: 26 }, { label: '第27组', value: 27 }, { label: '第28组', value: 28 }, { label: '第29组', value: 29 }, { label: '第30组', value: 30 }, { label: '第31组', value: 31 }, { label: '第32组', value: 32 }]"
@@ -4864,7 +4864,7 @@
 
           <!-- 投票数量设置 -->
           <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-            <span style="font-size: 16px;">赠送数量：</span>
+            <span class="btn-emoji-icon">赠送数量：</span>
             <n-input-number 
               v-model:value="apexVoteCount" 
               placeholder="0=全部赠送" 
@@ -4934,7 +4934,7 @@
 
           <!-- 助威数量设置 -->
           <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
-            <span style="font-size: 16px;">助威次数：</span>
+            <span class="btn-emoji-icon">助威次数：</span>
             <n-input-number 
               v-model:value="saltRoadVoteCount" 
               placeholder="助威次数" 
@@ -5557,7 +5557,8 @@
           <p style="margin-bottom: 4px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">10元</b> = 1个激活码</p>
           <p style="margin-bottom: 4px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">20元</b> = 3个激活码</p>
           <p style="margin-bottom: 8px; color: #333; font-size: 13px;">💰 赞助 <b style="color:#e74c3c;">30元</b> = 5个激活码</p>
-          <p style="margin-bottom: 8px; color: #999; font-size: 12px;">（每人最高5个激活码，避免倒卖）</p>
+          <p style="margin-bottom: 4px; color: #999; font-size: 12px;">（每人最高5个激活码，避免倒卖）</p>
+          <p style="margin-bottom: 8px; color: #e67e22; font-size: 13px; font-weight: bold;">💡 赞助30以上可联系我授权云顿配置功能</p>
           <p style="margin-bottom: 4px; color: #333; font-size: 13px;">🔄 激活码永久有效，可重置：在另一台设备输入激活码点击「重置卡密」即可</p>
           <p style="color: #333; font-size: 13px;">🎁 残卷赠送ID：<b style="color:#e74c3c;">83203221</b></p>
         </div>
@@ -5615,8 +5616,8 @@
       :bordered="false"
     >
       <div style="padding: 8px 0; font-size: 14px; line-height: 1.8; color: #333;">
-        <p style="margin-bottom: 12px;">本软件除了<span style="color: #e67e22; font-weight: 500;">网页版</span>，<span style="color: #18a058; font-weight: 500;">电脑端和手机端均是免费提供</span>。如果是购买获取的，请自行联系购买商家。</p>
-        <p style="margin-bottom: 12px;">该软件根据开源进行开发。</p>
+        <p style="margin-bottom: 12px;">本软件<span style="color: #18a058; font-weight: 500;">电脑端和手机端安装包均是免费提供</span>。如需获取激活码，可联系作者提供赞助截图。</p>
+        <p style="margin-bottom: 12px;">该软件根据开源进行开发。（在这里感谢很多技术大哥的技术支持）</p>
         <div style="background: #f7f8fa; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px;">
           <p style="margin-bottom: 6px;"><span style="color: #c0392b; font-weight: bold;">1.</span> 无使用说明，请自行研究。</p>
           <p><span style="color: #c0392b; font-weight: bold;">2.</span> 本软件承诺不存在任何数据上传行为。</p>
@@ -19851,6 +19852,35 @@ const sortByActivityAfterDailyTask = async () => {
     font-size: 14px !important;
   }
 
+  /* emoji图标在手机端缩小，避免挤占按钮文字空间 */
+  .btn-emoji-icon {
+    font-size: 14px !important;
+  }
+
+  /* 防止按钮文字溢出：截断+省略号 */
+  .scheduled-tasks-buttons :deep(.n-button__content) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 底部操作按钮（开始执行/停止/任务模板/设置/连接/断开）手机端缩小 */
+  .page-header > div:last-child :deep(.n-button) {
+    font-size: 12px !important;
+    height: 32px !important;
+    padding: 0 8px !important;
+  }
+
+  .page-header > div:last-child :deep(.n-button .n-button__content) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .page-header > div:last-child :deep(.n-button .n-button__icon) {
+    font-size: 14px !important;
+  }
+
   /* 缩小统计卡片数字 */
   .scheduled-tasks-card > div > div:first-child > div:last-child {
     font-size: 24px !important;
@@ -19858,6 +19888,39 @@ const sortByActivityAfterDailyTask = async () => {
 
   .scheduled-tasks-card > div > div:last-child > div:last-child {
     font-size: 13px !important;
+  }
+}
+
+/* 按钮emoji图标默认大小（桌面端） */
+.btn-emoji-icon {
+  font-size: 16px;
+}
+
+/* 极小屏设备（≤400px）进一步增强适配 */
+@media (max-width: 400px) {
+  .scheduled-tasks-buttons :deep(.n-button) {
+    font-size: 11px !important;
+    height: 28px !important;
+    padding: 0 6px !important;
+  }
+
+  .scheduled-tasks-buttons :deep(.n-button .n-button__icon) {
+    font-size: 12px !important;
+  }
+
+  .btn-emoji-icon {
+    font-size: 12px !important;
+  }
+
+  /* 底部操作按钮极小屏进一步缩小 */
+  .page-header > div:last-child :deep(.n-button) {
+    font-size: 11px !important;
+    height: 28px !important;
+    padding: 0 6px !important;
+  }
+
+  .page-header > div:last-child :deep(.n-button .n-button__icon) {
+    font-size: 12px !important;
   }
 }
 
@@ -21521,6 +21584,8 @@ html[data-theme="dark"] .st-section-toggle {
         font-size: 12px !important;
         padding: 4px 8px !important;
         white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
     }
 
@@ -21529,6 +21594,11 @@ html[data-theme="dark"] .st-section-toggle {
     :deep(.n-input) {
       width: 120px !important;
       min-width: 80px;
+    }
+
+    /* 移动端减少控制区左边距 */
+    :deep(.n-space) > div {
+      margin-left: 8px !important;
     }
   }
 
@@ -21611,6 +21681,9 @@ html[data-theme="dark"] .st-section-toggle {
     height: 30px !important;
     padding: 0 10px !important;
     border-radius: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 

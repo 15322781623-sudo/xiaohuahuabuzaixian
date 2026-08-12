@@ -65,6 +65,9 @@
       <n-alert v-if="!approved" type="warning" :bordered="false" style="padding: 8px;">
         账号注册后需管理员在「云端后台」开通授权，才能使用上传/下载云端功能
       </n-alert>
+      <div v-if="!approved" class="cs-tip" style="color: #e67e22; font-weight: bold;">
+        💡 赞助30以上可联系我授权云顿配置功能
+      </div>
 
       <!-- 本机上云 -->
       <div class="cs-card">
