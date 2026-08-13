@@ -3707,6 +3707,32 @@ const completeMonthlyFish = async () => {
     const fishNum = Number(myMonthInfo?.["2"]?.num || 0);
     const FISH_TARGET = 320; // 月度钓鱼目标次数（与MonthlyTasksCard保持一致）
 
+    // ✅ 预检：普通鱼竿数量是否足够完成月度达标（优先判断，不足则跳过）
+    let role = tokenStore.gameData?.roleInfo?.role;
+    if (!role) {
+      try {
+        const roleInfo = await tokenStore.sendGetRoleInfo(tokenId);
+        role = roleInfo?.role;
+      } catch (e) { /* ignore */ }
+    }
+    const rodCount = role?.items?.[1011]?.quantity || 0;
+    const remainingToFull = FISH_TARGET - fishNum;
+
+    addLog({
+      message: `🎣 ${tokenName} 普通鱼竿库存: ${rodCount}，当前进度: ${fishNum}/${FISH_TARGET}，尚需: ${remainingToFull}`,
+      type: "info",
+    });
+
+    if (remainingToFull > rodCount) {
+      addLog({
+        message: `⚠️ ${tokenName} 普通鱼竿不足，跳过月度钓鱼补齐（需 ${remainingToFull} 次，仅剩 ${rodCount} 根）`,
+        type: "warning",
+      });
+      message.warning(`${tokenName} 普通鱼竿不足（需${remainingToFull}次/仅剩${rodCount}根），跳过补齐`);
+      autoCloseLogs();
+      return;
+    }
+
     // 计算当前应该完成的进度（与MonthlyTasksCard保持一致）
     const now = new Date();
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -3742,7 +3768,6 @@ const completeMonthlyFish = async () => {
     });
 
     // 2.1 检查并使用免费次数
-    let role = tokenStore.gameData?.roleInfo?.role;
     if (!role) {
       try {
         const roleInfo = await tokenStore.sendGetRoleInfo(tokenId);

@@ -158,6 +158,9 @@ const isIgnorableError = (error) => {
   return ERROR_MESSAGES.has(getErrorCode(error));
 };
 
+/** 今天日期 YYYY-MM-DD（用于付费招募等本地扣费操作标记） */
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
 /**
  * 是否为连接错误
  */
@@ -482,7 +485,7 @@ export class DailyTaskRunner {
       }
       
       // ✅ 连接错误重试（最多 MAX_RETRIES 次，间隔 2 秒）
-      if (isConnectionError(error) && retryCount < MAX_RETRIES) {
+      if (isConnectionError(error) && retryCount < MAX_RETRIES && !options.noRetry) {
         if (!silent) this.warn(`[连接错误] ${description}，2秒后重试 (${retryCount + 1}/${MAX_RETRIES})`);
         await delay(2000);
         return this.sendCommand(cmd, params, { ...options, retryCount: retryCount + 1 });
@@ -656,9 +659,13 @@ export class DailyTaskRunner {
         { description: '免费招募' }));
       
       if (this.settings.payRecruit) {
-        tasks.push(() => this.sendCommandSafe('hero_recruit', 
-          { recruitType: RECRUIT_TYPES.PAID, recruitNumber: 1 }, 
-          { description: '付费招募' }));
+        const paidKey = `paidRecruit:${this.tokenId}:${todayStr()}`;
+        if (!localStorage.getItem(paidKey)) {
+          tasks.push(() => this.sendCommandSafe('hero_recruit', 
+            { recruitType: RECRUIT_TYPES.PAID, recruitNumber: 1 }, 
+            { description: '付费招募', noRetry: true }));
+          tasks.push(() => { localStorage.setItem(paidKey, '1'); });
+        }
       }
     }
 

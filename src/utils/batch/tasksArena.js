@@ -1426,6 +1426,33 @@ export function createTasksArena(deps) {
           const myMonthInfo = act.myMonthInfo || {};
           const fishNum = Number(myMonthInfo?.["2"]?.num || 0);
 
+          // ✅ 预检：普通鱼竿数量是否足够完成月度达标（优先判断，不足则跳过）
+          let role = tokenStore.getTokenGameData(tokenId)?.roleInfo?.role;
+          if (!role) {
+            try {
+              const roleInfo = await tokenStore.sendGetRoleInfo(tokenId);
+              role = roleInfo?.role;
+            } catch (e) { /* ignore */ }
+          }
+          const rodCount = role?.items?.[1011]?.quantity || 0;
+          const remainingToFull = FISH_TARGET - fishNum;
+
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `🎣 ${token.name} 普通鱼竿库存: ${rodCount}，当前进度: ${fishNum}/${FISH_TARGET}，尚需: ${remainingToFull}`,
+            type: "info",
+          });
+
+          if (remainingToFull > rodCount) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `⚠️ ${token.name} 普通鱼竿不足，跳过月度钓鱼补齐（需 ${remainingToFull} 次，仅剩 ${rodCount} 根）`,
+              type: "warning",
+            });
+            tokenStatus.value[tokenId] = "completed";
+            return;
+          }
+
           const monthProgress = calculateMonthProgress();
           const now = new Date();
           const daysInMonth = new Date(
@@ -1461,7 +1488,6 @@ export function createTasksArena(deps) {
             type: "info",
           });
 
-          let role = tokenStore.gameData?.roleInfo?.role;
           if (!role) {
             try {
               const roleInfo = await tokenStore.sendGetRoleInfo(tokenId);
@@ -1533,13 +1559,7 @@ export function createTasksArena(deps) {
             type: "info",
           });
 
-          // 检查普通鱼竿 (ID: 1011)
-          const rodCount = role?.items?.[1011]?.quantity || 0;
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 当前普通鱼竿: ${rodCount}`,
-            type: "info",
-          });
+          // 检查普通鱼竿 (ID: 1011) - rodCount 已在预检中获取
 
           if (rodCount < remaining) {
             addLog({

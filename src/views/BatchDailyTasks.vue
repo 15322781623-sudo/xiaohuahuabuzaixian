@@ -7981,6 +7981,7 @@ const currentTemplate = reactive({
   purchaseList: [],
   purchaseDiscounts: {},
   purchaseCnt: 15,
+  blackMarketStandalonePurchase: false,
   legacyGiftPassword: '', // 新增: 功法赠送验证密码
 });
 

@@ -63,6 +63,7 @@ export const clearCloudAuth = () => {
   localStorage.removeItem(AUTH_USER_KEY);
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_APPROVED_KEY);
+  localStorage.removeItem(ENC_KEY_STORAGE);
   stopAutoSync();
 };
 
@@ -133,6 +134,7 @@ export const cloudRegister = async (username, password) => {
     body: JSON.stringify({ username, password }),
   });
   saveCloudAuth(result.username, result.apiToken, !!result.approved);
+  try { await saveEncKey(password, username); } catch { /* 加密密钥派生失败不影响登录 */ }
   return result;
 };
 
@@ -143,6 +145,7 @@ export const cloudLogin = async (username, password) => {
     body: JSON.stringify({ username, password }),
   });
   saveCloudAuth(result.username, result.apiToken, !!result.approved);
+  try { await saveEncKey(password, username); } catch { /* 加密密钥派生失败不影响登录 */ }
   return result;
 };
 
@@ -152,10 +155,13 @@ export const cloudLogout = () => {
 
 /** 修改密码（验证旧密码，成功后 apiToken 不变、无需重新登录） */
 export const cloudChangePassword = async (oldPassword, newPassword) => {
-  return await cloudRequest("/api/cloud/change-password", {
+  const result = await cloudRequest("/api/cloud/change-password", {
     method: "POST",
     body: JSON.stringify({ oldPassword, newPassword }),
   });
+  // 密码变更后重新派生加密密钥；旧密码加密的云端快照需重新上传后才能恢复
+  try { await saveEncKey(newPassword, getCloudAuth().username); } catch { /* ignore */ }
+  return result;
 };
 
 // ==================== BIN 二进制数据（IndexedDB）快照 ====================
@@ -180,6 +186,83 @@ const base64ToArrayBuffer = (b64) => {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes.buffer;
+};
+
+// ==================== 快照加密（AES-GCM-256，密钥由账号密码 PBKDF2 派生） ====================
+// 云端仅存密文；密钥仅存本机 localStorage，不上传，保证作者/服务端无法读取用户配置
+
+const ENC_PREFIX = "ENC1:";
+const ENC_KEY_STORAGE = "cloudEncKey";
+
+/** 密码 → AES-GCM-256 密钥（PBKDF2-SHA256，盐含用户名，跨设备同密码可复现） */
+const deriveEncKey = async (password, username) => {
+  const salt = new TextEncoder().encode("xyzw-cloud-v1:" + String(username || "").toLowerCase());
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(String(password || "")),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+  return await crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    baseKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+};
+
+/** 派生并本地保存加密密钥（登录/注册/改密成功后调用） */
+const saveEncKey = async (password, username) => {
+  const key = await deriveEncKey(password, username);
+  const raw = await crypto.subtle.exportKey("raw", key);
+  localStorage.setItem(ENC_KEY_STORAGE, arrayBufferToBase64(raw));
+};
+
+/** 读取本机加密密钥；未派生过（老用户未重新登录）则返回 null，回退旧版明文路径 */
+const getEncKey = async () => {
+  const b64 = localStorage.getItem(ENC_KEY_STORAGE);
+  if (!b64 || typeof crypto === "undefined" || !crypto.subtle) return null;
+  try {
+    return await crypto.subtle.importKey("raw", base64ToArrayBuffer(b64), { name: "AES-GCM" }, false, [
+      "encrypt",
+      "decrypt",
+    ]);
+  } catch {
+    return null;
+  }
+};
+
+/** AES-GCM 加密字节 → "ENC1:<base64(iv+ciphertext)>" */
+const encryptBytes = async (key, bytes) => {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, bytes));
+  const out = new Uint8Array(iv.length + ct.length);
+  out.set(iv, 0);
+  out.set(ct, iv.length);
+  return ENC_PREFIX + arrayBufferToBase64(out.buffer);
+};
+
+/** "ENC1:<base64>" → 解密字节 */
+const decryptBytes = async (key, encStr) => {
+  const raw = base64ToArrayBuffer(String(encStr).slice(ENC_PREFIX.length));
+  const iv = new Uint8Array(raw.slice(0, 12));
+  const ct = new Uint8Array(raw.slice(12));
+  return await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
+};
+
+/** 解密快照文本（解密后若为 gzip 魔数则先解压），供 pullConfig 自动恢复使用 */
+const decryptSnapshotText = async (encStr) => {
+  const key = await getEncKey();
+  if (!key) throw new Error("本地缺少加密密钥，请重新登录云端账号后再恢复");
+  let bytes = await decryptBytes(key, encStr);
+  const u8 = new Uint8Array(bytes);
+  if (u8.length >= 2 && u8[0] === 0x1f && u8[1] === 0x8b) {
+    const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream("gzip"));
+    bytes = await new Response(stream).arrayBuffer();
+  }
+  return new TextDecoder().decode(bytes);
 };
 
 const openBinDb = () =>
@@ -454,8 +537,21 @@ export const pushConfig = async (deviceName = getDeviceName()) => {
   let options;
   let compressedBytes = rawBytes;
   let compressed = false;
-  if (typeof CompressionStream !== "undefined") {
-    // gzip 压缩后以二进制上传，大幅缩小含 BIN 快照的传输体积
+  let encrypted = false;
+  const encKey = await getEncKey();
+  if (encKey) {
+    // ✅ 加密上传：gzip 压缩 → AES-GCM 加密 → base64 封装为 JSON 文本（云端仅存密文）
+    let plainBytes = new TextEncoder().encode(jsonStr);
+    if (typeof CompressionStream !== "undefined") {
+      plainBytes = await gzipCompress(jsonStr);
+      compressedBytes = plainBytes.length;
+      compressed = true;
+    }
+    const encStr = await encryptBytes(encKey, plainBytes);
+    encrypted = true;
+    options = { method: "PUT", body: JSON.stringify({ data: { __enc: encStr } }) };
+  } else if (typeof CompressionStream !== "undefined") {
+    // 旧版回退：gzip 压缩后以二进制上传（未重新登录派生密钥时的兼容路径）
     const compressedBuf = await gzipCompress(jsonStr);
     compressedBytes = compressedBuf.length;
     compressed = true;
@@ -469,8 +565,8 @@ export const pushConfig = async (deviceName = getDeviceName()) => {
   }
 
   // APK（Capacitor）环境：CapacitorHttp 拦截 fetch 时对 Uint8Array body 处理异常，
-  // 直接使用 CapacitorHttp.put() 以 base64 + dataType:'file' 方式可靠发送二进制数据
-  if (typeof Capacitor !== "undefined" && Capacitor.isNativePlatform && Capacitor.isNativePlatform()) {
+  // 直接使用 CapacitorHttp.put() 以 base64 + dataType:'file' 方式可靠发送二进制数据（密文 JSON 无需此路径）
+  if (!encrypted && typeof Capacitor !== "undefined" && Capacitor.isNativePlatform && Capacitor.isNativePlatform()) {
     const { apiToken } = getCloudAuth();
     const url = `${CLOUD_API_BASE}/api/cloud/config?device=${encodeURIComponent(deviceName)}`;
     let capResult;
@@ -510,7 +606,7 @@ export const pushConfig = async (deviceName = getDeviceName()) => {
 
   const result = await cloudRequest(`/api/cloud/config?device=${encodeURIComponent(deviceName)}`, options);
   lastPushedHash = quickHash(jsonStr);
-  return { result, details: { binCount, tokenCount, rawBytes, compressedBytes, compressed } };
+  return { result, details: { binCount, tokenCount, rawBytes, compressedBytes, compressed, encrypted } };
 };
 
 /** 字符串 → gzip 字节（CompressionStream） */
@@ -520,10 +616,18 @@ const gzipCompress = async (str) => {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 };
 
-/** 下载指定设备名的快照；不传设备名时返回最近更新的一份 */
+/** 下载指定设备名的快照；不传设备名时返回最近更新的一份。加密快照（data.__enc）自动解密，旧版明文快照原样返回 */
 export const pullConfig = async (deviceName) => {
   const query = deviceName ? `?device=${encodeURIComponent(deviceName)}` : "";
-  return await cloudRequest(`/api/cloud/config${query}`, { method: "GET" });
+  const result = await cloudRequest(`/api/cloud/config${query}`, { method: "GET" });
+  if (result && result.data && typeof result.data === "object" && typeof result.data.__enc === "string") {
+    try {
+      result.data = JSON.parse(await decryptSnapshotText(result.data.__enc));
+    } catch (e) {
+      throw new Error("快照解密失败：请使用上传该配置时的账号密码重新登录后重试");
+    }
+  }
+  return result;
 };
 
 /** 获取云端全部设备快照列表 [{name, updatedAt, size, legacy}] */
@@ -567,10 +671,17 @@ export const startAutoSync = () => {
       if (pushDebounceTimer) clearTimeout(pushDebounceTimer);
       pushDebounceTimer = setTimeout(async () => {
         try {
+          const key = await getEncKey();
+          if (!key) {
+            console.warn("[云同步] 本地缺少加密密钥，本次自动上传已跳过（请重新登录云端账号以启用加密）");
+            return;
+          }
           const { details } = await pushConfig();
-          const sizeStr = details.compressed
-            ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(gzip)`
-            : `${(details.rawBytes / 1024).toFixed(1)}KB`;
+          const sizeStr = details.encrypted
+            ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(AES加密${details.compressed ? "+gzip" : ""})`
+            : details.compressed
+              ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(gzip)`
+              : `${(details.rawBytes / 1024).toFixed(1)}KB`;
           try {
             useTokenStore().pushGlobalLog(
               `☁️ 自动同步：${details.tokenCount} Token，${details.binCount} BIN，${sizeStr}`,

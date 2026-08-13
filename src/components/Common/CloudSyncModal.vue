@@ -273,7 +273,8 @@ const afterLogin = async (result) => {
       const cfg = await pullConfig();
       message.success("检测到云端配置，自动恢复中…");
       setTimeout(() => applySnapshot(cfg.data), 600);
-    } catch {
+    } catch (e) {
+      console.warn("[云同步] 自动恢复失败:", e?.message || e);
       /* 自动恢复失败不阻断 */
     }
   }
@@ -318,10 +319,12 @@ const handlePush = async () => {
   try {
     const { result, details } = await pushConfig(deviceName.value);
     cloudUpdatedAt.value = result.updatedAt || "";
-    const sizeStr = details.compressed
-      ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(gzip)`
-      : `${(details.rawBytes / 1024).toFixed(1)}KB`;
-    message.success(`已上传为「${deviceName.value}」，不会覆盖其他设备配置`);
+    const sizeStr = details.encrypted
+      ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(AES加密${details.compressed ? "+gzip" : ""})`
+      : details.compressed
+        ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(gzip)`
+        : `${(details.rawBytes / 1024).toFixed(1)}KB`;
+    message.success(`已上传为「${deviceName.value}」，不会覆盖其他设备配置${details.encrypted ? "（已加密）" : ""}`);
     // 推送执行日志
     try {
       const tokenStore = useTokenStore();
