@@ -82,10 +82,15 @@
             @keyup.enter="handleDeviceNameSave"
           />
         </div>
-        <n-button type="primary" block :disabled="!approved" :loading="pushing" @click="handlePush">
-          上传本地配置到云端
+        <n-button type="primary" block :disabled="!approved || totalConfigCount >= 10" :loading="pushing" @click="handlePush">
+          {{ totalConfigCount >= 10 ? "已达上传上限（无法继续上传）" : "上传本地配置到云端" }}
         </n-button>
-        <div class="cs-card-hint">以「{{ deviceName }}」名义保存，各设备独立互不覆盖</div>
+        <div class="cs-card-hint">
+          📊 配置：{{ totalConfigCount }} / 10（{{ 10 - totalConfigCount }} 个可用）
+        </div>
+        <div class="cs-card-hint" style="color: #e67e22; font-weight: bold;">
+          ⚠️ 每个账号最多允许上传 10 个配置快照，超限后请先删除旧配置再上传
+        </div>
       </div>
 
       <!-- 云端快照列表 -->
@@ -200,6 +205,7 @@ const pushing = ref(false);
 const pullingName = ref("");
 const deviceName = ref(getDeviceName());
 const configs = ref([]);
+const totalConfigCount = ref(0); // 云端总配置数
 
 const loginForm = ref({ username: "", password: "" });
 const registerForm = ref({ username: "", password: "" });
@@ -229,8 +235,11 @@ const loadConfigs = async () => {
   if (!loggedIn.value || !approved.value) return;
   try {
     configs.value = await fetchConfigList();
-  } catch {
+    // ✅ 计算总配置数
+    totalConfigCount.value = Array.isArray(configs.value) ? configs.value.length : 0;
+  } catch (e) {
     /* 列表拉取失败不阻断 */
+    totalConfigCount.value = 0;
   }
 };
 
@@ -319,17 +328,19 @@ const handlePush = async () => {
   try {
     const { result, details } = await pushConfig(deviceName.value);
     cloudUpdatedAt.value = result.updatedAt || "";
+    // ✅ 同步更新总配置数
+    totalConfigCount.value++;
     const sizeStr = details.encrypted
-      ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(AES加密${details.compressed ? "+gzip" : ""})`
+      ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(AES 加密${details.compressed ? "+gzip" : ""})`
       : details.compressed
         ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(gzip)`
         : `${(details.rawBytes / 1024).toFixed(1)}KB`;
-    message.success(`已上传为「${deviceName.value}」，不会覆盖其他设备配置${details.encrypted ? "（已加密）" : ""}`);
+    message.success(`已上传为「${deviceName.value}」${totalConfigCount.value >= 10 ? `（已达上限 ${totalConfigCount.value}/10）` : ``}${details.encrypted ? "（已加密）" : ""}`);
     // 推送执行日志
     try {
       const tokenStore = useTokenStore();
       tokenStore.pushGlobalLog(
-        `☁️ 配置已上传：${details.tokenCount} 个Token，${details.binCount} 个BIN，${sizeStr}`,
+        `☁️ 配置已上传：${details.tokenCount} 个 Token，${details.binCount} 个 BIN，${sizeStr}`,
         "info"
       );
     } catch { /* ignore */ }

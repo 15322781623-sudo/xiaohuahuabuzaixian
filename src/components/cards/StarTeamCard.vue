@@ -657,7 +657,7 @@ const selectedTotalStars = computed(() => {
   return sum;
 });
 
-// 星数<5的账号不显示在列表中
+// 星数<5 的账号不显示在列表中
 const MIN_DISPLAY_STARS = 5;
 const displayAccountData = computed(() => {
   const filtered = accountStarData.value.filter((a) => {
@@ -665,8 +665,8 @@ const displayAccountData = computed(() => {
     if (a.starCount < MIN_DISPLAY_STARS) return false;
     // 无队伍的显示
     if (!a.hasTeam || !a.teamId) return true;
-    // 当前队伍成员显示（方便查看状态）；队伍已录用锁定（组完）或已切到其他队伍后不再显示
-    if (a.inCurrentTeam && String(a.teamId) === String(teamId.value) && !teamLocked.value) return true;
+    // ✅ 当前队伍成员显示；如果队伍已录用锁定，也允许显示（方便查看状态）
+    if (a.inCurrentTeam && String(a.teamId) === String(teamId.value)) return true;
     // 其他有队伍的账号不显示（已在其他队伍中）
     return false;
   });
@@ -718,9 +718,10 @@ const completedTeams = computed(() => {
       team.members.push(acc);
     }
   }
-  // 返回同时满足：满员5人 + 全部录用 的队伍（不限制星数）
+  
+  // ✅ 返回所有已录用的队伍（不限人数）+ 已加入的其他队伍
   return Array.from(teamMap.values()).filter(
-    (t) => t.memberCount >= 5 && t.allLocked
+    (t) => t.allLocked || (t.memberCount > 0 && String(t.teamId) !== String(teamId.value))
   );
 });
 
@@ -2401,12 +2402,13 @@ const prepareTeamMembersToTargetStars = async () => {
   // 步骤 3: 组合搜索最优成员选择（优先刚好达标，避免凑超）
   // 已组队成员的 tokenId 集合（用于排除）
   const inTeamTokenIds = new Set(allTeamMembersInfo.filter((m) => m.tokenId).map((m) => m.tokenId));
-  
-  // 筛选可用账号：排除已在当前队伍、已有其他队伍、星数为0
+    
+  // 筛选可用账号：排除已在当前队伍、已有其他队伍、星数为 0、以及已加入过当前房间的账号
   const availableAccounts = accountStarData.value
     .filter((a) => {
-      if (inTeamTokenIds.has(a.tokenId)) return false;
-      if (a.hasTeam && a.teamId && String(a.teamId) !== String(teamId.value)) return false;
+      if (inTeamTokenIds.has(a.tokenId)) return false;  // 已在当前队伍中
+      if (a.hasTeam && a.teamId && String(a.teamId) !== String(teamId.value)) return false;  // 已在其他队伍
+      if (a.inCurrentTeam) return false;  // ⭐ 已在本轮扫描中标记为加入当前房间（防止重复加入已解散的房间）
       return a.starCount > 0;
     })
     .sort((a, b) => b.starCount - a.starCount);

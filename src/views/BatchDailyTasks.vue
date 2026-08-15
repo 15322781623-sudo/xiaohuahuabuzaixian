@@ -1939,6 +1939,34 @@
           </div>
         </div>
 
+        <!-- 赛车改装策略 -->
+        <div class="st-section">
+          <div class="st-section-title"><span class="st-section-icon">🏎️</span>赛车改装策略</div>
+          <div class="st-field st-field-full">
+            <label class="st-label">升级策略</label>
+            <n-radio-group v-model:value="currentSettings.carUpgradeStrategy" name="carUpgradeGroup">
+              <n-grid :cols="1" :x-gap="8" :y-gap="8">
+                <n-grid-item>
+                  <n-radio value="score" style="display: flex; align-items: center; gap: 8px; padding: 8px; background: rgba(0,0,0,0.03); border-radius: 6px;">
+                    <div style="flex: 1;">
+                      <div style="font-weight: 600;">积分优先（默认）</div>
+                      <div style="font-size: 12px; color: #888; margin-top: 4px;">升级到 4002 累计消耗分后停止；赛季最后一天若可达 5000 则冲刺，否则只收到刚好 4002</div>
+                    </div>
+                  </n-radio>
+                </n-grid-item>
+                <n-grid-item>
+                  <n-radio value="rank" style="display: flex; align-items: center; gap: 8px; padding: 8px; background: rgba(0,0,0,0.03); border-radius: 6px;">
+                    <div style="flex: 1;">
+                      <div style="font-weight: 600;">排名优先</div>
+                      <div style="font-size: 12px; color: #888; margin-top: 4px;">车辆全收，按门控顺序把发动机→车架→悬架→雷达逐个升满 60 级，不设积分上限</div>
+                    </div>
+                  </n-radio>
+                </n-grid-item>
+              </n-grid>
+            </n-radio-group>
+          </div>
+        </div>
+
         <!-- 智能发车预设护卫成员 -->
         <div class="st-section">
           <div class="st-section-title"><span class="st-section-icon">🚢</span>智能发车预设护卫</div>
@@ -2093,6 +2121,34 @@
               show-password-on="click"
               size="small"
             />
+          </div>
+        </div>
+
+        <!-- 赛车改装策略 -->
+        <div class="st-section">
+          <div class="st-section-title"><span class="st-section-icon">🏎️</span>赛车改装策略</div>
+          <div class="st-field st-field-full">
+            <label class="st-label">升级策略</label>
+            <n-radio-group v-model:value="currentTemplate.carUpgradeStrategy" name="carUpgradeGroup">
+              <n-grid :cols="1" :x-gap="8" :y-gap="8">
+                <n-grid-item>
+                  <n-radio value="score" style="display: flex; align-items: center; gap: 8px; padding: 8px; background: rgba(0,0,0,0.03); border-radius: 6px;">
+                    <div style="flex: 1;">
+                      <div style="font-weight: 600;">积分优先（默认）</div>
+                      <div style="font-size: 12px; color: #888; margin-top: 4px;">升级到 4002 累计消耗分后停止；赛季最后一天若可达 5000 则冲刺，否则只收到刚好 4002</div>
+                    </div>
+                  </n-radio>
+                </n-grid-item>
+                <n-grid-item>
+                  <n-radio value="rank" style="display: flex; align-items: center; gap: 8px; padding: 8px; background: rgba(0,0,0,0.03); border-radius: 6px;">
+                    <div style="flex: 1;">
+                      <div style="font-weight: 600;">排名优先</div>
+                      <div style="font-size: 12px; color: #888; margin-top: 4px;">车辆全收，按门控顺序把发动机→车架→悬架→雷达逐个升满 60 级，不设积分上限</div>
+                    </div>
+                  </n-radio>
+                </n-grid-item>
+              </n-grid>
+            </n-radio-group>
           </div>
         </div>
       </div>
@@ -2810,7 +2866,7 @@
       </div>
     </n-modal>
 
-    <!-- 盐晶商店购买 Modal -->
+
     <n-modal
       v-model:show="showSaltCrystalShopModal"
       preset="card"
@@ -7950,6 +8006,7 @@ const currentSettings = reactive({
   purchaseCnt: 15,
   legacyGiftPassword: '', // 功法赠送验证密码
   helperPresets: [], // 智能发车预设护卫成员
+  carUpgradeStrategy: 'score', // 改装策略：'score' (积分优先) | 'rank' (排名优先)
 });
 
 // Task Template State
@@ -7982,7 +8039,8 @@ const currentTemplate = reactive({
   purchaseDiscounts: {},
   purchaseCnt: 15,
   blackMarketStandalonePurchase: false,
-  legacyGiftPassword: '', // 新增: 功法赠送验证密码
+  legacyGiftPassword: '', // 新增：功法赠送验证密码
+  carUpgradeStrategy: 'score', // 改装策略：'score' (积分优先) | 'rank' (排名优先)
 });
 
 // Account Template References
@@ -14740,6 +14798,22 @@ const executeHelper = () => {
       return;
     }
     showHelperModal.value = false;
+    
+    // ✅ 单账号智能加速检测
+    const availableTokens = selectedTokens.value.filter(id => id !== 'all');
+    if (batchSettings.singleAccountSpeedUp && availableTokens.length === 1) {
+      batchSettings.singleAccountMode = true;
+      const mult = batchSettings.singleAccountMultiplier;
+      const token = tokens.value.find(t => t.id === availableTokens[0]);
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `✅ 单账号加速模式：${token?.name || '当前账号'}（延迟倍率：${mult * 100}%）`,
+        type: "info",
+      });
+    } else {
+      batchSettings.singleAccountMode = false;
+    }
+    
     if (helperType.value === "box") {
       batchOpenBox();
     } else if (helperType.value === "fish") {

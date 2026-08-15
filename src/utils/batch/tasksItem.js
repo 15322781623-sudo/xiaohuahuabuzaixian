@@ -2001,28 +2001,26 @@ export function createTasksItem(deps) {
   const batchFish = async (isScheduledTask = false) => {
     if (selectedTokens.value.length === 0)
       return;
-
+  
     isRunning.value = true;
     shouldStop.value = false;
-
+  
     const fishType = isScheduledTask
       ? batchSettings.defaultFishType
       : helperSettings.fishType;
     const totalCount = isScheduledTask
       ? batchSettings.fishCount
       : helperSettings.count;
-    const batches = Math.floor(totalCount / 10);
-    const remainder = totalCount % 10;
-
+      
     selectedTokens.value.forEach((id) => {
       tokenStatus.value[id] = "waiting";
     });
-
-    // 记录需要重试的Token（400340/200750/11800010错误）
+  
+    // 记录需要重试的 Token（400340/200750/11800010错误）
     const retryTokens = [];
     const MAX_RETRIES = batchSettings.defaultRetryCount !== undefined ? batchSettings.defaultRetryCount : 2;
-
-    const processFishBody = async (tokenId) => {
+  
+    await runStreaming(selectedTokens.value, async (tokenId) => {
       if (shouldStop.value)
         return;
 
@@ -2054,13 +2052,19 @@ export function createTasksItem(deps) {
           return;
         }
 
-        // 检查鱼竿数量
-        let role = tokenStore.gameData?.roleInfo?.role;
+        // ✅ 优先从 tokenGameDataMap 获取指定 tokenId 的角色信息
+        let role = tokenStore.getTokenGameData(tokenId)?.roleInfo?.role;
         if (!role) {
           try {
             const roleInfo = await tokenStore.sendGetRoleInfo(tokenId);
-            role = roleInfo?.role;
-          } catch {}
+            role = roleInfo?.role || tokenStore.getTokenGameData(tokenId)?.roleInfo?.role;
+          } catch (error) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 获取角色信息失败：${error.message}`,
+              type: "warning",
+            });
+          }
         }
         // 普通鱼竿: 1011, 黄金鱼竿: 1012
         const rodId = fishType === 1 ? 1011 : 1012;
@@ -2072,21 +2076,14 @@ export function createTasksItem(deps) {
           type: "info",
         });
                 
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `${token.name} 月度进度：${fishProgress}/${fishTarget}, 剩余可执行：${remainingCount}`, 
-          type: "info",
-        });
-
-        // ✅ 取鱼竿数量和剩余任务进度的较小值
-        const byRodLimit = rodCount < totalCount ? rodCount : totalCount;
+        // ✅ 计算剩余可执行次数（取用户输入次数、鱼竿数量和剩余任务进度的最小值）
         const remainingCount = fishTarget - fishProgress;
-        availableCount = Math.min(byRodLimit, remainingCount);
+        const availableCount = Math.min(totalCount, rodCount, remainingCount);
         
         if (availableCount <= 0) {
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `${token.name} 没有可用的鱼竿，停止任务`,
+            message: `${token.name} 没有可用的鱼竿（鱼竿:${rodCount}, 剩余任务:${remainingCount}），停止任务`,
             type: "warning",
           });
           tokenStatus.value[tokenId] = "completed";
@@ -2105,9 +2102,12 @@ export function createTasksItem(deps) {
           );
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `${token.name} 钓鱼进度: ${(i + 1) * 10}/${availableCount}`,
+            message: `${token.name} 钓鱼进度：${(i + 1) * 10}/${availableCount}`,
             type: "info",
           });
+        
+          // ✅ 使用模块级别的延迟控制（支持单账号加速）
+          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
 
           // 每5轮（50次）后，重新校验鱼竿数量
           if ((i + 1) % 5 === 0 && i < batches - 1) {
@@ -2221,22 +2221,30 @@ export function createTasksItem(deps) {
       } catch (error) {
         console.error(error);
         const errMsg = error.message || "";
-        
-        // ✅ 检测400340、200750或11800010错误，加入重试队列
+              
+        // ✅ 检测钓鱼相关错误
         if (errMsg.includes("400340") || errMsg.includes("200750") || errMsg.includes("11800010")) {
-          const errorCode = errMsg.includes("400340") ? "400340服务器限流" : errMsg.includes("200750") ? "200750服务器错误" : "11800010未知错误";
+          const errorCode = errMsg.includes("400340") ? "400340 服务器限流" : errMsg.includes("200750") ? "200750 服务器错误" : "11800010 未知错误";
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `${token.name} 钓鱼失败: ${errorCode}，加入重试队列`,
+            message: `${token.name} 钓鱼失败：${errorCode}，加入重试队列`,
             type: "warning",
           });
           retryTokens.push({ tokenId, tokenName: token.name, error: errMsg });
           tokenStatus.value[tokenId] = "waiting_retry";
+        } else if (errMsg.includes("200020")) {
+          // ❌ 200020 错误：免费次数未使用无法批量（鱼竿库存充足但没消耗免费次数）
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 钓鱼失败：当前钓鱼免费次数未使用，无法批量钓鱼`,
+            type: "error",
+          });
+          tokenStatus.value[tokenId] = "failed";
         } else {
           tokenStatus.value[tokenId] = "failed";
           addLog({
             time: new Date().toLocaleTimeString(),
-            message: `${token.name} 钓鱼失败: ${error.message}`,
+            message: `${token.name} 钓鱼失败：${error.message}`,
             type: "error",
           });
         }
@@ -2244,9 +2252,7 @@ export function createTasksItem(deps) {
         tokenStore.closeWebSocketConnection(tokenId);
         releaseConnectionSlot();
       }
-    };
-
-    await runStreaming(selectedTokens.value, processFishBody);
+    });
 
     // 处理需要重试的账号
     if (retryTokens.length > 0 && !shouldStop.value) {
@@ -2302,6 +2308,8 @@ export function createTasksItem(deps) {
                 { type: fishType, lotteryNumber: remainder, newFree: true },
                 5000,
               );
+              // ✅ 使用模块级别的延迟控制（支持单账号加速）
+              await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
             }
 
             tokenStatus.value[retryTask.tokenId] = "completed";
@@ -2312,6 +2320,7 @@ export function createTasksItem(deps) {
             });
           } catch (error) {
             const errMsg = error.message || "";
+            // ✅ 检测钓鱼相关错误（200020 免费次数未使用，不重试）
             if (errMsg.includes("400340") || errMsg.includes("200750") || errMsg.includes("11800010")) {
               stillFailed.push(retryTask);
               tokenStatus.value[retryTask.tokenId] = "waiting_retry";
@@ -2320,7 +2329,7 @@ export function createTasksItem(deps) {
             }
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${retryTask.tokenName} 重试失败: ${errMsg}`,
+              message: `${retryTask.tokenName} 重试失败：${errMsg.includes("200020") ? "当前钓鱼免费次数未使用，无法批量钓鱼" : errMsg}`,
               type: "error",
             });
           } finally {

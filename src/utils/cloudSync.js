@@ -17,6 +17,7 @@ const AUTH_TOKEN_KEY = "cloudAuthToken";
 const AUTH_APPROVED_KEY = "cloudAuthApproved";
 const AUTO_SYNC_KEY = "cloudAutoSync";
 const DEVICE_NAME_KEY = "cloudDeviceName";
+const ENC_KEY_STORAGE = "cloudEncKey"; // ✅ 加密密钥存储位置
 
 /** 快照黑名单：易失状态/设备相关/凭据自身 */
 const SNAPSHOT_BLACKLIST = new Set([
@@ -26,19 +27,43 @@ const SNAPSHOT_BLACKLIST = new Set([
   AUTH_TOKEN_KEY,
   AUTH_APPROVED_KEY,
   DEVICE_NAME_KEY,
+  ENC_KEY_STORAGE, // ✅ 加密密钥本地专用，不应上传
 ]);
 const SNAPSHOT_BLACKLIST_PREFIX = ["ws_connection_"];
 
 const isBlacklistedKey = (key) =>
   SNAPSHOT_BLACKLIST.has(key) || SNAPSHOT_BLACKLIST_PREFIX.some((p) => key.startsWith(p));
 
-/** 轻量哈希（djb2），用于自动同步变更检测 */
+/** 轻量哈希（djb2，用于自动同步变更检测） */
 const quickHash = (str) => {
   let h = 5381;
   for (let i = 0; i < str.length; i++) {
     h = ((h << 5) + h + str.charCodeAt(i)) | 0;
   }
   return String(h);
+};
+
+/** 安全哈希（SHA-256 取前 8 位，减少碰撞风险） */
+const secureHash = async (str) => {
+  try {
+    const enc = new TextEncoder().encode(str);
+    const hash = await crypto.subtle.digest('SHA-256', enc);
+    const hashArr = new Uint8Array(hash);
+    return Array.from(hashArr).slice(0, 8).join('');
+  } catch {
+    // 降级：如果 crypto 不可用，使用快速哈希
+    return quickHash(str);
+  }
+};
+
+/** 排序 JSON 对象，确保序列化顺序一致 */
+const sortJsonStringify = (obj) => {
+  if (obj === null || typeof obj !== 'object') return JSON.stringify(obj);
+  if (Array.isArray(obj)) return JSON.stringify(obj);
+  const sortedKeys = Object.keys(obj).sort();
+  const orderedObj = {};
+  for (const key of sortedKeys) orderedObj[key] = obj[key];
+  return JSON.stringify(orderedObj);
 };
 
 // ==================== 凭据管理 ====================
@@ -192,7 +217,6 @@ const base64ToArrayBuffer = (b64) => {
 // 云端仅存密文；密钥仅存本机 localStorage，不上传，保证作者/服务端无法读取用户配置
 
 const ENC_PREFIX = "ENC1:";
-const ENC_KEY_STORAGE = "cloudEncKey";
 
 /** 密码 → AES-GCM-256 密钥（PBKDF2-SHA256，盐含用户名，跨设备同密码可复现） */
 const deriveEncKey = async (password, username) => {
@@ -215,9 +239,14 @@ const deriveEncKey = async (password, username) => {
 
 /** 派生并本地保存加密密钥（登录/注册/改密成功后调用） */
 const saveEncKey = async (password, username) => {
-  const key = await deriveEncKey(password, username);
-  const raw = await crypto.subtle.exportKey("raw", key);
-  localStorage.setItem(ENC_KEY_STORAGE, arrayBufferToBase64(raw));
+  try {
+    const key = await deriveEncKey(password, username);
+    const raw = await crypto.subtle.exportKey("raw", key);
+    localStorage.setItem(ENC_KEY_STORAGE, arrayBufferToBase64(raw));
+  } catch (e) {
+    console.error("[云同步] 加密密钥派生失败:", e);
+    throw new Error("当前浏览器不支持加密存储，请升级浏览器或使用其他设备");
+  }
 };
 
 /** 读取本机加密密钥；未派生过（老用户未重新登录）则返回 null，回退旧版明文路径 */
@@ -279,7 +308,7 @@ const openBinDb = () =>
     req.onerror = () => reject(req.error);
   });
 
-/** 读取 IndexedDB 中全部 BIN 数据并 base64 化，返回 {id: base64}；20秒超时/异常时降级为空（不阻断上传） */
+/** 读取 IndexedDB 中全部 BIN 数据并 base64 化，返回 {id: base64}；20 秒超时/异常时降级为空（不阻断上传） */
 const collectBinData = async () => {
   const fallback = () => ({});
   const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 20000));
@@ -295,7 +324,15 @@ const collectBinData = async () => {
       const map = {};
       let totalBytes = 0;
       for (const r of records) {
-        if (!r || !r.id || !r.data) continue;
+        if (!r || !r.id || !r.data) {
+          console.warn(`[云同步] 跳过无效 BIN 记录:`, r?.id);
+          continue;
+        }
+        // ✅ 类型校验：确保 data 是 ArrayBuffer
+        if (!(r.data instanceof ArrayBuffer)) {
+          console.error(`[云同步] 跳过年份 BIN 格式 [${r.id}]:`, r.data);
+          continue;
+        }
         // 单份快照 BIN 总量上限 20MB（gzip 压缩后传输），超出部分跳过并告警
         if (totalBytes + r.data.byteLength > 20 * 1024 * 1024) {
           console.warn(`[云同步] BIN 总量超限，跳过 ${r.id}（及后续），请分批管理账号`);
@@ -372,20 +409,36 @@ const restoreBinData = async (map) => {
   }
 
   try {
+    // ✅ 步骤 1：先清空 IndexedDB（使用独立事务）
+    await new Promise((resolve, reject) => {
+      const db = openBinDb();
+      const tx = db.then(db => db.transaction(BIN_STORE, "readwrite"));
+      tx.then(tx => {
+        const store = tx.objectStore(BIN_STORE);
+        const clearReq = store.clear();
+        clearReq.onsuccess = () => resolve();
+        clearReq.onerror = () => reject(clearReq.error);
+        clearReq.onabort = () => reject(new Error("clear 事务中止"));
+      });
+    });
+
+    // ✅ 步骤 2：重新开启事务写入（避免与 clear 混在同一事务）
     const db = await openBinDb();
     const work = new Promise((resolve, reject) => {
       const tx = db.transaction(BIN_STORE, "readwrite");
       const store = tx.objectStore(BIN_STORE);
+      const now = new Date();
 
-      // 先等 clear 完成，再放入 put 操作，避免顺序错乱
-      const clearReq = store.clear();
-      clearReq.onsuccess = () => {
-        const now = new Date();
-        for (const id of validIds) {
-          store.put({ id, data: decoded[id], createdAt: now, updatedAt: now });
+      for (const id of validIds) {
+        try {
+          const putReq = store.put({ id, data: decoded[id], createdAt: now, updatedAt: now });
+          putReq.onerror = () => {
+            console.error(`[云同步] BIN 写入失败 [${id}]:`, putReq.error);
+          };
+        } catch (e) {
+          console.error(`[云同步] BIN 写入异常 [${id}]:`, e);
         }
-      };
-      clearReq.onerror = () => reject(clearReq.error);
+      }
 
       tx.oncomplete = () => resolve(validIds.length);
       tx.onerror = () => reject(tx.error);
@@ -519,7 +572,19 @@ export const applySnapshot = async (data, adoptDeviceName) => {
 
 /** 上传本机快照到指定设备名（默认本机设备名）；支持 CompressionStream 时 gzip 压缩二进制上传
  *  @returns {{ result: object, details: { binCount: number, tokenCount: number, rawBytes: number, compressedBytes: number, compressed: boolean } }} */
+/** 上传云端配置（每个账号最多 10 个快照） */
 export const pushConfig = async (deviceName = getDeviceName()) => {
+  // ✅ 检查已上传的配置数量
+  const configList = await fetchConfigList();
+  if (!Array.isArray(configList)) {
+    console.error("[云同步] 获取配置列表失败，跳过数量检查");
+  } else {
+    const myConfigs = configList.filter(c => c.name === deviceName);  // ✅ 字段名是 name 不是 device
+    if (myConfigs.length >= 10) {
+      throw new Error(`每个账号最多允许上传 10 个配置快照，当前已有 ${myConfigs.length} 个，请先删除旧配置后再试`);
+    }
+  }
+
   const data = await collectSnapshot();
   const jsonStr = JSON.stringify({ data });
   const rawBytes = new TextEncoder().encode(jsonStr).length;
@@ -657,15 +722,25 @@ let autoSyncTimer = null;
 let pushDebounceTimer = null;
 let lastPushedHash = "";
 
-/** 登录后启动：每5小时比对快照哈希，变化则防抖1小时自动上传 */
+/** 登录后启动：每 5 小时比对快照哈希，变化则防抖 1 小时自动上传 */
 export const startAutoSync = () => {
   if (autoSyncTimer || !isCloudLoggedIn() || !isAutoSyncEnabled() || !isCloudApproved()) return;
-  collectSnapshot().then((snap) => {
-    lastPushedHash = quickHash(JSON.stringify(snap));
+  // ✅ 排序后哈希，避免属性顺序影响
+  collectSnapshot().then(async (snap) => {
+    try {
+      lastPushedHash = await secureHash(sortJsonStringify(snap));
+    } catch {
+      lastPushedHash = quickHash(JSON.stringify(snap));
+    }
   }).catch(() => {});
   autoSyncTimer = setInterval(async () => {
     const snap = await collectSnapshot();
-    const hash = quickHash(JSON.stringify(snap));
+    let hash;
+    try {
+      hash = await secureHash(sortJsonStringify(snap));
+    } catch {
+      hash = quickHash(JSON.stringify(snap));
+    }
     if (hash !== lastPushedHash) {
       lastPushedHash = hash; // 先更新避免重复触发
       if (pushDebounceTimer) clearTimeout(pushDebounceTimer);
@@ -678,7 +753,7 @@ export const startAutoSync = () => {
           }
           const { details } = await pushConfig();
           const sizeStr = details.encrypted
-            ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(AES加密${details.compressed ? "+gzip" : ""})`
+            ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(AES 加密${details.compressed ? "+gzip" : ""})`
             : details.compressed
               ? `${(details.rawBytes / 1024).toFixed(1)}KB → ${(details.compressedBytes / 1024).toFixed(1)}KB(gzip)`
               : `${(details.rawBytes / 1024).toFixed(1)}KB`;
@@ -691,9 +766,9 @@ export const startAutoSync = () => {
         } catch {
           /* 自动同步失败静默，等待下次 */
         }
-      }, 60 * 60 * 1000); // 1小时防抖
+      }, 60 * 60 * 1000); // 1 小时防抖
     }
-  }, 5 * 60 * 60 * 1000); // 5小时检测一次
+  }, 5 * 60 * 60 * 1000); // 5 小时检测一次
 };
 
 export const stopAutoSync = () => {
@@ -705,6 +780,8 @@ export const stopAutoSync = () => {
     clearTimeout(pushDebounceTimer);
     pushDebounceTimer = null;
   }
+  // ✅ 重置哈希，避免下次启动时误判
+  lastPushedHash = "";
 };
 
 /** 应用启动时调用：已登录且开启自动同步则启动 */

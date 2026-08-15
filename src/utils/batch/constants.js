@@ -272,6 +272,7 @@ export const defaultSettings = {
   purchaseCnt: 15,
   blackMarketStandalonePurchase: false,
   legacyGiftPassword: '',
+  carUpgradeStrategy: 'score', // 改装策略：'score' (积分优先) | 'rank' (排名优先)
 };
 
 // 默认批量设置
@@ -348,6 +349,7 @@ export const defaultTemplate = {
   purchaseCnt: 15,
   blackMarketStandalonePurchase: false,
   legacyGiftPassword: '',
+  carUpgradeStrategy: 'score', // 改装策略：'score' (积分优先) | 'rank' (排名优先)
 };
 
 // 默认任务表单

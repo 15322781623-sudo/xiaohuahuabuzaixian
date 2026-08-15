@@ -865,12 +865,16 @@ export function createTasksCar(deps) {
 
   const batchCarResearchUpgrade = async () => {
     if (selectedTokens.value.length === 0) return;
-
+  
     const researchLimits = [
-      { researchId: 1, maxLevel: 36, name: "改装1" },
-      { researchId: 2, maxLevel: 34, name: "改装2" },
-      { researchId: 3, maxLevel: 2, name: "改装3" },
+      { researchId: 1, maxLevel: 60, name: "发动机" },
+      { researchId: 2, maxLevel: 60, unlockPart: 1, name: "车架" },
+      { researchId: 3, maxLevel: 60, unlockPart: 2, name: "悬架系统" },
+      { researchId: 4, maxLevel: 60, unlockPart: 3, name: "驾驶雷达" },
     ];
+  
+    // 从模板获取改装策略（默认为积分优先）
+    const carUpgradeStrategy = batchSettings.carUpgradeStrategy || 'score';
 
     try {
       isRunning.value = true;
@@ -883,18 +887,43 @@ export function createTasksCar(deps) {
         const token = tokens.value.find((t) => t.id === tokenId);
 
         try {
-          addLog({ time: new Date().toLocaleTimeString(), message: `=== 开始升级改装: ${token.name} ===`, type: "info" });
+          addLog({ time: new Date().toLocaleTimeString(), message: `=== 开始升级改装：${token.name} [策略:${carUpgradeStrategy === 'score' ? '积分优先' : '排名优先'}] ===`, type: "info" });
           await ensureConnection(tokenId);
-
-          for (const research of researchLimits) {
-            if (shouldStop.value) break;
-            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 开始升级${research.name}（目标${research.maxLevel}级）`, type: "info" });
-
-            const finalLevel = await upgradeResearch(tokenId, token.name, research);
-
-            if (finalLevel > 0) {
-              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${research.name}升级完成，共升到${finalLevel}级`, type: "success" });
+        
+          // 获取角色信息以获取积分数据
+          const roleInfoRes = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, getTimeout());
+          let currentPoints = 0;
+          if (roleInfoRes?.totalPointNum) {
+            currentPoints = Number(roleInfoRes.totalPointNum) || 0;
+          }
+          addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 当前累计消耗积分：${currentPoints}`, type: "info" });
+        
+          // 判断是否为赛季最后一天（简单策略：距离 24:00 不足 6 小时）
+          const now = new Date();
+          const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+          const hoursUntilEnd = (endOfDay - now) / 3600000;
+          const isLastDay = hoursUntilEnd < 6;
+                  
+          // 根据策略选择不同的升级逻辑
+          if (carUpgradeStrategy === 'rank') {
+            // 排名优先策略：全部升满 60 级
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 启动排名优先策略，车辆全收并逐个部件升至满级 60`, type: "info" });
+            for (const research of researchLimits) {
+              if (shouldStop.value) break;
+              addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 开始升级${research.name}（目标${research.maxLevel}级）`, type: "info" });
+              const finalLevel = await upgradeResearch(tokenId, token.name, research);
+              if (finalLevel > 0) {
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ${research.name}升级完成，共升到${finalLevel}级`, type: "success" });
+              }
             }
+          } else {
+            // 积分优先策略：冲到 4002，必要时冲刺 5000
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 启动积分优先策略，升级到 4002 分停止（最后${hoursUntilEnd.toFixed(1)}小时结束），若可达 5000 则冲刺`, type: "info" });
+            const targetScore = isLastDay && currentPoints >= 4800 ? 5000 : 4002;
+            const remainingToTarget = Math.max(0, targetScore - currentPoints);
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 目标分数：${targetScore}, 尚缺：${remainingToTarget}`, type: "info" });
+            const finalLevel = await scorePriorityUpgrade(tokenId, token.name, researchLimits, currentPoints, targetScore, isLastDay);
+            addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 积分优先策略执行完毕`, type: "success" });
           }
 
           // 领取改装升级累计奖励（原 catch 静默 + 无奖励时不打印日志，导致看不到操作痕迹，现补充诊断日志）
@@ -935,6 +964,87 @@ export function createTasksCar(deps) {
       isRunning.value = false;
       currentRunningTokenId.value = null;
     }
+  };
+
+  /** 
+   * 积分优先升级策略：升级到指定累计消耗分后停止
+   * 参数说明:
+   * - tokenId: token ID
+   * - tokenName: token 名称
+   * - researchLimits: 改装项目列表
+   * - currentPoints: 当前已消耗积分
+   * - targetScore: 目标分数 (4002 或 5000)
+   * - isLastDay: 是否最后一天
+   * 返回最终等级总和
+   */
+  const scorePriorityUpgrade = async (tokenId, tokenName, researchLimits, currentPoints, targetScore, isLastDay) => {
+    let totalLevelSum = 0;
+    
+    // 逐个部件循环升级，每次只升一级，然后检查积分
+    while (!shouldStop.value && currentPoints < targetScore) {
+      let upgradedThisRound = false;
+      
+      for (const research of researchLimits) {
+        if (shouldStop.value || currentPoints >= targetScore) break;
+        
+        try {
+          // 发送升级请求
+          await tokenStore.sendMessageWithPromise(tokenId, "car_research", { researchId: research.researchId }, getTimeout());
+          
+          // 升级成功，累加等级
+          const roleInfoRes = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, getTimeout());
+          currentPoints = Number(roleInfoRes?.totalPointNum) || currentPoints;
+          totalLevelSum += (research.maxLevel || 60);
+          upgradedThisRound = true;
+          
+          addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} ${research.name} +1 级 (当前积分:${currentPoints}/${targetScore}, 剩余:${Math.max(0, targetScore - currentPoints)})`, type: "success" });
+          
+          // 等待间隔
+          await new Promise((r) => setTimeout(r, 2000 + Math.random() * 1000));
+          
+        } catch (error) {
+          const msg = error.message || "";
+          
+          if (msg.includes("200400") || msg.includes("操作太快")) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} ${research.name}操作太快，等待 4 秒后重试...`, type: "warning" });
+            await new Promise((r) => setTimeout(r, 4000));
+            // 重试一次
+            try {
+              await tokenStore.sendMessageWithPromise(tokenId, "car_research", { researchId: research.researchId }, getTimeout());
+              const roleInfoRes = await tokenStore.sendMessageWithPromise(tokenId, "role_getroleinfo", {}, getTimeout());
+              currentPoints = Number(roleInfoRes?.totalPointNum) || currentPoints;
+              totalLevelSum += (research.maxLevel || 60);
+              upgradedThisRound = true;
+              addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} ${research.name}重试成功 +1 级 (当前积分:${currentPoints})`, type: "success" });
+              await new Promise((r) => setTimeout(r, 3000 + Math.random() * 1000));
+            } catch (retryError) {
+              if (retryError.message?.includes("200400")) {
+                addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} ${research.name}重试仍然太快，等待 6 秒后继续下一个部件...`, type: "warning" });
+                await new Promise((r) => setTimeout(r, 6000));
+                break; // 跳出该部件，尝试下一个部件
+              }
+              addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} ${research.name}重试失败：${retryError.message}`, type: "error" });
+              break;
+            }
+          } else if (msg.includes("已达上限") || msg.includes("数量不足") || msg.includes("12000100")) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} ${research.name}已达等级上限或条件不满足，跳过下一部件`, type: "info" });
+            continue; // 尝试下一个部件
+          } else {
+            addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} ${research.name}升级失败：${msg}`, type: "error" });
+            break;
+          }
+        }
+      }
+      
+      // 如果这一轮没有任何部件成功升级，说明所有部件都已满级或频繁触发限速
+      if (!upgradedThisRound) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 本轮无升级发生（可能已达上限）`, type: "warning" });
+        break;
+      }
+    }
+    
+    addLog({ time: new Date().toLocaleTimeString(), message: `${tokenName} 积分优先升级结束，总累计升级 ${totalLevelSum} 级，最终积分：${currentPoints}/${targetScore}`, type: "success" });
+    return totalLevelSum;
   };
 
   /** 升级单个改装项目，返回最终等级 */
