@@ -2716,6 +2716,7 @@
               v-model:value="helperSettings.boxType"
               :options="boxTypeOptions"
               size="small"
+              @update:value="checkBoxCount"
             />
           </div>
           <div class="setting-item" v-if="helperType === 'fish'">
@@ -2816,14 +2817,16 @@
             />
           </div>
           <div class="setting-item" v-if="helperType !== 'pointsBox' && helperType !== 'weeklyMarket' && helperType !== 'cdk' && helperType !== 'cheer'">
-            <label class="setting-label">消耗数量（10的倍数）</label>
+            <label class="setting-label">消耗数量（10 的倍数）</label>
             <n-input-number
               v-model:value="helperSettings.count"
               :min="10"
               :max="10000"
               :step="10"
               size="small"
+              @update:value="checkBoxCount"
             />
+            <span v-if="boxCountInfo" style="margin-left: 12px; color: #888; font-size: 13px;">→ 背包有 {{ boxCountInfo }}</span>
           </div>
         </div>
         <div class="modal-actions" style="margin-top: 20px; text-align: right">
@@ -8106,6 +8109,7 @@ const formatDate = (dateStr) => {
 const showHelperModal = ref(false);
 const showConsumeModal = ref(false);
 const helperType = ref("box"); // 'box' | 'fish' | 'recruit'
+const boxCountInfo = ref(null);  // 背包宝箱数量显示
 const helperSettings = reactive({
   boxType: 2001,
   fishType: 1,
@@ -14505,17 +14509,56 @@ const updateLastTaskExecution = () => {
   localStorage.setItem(`lastTaskExecution_${taskId}`, nowMs.toString());
 };
 
-// 注: boxTypeOptions, fishTypeOptions 已从 @/utils/batch 导入
+// 注：boxTypeOptions, fishTypeOptions 已从 @/utils/batch 导入
+
+const checkBoxCount = async () => {
+  // 宝箱类型或消耗数量变化时，重新查询背包中对应宝箱的数量
+  if (helperType.value !== 'box' && helperType.value !== 'diamondBox') return;
+
+  const token = tokens.value.find(t => t.id === selectedTokens.value[0]);
+  if (!token) {
+    boxCountInfo.value = null;
+    return;
+  }
+
+  const boxId = helperType.value === 'diamondBox' ? 2005 : helperSettings.boxType;
+  const boxName = boxTypeOptions.find(o => o.value === boxId)?.label || `宝箱(${boxId})`;
+
+  boxCountInfo.value = '查询中...';
+  try {
+    // 未连接时自动建立连接（已连接则直接复用）
+    if (tokenStore.getWebSocketStatus(token.id) !== 'connected') {
+      await ensureConnection(token.id);
+    }
+    const roleRes = await tokenStore.sendMessageWithPromise(
+      token.id,
+      "role_getroleinfo",
+      {},
+      batchSettings.defaultCommandTimeout || 5000,
+    );
+    const items = roleRes?.role?.items || roleRes?.data?.role?.items || {};
+    const count = Number(items[boxId]?.quantity || 0);
+    boxCountInfo.value = `${boxName} ${count}个`;
+  } catch (e) {
+    console.error('查询宝箱数量失败:', e);
+    boxCountInfo.value = null;
+  }
+};
 
 const openHelperModal = async (type) => {
   helperType.value = type;
-  
+
+  // 一键开箱功能：提前查询背包中对应宝箱的数量
+  if (type === 'box' || type === 'diamondBox') {
+    checkBoxCount();
+  }
+
   //  一键宝箱周开箱不提前获取积分，避免重复连接
   // batchOpenBoxByPoints 执行时会自动连接并获取积分
   if (type === 'pointsBox') {
     helperSettings.targetRounds = 1;  // 默认值
   }
-  
+
   showHelperModal.value = true;
 };
 

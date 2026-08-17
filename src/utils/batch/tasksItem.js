@@ -2507,20 +2507,12 @@ export function createTasksItem(deps) {
       ? (batchSettings.targetBoxRounds || 1)
       : (helperSettings.targetRounds || 1);
 
-    const boxPriority = [
-      { id: 2002, name: "青铜宝箱", points: 10, reserve: 0 }, // 优先开青铜
-      { id: 2003, name: "黄金宝箱", points: 20, reserve: 0 }, // 其次开黄金
-      { id: 2004, name: "铂金宝箱", points: 50, reserve: 0 }, // 再次开铂金
-      { id: 2001, name: "木质宝箱", points: 1, reserve: 200 }, // 最后用木质精确补足
-    ];
-
     selectedTokens.value.forEach((id) => {
       tokenStatus.value[id] = "waiting";
     });
 
     const processOpenBoxByPoints = async (tokenId) => {
-      if (shouldStop.value)
-        return;
+      if (shouldStop.value) return;
 
       tokenStatus.value[tokenId] = "running";
       const token = tokens.value.find((t) => t.id === tokenId);
@@ -2528,7 +2520,7 @@ export function createTasksItem(deps) {
       try {
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `=== 开始按积分开箱: ${token.name} ===`,
+          message: `=== 开始按积分开箱 [实时查询版]: ${token.name} ===`,
           type: "info",
         });
         addLog({
@@ -2539,22 +2531,62 @@ export function createTasksItem(deps) {
 
         await ensureConnection(tokenId);
 
-        // 1. 获取当前宝箱周积分
-        const activityRes = await tokenStore.sendMessageWithPromise(
-          tokenId,
-          "activity_get",
-          {},
-          5000,
-        );
+        // 🎯 辅助函数：实时查询活动进度
+        const fetchProgress = async () => {
+          try {
+            const res = await tokenStore.sendMessageWithPromise(
+              tokenId,
+              "activity_get",
+              {},
+              5000,
+            );
+            const activity = res?.activity || res?.body?.activity || res;
+            const myTotalInfo = activity?.myTotalInfo || {};
+            const boxWeekInfo = myTotalInfo["2"]; // 2=宝箱周
 
-        const activity = activityRes?.activity || activityRes?.body?.activity || activityRes;
-        const myTotalInfo = activity?.myTotalInfo || {};
-        const boxWeekInfo = myTotalInfo["2"]; // 2表示宝箱周
+            if (!boxWeekInfo) return null;
 
-        // 调试日志
-        console.log(`[${token.name}] 初始 boxWeekInfo:`, JSON.stringify(boxWeekInfo));
+            const points = Number(boxWeekInfo.num || boxWeekInfo.score || boxWeekInfo.value || 0);
+            const rounds = Number(boxWeekInfo.rounds || 0);
+            return { points, rounds };
+          } catch (e) {
+            console.warn(`${token.name} 获取进度失败:`, e.message);
+            return null;
+          }
+        };
 
-        if (!boxWeekInfo) {
+        // 🎯 辅助函数：获取背包物品
+        const fetchItems = async () => {
+          try {
+            const roleRes = await tokenStore.sendMessageWithPromise(
+              tokenId,
+              "role_getroleinfo",
+              {},
+              10000,
+            );
+            const role = roleRes?.role || roleRes?.data?.role || {};
+            return role.items || {};
+          } catch (e) {
+            console.warn(`${token.name} 获取背包失败:`, e.message);
+            return {};
+          }
+        };
+
+        // 🎯 辅助函数：获取宝箱名称
+        const getBoxName = (id) => {
+          const names = {
+            2001: "木质宝箱",
+            2002: "青铜宝箱",
+            2003: "黄金宝箱",
+            2004: "铂金宝箱",
+            2005: "钻石宝箱"
+          };
+          return names[id] || `宝箱${id}`;
+        };
+
+        // 📊 初始化：查询起始进度和目标
+        const initialProg = await fetchProgress();
+        if (!initialProg) {
           addLog({
             time: new Date().toLocaleTimeString(),
             message: `${token.name} 未获取到宝箱周活动数据，可能还未开启宝箱周`,
@@ -2564,346 +2596,277 @@ export function createTasksItem(deps) {
           return;
         }
 
-        // 兼容多种字段名：num, score, value
-        const currentRoundScore = Number(boxWeekInfo.num || boxWeekInfo.score || boxWeekInfo.value || 0);
-        // rounds 表示当前轮数（第几轮）
-        const currentRound = Number(boxWeekInfo.rounds || 0);
-        
-        // 计算已完成轮数和总积分：
-        // - 当当前轮积分为8000时，该轮已完成，completedRounds = rounds
-        // - 当当前轮积分<8000时，该轮未完成，completedRounds = rounds - 1
-        let completedRounds;
-        let totalScore;
-        if (currentRoundScore >= TARGET_SCORE_PER_ROUND) {
-          // 当前轮已完成
-          completedRounds = currentRound;
-          totalScore = currentRound * TARGET_SCORE_PER_ROUND;
-        } else {
-          // 当前轮未完成
-          completedRounds = Math.max(0, currentRound - 1);
-          totalScore = completedRounds * TARGET_SCORE_PER_ROUND + currentRoundScore;
-        }
-        
+        const startProgress = (initialProg.rounds - 1) * TARGET_SCORE_PER_ROUND + initialProg.points;
+        const currentRoundEnd = (Math.floor(startProgress / TARGET_SCORE_PER_ROUND) + 1) * TARGET_SCORE_PER_ROUND;
+        const targetProgress = Math.min(MAX_ROUNDS * TARGET_SCORE_PER_ROUND, currentRoundEnd + (targetRounds - 1) * TARGET_SCORE_PER_ROUND);
+
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} 当前宝箱周: 第 ${currentRound} 轮，已完成 ${completedRounds} 轮，当前轮积分: ${currentRoundScore}，总积分: ${totalScore}`,
+          message: `${token.name} 🎯 起始积分=${startProgress} 目标积分=${targetProgress}`,
           type: "info",
         });
-        
-        // 计算目标总积分和还需要的积分
-        const targetTotalScore = targetRounds * TARGET_SCORE_PER_ROUND;
-        let neededScore = Math.max(0, targetTotalScore - totalScore);
-        
-        // 如果目标已达标但当前轮未完成，计算完成当前轮所需积分
-        if (neededScore <= 0 && currentRoundScore < TARGET_SCORE_PER_ROUND) {
-          neededScore = TARGET_SCORE_PER_ROUND - currentRoundScore;
-        }
-        
+
+        // 📦 初始查询背包
+        let bagItems = await fetchItems();
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `${token.name} 目标总积分: ${targetTotalScore}，还需积分: ${neededScore}`,
+          message: `${token.name} 背包持有：木质=${bagItems[2001]?.quantity || 0}, 青铜=${bagItems[2002]?.quantity || 0}, 黄金=${bagItems[2003]?.quantity || 0}, 铂金=${bagItems[2004]?.quantity || 0}`,
           type: "info",
         });
-        
-        // 无需开箱条件：第4轮且当前轮积分已满8000（4轮全部完成）
-        if (currentRound === 4 && currentRoundScore >= TARGET_SCORE_PER_ROUND) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 已完成 ${completedRounds} 轮宝箱任务，无需开箱`,
-            type: "success",
-          });
-        } else {
-          // 2. 获取角色物品信息
-          const roleInfoRes = await tokenStore.sendMessageWithPromise(
-            tokenId,
-            "role_getroleinfo",
-            {},
-            10000,
-          );
-          const role = roleInfoRes?.role || roleInfoRes?.data?.role || {};
-          const items = role.items || {};
 
-          // 计算可用宝箱数量
-          const boxInventory = {};
-          let totalAvailablePoints = 0;
+        // 🔁 WHILE 循环主逻辑（外部脚本 runRounds 参考模式）
+        const boxPriority = [2002, 2003, 2004]; // 青铜→黄金→铂金优先级
+        const BOX_POINTS = { 2001: 1, 2002: 10, 2003: 20, 2004: 50 };
+        let loopCount = 0;
+        const maxLoops = 500; // 防止死循环
+        let totalOpened = 0;  // 统计总共开了多少个箱子
 
-          for (const box of boxPriority) {
-            const count = items[box.id]?.quantity || 0;
-            const available = box.id === 2001 ? Math.max(0, count - box.reserve) : count;
-            boxInventory[box.id] = available;
-            totalAvailablePoints += available * box.points;
-          }
+        while (loopCount < maxLoops && !shouldStop.value) {
+          loopCount++;
 
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 可用宝箱: 木质=${boxInventory[2001]}, 青铜=${boxInventory[2002]}, 黄金=${boxInventory[2003]}, 铂金=${boxInventory[2004]}`,
-            type: "info",
-          });
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 可获得总积分: ${totalAvailablePoints}`,
-            type: "info",
-          });
-
-          if (totalAvailablePoints < neededScore) {
+          // 1️⃣ 查询当前进度
+          const curProg = await fetchProgress();
+          if (!curProg) {
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 积分不足！需要 ${neededScore}，可获得 ${totalAvailablePoints}`,
+              message: `${token.name} ❌ 获取进度失败`,
               type: "error",
             });
-            tokenStatus.value[tokenId] = "failed";
-            return;
+            break;
           }
 
-          // 3. 计算需要开的宝箱数量：所有箱子只开10的倍数，木质不开单个
-          let remainingScore = neededScore;
-          const openedBoxes = {};
+          const currentProgress = (curProg.rounds - 1) * TARGET_SCORE_PER_ROUND + curProg.points;
 
-          for (const box of boxPriority) {
-            if (remainingScore <= 0)
-              break;
-
-            const available = boxInventory[box.id];
-            if (available <= 0)
-              continue;
-
-            // 所有宝箱只开10的倍数
-            const maxAllowedByScore = Math.floor(remainingScore / box.points);
-            const maxAllowed = Math.floor(maxAllowedByScore / 10) * 10;
-            const availableBoxes = Math.floor(available / 10) * 10;
-            const boxesToOpen = Math.min(maxAllowed, availableBoxes);
-
-            if (boxesToOpen <= 0)
-              continue;
-
-            openedBoxes[box.id] = boxesToOpen;
-            const gainedPoints = boxesToOpen * box.points;
-            remainingScore -= gainedPoints;
-
+          // 2️⃣ 检查是否已达到目标
+          if (currentProgress >= targetProgress) {
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 计划开 ${box.name}: ${boxesToOpen} 个 (+${gainedPoints}积分)`,
+              message: `${token.name} 🎉 已达到目标 ${targetProgress} 积分！成功`,
+              type: "success",
+            });
+            break;
+          }
+
+          const remain = targetProgress - currentProgress;
+
+          // 每 20 次循环显示一次进度
+          if (loopCount % 20 === 1) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} ⏱️ 进度：${currentProgress}/${targetProgress} (还需${remain}分 | 已开${totalOpened}个箱)`,
               type: "info",
             });
           }
 
-          // 检查是否还有剩余（剩余积分不足开10个箱子，待领取奖励后补足）
-          if (remainingScore > 0) {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} 第一轮开箱后还差 ${remainingScore} 积分，待领取奖励后用青铜/黄金补足`,
-              type: "info",
-            });
+          // 3️⃣ 按固定优先级开箱（青铜→黄金→铂金）
+          let opened = false;
+          let lastBoxId = null;
+
+          const priority = [2002, 2003, 2004]; // 青铜优先
+
+          for (const boxId of priority) {
+            if (shouldStop.value) break;
+
+            const stock = bagItems[boxId]?.quantity || 0;
+            const pts = BOX_POINTS[boxId];
+
+            // 计算按当前剩余积分最多能开多少批箱子（每批 10 个）
+            const maxBoxesByScore = Math.floor(remain / pts);
+            const maxBatchCount = Math.floor(maxBoxesByScore / 10); // 最多能开多少批（每批 10 个）
+
+            // 🎯 情况 A：剩余积分足够开 ≥10 个 → 标准批量模式（每批 10-100 个）
+            if (maxBatchCount >= 1 && stock >= 10) {
+              const actual = Math.floor(Math.min(10 * maxBatchCount, 100, stock) / 10) * 10;
+              if (actual < 10) {
+                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ⚠️ ${getBoxName(boxId)} 库存不足`, type: "warning" });
+                continue;
+              }
+
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 📦 开${getBoxName(boxId)} ${actual}个 (+${actual * pts}分)`,
+                type: "info",
+              });
+
+              try {
+                await tokenStore.sendMessageWithPromise(
+                  tokenId,
+                  "item_openbox",
+                  { itemId: boxId, number: actual },
+                  5000,
+                );
+
+                opened = true;
+                lastBoxId = boxId;
+                totalOpened += actual;
+                bagItems[boxId].quantity -= actual;
+                await new Promise((r) => setTimeout(r, _getModuleDelay('openbox')));
+                break; // 每次只开一种箱子
+
+              } catch (openErr) {
+                const errMsg = openErr.message || "";
+                if (errMsg.includes("服务器错误：400000") || errMsg.includes("已上限") || errMsg.includes("物品数量不足")) {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ⚠️ ${getBoxName(boxId)} 不足或已满，跳过`, type: "warning" });
+                } else {
+                  addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ❌ 开${getBoxName(boxId)} 失败：${errMsg}`, type: "error" });
+                }
+              }
+            }
           }
 
-          // 4. 执行开箱（所有箱子只开10的倍数）
-          for (const box of boxPriority) {
-            if (shouldStop.value)
-              break;
-
-            const count = openedBoxes[box.id] || 0;
-            if (count <= 0)
-              continue;
-
-            const batches = count / 10;
-
+          // 4️⃣ 每开 50 个高级箱就尝试领取一次奖励补货
+          if (opened && lastBoxId !== 2001 && totalOpened % 50 === 0) {
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} 开始开 ${box.name}: ${count} 个`,
+              message: `${token.name} 🎁 尝试领取积分奖励补货...`,
               type: "info",
             });
-
-            for (let i = 0; i < batches && !shouldStop.value; i++) {
+            try {
               await tokenStore.sendMessageWithPromise(
                 tokenId,
-                "item_openbox",
-                { itemId: box.id, number: 10 },
+                "item_batchclaimboxpointreward",
+                {},
                 5000,
               );
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `${token.name} ${box.name} 开箱进度: ${(i + 1) * 10}/${count}`,
-                type: "info",
+                message: `${token.name} ✅ 已领取积分奖励`,
+                type: "success",
               });
-              await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
+            } catch (claimErr) {
+              const errMsg = claimErr.message || "";
+              if (!errMsg.includes("已领取") && !errMsg.includes("1100010")) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} ⚠️ 领取奖励失败：${errMsg}`,
+                  type: "warning",
+                });
+              }
+              // 领取成功后重新查询背包
+              bagItems = await fetchItems();
             }
           }
 
-          // 5. 领取积分值宝箱奖励
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 领取积分值宝箱奖励...`,
-            type: "info",
-          });
-
-          try {
-            await tokenStore.sendMessageWithPromise(
-              tokenId,
-              "item_batchclaimboxpointreward",
-              {},
-              5000,
-            );
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `${token.name} ✅ 积分值宝箱奖励领取成功`,
-              type: "success",
-            });
-          } catch (error) {
-            const errorMsg = error.message || "";
-            if (errorMsg.includes("已领取") || errorMsg.includes("1100010")) {
+          // 5️⃣ 高级箱不够，用木质宝箱补齐
+          if (!opened && remain > 0) {
+            // 首先尝试领取积分奖励获取新箱子（每轮最多领 1 次，避免空转）
+            if (!lastBoxId) { // 仅当本轮还没开过箱时才尝试补货
               addLog({
                 time: new Date().toLocaleTimeString(),
-                message: `${token.name} 积分值宝箱奖励已领取`,
+                message: `${token.name} ⚠️ 无高级箱可开，尝试领取奖励补货...`,
                 type: "info",
               });
-            } else {
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 领取积分值宝箱奖励失败: ${errorMsg}`,
-                type: "warning",
-              });
-            }
-          }
-
-          // 5.5 第二轮补足：重新查询积分，用青铜/黄金补足剩余
-          const refreshActivityRes = await tokenStore.sendMessageWithPromise(
-            tokenId,
-            "activity_get",
-            {},
-            5000,
-          );
-          const refreshActivity = refreshActivityRes?.activity || refreshActivityRes?.body?.activity || refreshActivityRes;
-          const refreshBoxWeekInfo = refreshActivity?.myTotalInfo?.["2"];
-          if (refreshBoxWeekInfo) {
-            const refreshRoundScore = Number(refreshBoxWeekInfo.num || refreshBoxWeekInfo.score || refreshBoxWeekInfo.value || 0);
-            const refreshRound = Number(refreshBoxWeekInfo.rounds || 0);
-            if (refreshRoundScore < TARGET_SCORE_PER_ROUND) {
-              const stillNeed = TARGET_SCORE_PER_ROUND - refreshRoundScore;
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                message: `${token.name} 第二轮补足: 第 ${refreshRound} 轮，当前积分 ${refreshRoundScore}，还需 ${stillNeed}`,
-                type: "info",
-              });
-
-              // 用青铜/黄金补足（不开木质）
-              const supplementPriority = [
-                { id: 2002, name: "青铜宝箱", points: 10 },
-                { id: 2003, name: "黄金宝箱", points: 20 },
-                { id: 2004, name: "铂金宝箱", points: 50 },
-              ];
-              let supplementRemaining = stillNeed;
-              const supplementBoxes = {};
-
-              for (const box of supplementPriority) {
-                if (supplementRemaining <= 0) break;
-                const avail = Number(items[box.id]?.quantity || 0);
-                if (avail <= 0) continue;
-                const maxByScore = Math.floor(supplementRemaining / box.points);
-                const maxAllowed = Math.floor(maxByScore / 10) * 10 || (maxByScore > 0 ? maxByScore * 10 <= avail ? maxByScore : Math.floor(avail / 10) * 10 : 0);
-                const toOpen = Math.min(Math.floor(maxByScore / 10) * 10, Math.floor(avail / 10) * 10);
-                // 如果剩余积分不足10的倍数，向上取整开10个
-                let finalToOpen = toOpen;
-                if (finalToOpen <= 0 && supplementRemaining > 0 && avail >= 10) {
-                  finalToOpen = 10;
-                }
-                if (finalToOpen > 0) {
-                  supplementBoxes[box.id] = finalToOpen;
-                  supplementRemaining -= finalToOpen * box.points;
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 补足计划开 ${box.name}: ${finalToOpen} 个 (+${finalToOpen * box.points}积分)`,
-                    type: "info",
-                  });
-                }
-              }
-
-              // 执行补足开箱
-              for (const box of supplementPriority) {
-                if (shouldStop.value) break;
-                const count = supplementBoxes[box.id] || 0;
-                if (count <= 0) continue;
-                const batches = Math.ceil(count / 10);
-                for (let i = 0; i < batches && !shouldStop.value; i++) {
-                  const num = Math.min(10, count - i * 10);
-                  await tokenStore.sendMessageWithPromise(
-                    tokenId,
-                    "item_openbox",
-                    { itemId: box.id, number: num },
-                    5000,
-                  );
-                  addLog({
-                    time: new Date().toLocaleTimeString(),
-                    message: `${token.name} 补足 ${box.name}: ${(i + 1) * 10 > count ? count : (i + 1) * 10}/${count}`,
-                    type: "info",
-                  });
-                  await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
-                }
-              }
-
-              // 补足后再次领取积分奖励
               try {
-                await tokenStore.sendMessageWithPromise(tokenId, "item_batchclaimboxpointreward", {}, 5000);
-                addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} ✅ 补足后积分奖励领取成功`, type: "success" });
-              } catch (e) { /* ignore */ }
+                await tokenStore.sendMessageWithPromise(
+                  tokenId,
+                  "item_batchclaimboxpointreward",
+                  {},
+                  5000,
+                );
+                await new Promise((r) => setTimeout(r, 300));
+
+                // 重新查询青铜/黄金数量
+                bagItems = await fetchItems();
+                const newBronze = Math.floor(bagItems[2002]?.quantity || 0 / 10) * 10;
+                const newGold = Math.floor(bagItems[2003]?.quantity || 0 / 10) * 10;
+                
+                if (newBronze >= 10 || newGold >= 10) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} ✅ 补货到高级箱 (${newBronze}青铜/${newGold}黄金)，本轮将继续开箱`,
+                    type: "info",
+                  });
+                  // 不 continue，让下面的开箱逻辑继续执行，因为 bagItems 已更新
+                } else {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} ⚠️ 补货未获高级箱，将使用木质宝箱`,
+                    type: "warning",
+                  });
+                }
+
+              } catch (claimErr) {
+                // 领取失败不影响继续用木质
+              }
+            }
+
+            // 用木质补齐（精确补足，不必是 10 的倍数）
+            const woodStock = bagItems[2001]?.quantity || 0;
+            if (woodStock <= 0) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} ❌ 所有宝箱用完`,
+                type: "error",
+              });
+              break;
+            }
+
+            const wTake = Math.min(remain, woodStock, 50); // 木质每批最多 50 个
+            if (wTake > 0) {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 🪵 开木质宝箱 ${wTake}个 (+${wTake}分)`,
+                type: "info",
+              });
+
+              try {
+                await tokenStore.sendMessageWithPromise(
+                  tokenId,
+                  "item_openbox",
+                  { itemId: 2001, number: wTake },
+                  5000,
+                );
+                opened = true;
+                totalOpened += wTake;
+
+                // 更新背包
+                bagItems[2001].quantity -= wTake;
+
+                await new Promise((r) => setTimeout(r, _getModuleDelay('openbox')));
+
+              } catch (woodErr) {
+                const woodMsg = woodErr.message || "";
+                if (!(woodMsg.includes("服务器错误：400000") ||
+                      woodMsg.includes("400000") ||
+                      woodMsg.includes("已上限") ||
+                      woodMsg.includes("服务器错误：400010") ||
+                      woodMsg.includes("400010") ||
+                      woodMsg.includes("物品数量不足"))) {
+                  addLog({
+                    time: new Date().toLocaleTimeString(),
+                    message: `${token.name} ❌ 开木质宝箱失败：${woodMsg}`,
+                    type: "error",
+                  });
+                }
+              }
             }
           }
 
-        // 6. 领取宝箱周任务达标奖励（珍珠）
-        const finalActivityRes = await tokenStore.sendMessageWithPromise(
-          tokenId,
-          "activity_get",
-          {},
-          5000,
-        );
-
-        // 调试日志：查看响应结构
-        console.log(`[${token.name}] activity_get 响应:`, JSON.stringify(finalActivityRes).substring(0, 500));
-
-        const finalActivity = finalActivityRes?.activity || finalActivityRes?.body?.activity || finalActivityRes;
-        const finalMyTotalInfo = finalActivity?.myTotalInfo || {};
-        const finalBoxWeekInfo = finalMyTotalInfo["2"];
-
-        // 调试日志：查看宝箱周数据
-        console.log(`[${token.name}] myTotalInfo:`, JSON.stringify(finalMyTotalInfo).substring(0, 300));
-        console.log(`[${token.name}] boxWeekInfo["2"]:`, JSON.stringify(finalBoxWeekInfo));
-
-        if (finalBoxWeekInfo) {
-          // 兼容多种字段名：num, score, value
-          const finalRoundScore = Number(finalBoxWeekInfo.num || finalBoxWeekInfo.score || finalBoxWeekInfo.value || 0);
-          // rounds 表示当前轮数（第几轮）
-          const finalCurrentRound = Number(finalBoxWeekInfo.rounds || 0);
-          // 计算已完成轮数和总积分
-          let finalCompletedRounds;
-          let finalTotalScore;
-          if (finalRoundScore >= TARGET_SCORE_PER_ROUND) {
-            finalCompletedRounds = finalCurrentRound;
-            finalTotalScore = finalCurrentRound * TARGET_SCORE_PER_ROUND;
-          } else {
-            finalCompletedRounds = Math.max(0, finalCurrentRound - 1);
-            finalTotalScore = finalCompletedRounds * TARGET_SCORE_PER_ROUND + finalRoundScore;
-          }
-
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `${token.name} 开箱完成: 第 ${finalCurrentRound} 轮，已完成 ${finalCompletedRounds} 轮，当前轮积分: ${finalRoundScore}，总积分: ${finalTotalScore}`,
-            type: "success",
-          });
-
-          // 显示每轮完成状态
-          for (let i = 1; i <= Math.min(finalCompletedRounds, MAX_ROUNDS); i++) {
+          // 6️⃣ 如果本轮没打开任何箱子，说明库存不足或剩余积分太少
+          if (!opened) {
             addLog({
               time: new Date().toLocaleTimeString(),
-              message: `${token.name} ✅ 第 ${i} 轮已完成`,
-              type: "success",
+              message: `${token.name} ⚠️ 无法继续开箱（库存不足或剩余积分不足开 10 个箱子）`,
+              type: "warning",
             });
+            break;
           }
+
+          // 延迟避免服务器压力
+          await new Promise((r) => setTimeout(r, _getModuleDelay('default')));
         }
-        } // 关闭 else 块
+
+        // 7️⃣ while 循环结束后：完成
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 🎉 按积分开箱完成 (共开${totalOpened}个箱)`,
+          type: "success",
+        });
 
         tokenStatus.value[tokenId] = "completed";
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `=== ${token.name} 按积分开箱完成 ===`,
+          message: `=== ${token.name} 按积分开箱完成 (共开${totalOpened}个箱) ===`,
           type: "success",
         });
       } catch (error) {

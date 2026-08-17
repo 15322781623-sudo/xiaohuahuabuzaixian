@@ -19,11 +19,11 @@ pub const PROXY_PORT: u16 = 19863;
 // ══════════════════════════════════════════
 const WX_UA: &str = concat!(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) ",
-    "Chrome/132.0.0.0 Safari/537.36 ",
-    "MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI ",
+    "Chrome/139.0.0.0 Safari/537.36 ",
+    "MicroMessenger/7.0.22.2380(0x67022150) NetType/WIFI ",
     "MiniProgramEnv/Windows ",
-    "WindowsWechat/WMPF WindowsWechat(0x63090a13) ",
-    "UnifiedPCWindowsWechat(0xf2541937) XWEB/19823",
+    "WindowsWechat/WMPF WindowsWechat(0x6800002B) ",
+    "UnifiedPCWindowsWechat(0xf2541937) XWEB/21093",
 );
 const WX_ORIGIN: &str = "https://servicewechat.com";
 const WX_REFERER: &str = "https://servicewechat.com/wx0840558555a454ed/331/page-frame.html";

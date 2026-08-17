@@ -1074,6 +1074,17 @@ export default {
         }
       },
       {
+        prefix: '/api/ucenter',
+        target: 'https://ucenter-app-server.hortorgames.com',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 12; 22081212C Build/SKQ1.220303.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.60 Mobile Safari/537.36',
+          'Accept': '*/*',
+          'Host': 'ucenter-app-server.hortorgames.com',
+          'Connection': 'keep-alive',
+          'Content-Type': 'application/json; charset=utf-8'
+        }
+      },
+      {
         prefix: '/api/hortor',
         target: 'https://comb-platform.hortorgames.com',
         headers: {

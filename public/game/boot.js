@@ -22,6 +22,9 @@
                     var cacheData = JSON.parse(cached);
                     if (cacheData && cacheData.bundleVers && typeof cacheData.bundleVers === 'object') {
                         Object.assign(settings.bundleVers, cacheData.bundleVers);
+                        if (cacheData.bundleVers.codeVersion) {
+                            settings.codeVersion = cacheData.bundleVers.codeVersion;  // ★ 缓存也同步版本
+                        }
                         appliedCache = true;
                         console.log('[boot v1.0] ✅ 已应用本地manifest缓存, 条目:', Object.keys(cacheData.bundleVers).length);
                     }
@@ -29,7 +32,7 @@
             } catch(e) {}
 
             var xhr = new XMLHttpRequest();
-            var manifestUrl = 'https://xxz-xyzw.hortorgames.com/login/manifest?platform=wx&version=0.32.0-android';
+            var manifestUrl = 'https://xxz-xyzw.hortorgames.com/login/manifest?platform=wx&version=2.41.5-wx';
             console.log('[boot v1.0] POST', manifestUrl);
 
             xhr.open('POST', manifestUrl, true);
@@ -97,8 +100,12 @@
         var ver = settings.codeVersion ||
                   (typeof globalThis !== 'undefined' && globalThis.CODE_VERSION) ||
                   (typeof window !== 'undefined' && window.CODE_VERSION) ||
-                  '2.29.2';
-        var gameVer = (typeof globalThis !== 'undefined' && globalThis.GAME_VERSION) || '0.32.0-android';
+                  '2.41.5';
+        // ★ 自动版本覆盖: manifest 返回的 codeVersion 优先拼 -wx 后缀（游戏更新后
+        //   无需改代码），manifest 失败时退回 game-defines 静态值，再退兜底
+        var gameVer = (settings.codeVersion ? settings.codeVersion + '-wx' : null) ||
+                      (typeof globalThis !== 'undefined' && globalThis.GAME_VERSION) ||
+                      '2.41.5-wx';
         var commitId = (typeof globalThis !== 'undefined' && globalThis.COMMIT_ID) || '';
 
         try { delete globalThis.CODE_VERSION; } catch(e) {}
@@ -124,6 +131,10 @@
         }
 
         settings.codeVersion = ver;
+        // ★ 自动覆盖 GAME_VERSION: 始终跟随最终 codeVersion 拼 -wx 后缀
+        if (settings.codeVersion) {
+            gameVer = settings.codeVersion + '-wx';
+        }
         globalThis.GAME_VERSION = gameVer;
         globalThis.ENV = 'Prod';
         globalThis.GAME_ID = 'xyzw_mix';

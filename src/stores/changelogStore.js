@@ -14,19 +14,24 @@ export const useChangelogStore = defineStore("changelog", () => {
    */
   const changelogs = ref([
     {
-      version: "v2.49.5",
+      version: "v2.49.6",
       date: "2026-08-10",
       type: "patch",
-      title: "云端配置 BIN 数据随机丢失修复 + 云端同步加密密钥 TDZ 错误修复：变量顺序调整 + 黑名单完善 + 配置数量限制",
+      title: "宝箱周开箱功能简化与对齐：固定优先级 + 补货后置 + 移除超标逻辑",
       fixes: [
-        "修复云端配置恢复后 BIN 数据随机丢失 bug：分离 clear() 和 put() 为两个独立事务，避免时序竞争导致部分 BIN 账号数据无法写入",
-        "增强 BIN 恢复错误日志：每个 put() 操作都添加独立的 error handler，详细记录失败账号 ID 和具体原因",
-        "优化 IndexedDB 事务流程：先清空再写入的两阶段提交模式，确保原子性和数据完整性",
-        "修复 cloudEncKey 初始化错误 (TDZ)：将 ENC_KEY_STORAGE 常量声明移动到常量列表顶部，删除重复声明，解决 Cannot access 'cloudEncKey' before initialization 错误",
-        "完善云同步黑名单策略：新增 cloudEncKey 到 SNAPSHOT_BLACKLIST，确保加密密钥不上传云端，符合本地专用安全原则",
-        "云端配置上传数量限制：每账号最多允许上传 10 个配置快照，达到上限时自动禁用上传按钮并显示提示",
-        "修复配置数量统计字段名错误：API 返回的配置对象字段名为 name 而非 device，修正过滤条件从 c.device 改为 c.name",
-        "云端同步界面优化：实时显示总配置数、剩余可用配额，超限后给予明确的视觉警示"
+        "固定优先级 [2002, 2003, 2004]（青铜→黄金→铂金）",
+        "要求每批必须 10 个一组开箱，避免超额浪费积分",
+        "优化批量计算公式：从 Math.floor(remain / pts) 改为 Math.floor(maxBoxesByScore / 10) * 10，确保实际开箱数量始终是 10 的倍数",
+        "修复达标奖励领取失效：完全移除 activity_buystoregoods 达标奖励领取逻辑（原约 140 行）",
+        "修复 woodStock 变量未定义错误：在木质宝箱使用前添加 const woodStock = bagItems[2001]?.quantity || 0;",
+        "修复重复补货逻辑 bug：删除两段重复的补货代码，仅保留一段完整的 if (!lastBoxId) 条件判断",
+        "补货机制位置调整：在所有高级箱优先级尝试失败后才执行补货，不再中途介入",
+        "清理临时探测代码：删除 scripts/tmp-probe-manifest*.cjs 等不必要的测试文件",
+        
+        // === 昨晚修复的黑市多选购买与批量开箱 (2026-08-09) ===
+       
+        "黑市多选购买支持定时任务配置：可从设置面板保存配置到 batchSettings.manualBuyItems，定时任务自动读取执行",
+        "批量开箱功能：固定优先级、10 个一组开箱、补货后置、移除超标逻辑",
       ],
     },
     {
