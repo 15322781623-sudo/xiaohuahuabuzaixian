@@ -64,9 +64,10 @@ export class NightmareAutoBattleService {
     this._level8FirstEntry = false; // 卡点第 8 关标记
     this._cleanupDone = false;       // 清理标记，防止重复遣散
     this._preMidnightReconnectDone = false; // 23:59 重连标记，防止分钟内重复执行
-    this._reopenRetryCount = 0;      // 房间重建重试次数，最多 1 次
-    this._recoverUsed = 0;           // 本轮已使用的恢复次数（全队共享：开局1次，通关第4/6殿各+1）
+    this._reopenRetryCount = 0;      // 第 8 关房间重建重试次数，最多 1 次
+    this._recoverUsed = 0;           // 本轮已使用的恢复次数（全队共享：开局 1 次，通关第 4/6殿各 +1）
     this._recoverCounts = {};        // { roleId: 恢复次数 } 用于 UI 展示恢复效果
+    this._levelFailedAttempts = {};  // { [level]: count } 记录每关失败次数（第 1-7 关允许重试 1 次）
     this._restoreRecoverState();     // ✅ 页面刷新/重连后按 roomId 恢复已用次数，避免 UI 显示归零
 
     // 解析预设队伍成员 roleId 列表（用于队长变更检测）
@@ -340,13 +341,13 @@ export class NightmareAutoBattleService {
               
         this._onLog(`️ 无可用出战成员诊断：总成员${totalMembers}人，阵亡${deadMembers}人，存活${aliveMembers}人，已出战${foughtCount}人`, 'warning');
               
-        // 第 1-7 关全员出战但未通关：直接结束挑战（不重试，避免消耗枕头）
+        // 第 1-7 关全员出战但未通关：允许重试 1 次
         if (this._currentLevel > 0 && this._currentLevel < 8) {
           // ✅ 检查是否真的有成员出战过
           if (foughtCount === 0 && aliveMembers > 0) {
             // 没有任何成员出战过，但还有活人 → 可能是预设配置问题或匹配问题
             this._onLog(`第${this._currentLevel}关无成员出战但有${aliveMembers}个存活成员，检查预设配置...`, 'error');
-                  
+              
             // 检查预设出战顺序
             const priority = this._presetData?.levelConfig?.[this._currentLevel]?.priority || [];
             if (priority.length === 0) {
@@ -354,7 +355,7 @@ export class NightmareAutoBattleService {
             } else {
               this._onLog(`第${this._currentLevel}关预设顺序${priority.length}人，但都未匹配到成员`, 'error');
             }
-                  
+              
             // 等待 10 秒后重试，不要立即解散
             this._onLog(`等待 10 秒后重新检查...`, 'warning');
             await sleep(10000);
@@ -362,11 +363,25 @@ export class NightmareAutoBattleService {
             continue;
           }
                 
-          this._onLog(`第${this._currentLevel}关全员出战均未通过（已出战${foughtCount}人），结束挑战`, 'error');
-          this._status = 'failed';
-          this._onStatusChange({ status: 'failed', presetName: this._presetData?.name, reason: 'all_members_fought' });
-          this._onError({ message: `第${this._currentLevel}关全员出战均未通过`, reason: 'all_members_fought' });
-          return;
+          // ✅ 有成员出战但失败了，尝试重试（允许每关连续失败 2 次后仍继续下一关）
+          const failedAttempts = this._levelFailedAttempts[this._currentLevel] || 0;
+          if (failedAttempts < 2) {
+            // 失败次数少于 2 次，标记并跳过本关，进入下一关
+            this._levelFailedAttempts[this._currentLevel] = failedAttempts + 1;
+            this._onLog(`第${this._currentLevel}关挑战失败（失败${this._levelFailedAttempts[this._currentLevel]}次），跳过继续下一关...`, 'warning');
+            
+            // 跳过本关，不返回失败状态
+            continue;
+          } else {
+            // ✅ 连续 2 次失败仍然允许继续，只是标记警告
+            this._onLog(`⚠️ 第${this._currentLevel}关已尝试 2 次，强制跳过并继续下一关`, 'error');
+            
+            // 清空该关失败计数，避免无限循环
+            delete this._levelFailedAttempts[this._currentLevel];
+            
+            // 直接继续下一关
+            continue;
+          }
         }
         // 第8关：区分"全员阵亡"和"全员已出战但BOSS存活"
         if (this._currentLevel === 8) {
@@ -379,11 +394,11 @@ export class NightmareAutoBattleService {
             this._onError({ message: '第8关全员阵亡', reason: 'level8_all_dead' });
             return;
           }
-          if (this._reopenRetryCount >= 1) {
-            this._onLog('第8关已重试1次仍未击杀BOSS，结束挑战', 'error');
+          if (this._reopenRetryCount >= 2) {  // ✅ 修改为最多重试 2 次
+            this._onLog('第 8 关已重试 2 次仍未击杀 BOSS，结束挑战', 'error');
             this._status = 'failed';
             this._onStatusChange({ status: 'failed', presetName: this._presetData?.name, reason: 'retry_limit_reached' });
-            this._onError({ message: '第8关重试次数已达上限', reason: 'retry_limit_reached' });
+            this._onError({ message: '第 8 关重试次数已达上限', reason: 'retry_limit_reached' });
             return;
           }
           // 全员已出战但BOSS未击杀（部分存活但无可用成员）→ 清空记录重试

@@ -574,6 +574,8 @@ export const applySnapshot = async (data, adoptDeviceName) => {
  *  @returns {{ result: object, details: { binCount: number, tokenCount: number, rawBytes: number, compressedBytes: number, compressed: boolean } }} */
 /** 上传云端配置（每个账号最多 10 个快照） */
 export const pushConfig = async (deviceName = getDeviceName()) => {
+  console.info("[云同步] 开始上传配置...");
+  
   // ✅ 检查已上传的配置数量
   const configList = await fetchConfigList();
   if (!Array.isArray(configList)) {
@@ -585,6 +587,7 @@ export const pushConfig = async (deviceName = getDeviceName()) => {
     }
   }
 
+  console.info("[云同步] 正在收集本地快照...");
   const data = await collectSnapshot();
   const jsonStr = JSON.stringify({ data });
   const rawBytes = new TextEncoder().encode(jsonStr).length;
@@ -599,6 +602,8 @@ export const pushConfig = async (deviceName = getDeviceName()) => {
     tokenCount = (JSON.parse(data["gameTokens"] || "[]")).length;
   } catch { /* ignore */ }
 
+  console.info(`[云同步] 待上传原始数据：${(rawBytes / 1024 / 1024).toFixed(2)} MB（Token: ${tokenCount}, BIN: ${binCount}）`);
+
   let options;
   let compressedBytes = rawBytes;
   let compressed = false;
@@ -606,17 +611,22 @@ export const pushConfig = async (deviceName = getDeviceName()) => {
   const encKey = await getEncKey();
   if (encKey) {
     // ✅ 加密上传：gzip 压缩 → AES-GCM 加密 → base64 封装为 JSON 文本（云端仅存密文）
+    console.info("[云同步] 使用加密模式，正在进行安全处理...");
     let plainBytes = new TextEncoder().encode(jsonStr);
     if (typeof CompressionStream !== "undefined") {
+      console.info("[云同步] 正在 gzip 压缩...");
       plainBytes = await gzipCompress(jsonStr);
       compressedBytes = plainBytes.length;
       compressed = true;
+      console.info(`[云同步] 压缩完成， ${(compressedBytes / rawBytes * 100).toFixed(0)}% （${((rawBytes - compressedBytes) / 1024 / 1024).toFixed(2)} MB → ${(compressedBytes / 1024 / 1024).toFixed(2)} MB）`);
     }
+    console.info("[云同步] 正在进行 AES-GCM-256 加密...");
     const encStr = await encryptBytes(encKey, plainBytes);
     encrypted = true;
     options = { method: "PUT", body: JSON.stringify({ data: { __enc: encStr } }) };
   } else if (typeof CompressionStream !== "undefined") {
     // 旧版回退：gzip 压缩后以二进制上传（未重新登录派生密钥时的兼容路径）
+    console.info("[云同步] 使用非加密模式，正在进行 gzip 压缩...");
     const compressedBuf = await gzipCompress(jsonStr);
     compressedBytes = compressedBuf.length;
     compressed = true;
@@ -634,6 +644,7 @@ export const pushConfig = async (deviceName = getDeviceName()) => {
   if (!encrypted && typeof Capacitor !== "undefined" && Capacitor.isNativePlatform && Capacitor.isNativePlatform()) {
     const { apiToken } = getCloudAuth();
     const url = `${CLOUD_API_BASE}/api/cloud/config?device=${encodeURIComponent(deviceName)}`;
+    console.info(`[云同步] 正在上传至云端（APK 环境）...`);
     let capResult;
     if (compressed) {
       const base64Compressed = arrayBufferToBase64(options.body.buffer);
@@ -669,6 +680,7 @@ export const pushConfig = async (deviceName = getDeviceName()) => {
     return { result: respData, details: { binCount, tokenCount, rawBytes, compressedBytes, compressed } };
   }
 
+  console.info("[云同步] 正在上传至云端...");
   const result = await cloudRequest(`/api/cloud/config?device=${encodeURIComponent(deviceName)}`, options);
   lastPushedHash = quickHash(jsonStr);
   return { result, details: { binCount, tokenCount, rawBytes, compressedBytes, compressed, encrypted } };
@@ -684,14 +696,22 @@ const gzipCompress = async (str) => {
 /** 下载指定设备名的快照；不传设备名时返回最近更新的一份。加密快照（data.__enc）自动解密，旧版明文快照原样返回 */
 export const pullConfig = async (deviceName) => {
   const query = deviceName ? `?device=${encodeURIComponent(deviceName)}` : "";
+  console.info(`[云同步] 正在从云端下载配置${deviceName ? `（设备：${deviceName}）` : "（最近版本）"}...`);
+  
   const result = await cloudRequest(`/api/cloud/config${query}`, { method: "GET" });
+  
   if (result && result.data && typeof result.data === "object" && typeof result.data.__enc === "string") {
+    console.info("[云同步] 检测到加密快照，正在解密...");
     try {
       result.data = JSON.parse(await decryptSnapshotText(result.data.__enc));
+      console.info("[云同步] 解密完成");
     } catch (e) {
       throw new Error("快照解密失败：请使用上传该配置时的账号密码重新登录后重试");
     }
+  } else {
+    console.info("[云同步] 使用非加密模式或旧版格式");
   }
+  
   return result;
 };
 

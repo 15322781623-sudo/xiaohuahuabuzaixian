@@ -26,8 +26,8 @@
       </div>
 
       <template v-else>
-        <!-- 统计卡片 -->
-        <div class="stat-grid">
+        <!-- 顶部统计卡片 -->
+        <div v-if="users.length > 0" class="stat-grid">
           <div class="stat-card">
             <div class="stat-num">{{ users.length }}</div>
             <div class="stat-label">注册账号</div>
@@ -155,7 +155,7 @@
 </template>
 
 <script setup>
-import { h, ref, computed } from "vue";
+import { h, ref, computed, onMounted } from "vue";
 import { NButton, NTag, NSwitch, useDialog, useMessage } from "naive-ui";
 import { CloudOutline, SearchOutline, RefreshOutline } from "@vicons/ionicons5";
 import { CLOUD_API_BASE } from "@/utils/cloudSync";
@@ -215,7 +215,11 @@ const enterAdmin = async () => {
   }
   checking.value = true;
   try {
-    await loadUsers();
+    // ✅ 验证密码并获取数据（一次 API 调用完成）
+    const data = await adminFetch("/api/cloud/admin/users");
+    users.value = data.users || [];
+    
+    // ✅ 密码正确后保存并进入后台
     sessionStorage.setItem("cloudAdminPassword", adminPassword.value);
     authed.value = true;
     message.success("已进入后台");
@@ -240,6 +244,23 @@ const loadUsers = async () => {
     loading.value = false;
   }
 };
+
+// 页面挂载时自动尝试加载
+const loadPageData = async () => {
+  if (adminPassword.value && !authed.value) {
+    // 尝试自动验证密码（一次 API 完成验证+加载数据）
+    await enterAdmin();
+  } else if (authed.value) {
+    // 已认证则加载数据
+    await loadUsers();
+  }
+};
+
+// 页面挂载时自动尝试加载
+onMounted(() => {
+  loadPageData();
+});
+
 
 const viewConfig = async (username) => {
   try {
@@ -373,10 +394,7 @@ const downloadConfig = () => {
   URL.revokeObjectURL(a.href);
 };
 
-// 已缓存密码时自动进入
-if (adminPassword.value) {
-  enterAdmin();
-}
+
 </script>
 
 <style scoped lang="scss">

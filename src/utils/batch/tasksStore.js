@@ -5842,6 +5842,26 @@ export function createTasksStore(deps) {
 
       try {
 
+          // ✅ 从账号设置读取星级挑战每关最大挑战次数（默认 3 次，总 5 次）
+          let maxAttemptsFromSettings = 3;
+          try {
+            const raw = localStorage.getItem(`daily-settings:${tokenId}`);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed.starChallengeAttempts != null) {
+                maxAttemptsFromSettings = Math.min(5, Math.max(1, Number(parsed.starChallengeAttempts) || 3));
+                addLog({ time: new Date().toLocaleTimeString(), message: `[${token.name}] ⚙️ 从设置读取挑战次数：${maxAttemptsFromSettings}次`, type: "info" });
+              } else {
+                addLog({ time: new Date().toLocaleTimeString(), message: `[${token.name}] ⚠️ 未找到 starChallengeAttempts 设置，使用默认 3 次`, type: "info" });
+              }
+            } else {
+              addLog({ time: new Date().toLocaleTimeString(), message: `[${token.name}] ⚠️ 未找到账号设置或为空，使用默认 3 次`, type: "info" });
+            }
+          } catch (e) {
+            console.error(`读取账号设置失败:`, e);
+            addLog({ time: new Date().toLocaleTimeString(), message: `[${token.name}] ⚠️ 解析设置失败，使用默认 3 次`, type: "warning" });
+          }
+
           addLog({
             time: new Date().toLocaleTimeString(),
             message: `=== 开始 十殿星级挑战，一键挑战: ${token.name} ===`,
@@ -5924,7 +5944,8 @@ export function createTasksStore(deps) {
             const typ = 100 + level;
             let levelCompleted = false; // 标记当前关卡是否完成（获得1-3星）
             let challengeAttempts = 0; // 当前关卡已挑战次数
-            const MAX_ATTEMPTS = 3; // 最多挑战3次（首次 + 2次重试）
+            // ✅ 使用账号设置的每关最大挑战次数（默认3次，最大5次）
+            const MAX_ATTEMPTS = maxAttemptsFromSettings;
 
             // 单关挑战循环（最多3次尝试，直到获得1-3星）
             while (challengeAttempts < MAX_ATTEMPTS && !levelCompleted) {
@@ -5955,7 +5976,7 @@ export function createTasksStore(deps) {
                 if (challengeAttempts >= MAX_ATTEMPTS) {
                   addLog({ 
                     time: new Date().toLocaleTimeString(),
-                    message: `关卡 ${level} 连续${MAX_ATTEMPTS}次挑战失败，终止挑战流程`, 
+                    message: `关卡 ${level} 连续${MAX_ATTEMPTS}次挑战失败，跳过本关继续下一关`,
                     type: "error" 
                   });
                   break;
@@ -6051,7 +6072,7 @@ export function createTasksStore(deps) {
                 if (challengeAttempts >= MAX_ATTEMPTS) {
                   addLog({ 
                     time: new Date().toLocaleTimeString(),
-                    message: `关卡 ${level} 连续${MAX_ATTEMPTS}次挑战失败，终止挑战流程`, 
+                    message: `关卡 ${level} 连续${MAX_ATTEMPTS}次挑战失败，跳过本关继续下一关`,
                     type: "error" 
                   });
                   break;
@@ -6096,16 +6117,21 @@ export function createTasksStore(deps) {
                   type: "warning",
                 });
                 if (challengeAttempts >= MAX_ATTEMPTS) {
-                  addLog({ message: `关卡 ${level} 连续${MAX_ATTEMPTS}次未获得星级，终止挑战流程`, type: "error" });
+                  addLog({ message: `关卡 ${level} 连续${MAX_ATTEMPTS}次未获得星级，跳过本关继续下一关`, type: "error" });
                   break;
                 }
                 await sleep(CMD_DELAY);
               }
             }
 
-            // 如果当前关卡未完成（未获得1-3星），终止整个流程
+            // ✅ 如果当前关卡未完成（未获得1-3星），跳过本关继续下一关（不再终止整个流程）
             if (!levelCompleted) {
-              break;
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `[${token.name}] 关卡 ${level} 未完成，跳过继续下一关`,
+                type: "warning",
+              });
+              continue;
             }
 
             // 第 8 关完成

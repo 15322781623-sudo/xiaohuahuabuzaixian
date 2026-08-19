@@ -14,6 +14,42 @@ export const useChangelogStore = defineStore("changelog", () => {
    */
   const changelogs = ref([
     {
+      version: "v2.49.8",
+      date: "2026-08-10",
+      type: "patch",
+      title: "星级挑战每关最大尝试次数配置 + 连续失败自动跳过下一关",
+      fixes: [
+        "任务设置弹窗添加星级挑战每关最大尝试次数选项（战斗次数区域）：范围 1-5 次，默认 3 次，总上限 5 次",
+        "任务模板管理界面同步添加该选项：保存模板时包含此配置，应用到账号时自动继承",
+        "批量星级挑战执行逻辑修改：从账号设置中读取 starChallengeAttempts 字段，MAX_ATTEMPTS = maxAttemptsFromSettings",
+        "关卡失败行为优化：连续失败达到设定次数后不再终止整个流程，而是 continue 跳过本关继续下一关",
+        "调试日志增强：启动时输出『⚙️ 从设置读取挑战次数：X 次』或『⚠️ 未找到设置，使用默认 3 次』",
+        "UI 提示优化：输入框下方显示『默认 3 次，总 5 次，建议根据账号实力调整（1-5 次）''",
+        // === 与 NightmareAutoBattle 十殿阎罗挑战的区别 ===
+        "注意：十殿星级挑战的每关次数配置在任务设置中，而非 nightmareAutoBattle.js（那是后台战斗模式）",
+      ],
+    },
+    {
+      version: "v2.49.7",
+      date: "2026-08-17",
+      type: "patch",
+      title: "Token 管理增强 + 定时任务 eval 失效终极修复：删除引用自动清理 + 新增自动添加到所有开启任务 + 函数名映射表",
+      fixes: [
+        // === 第 1 部分：Token 管理增强 (2026-08-16) ===
+        "修复 Token 删除后定时任务仍保留引用：删除账号 Token 时自动检查并移除 scheduledTasks.selectedTokens 中的所有引用，避免执行报错",
+        "新增 handleAddedToken 处理器：通过扫码/BIN/手动输入等方式新增 Token 后，自动将新账号添加到所有未开启的定时任务的 selectedTokens 列表中",
+        "智能去重与提示：仅当 Token 未存在于定时任务且任务处于启用状态时才添加，保存后显示成功消息告知添加到的任务数量",
+        "用户体验优化：新增 Token 无需手动逐个添加到定时任务，减少重复操作",
+        
+        // === 第 2 部分：定时任务 eval 失效终极修复 (2026-08-17) ===
+        "修复定时任务 manual_buy/collection_exchange 函数不存在：生产构建中 eval() 无法访问组件局部变量（tasksStore/tasksDungeon/tasksArena 解构的函数）",
+        "新增 taskFunctionMap 函数名映射表：在 tasksStore 解构后创建含 47 个函数的对象，优先从映射表获取函数引用（taskFunctionMap[functionName]），回退 eval() 兜底兼容其他路径",
+        "isTaskFunctionExists 验证优化：优先查询 taskFunctionMap，避免白名单机制复杂且不直观",
+        "依赖验证与执行路径统一：verifyScheduledTaskExecute、executeScheduledTask、手动执行全部使用 taskFunctionMap，确保所有 eval() 调用点均能访问任务函数",
+        "影响范围：黑市多选购买、珍宝阁商店购买、各类商店购买、宠物合成升级等所有定时任务功能",
+      ],
+    },
+    {
       version: "v2.49.6",
       date: "2026-08-10",
       type: "patch",

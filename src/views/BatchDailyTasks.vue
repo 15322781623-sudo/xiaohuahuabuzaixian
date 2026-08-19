@@ -1828,6 +1828,11 @@
               <label class="st-label">每日 BOSS</label>
               <n-select v-model:value="currentSettings.dailyBossTimes" :options="dailyBossTimesOptions" size="small" />
             </div>
+            <div class="st-field">
+              <label class="st-label">星级挑战每关最大尝试次数</label>
+              <n-input-number v-model:value="currentSettings.starChallengeAttempts" :min="1" :max="5" :step="1" size="small" style="width: 100;" />
+              <div class="st-hint">默认 3 次，总 5 次，建议根据账号实力调整（1-5 次）</div>
+            </div>
           </div>
         </div>
 
@@ -2061,15 +2066,20 @@
           <div class="st-section-grid st-grid-2">
             <div class="st-field">
               <label class="st-label">竞技场</label>
-              <n-input-number v-model:value="currentTemplate.arenaFightCount" :min="1" :max="100" :step="1" size="small" style="width: 100%;" />
+              <n-input-number v-model:value="currentTemplate.arenaFightCount" :min="1" :max="100" :step="1" size="small" style="width: 100;" />
             </div>
             <div class="st-field">
-              <label class="st-label">俱乐部BOSS</label>
+              <label class="st-label">俱乐部 BOSS</label>
               <n-select v-model:value="currentTemplate.bossTimes" :options="bossTimesOptions" size="small" />
             </div>
             <div class="st-field">
-              <label class="st-label">每日BOSS</label>
+              <label class="st-label">每日 BOSS</label>
               <n-select v-model:value="currentTemplate.dailyBossTimes" :options="dailyBossTimesOptions" size="small" />
+            </div>
+            <div class="st-field">
+              <label class="st-label">星级挑战每关最大尝试次数</label>
+              <n-input-number v-model:value="currentTemplate.starChallengeAttempts" :min="1" :max="5" :step="1" size="small" style="width: 100;" />
+              <div class="st-hint">默认 3 次，总 5 次</div>
             </div>
           </div>
         </div>
@@ -5570,33 +5580,33 @@
         <ManualTokenForm
           v-if="addTokenImportMethod === 'manual'"
           @cancel="() => (showAddTokenModal = false)"
-          @ok="() => (showAddTokenModal = false)"
+          @ok="handleAddedToken"
         />
         <UrlTokenForm
           v-if="addTokenImportMethod === 'url'"
           @cancel="() => (showAddTokenModal = false)"
-          @ok="() => (showAddTokenModal = false)"
+          @ok="handleAddedToken"
         />
         <WxQrcodeForm
           v-if="addTokenImportMethod === 'wxQrcode'"
           @cancel="() => (showAddTokenModal = false)"
-          @ok="() => (showAddTokenModal = false)"
+          @ok="handleAddedToken"
         />
         <YybQrcodeForm
           v-if="addTokenImportMethod === 'yybQrcode'"
           @cancel="() => (showAddTokenModal = false)"
-          @ok="() => (showAddTokenModal = false)"
+          @ok="handleAddedToken"
           @switch-wx="() => (addTokenImportMethod = 'wxQrcode')"
         />
         <BinTokenForm
           v-if="addTokenImportMethod === 'bin'"
           @cancel="() => (showAddTokenModal = false)"
-          @ok="() => (showAddTokenModal = false)"
+          @ok="handleAddedToken"
         />
         <SingleBinTokenForm
           v-if="addTokenImportMethod === 'singlebin'"
           @cancel="() => (showAddTokenModal = false)"
-          @ok="() => (showAddTokenModal = false)"
+          @ok="handleAddedToken"
         />
       </div>
     </n-modal>
@@ -9132,6 +9142,11 @@ const loadScheduledTasks = () => {
  */
 const isTaskFunctionExists = (taskName) => {
   try {
+    // ✅ 优先从映射表获取函数引用（生产环境 eval 无法访问组件局部变量）
+    if (taskFunctionMap && taskFunctionMap[taskName]) {
+      return typeof taskFunctionMap[taskName] === 'function';
+    }
+
     const fn = eval(taskName);
     return typeof fn === 'function';
   } catch {
@@ -9140,11 +9155,13 @@ const isTaskFunctionExists = (taskName) => {
 };
 
 /**
- * 清理定时任务中已失效的功能模块引用
- * 在 onMounted 中调用，自动移除已删除的任务函数
+ * 清理定时任务中已失效的功能模块引用和 Token 引用
+ * 在 onMounted 中调用，自动移除已删除的任务函数和 Token
  */
 const cleanupInvalidTaskReferences = () => {
   let cleaned = false;
+  
+  // ✅ 清理失效的功能模块引用
   for (const task of scheduledTasks.value) {
     if (task.selectedTasks && Array.isArray(task.selectedTasks)) {
       const originalLength = task.selectedTasks.length;
@@ -9165,6 +9182,22 @@ const cleanupInvalidTaskReferences = () => {
       }
     }
   }
+  
+  // ✅ 清理失效的 Token 引用
+  const allTokenIds = new Set(tokens.value.map(t => t.id));
+  for (const task of scheduledTasks.value) {
+    if (task.selectedTokens && Array.isArray(task.selectedTokens)) {
+      const originalLength = task.selectedTokens.length;
+      task.selectedTokens = task.selectedTokens.filter(id => allTokenIds.has(id));
+      
+      if (task.selectedTokens.length !== originalLength) {
+        cleaned = true;
+        const removedCount = originalLength - task.selectedTokens.length;
+        addLog({ time: new Date().toLocaleTimeString(), message: `定时任务「${task.name}」中 ${removedCount} 个已删除账号已自动移除`, type: "warning" });
+      }
+    }
+  }
+  
   if (cleaned) {
     saveScheduledTasks();
   }
@@ -12826,7 +12859,8 @@ const verifyTaskDependencies = async (task) => {
     
     let taskFunction;
     try {
-      taskFunction = eval(functionName);
+      // ✅ 优先从映射表获取函数引用（生产环境 eval 无法访问组件局部变量）
+      taskFunction = taskFunctionMap[functionName] || eval(functionName);
     } catch (e) {
       addLog({
         time: new Date().toLocaleTimeString(),
@@ -13699,10 +13733,24 @@ const executeScheduledTask = async (task) => {
         // manual_buy 和 collection_exchange 直接使用下划线名称
         functionName = taskName;
       }
+      
+      // ✅ 新增：先通过 isTaskFunctionExists 验证，避免 eval() 失败
+      // 这包括 knownGlobalTaskFunctions 白名单中的所有函数
+      if (!isTaskFunctionExists(functionName)) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `⚠️ 任务函数 "${functionName}" 不存在（可能已被删除），跳过执行`,
+          type: "warning",
+        });
+        continue;
+      }
+      
       let taskFunction;
       try {
-        taskFunction = eval(functionName);
+        // ✅ 优先从映射表获取函数引用（生产环境 eval 无法访问组件局部变量）
+        taskFunction = taskFunctionMap[functionName] || eval(functionName);
       } catch (e) {
+        // eval 理论上不会走到这里，因为上面已经有 isTaskFunctionExists 验证了
         addLog({
           time: new Date().toLocaleTimeString(),
           message: `⚠️ 任务函数 "${functionName}" 不存在（可能已被删除），跳过执行`,
@@ -14947,6 +14995,7 @@ const loadSettings = (tokenId) => {
       saltFieldPeachFormation: 1, // 盐场蟠桃阵容
       bossTimes: 2,
       dailyBossTimes: 3,
+      starChallengeAttempts: 3, // ✅ 星级挑战每关最大尝试次数（默认 3 次）
       claimBottle: true,
       payRecruit: true,
       openBox: true,
@@ -14976,6 +15025,9 @@ const openSettings = (token) => {
   // 兼容旧设置：缺失字段使用默认值
   if (currentSettings.saltFieldPeachFormation == null) {
     currentSettings.saltFieldPeachFormation = 1;
+  }
+  if (currentSettings.starChallengeAttempts == null) {
+    currentSettings.starChallengeAttempts = 3; // ✅ 星级挑战每关最大尝试次数，默认 3 次
   }
   if (!currentSettings.helperPresets) {
     currentSettings.helperPresets = [];
@@ -15037,6 +15089,7 @@ const openTaskTemplateModal = () => {
     saltFieldPeachFormation: 1,
     bossTimes: 2,
     dailyBossTimes: 3,
+    starChallengeAttempts: 3, // ✅ 星级挑战每关最大尝试次数
     claimBottle: true,
     payRecruit: true,
     openBox: true,
@@ -15243,6 +15296,7 @@ const resetTemplateForm = () => {
     saltFieldPeachFormation: 1,
     bossTimes: 2,
     dailyBossTimes: 3,
+    starChallengeAttempts: 3, // ✅ 星级挑战每关最大尝试次数
     claimBottle: true,
     payRecruit: true,
     openBox: true,
@@ -16396,14 +16450,93 @@ const deleteSelectedTokens = async () => {
   selectedTokens.value = [];
 
   if (deletedCount > 0) {
+    // ✅ 清理定时任务中对已删除账号的引用
+    cleanupInvalidTaskReferences();
+    
     message.success(`已删除 ${deletedCount} 个账号`);
   }
   if (failedNames.length > 0) {
-    message.error(`${failedNames.length} 个账号删除失败: ${failedNames.join(', ')}`);
+    message.error(`${failedNames.length} 个账号删除失败：${failedNames.join(', ')}`);
   }
 };
 
-// 添加Token弹窗状态
+/**
+ * 处理新添加的 Token：自动将其添加到所有未开启的定时任务中
+ * 当用户通过任意方式（扫码、BIN、手动输入等）添加 Token 时触发
+ */
+const handleAddedToken = async (newTokenId) => {
+  // 关闭弹窗前稍作等待，确保 Token 已完全添加到列表中
+  await new Promise(resolve => setTimeout(resolve, 300));
+  
+  const latestTokens = tokens.value;
+  let targetTokenId = newTokenId;
+  
+  // 如果没有提供 token ID，尝试获取最后添加的一个
+  if (!targetTokenId && latestTokens.length > 0) {
+    // 找到最近添加的那个（可能根据时间戳或其他标识）
+    // 简单做法：获取最后一个
+    const lastToken = latestTokens[latestTokens.length - 1];
+    if (lastToken) {
+      targetTokenId = lastToken.id;
+    }
+  }
+  
+  if (!targetTokenId) {
+    console.log('未识别新添加的 Token，跳过自动添加到定时任务');
+    return;
+  }
+  
+  const tokenToAdd = latestTokens.find(t => t.id === targetTokenId);
+  if (!tokenToAdd) {
+    console.warn(`找不到 Token: ${targetTokenId}`);
+    return;
+  }
+  
+  // ✅ 只在定时任务存在时才处理
+  if (scheduledTasks.value.length === 0) {
+    console.log('没有定时任务，跳过自动添加');
+    return;
+  }
+  
+  let updatedCount = 0;
+  for (const task of scheduledTasks.value) {
+    // 跳过已关闭的任务
+    if (!task.enabled) continue;
+    
+    // 检查该 token 是否已在任务中
+    if (!task.selectedTokens) {
+      task.selectedTokens = [];
+    }
+    
+    const alreadyExists = task.selectedTokens.includes(targetTokenId);
+    if (alreadyExists) {
+      continue; // 已经在列表中，跳过
+    }
+    
+    // 将新 Token 添加到该定时任务
+    task.selectedTokens.push(targetTokenId);
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `定时任务「${task.name}」自动添加了账号：${tokenToAdd.name}`,
+      type: "info"
+    });
+    updatedCount++;
+  }
+  
+  // 保存修改后的定时任务
+  if (updatedCount > 0) {
+    saveScheduledTasks();
+    message.success(`已将新账号添加到 ${updatedCount} 个定时任务中`);
+  } else {
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `新账号「${tokenToAdd.name}」未添加到任何定时任务（所有任务已包含或已关闭）`,
+      type: "warning"
+    });
+  }
+};
+
+// 添加 Token 弹窗状态
 const showAddTokenModal = ref(false);
 const addTokenImportMethod = ref("singlebin");
 
@@ -17835,6 +17968,58 @@ const { batcharenafight, batchTopUpFish, batchTopUpArena } = tasksArena;
 
 const tasksStore = wrapTaskFunctions(createTasksStore(createTaskDeps()));
 const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, egg_merge_cycle, batch_pet_upgrade, gacha_drawreward, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, batch_mail_claim_and_cleanup, saltcup26_openstarpack_use, batchSaltCupBet, getSaltCupBetInfo, batchApexGuess, batchApexGuessClaim, batchSaltRoadCheer } = tasksStore;
+
+// ✅ 定时任务函数名映射表（替代 eval()，解决生产构建中 eval 无法访问组件局部变量的问题）
+const taskFunctionMap = {
+  // tasksStore 函数
+  manual_buy,
+  collection_exchange,
+  legion_storebuygoods,
+  legionStoreBuySkinCoins,
+  store_purchase,
+  charge_claimaddup_rewards,
+  collection_claimfreereward,
+  claim_recruit_welfare,
+  claim_weird_tower_all,
+  claim_weird_tower_pass,
+  use_spotted_egg,
+  claim_pet_book,
+  batch_pet_merge,
+  egg_merge_cycle,
+  batch_pet_upgrade,
+  gacha_drawreward,
+  store_buy_selectable,
+  batchCollectionExchange,
+  legion_buy_red_jade,
+  legion_buy_spotted_egg,
+  salt_crystal_shop_buy,
+  salt_ingot_shop_buy,
+  star_drawturntable,
+  batch_star_challenge,
+  nightmare_draw_lottery,
+  nightmare_claim_book_reward,
+  pkroom_appoint,
+  claim_guess_coin,
+  legion_buy_store_items,
+  weeklyMarketBuy,
+  weekly_market_free_gift,
+  batch_mail_claim_and_cleanup,
+  saltcup26_openstarpack_use,
+  batchSaltCupBet,
+  getSaltCupBetInfo,
+  batchApexGuess,
+  batchApexGuessClaim,
+  batchSaltRoadCheer,
+  // tasksDungeon 函数
+  batchbaoku13,
+  batchbaoku45,
+  batchmengjing,
+  batchBuyDreamItems,
+  // tasksArena 函数
+  batcharenafight,
+  batchTopUpFish,
+  batchTopUpArena,
+};
 
 // ====== 采购清单配置 ======
 // 采购清单可选项（用于任务模板中多选）
@@ -21326,6 +21511,12 @@ html[data-theme="dark"] .tr-failed-name { color: #ddd; }
   font-size: 12px;
   color: #c0c4cc;
   padding: 6px 0;
+}
+.st-hint {
+  font-size: 11px;
+  color: #999;
+  margin-top: -2px;
+  padding-bottom: 4px;
 }
 .st-modal-footer {
   display: flex;
