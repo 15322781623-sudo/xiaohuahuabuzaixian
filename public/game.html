@@ -452,8 +452,52 @@
   <!-- ===== 1. SDK Mock (wx + HSDK) ===== -->
   <script>
   (function() {
+    // ★ 检测是否需要在蟠桃园等特殊活动中使用微信小程序环境
+    function isPanTaoOrWeChatMini() {
+      // 从 URL 参数或全局配置中获取平台信息
+      try {
+        var urlParams = new URLSearchParams(window.location.search);
+        var platformExt = urlParams.get('platformExt');
+        var platform = urlParams.get('platform');
+        
+        // 检查是否为微信小程序环境
+        if (platformExt === 'wx_mini_1' || 
+            platformExt === 'wxmini' || 
+            platform === 'wechat' ||
+            window.location.host.includes('servicewechat.com')) {
+          return true;
+        }
+      } catch(e) {}
+      return false;
+    }
+    
+    var isWeChatMini = isPanTaoOrWeChatMini();
+    console.log('[SDK Mock]', '微信小程序环境:', isWeChatMini);
+    
     window.wx = window.wx || {
-      getSystemInfo: function() { return { platform: 'android', brand: 'Android', system: 'Android 12', model: 'Android' }; },
+      getSystemInfo: function() { 
+        if (isWeChatMini) {
+          // ★ 微信小程序潘桃园专用 UA
+          return {
+            system: 'iOS',
+            platform: 'wechat',
+            model: 'iPhone 13 Pro',
+            screenWidth: 390,
+            screenHeight: 844,
+            pixelRatio: 3,
+            SDKVersion: '3.3.0',
+            language: 'zh_CN',
+            version: '8.0.3',
+            systemVersion: '15.6',
+            brand: 'iPhone',
+            wechatVersion: '8.0.3',
+            devicePixelRatio: 3
+          };
+        } else {
+          // ★ 通用 Android 环境
+          return { platform: 'android', brand: 'Android', system: 'Android 12', model: 'Android' }; 
+        }
+      },
       getStorageInfo: function() { return { keys: [] }; },
       onShow: function(cb) { if (cb) setTimeout(function() { cb({ scene: '1001', query: {} }); }, 50); },
       onHide: function() {},

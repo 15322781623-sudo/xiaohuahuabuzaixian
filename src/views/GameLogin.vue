@@ -1758,7 +1758,7 @@ async function decodeBinForToken(token) {
 async function loginInIframe(token) {
   if (hasIframe(token.id)) return;
 
-  // 断开助手WebSocket，避免与游戏内连接冲突导致顶号
+  // 断开助手 WebSocket，避免与游戏内连接冲突导致顶号
   const wsStatus = tokenStore.getWebSocketStatus(token.id);
   if (wsStatus === "connected" || wsStatus === "connecting") {
     tokenStore.closeWebSocketConnection(token.id);
@@ -1767,15 +1767,17 @@ async function loginInIframe(token) {
 
   // APK 环境窗口数限制警告
   if (isApk() && iframeList.value.length >= APK_MAX_WINDOWS) {
-    addLog(`⚠ APK环境已开启 ${iframeList.value.length} 个窗口，继续开启可能导致内存不足崩溃`, 'warning');
-    message.warning(`APK环境建议不超过 ${APK_MAX_WINDOWS} 个游戏窗口，当前已有 ${iframeList.value.length} 个`);
+    addLog(`⚠ APK 环境已开启 ${iframeList.value.length} 个窗口，继续开启可能导致内存不足崩溃`, 'warning');
+    message.warning(`APK 环境建议不超过 ${APK_MAX_WINDOWS} 个游戏窗口，当前已有 ${iframeList.value.length} 个`);
   }
 
   const loginData = await decodeBinForToken(token);
   const loginKey = `__game_login_${token.id}__`;
   localStorage.setItem(loginKey, JSON.stringify(loginData));
 
-  const gameUrl = `${window.location.origin}/game.html?token=${encodeURIComponent(token.id)}`;
+  // ★ 支持微信小程序环境（蟠桃园等特殊活动）
+  const gameUrl = `${window.location.origin}/game.html?token=${encodeURIComponent(token.id)}&platformExt=${encodeURIComponent(loginData.platformExt || 'mix')}`;
+  
   iframeList.value.push({ tokenId: token.id, name: token.name, url: gameUrl });
   tokenStatusMap.value.set(token.id, 'opened');
   tokenStatusMap.value = new Map(tokenStatusMap.value);
