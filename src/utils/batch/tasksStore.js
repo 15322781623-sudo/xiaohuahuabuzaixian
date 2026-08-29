@@ -499,6 +499,13 @@ export function createTasksStore(deps) {
     { id: 205, name: "斑点蛋", count: 5, limit: 5, cost: 1 },
   ]);
 
+// 逐鹿商店购买配置
+const apexShopConfig = ref([
+    { id: 1, name: "饼干", count: 0, limit: 25, cost: 20, itemType: "currency", itemId: 16002 },
+    { id: 2, name: "幻彩灵果", count: 0, limit: 75, cost: 20, itemType: "currency", itemId: 16002 },
+    { id: 3, name: "四圣转换镜", count: 0, limit: 1, cost: 1500, itemType: "currency", itemId: 16002 },
+  ]);
+
   const salt_crystal_shop_buy = async () => {
     if (selectedTokens.value.length === 0) return;
 
@@ -648,6 +655,176 @@ export function createTasksStore(deps) {
         addLog({
           time: new Date().toLocaleTimeString(),
           message: `${token.name} 连接已关闭 (队列: ${connectionQueue.active}/${batchSettings.maxActive})`,
+          type: "info",
+        });
+      }
+    });
+
+    currentRunningTokenId.value = null;
+    isRunning.value = false;
+    shouldStop.value = false;
+  };
+
+  /**
+   * 逐鹿商店多选购买（通过背包获取盐山金币数量）
+   * 根据 apexShopConfig 配置购买商品，使用背包物品 ID 16002（盐山金币）作为货币
+   */
+  const apex_buy = async () => {
+    if (selectedTokens.value.length === 0) return;
+
+    isRunning.value = true;
+    shouldStop.value = false;
+
+    selectedTokens.value.forEach((id) => {
+      tokenStatus.value[id] = "waiting";
+    });
+
+    // 只购买 count > 0 的商品
+    const buyList = apexShopConfig.value.filter((item) => item.count > 0);
+    if (buyList.length === 0) {
+      isRunning.value = false;
+      return;
+    }
+
+    await runStreaming(selectedTokens.value, async (tokenId) => {
+      if (shouldStop.value) return;
+      tokenStatus.value[tokenId] = "running";
+
+      const token = tokens.value.find((t) => t.id === tokenId);
+      if (!token) {
+        tokenStatus.value[tokenId] = "failed";
+        return;
+      }
+
+      try {
+        await ensureConnection(tokenId);
+        if (shouldStop.value) return;
+
+        // 通过 role_getroleinfo 获取背包盐山金币数量 (item ID 16002)
+        const roleRes = await tokenStore.sendMessageWithPromise(
+          tokenId,
+          "role_getroleinfo",
+          {},
+          8000,
+        );
+
+        const items = roleRes?.role?.items || roleRes?.role?.itemList || null;
+        const saltMountainGold = items?.[16002]?.num ?? items?.[16002]?.quantity ?? (typeof items?.[16002] === "number" ? items[16002] : "未知");
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 盐山金币数量：${saltMountainGold}`,
+          type: "info",
+        });
+
+        // 预校验：根据盐山金币余额调整各商品购买次数
+        let remainingGold = typeof saltMountainGold === "number" ? saltMountainGold : Infinity;
+        const adjustedBuyList = buyList.map(item => ({ ...item, originalCount: item.count }));
+        for (const item of adjustedBuyList) {
+          if (remainingGold <= 0 || remainingGold < item.cost) {
+            item.count = 0;
+            continue;
+          }
+          const maxAffordable = Math.floor(remainingGold / item.cost);
+          const limit = item.limit || 999999;
+          if (maxAffordable < item.count) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} 盐山金币不足，${item.name} 购买次数从 ${item.count} 调整为 ${maxAffordable}`,
+              type: "info",
+            });
+            item.count = maxAffordable;
+          }
+          if (limit > 0 && item.count > limit) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `${token.name} ${item.name} 超过限购 ${limit}次，调整为 ${limit}`,
+              type: "info",
+            });
+            item.count = limit;
+          }
+          remainingGold -= item.cost * item.count;
+        }
+        const finalBuyList = adjustedBuyList.filter(item => item.count > 0);
+        if (finalBuyList.length === 0) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 盐山金币数量不足或已达限购，无法购买任何商品，跳过`,
+            type: "warning",
+          });
+          tokenStatus.value[tokenId] = "completed";
+          return;
+        }
+
+        // 依次购买每种商品
+        let totalSuccess = 0;
+        for (const item of finalBuyList) {
+          if (shouldStop.value) break;
+
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `${token.name} 开始购买 ${item.name} (${item.count}次)`,
+            type: "info",
+          });
+
+          for (let i = 0; i < item.count; i++) {
+            if (shouldStop.value) break;
+
+            const result = await tokenStore.sendMessageWithPromise(
+              tokenId,
+              "apex_buy",
+              { shopId: item.id, buyCnt: 1 },
+              8000,
+            );
+
+            await new Promise((r) => setTimeout(r, _getModuleDelay('store')));
+
+            if (result?.error) {
+              const errMsg = result.error || "未知错误";
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} 购买 ${item.name} 失败第 ${i + 1}/${item.count} 次：${errMsg}`,
+                type: "error",
+              });
+              
+              if (errMsg.includes("已上限") || errMsg.includes("限购") || errMsg.includes("超出限制")) {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `${token.name} 已达限购上限，停止继续购买`,
+                  type: "warning",
+                });
+                break;
+              }
+            } else {
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `${token.name} ✅ 成功购买 ${item.name} 第 ${i + 1}/${item.count} 次`,
+                type: "success",
+              });
+              totalSuccess++;
+            }
+          }
+        }
+
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 逐鹿商店购买完成，共成功 ${totalSuccess} 次`,
+          type: totalSuccess > 0 ? "success" : "info",
+        });
+        tokenStatus.value[tokenId] = "completed";
+      } catch (error) {
+        const errMsg = error.message?.includes("InvalidAccessError") ? "背包数据异常" : error.message;
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 逐鹿商店购买异常：${errMsg}`,
+          type: "error",
+        });
+        tokenStatus.value[tokenId] = "failed";
+      } finally {
+        tokenStore.closeWebSocketConnection(tokenId);
+        releaseConnectionSlot();
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `${token.name} 连接已关闭 (队列：${connectionQueue.active}/${batchSettings.maxActive})`,
           type: "info",
         });
       }
@@ -6583,6 +6760,8 @@ export function createTasksStore(deps) {
     legion_buy_spotted_egg,
     salt_crystal_shop_buy,
     saltCrystalShopConfig,
+    apex_buy,
+    apexShopConfig,
     salt_ingot_shop_buy,
     saltIngotShopConfig,
     star_drawturntable,
@@ -6599,6 +6778,6 @@ export function createTasksStore(deps) {
     getSaltCupBetInfo,
     batchApexGuess,
     batchApexGuessClaim,
-    batchSaltRoadCheer,
+    batchSaltRoadCheer,// eslint-disable-line
   };
 }

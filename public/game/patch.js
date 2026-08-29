@@ -303,6 +303,36 @@
     window.checkUpdate = 1;
     console.log('[Patch ' + PATCH_VERSION + '] 已设置 _hsdkInit=1, checkUpdate=1');
 
+    // ════════════════════════════════════════
+    // ★ Texture Format Hook (naiwa-style)
+    //   Override SUPPORT_TEXTURE_FORMATS to support WebP/KTX/ASTC
+    // ════════════════════════════════════════
+    (function overrideTextureFormats() {
+        if (typeof window.cc === 'undefined' || !window.cc.macro) {
+            console.log('[Patch ' + PATCH_VERSION + '] ⏳ Deferring texture hook until cc.macro available...');
+            // Try again after a short delay
+            setTimeout(overrideTextureFormats, 200);
+            return;
+        }
+        
+        // Hook SUPPORT_TEXTURE_FORMATS getter
+        Object.defineProperty(window.cc.macro, 'SUPPORT_TEXTURE_FORMATS', {
+            get: function() {
+                const formats = ['.png', '.jpg', '.jpeg', '.webp', '.pvr', '.ktx', '.astc'];
+                console.log('[Patch ' + PATCH_VERSION + '] 🖼️ Texture format hook fired:', formats.join(', '));
+                return formats;
+            },
+            set: function() {
+                // Prevent external code from overriding
+                console.warn('[Patch ' + PATCH_VERSION + '] ⚠️ Blocked attempt to override SUPPORT_TEXTURE_FORMATS');
+            },
+            configurable: true,
+            enumerable: true
+        });
+        
+        console.log('[Patch ' + PATCH_VERSION + '] ✅ Texture format hook installed successfully');
+    })();
+
     // ══════════════════════════════════════════
     //  ★ 蟠桃修复: 拦截 LoginService.manifest() HTTP请求
     //    PlatformH5.platformType="hortor" → 替换为"wx" (伪装微信身份)

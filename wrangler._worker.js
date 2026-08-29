@@ -17,7 +17,18 @@ export default {
 
     // Proxy configuration - 按优先级排序（最长的前缀优先）
     const proxies = [
-      // ★ 微信小程序服务域名（蟠桃园等活动的核心需求）
+      // Manifest 接口代理（游戏版本动态获取）
+      {
+        prefix: '/api/manifest',
+        target: 'https://xxz-xyzw.hortorgames.com',
+        pathRewrite: '/login/manifest',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+          'Accept': '*/*'
+        }
+      },
+      
+      // 微信小程序服务域名（蟠桃园等特殊活动）
       {
         prefix: '/api/wechat',
         target: 'https://servicewechat.com',
@@ -94,7 +105,11 @@ export default {
     if (proxy) {
       // Construct new URL
       const targetUrl = new URL(proxy.target);
-      targetUrl.pathname = url.pathname.replace(proxy.prefix, '') || '/';
+      if (proxy.pathRewrite) {
+        targetUrl.pathname = proxy.pathRewrite;
+      } else {
+        targetUrl.pathname = url.pathname.replace(proxy.prefix, '') || '/';
+      }
       targetUrl.search = url.search;
 
       // Prepare request headers

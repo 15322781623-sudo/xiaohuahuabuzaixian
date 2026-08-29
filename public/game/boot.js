@@ -20,19 +20,31 @@
                 var cached = localStorage.getItem(CACHE_KEY);
                 if (cached) {
                     var cacheData = JSON.parse(cached);
-                    if (cacheData && cacheData.bundleVers && typeof cacheData.bundleVers === 'object') {
-                        Object.assign(settings.bundleVers, cacheData.bundleVers);
-                        if (cacheData.bundleVers.codeVersion) {
-                            settings.codeVersion = cacheData.bundleVers.codeVersion;  // ★ 缓存也同步版本
+if (cacheData && cacheData.bundleVers && typeof cacheData.bundleVers === 'object') {
+                            // ★ Force refresh mode: respect PATCH_FORCE_MANIFEST_REFRESH flag
+                            //   Enable with: localStorage.setItem('__force_remote_manifest', 'true')
+                            //   Use case: Force update textures when local versions are stale
+var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true || 
+                                   localStorage.getItem('__force_remote_manifest') === 'true';
+                            
+                            if (!FORCE_REMOTE) {
+                                // ★ v10.0: 缓存只用于资源加载加速，不同步 codeVersion
+                                //   原因：缓存可能过期，版本锁定应使用远程最新值或 game-defines 静态值
+                                Object.assign(settings.bundleVers, cacheData.bundleVers);
+                                appliedCache = true;
+                                console.log('[boot v1.0] ✅ 已应用本地 manifest 缓存，条目:', Object.keys(cacheData.bundleVers).length);
+                            } else {
+                                console.log('[boot v1.0] 🔄 强制跳过本地缓存，准备拉取远程 manifest');
+                            }
                         }
-                        appliedCache = true;
-                        console.log('[boot v1.0] ✅ 已应用本地manifest缓存, 条目:', Object.keys(cacheData.bundleVers).length);
-                    }
                 }
             } catch(e) {}
 
             var xhr = new XMLHttpRequest();
-            var manifestUrl = 'https://xxz-xyzw.hortorgames.com/login/manifest?platform=wx&version=2.41.5-wx';
+            // ★ v10.1: 通过 /api/manifest 同源自定义代理（dev: vite proxy, prod: worker proxy）
+            //   原因：避免 CORS 跨域问题 - 直接 POST https://xxz-xyzw.hortorgames.com/login/manifest 被浏览器拦截
+            var currentVersion = '2.41.5-wx';
+            var manifestUrl = `/api/manifest?platform=wx&version=${currentVersion}`;
             console.log('[boot v1.0] POST', manifestUrl);
 
             xhr.open('POST', manifestUrl, true);
@@ -66,27 +78,30 @@
                             console.log('[boot v1.0]   条目:', oldCount, '→', newCount);
                             if (bv.codeVersion) {
                                 settings.codeVersion = bv.codeVersion;  // ★ v1.0: 自动同步服务器版本
-                                console.log('[boot v1.0]   远程codeVersion:', bv.codeVersion);
+                                console.log('[boot v1.0]   ✅ 远程 codeVersion:', bv.codeVersion);
+                            } else {
+                                console.warn('[boot v1.0] ⚠ Manifest 响应中无 codeVersion 字段');
+                                console.warn('[boot v1.0]   原始响应:', JSON.stringify(bv));
                             }
                         } else {
-                            if (!appliedCache) console.warn('[boot v1.0] ⚠ Manifest无有效bundleVers，使用本地版本');
+                            console.warn('[boot v1.0] ⚠ Manifest无有效bundleVers，使用本地版本');
                         }
                     } catch(e) {
-                        if (!appliedCache) console.warn('[boot v1.0] ⚠ Manifest解析失败:', e.message);
+                        console.warn('[boot v1.0] ⚠ Manifest解析失败:', e.message);
                     }
                 } else {
-                    if (!appliedCache) console.warn('[boot v1.0] ⚠ Manifest HTTP', xhr.status);
+                    console.warn('[boot v1.0] ⚠ Manifest HTTP', xhr.status);
                 }
                 resolve(); // 总是resolve（有缓存或本地版本兜底）
             };
 
             xhr.onerror = function() {
-                if (!appliedCache) console.warn('[boot v1.0] ⚠ Manifest网络错误');
+                console.warn('[boot v1.0] ⚠ Manifest网络错误');
                 resolve();
             };
 
             xhr.ontimeout = function() {
-                if (!appliedCache) console.warn('[boot v1.0] ⚠ Manifest超时(5s)');
+                console.warn('[boot v1.0] ⚠ Manifest超时(5s)');
                 resolve();
             };
 

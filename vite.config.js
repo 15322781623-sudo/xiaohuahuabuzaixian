@@ -254,6 +254,13 @@ export default defineConfig(async () => {
       open: true,
       host: true,
       proxy: {
+        // Manifest 接口代理（游戏版本动态获取）
+        "/api/manifest": {
+          target: "https://xxz-xyzw.hortorgames.com",
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/manifest/, "/login/manifest"),
+          secure: true,
+        },
         // 微信登录接口代理
         "/api/weixin": {
           target: "https://open.weixin.qq.com",

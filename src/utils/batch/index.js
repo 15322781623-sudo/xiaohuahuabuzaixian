@@ -21,5 +21,6 @@ export { createTasksDungeon } from "./tasksDungeon.js";
 export { createTasksHangUp } from "./tasksHangUp.js";
 export { createTasksItem } from "./tasksItem.js";
 export { createTasksLegacy } from "./tasksLegacy.js";
+export { createTasksSaltField } from "./tasksSaltField.js";
 export { createTasksStore } from "./tasksStore.js";
 export { createTasksTower } from "./tasksTower.js";

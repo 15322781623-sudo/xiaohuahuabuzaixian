@@ -448,11 +448,32 @@ window.installRemoteAssetLoader = function () {
 
   function downloadJson(url, options, onComplete) {
     const finalUrl = toRemoteUrl(url)
+    
+    // ★ Force cache control for bundle config files (texture updates)
+    const isConfigRequest = url.endsWith('config.json') || url.includes('/config.');
+    const fetchOptions = {
+      cache: 'no-cache',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    };
+    
+    // Append cache-busting timestamp if FORCE_REMOTE mode enabled
+    const forceRefresh = window.PATCH_FORCE_MANIFEST_REFRESH === true || 
+                         localStorage.getItem('__force_remote_manifest') === 'true';
+    let urlWithNoCache = finalUrl;
+    if (forceRefresh || isConfigRequest) {
+      const separator = finalUrl.includes('?') ? '&' : '?';
+      urlWithNoCache = `${finalUrl}${separator}_n=${Date.now()}`;
+    }
+    
     if (originalJsonDownloader) {
       return originalJsonDownloader(finalUrl, options, onComplete)
     }
 
-    fetch(finalUrl, { cache: 'force-cache' })
+    fetch(urlWithNoCache, fetchOptions)
       .then(function (res) {
         if (!res.ok) {
           throw new Error('download failed: ' + finalUrl + ', status: ' + res.status)
@@ -463,6 +484,7 @@ window.installRemoteAssetLoader = function () {
         onComplete && onComplete(null, json)
       })
       .catch(function (err) {
+        console.error('[ResourcePatch] Config fetch error:', err);
         onComplete && onComplete(err)
       })
   }

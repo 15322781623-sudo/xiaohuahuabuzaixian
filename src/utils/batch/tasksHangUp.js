@@ -919,13 +919,13 @@ export function createTasksHangUp(deps) {
     try {
       isRunning.value = true;
       shouldStop.value = false;
-
+  
       selectedTokens.value.forEach((id) => {
         tokenStatus.value[id] = "waiting";
       });
-
+  
       const signupForToken = async (tokenId, token) => {
-        addLog({ time: new Date().toLocaleTimeString(), message: `=== 盐场报名: ${token.name} ===`, type: "info" });
+        addLog({ time: new Date().toLocaleTimeString(), message: `=== 盐场报名：${token.name} ===`, type: "info" });
         try {
           await callWithRetry(tokenId, "legion_signup", {});
           await safeDelay(_getModuleDelay('hangup'));
@@ -940,12 +940,47 @@ export function createTasksHangUp(deps) {
           }
         }
       };
-
+  
       await batchWithRetry(selectedTokens.value, "盐场报名", signupForToken);
     } finally {
       isRunning.value = false;
       currentRunningTokenId.value = null;
       message.success("批量盐场报名结束");
+    }
+  };
+  
+  // ✅ 批量营地报名（club_signup）
+  const batchClubSignup = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+    try {
+      isRunning.value = true;
+      shouldStop.value = false;
+  
+      selectedTokens.value.forEach((id) => {
+        tokenStatus.value[id] = "waiting";
+      });
+  
+      const signupForToken = async (tokenId, token) => {
+        addLog({ time: new Date().toLocaleTimeString(), message: `=== 营地报名：${token.name} ===`, type: "info" });
+        try {
+          await callWithRetry(tokenId, "club_signup", {});
+          await safeDelay(_getModuleDelay('hangup'));
+          addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${token.name} 营地报名成功`, type: "success" });
+        } catch (e) {
+          if (e.message && e.message.includes('2300280')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `ℹ️ ${token.name} 已报名，无需重复报名`, type: "info" });
+          } else {
+            throw e;
+          }
+        }
+      };
+  
+      await batchWithRetry(selectedTokens.value, "营地报名", signupForToken);
+    } finally {
+      isRunning.value = false;
+      currentRunningTokenId.value = null;
+      message.success("批量营地报名结束");
     }
   };
 
@@ -1082,6 +1117,7 @@ export function createTasksHangUp(deps) {
     batchStudyClaimReward,
     batchclubsign,
     batchLegionSignup,
+    batchClubSignup,
     batchPayloadSignup,
     batchWarGuessCheer,
     batchHangUpUpgrade,

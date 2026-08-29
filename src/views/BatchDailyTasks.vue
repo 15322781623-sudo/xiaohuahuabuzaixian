@@ -361,6 +361,20 @@
                 </n-button>
                 <n-button
                   size="small"
+                  @click="executeManualTaskWithRecord('batchClubSignup', '营地报名', batchClubSignup)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  营地报名
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('batchSaltFieldDig', '盐场刨地', batchSaltFieldDig)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  盐场刨地
+                </n-button>
+                <n-button
+                  size="small"
                   @click="executeManualTaskWithRecord('batchPayloadSignup', '蟠桃报名', batchPayloadSignup)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
@@ -849,6 +863,13 @@
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   盐锭商店购买
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="openApexShopModal"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  逐鹿商店购买
                 </n-button>
                 <n-button
                   size="small"
@@ -2943,6 +2964,38 @@
       </div>
     </n-modal>
 
+<!-- 逐鹿商店购买 Modal -->
+    <n-modal
+      v-model:show="showApexShopModal"
+      preset="card"
+      title="逐鹿商店购买配置"
+      style="width: 90%; max-width: 500px"
+    >
+      <div class="settings-content">
+        <n-alert type="info" show-icon style="margin-bottom: 12px">
+          勾选需要购买的商品并设置次数，盐山金币不足时将自动停止购买。
+        </n-alert>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div v-for="item in apexShopConfig" :key="item.id"
+               style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px;">
+            <n-checkbox v-model:checked="item._checked"
+                        @update:checked="(checked) => { if (checked) item.count = item.count || 1; else item.count = 0; }" />
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">{{ item.name }}</div>
+              <div style="font-size: 12px; color: #888;">{{ item.cost }}盐山金币/次 · 限购{{ item.limit }}次</div>
+            </div>
+            <n-input-number v-model:value="item.count" :min="0" :max="item.limit" size="small"
+                            style="width: 100px;"
+                            @update:value="(val) => { item._checked = val > 0; }" />
+          </div>
+        </div>
+        <div class="modal-actions" style="margin-top: 20px; text-align: right">
+          <n-button @click="showApexShopModal = false" style="margin-right: 12px">取消</n-button>
+          <n-button type="primary" @click="executeApexShopBuy" :disabled="isRunning">开始购买</n-button>
+        </div>
+      </div>
+    </n-modal>
+
     <!-- 多选购买 Modal -->
     <n-modal
       v-model:show="showManualBuyModal"
@@ -3247,6 +3300,17 @@
                       <n-tag size="small" type="info" :bordered="false">
                         {{ task.selectedTokens.length }} 个
                       </n-tag>
+                      <n-button
+                        size="tiny"
+                        text
+                        @click="openAccountSelector(task)"
+                        style="margin-left: 8px; padding: 0 6px;"
+                      >
+                        <template #icon>
+                          <n-icon><Person /></n-icon>
+                        </template>
+                        选择
+                      </n-button>
                     </span>
                   </div>
                   <div class="task-info-item" v-if="task.maxActive > 0">
@@ -3422,7 +3486,114 @@
       </div>
     </n-modal>
 
-    <!-- Task Modal -->
+    <!-- Account Selector Modal -->
+    <n-modal
+      v-model:show="showAccountSelectorModal"
+      preset="card"
+      title="👥 选择执行账号"
+      style="width: 95%; max-width: 700px;"
+      :segmented="{ content: true }"
+    >
+      <div v-if="currentTask" class="account-selector-container">
+        <!-- 当前任务信息 -->
+        <n-alert type="info" style="margin-bottom: 16px; border-radius: 8px;">
+          <strong>当前任务：</strong> {{ currentTask.name }}
+          <br />
+          <span style="font-size: 12px; opacity: 0.7;">选中账号数：{{ currentTask.selectedTokens.length }}个</span>
+        </n-alert>
+
+        <!-- 分组筛选 -->
+        <div class="group-filter-section" style="margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;">
+            <span class="info-label">分组筛选：</span>
+            <n-button
+              size="small"
+              :type="!selectedGroupNames || selectedGroupNames.size === 0 ? 'primary' : 'default'"
+              @click="clearGroupFilterSelection"
+            >
+              全部
+            </n-button>
+            <n-button
+              v-for="{ name, count } in getUniqueGroupNames"
+              :key="name"
+              size="small"
+              :type="selectedGroupNames && selectedGroupNames.has(name) ? 'primary' : 'default'"
+              @click="toggleGroupSelectionLogic(name)"
+            >
+              {{ name }} ({{ count }})
+            </n-button>
+          </div>
+          
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <n-button
+              size="small"
+              type="success"
+              @click="selectAllVisibleTokens"
+            >
+              <template #icon>
+                <n-icon><CheckmarkCircleOutline /></n-icon>
+              </template>
+              全选可见
+            </n-button>
+            <n-button
+              size="small"
+              type="warning"
+              @click="clearVisibleTokens"
+            >
+              <template #icon>
+                <n-icon><CloseCircleOutline /></n-icon>
+              </template>
+              清空可见
+            </n-button>
+            <n-button
+              size="small"
+              style="margin-left: auto;"
+              @click="selectByTokenGroup"
+            >
+              <template #icon>
+                <n-icon><TeamOutline /></n-icon>
+              </template>
+              按分组勾选
+            </n-button>
+          </div>
+        </div>
+
+        <!-- 账号列表 -->
+        <n-list style="max-height: 400px; overflow-y: auto;">
+          <n-list-item
+            v-for="token in filteredTokens"
+            :key="token.id"
+          >
+            <n-checkbox
+              :checked="currentTask.selectedTokens.includes(token.id)"
+              @update:checked="(checked) => toggleTokenSelection(token.id, checked)"
+            >
+              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div>
+                  <div>{{ token.name || token.id.slice(0, 8) }}</div>
+                  <div style="font-size: 12px; opacity: 0.6;">
+                    {{ token.group || '未分组' }} - {{ token.token ? (token.token.length > 30 ? token.token.substring(0, 10) + '...' : token.token) : '无 Token' }}
+                  </div>
+                </div>
+              </div>
+            </n-checkbox>
+          </n-list-item>
+        </n-list>
+
+        <!-- 统计信息 -->
+        <div style="margin-top: 16px; text-align: right; font-size: 14px; color: var(--text-tertiary);">
+          已选：{{ currentTask.selectedTokens.length }} 个 | 
+          可见：{{ filteredTokens.length }} 个 | 
+          分组：{{ selectedGroup || '全部' }}
+        </div>
+
+        <!-- 保存按钮 -->
+        <div style="margin-top: 20px; text-align: right;">
+          <n-button @click="showAccountSelectorModal = false" style="margin-right: 12px;">取消</n-button>
+          <n-button type="primary" @click="saveAccountSelection">保存选择</n-button>
+        </div>
+      </div>
+    </n-modal>
     <n-modal
       v-model:show="showTaskModal"
       preset="card"
@@ -3851,6 +4022,49 @@
                 </n-grid-item>
               </n-grid>
               <n-alert v-if="!taskForm.saltIngotShopItems || Object.values(taskForm.saltIngotShopItems).filter(i => i && i.selected).length === 0" type="warning" size="small" style="margin-top: 12px;">
+                请至少选择一个商品
+              </n-alert>
+            </div>
+          </div>
+
+          <!-- 逐鹿商店购买配置 -->
+          <div v-if="taskForm.selectedTasks.includes('apex_buy')" class="task-config-card">
+            <div class="config-card-header">
+              <span class="config-card-title">⛩️ 逐鹿商店 - 选择商品</span>
+            </div>
+            <div class="config-card-content">
+              <n-grid :cols="taskGridCols" :x-gap="12" :y-gap="8">
+                <n-grid-item v-for="option in apexShopConfig" :key="option.id">
+                  <div class="store-item">
+                    <n-checkbox 
+                      :checked="taskForm.apexBuyItems && taskForm.apexBuyItems[option.id] && taskForm.apexBuyItems[option.id].selected"
+                      @update:checked="(checked) => {
+                        if (!taskForm.apexBuyItems) taskForm.apexBuyItems = {};
+                        const current = taskForm.apexBuyItems[option.id];
+                        taskForm.apexBuyItems[option.id] = {
+                          selected: checked,
+                          count: checked ? (current?.count || 1) : 0,
+                          label: option.name,
+                          min: 1,
+                          max: option.limit
+                        };
+                      }"
+                    >
+                      {{ option.name }}
+                    </n-checkbox>
+                    <n-input-number 
+                      v-if="taskForm.apexBuyItems && taskForm.apexBuyItems[option.id] && taskForm.apexBuyItems[option.id].selected"
+                      v-model:value="taskForm.apexBuyItems[option.id].count"
+                      :min="1"
+                      :max="option.limit"
+                      :disabled="!taskForm.apexBuyItems[option.id].selected"
+                      size="small"
+                      style="width: 80px"
+                    />
+                  </div>
+                </n-grid-item>
+              </n-grid>
+              <n-alert v-if="!taskForm.apexBuyItems || Object.values(taskForm.apexBuyItems).filter(i => i && i.selected).length === 0" type="warning" size="small" style="margin-top: 12px;">
                 请至少选择一个商品
               </n-alert>
             </div>
@@ -6102,7 +6316,7 @@ import { useRouter, useRoute } from "vue-router";
 import { DailyTaskRunner, SIMPLIFIED_TASK_ITEMS } from "@/utils/dailyTaskRunner";
 import { preloadQuestions } from "@/utils/studyQuestionsFromJSON.js";
 import { useMessage } from "naive-ui";
-import { Settings, AddCircleOutline, CheckmarkCircleOutline, CloseCircleOutline, ListOutline, CloudDownloadOutline, CloudUploadOutline, SearchOutline, DocumentTextOutline, CreateOutline, TrashOutline, SettingsOutline, PlayOutline, Add, CopyOutline, ChevronDown } from "@vicons/ionicons5";
+import { Settings, AddCircleOutline, CheckmarkCircleOutline, CloseCircleOutline, ListOutline, CloudDownloadOutline, CloudUploadOutline, SearchOutline, DocumentTextOutline, CreateOutline, TrashOutline, SettingsOutline, PlayOutline, Add, CopyOutline, ChevronDown, Person } from "@vicons/ionicons5";
 import { getFirstSaturdayOfMonth, getLastSaturday } from "@/utils/clubBattleUtils";
 import TokenCard from "@/components/TokenCard.vue";
 import GameWindowToolbar from "@/components/GameWindowToolbar.vue";
@@ -6172,6 +6386,7 @@ import {
   createTasksCar,
   createTasksItem,
   createTasksDungeon,
+  createTasksSaltField,
   createTasksArena,
   createTasksStore,
   createTasksLegacy,
@@ -8180,6 +8395,52 @@ const executeSaltCrystalShopBuy = () => {
   salt_crystal_shop_buy();
 };
 
+// 逐鹿商店 Modal State
+const showApexShopModal = ref(false);
+
+const openApexShopModal = () => {
+  // 初始化 _checked 状态
+  apexShopConfig.value.forEach((item) => {
+    item._checked = item.count > 0;
+  });
+  showApexShopModal.value = true;
+};
+
+const executeApexShopBuy = () => {
+  showApexShopModal.value = false;
+  
+  // Save configuration for scheduled tasks
+  const selectedItems = apexShopConfig.value
+    .filter(item => item._checked && item.count > 0)
+    .map(item => ({
+      id: item.id,
+      name: item.name,
+      count: item.count,
+    }));
+  
+  if (selectedItems.length === 0) {
+    message?.warning("请至少选择一个商品");
+    return;
+  }
+  
+  // Build apexBuyItems object with id as key (for task config matching)
+  batchSettings.apexBuyItems = {};
+  apexShopConfig.value.forEach(item => {
+    if (item._checked && item.count > 0) {
+      batchSettings.apexBuyItems[String(item.id)] = {
+        selected: true,
+        count: item.count,
+        label: item.name,
+        min: 1,
+        max: item.limit,
+      };
+    }
+  });
+  saveBatchSettings();
+  
+  apex_buy(selectedItems);
+};
+
 // 盐锭商店 Modal State
 const showSaltIngotShopModal = ref(false);
 
@@ -8856,14 +9117,134 @@ const isAvatarLoading = ref(false);
 const avatarLoadError = ref(false);
 
 // ======================
-// Scheduled Tasks Feature
-// ======================
-
 // Scheduled Tasks State Management
 const scheduledTasks = ref([]); // List of all scheduled tasks
 const showTaskModal = ref(false); // Control the visibility of the add/edit task modal
 const showTasksModal = ref(false); // Control the visibility of the tasks list modal
 const editingTask = ref(null); // Currently editing task
+
+// Account Selector for Scheduled Tasks
+const showAccountSelectorModal = ref(false);
+const selectedGroupNames = ref(new Set()); // ✅ 使用 Set 支持多选分组名称
+const currentTask = ref(null);
+
+// Get unique group names with token counts from tokenGroups (separated array of TokenGroup[])
+const getUniqueGroupNames = computed(() => {
+  if (!tokenGroups.value || tokenGroups.value.length === 0) return [];
+  const groupsMap = new Map(); // 使用 Map 存储分组名和计数
+  
+  (tokenGroups.value || []).forEach(group => {
+    if (group.name && group.tokenIds) {
+      const count = group.tokenIds.length;
+      groupsMap.set(group.name, count);
+    }
+  });
+  
+  // 按账号数量降序排列
+  return Array.from(groupsMap.entries())
+    .sort((a, b) => b[1] - a[1]) // 按账号数从大到小排序
+    .map(([name, count]) => ({ name, count }));
+});
+
+const filteredTokens = computed(() => {
+  if (!selectedGroupNames.value || selectedGroupNames.value.size === 0) return tokenStore.gameTokens || [];
+  
+  // Filter by all selected groups
+  const validTokenIds = new Set();
+  (selectedGroupNames.value || []).forEach(groupName => {
+    const targetGroup = tokenGroups.value.find(g => g.name === groupName);
+    if (targetGroup) {
+      targetGroup.tokenIds.forEach(id => validTokenIds.add(id));
+    }
+  });
+  
+  return (tokenStore.gameTokens || []).filter(t => validTokenIds.has(t.id));
+});
+
+// Watch for group selection to auto-check tokens
+watch(selectedGroupNames, (newGroups) => {
+  // Note: This watch might not work as intended because we're watching a Set object itself
+  // The deep: true won't detect changes to Set internals
+  // This logic may need to be moved to toggleGroupSelectionLogic instead
+}, { deep: true });
+
+const openAccountSelector = (task) => {
+  currentTask.value = task;
+  if (selectedGroupNames.value) {
+    selectedGroupNames.value.clear(); // ✅ 清空 Set
+  }
+  showAccountSelectorModal.value = true;
+};
+
+// 清空分组筛选（模板中"全部"按钮的点击处理）
+const clearGroupFilterSelection = () => {
+  if (selectedGroupNames.value) {
+    selectedGroupNames.value = new Set(); // 重新赋值触发响应式更新
+  }
+  message.success('已清空所有分组筛选');
+};
+
+const toggleTokenSelection = (tokenId, checked) => {
+  if (!currentTask.value) return;
+  if (checked) {
+    if (!currentTask.value.selectedTokens.includes(tokenId)) {
+      currentTask.value.selectedTokens.push(tokenId);
+    }
+  } else {
+    currentTask.value.selectedTokens = currentTask.value.selectedTokens.filter(id => id !== tokenId);
+  }
+};
+
+const selectAllVisibleTokens = () => {
+  if (!currentTask.value) return;
+  const visibleIds = filteredTokens.value.map(t => t.id);
+  currentTask.value.selectedTokens = [...new Set([...currentTask.value.selectedTokens, ...visibleIds])];
+};
+
+// ✅ 新增：切换分组选择（支持多选/取消）
+const toggleGroupSelectionLogic = (groupName) => {
+  if (!currentTask.value) return;
+  const current = new Set(selectedGroupNames.value || []);
+  if (current.has(groupName)) {
+    // 取消选择该分组，移除其所有账号
+    current.delete(groupName);
+    const groupTokens = tokenGroups.value.find(g => g.name === groupName)?.tokenIds || [];
+    currentTask.value.selectedTokens = currentTask.value.selectedTokens.filter(id => !groupTokens.includes(id));
+    message.info(`已取消 "${groupName}" 分组的选择`);
+  } else {
+    // 添加分组，自动勾选其所有账号
+    current.add(groupName);
+    const groupTokens = tokenGroups.value.find(g => g.name === groupName)?.tokenIds || [];
+    currentTask.value.selectedTokens = [...new Set([...currentTask.value.selectedTokens, ...groupTokens])];
+    message.success(`已自动勾选 "${groupName}" 分组的 ${groupTokens.length} 个账号`);
+  }
+  selectedGroupNames.value = current; // 重新赋值触发响应式更新
+};
+
+const clearVisibleTokens = () => {
+  if (!currentTask.value) return;
+  const visibleIds = filteredTokens.value.map(t => t.id);
+  currentTask.value.selectedTokens = currentTask.value.selectedTokens.filter(id => !visibleIds.includes(id));
+};
+
+const selectByTokenGroup = () => {
+  if (!currentTask.value || !selectedGroupNames.value || selectedGroupNames.value.size === 0) return;
+  // 批量勾选所有选中分组的所有账号
+  const allGroupTokens = [];
+  (selectedGroupNames.value || []).forEach(groupName => {
+    const groupTokens = tokenGroups.value.find(g => g.name === groupName)?.tokenIds || [];
+    allGroupTokens.push(...groupTokens);
+  });
+  currentTask.value.selectedTokens = [...new Set(allGroupTokens)];
+  message.success(`已选择 ${selectedGroupNames.value.size} 个分组的共 ${allGroupTokens.length} 个账号`);
+};
+
+const saveAccountSelection = () => {
+  if (!currentTask.value) return;
+  saveScheduledTasks();
+  showAccountSelectorModal.value = false;
+  message.success("账号选择已保存");
+};
 const taskForm = reactive({
   name: "", // Task name
   taskType: "normal", // 'normal' | 'push_map'
@@ -9034,7 +9415,7 @@ const fetchTaskSaltRoadOpponents = async () => {
 
 // 任务分组定义
 const taskGroupDefinitions = [
-  { name: 'daily', label: '日常', tasks: ['startBatch', 'batchSimplifiedDaily', 'claimHangUpRewards', 'batchAddHangUpTime', 'batchHangUpUpgrade', 'resetBottles', 'batchlingguanzi', 'batchclubsign', 'batchLegionSignup', 'batchPayloadSignup', 'switchSaltFieldPeachFormation', 'batchStudy', 'batcharenafight', 'batchSmartSendCar', 'batchClaimCars', 'batchCarResearchUpgrade', 'store_purchase', 'batch_mail_claim_and_cleanup'] },
+  { name: 'daily', label: '日常', tasks: ['startBatch', 'batchSimplifiedDaily', 'claimHangUpRewards', 'batchAddHangUpTime', 'batchHangUpUpgrade', 'resetBottles', 'batchlingguanzi', 'batchclubsign', 'batchLegionSignup', 'batchClubSignup', 'batchSaltFieldDig', 'batchPayloadSignup', 'switchSaltFieldPeachFormation', 'batchStudy', 'batcharenafight', 'batchSmartSendCar', 'batchClaimCars', 'batchCarResearchUpgrade', 'store_purchase', 'batch_mail_claim_and_cleanup'] },
   { name: 'welfare', label: '福利', tasks: ['charge_claimaddup_rewards', 'collection_claimfreereward', 'gacha_drawreward', 'claim_recruit_welfare', 'pkroom_appoint', 'saltcup26_openstarpack_use'] },
   { name: 'dungeon', label: '副本', tasks: ['climbTower', 'batchmengjing', 'skinChallenge', 'skinTreasure', 'newSkinChallenge', 'newSkinTreasure', 'batchClaimPeachTasks', 'batchBuyDreamItems'] },
   { name: 'baoku', label: '宝库', tasks: ['batchbaoku13', 'batchbaoku45'] },
@@ -9042,7 +9423,7 @@ const taskGroupDefinitions = [
   { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
   { name: 'pet', label: '宠物', tasks: ['legion_buy_spotted_egg', 'use_spotted_egg', 'claim_pet_book', 'batch_pet_merge', 'egg_merge_cycle', 'batch_pet_upgrade'] },
   { name: 'nightmare', label: '十殿', tasks: ['batchNightmareChallengePresets', 'nightmare_draw_lottery', 'nightmare_claim_book_reward', 'star_drawturntable', 'batch_star_challenge'] },
-  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'batchGenieSweep', 'batchClaimCdkReward', 'batchClaimApexRewards', 'batchSaltCupBet'] },
+  { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'apex_buy', 'batchGenieSweep', 'batchClaimCdkReward', 'batchClaimApexRewards', 'batchSaltCupBet'] },
   { name: 'legacy', label: '功法', tasks: ['batchLegacyHangup', 'batchLegacyClaim', 'batchLegacyGiftSendEnhanced', 'batchLegacyClaimGiftTask'] },
   { name: 'monthly', label: '月度', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items', 'batchSaltRoadCheer', 'batchApexGuess', 'batchApexGuessClaim'] },
   { name: 'consumeActivity', label: '消耗活动', tasks: ['batchConsumeActivity', 'batchClaimConsumeRewards', 'batchApexCheer', 'batchUseActivityItem', 'batchActivityExchange', 'batchAutumnUseItem'] }
@@ -9474,7 +9855,12 @@ const openTaskModal = () => {
     6: { selected: false, count: 1, label: "四圣宝珠碎片", min: 1, max: 1 },
   };
 
-  // 黑市多选购买商品配置
+  // 逐鹿商店配置
+  taskForm.apexBuyItems = {
+    1: { selected: false, count: 0, label: "饼干", min: 1, max: 25 },
+    2: { selected: false, count: 0, label: "幻彩灵果", min: 1, max: 75 },
+    3: { selected: false, count: 0, label: "四圣转换镜", min: 1, max: 1 },
+  };
   taskForm.manualBuyItems = {
     1: { selected: false, count: 0, label: "青铜宝箱" },
     2: { selected: false, count: 0, label: "黄金宝箱" },
@@ -10007,6 +10393,7 @@ const saveTask = () => {
     weeklyMarketItems: JSON.parse(JSON.stringify(taskForm.weeklyMarketItems)),
     saltCrystalShopItems: JSON.parse(JSON.stringify(taskForm.saltCrystalShopItems)),
     saltIngotShopItems: JSON.parse(JSON.stringify(taskForm.saltIngotShopItems)),
+    apexBuyItems: JSON.parse(JSON.stringify(taskForm.apexBuyItems)),
     manualBuyItems: JSON.parse(JSON.stringify(taskForm.manualBuyItems)),
     collectionExchangeItems: JSON.parse(JSON.stringify(taskForm.collectionExchangeItems)),
     fragmentPackItems: [...(taskForm.fragmentPackItems || [])],
@@ -13911,6 +14298,27 @@ const executeScheduledTask = async (task) => {
                   type: "warning",
                 });
               }
+            } else if (taskName === 'apex_buy') {
+              // 逐鹿商店多选购买，根据任务配置更新商店配置后执行
+              const shopConfig = task.apexBuyItems || {};
+              if (Object.keys(shopConfig).length > 0) {
+                // 更新 tasksStore 中的逐鹿商店配置
+                apexShopConfig.value.forEach(item => {
+                  const taskItem = shopConfig[String(item.id)];
+                  if (taskItem && taskItem.selected) {
+                    item.count = taskItem.count;
+                  } else {
+                    item.count = 0;
+                  }
+                });
+                await taskFunction();
+              } else {
+                addLog({
+                  time: new Date().toLocaleTimeString(),
+                  message: `⚠️ 逐鹿商店未配置商品，跳过`,
+                  type: "warning",
+                });
+              }
             } else if (taskName === 'manual_buy') {
               // 黑市多选购买，根据任务配置更新配置后执行
               const buyConfig = task.manualBuyItems || {};
@@ -17441,7 +17849,7 @@ const wrapTaskFunctions = (obj) => {
 
 // 初始化任务模块
 const tasksHangUp = wrapTaskFunctions(createTasksHangUp(createTaskDeps()));
-const { claimHangUpRewards, batchAddHangUpTime, batchStudy, batchStudyClaimReward, batchclubsign, batchLegionSignup, batchPayloadSignup, batchWarGuessCheer, batchHangUpUpgrade } = tasksHangUp;
+const { claimHangUpRewards, batchAddHangUpTime, batchStudy, batchStudyClaimReward, batchclubsign, batchLegionSignup, batchClubSignup, batchPayloadSignup, batchWarGuessCheer, batchHangUpUpgrade } = tasksHangUp;
 
 const tasksBottle = wrapTaskFunctions(createTasksBottle(createTaskDeps()));
 const { resetBottles, batchlingguanzi } = tasksBottle;
@@ -17451,6 +17859,9 @@ const { climbTower, climbWeirdTower, batchClaimFreeEnergy, skinChallenge, skinTr
 
 const tasksCar = wrapTaskFunctions(createTasksCar(createTaskDeps()));
 const { batchSmartSendCar, batchClaimCars, batchCarResearchUpgrade } = tasksCar;
+
+const tasksSaltField = wrapTaskFunctions(createTasksSaltField(createTaskDeps()));
+const { batchSaltFieldDig } = tasksSaltField;
 
 const tasksItem = wrapTaskFunctions(createTasksItem(createTaskDeps()));
 const {
@@ -17967,7 +18378,7 @@ const tasksArena = wrapTaskFunctions(createTasksArena(createTaskDeps()));
 const { batcharenafight, batchTopUpFish, batchTopUpArena } = tasksArena;
 
 const tasksStore = wrapTaskFunctions(createTasksStore(createTaskDeps()));
-const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, egg_merge_cycle, batch_pet_upgrade, gacha_drawreward, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, batch_mail_claim_and_cleanup, saltcup26_openstarpack_use, batchSaltCupBet, getSaltCupBetInfo, batchApexGuess, batchApexGuessClaim, batchSaltRoadCheer } = tasksStore;
+const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, egg_merge_cycle, batch_pet_upgrade, gacha_drawreward, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, apex_buy, apexShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, batch_mail_claim_and_cleanup, saltcup26_openstarpack_use, batchSaltCupBet, getSaltCupBetInfo, batchApexGuess, batchApexGuessClaim, batchSaltRoadCheer } = tasksStore;
 
 // ✅ 定时任务函数名映射表（替代 eval()，解决生产构建中 eval 无法访问组件局部变量的问题）
 const taskFunctionMap = {
@@ -18010,6 +18421,9 @@ const taskFunctionMap = {
   batchApexGuess,
   batchApexGuessClaim,
   batchSaltRoadCheer,
+  // tasksHangUp 函数
+  batchLegionSignup,
+  batchClubSignup,
   // tasksDungeon 函数
   batchbaoku13,
   batchbaoku45,
@@ -18019,6 +18433,8 @@ const taskFunctionMap = {
   batcharenafight,
   batchTopUpFish,
   batchTopUpArena,
+  // tasksSaltField 函数
+  batchSaltFieldDig,
 };
 
 // ====== 采购清单配置 ======
