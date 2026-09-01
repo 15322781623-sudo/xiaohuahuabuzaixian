@@ -339,6 +339,9 @@ export function registerDefaultCommands(reg) {
     .register("legion_signin")
     .register("legion_signup") // 盐场报名
     .register("club_signup") // 营地报名
+    .register("club_attackmonster", { useItem: false }) // 营地空投挑战（攻击营地怪物）
+    .register("club_taskclaim") // 营地奖励领取（confId: 1挑战3次/2区域1全通关/3区域2通关/4区域3通关）
+    .register("club_getinfo") // 营地信息（空投挑战状态）
     .register("legion_buypayloaditem") // 蟠桃提交铃铛
     .register("legion_payloadsignup") // 蟠桃报名
 

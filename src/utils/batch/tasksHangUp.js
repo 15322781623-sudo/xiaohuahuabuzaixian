@@ -1110,6 +1110,248 @@ export function createTasksHangUp(deps) {
     }
   };
 
+  /**
+   * 批量营地空投挑战（club_attackmonster）
+   * 使用当前角色上阵阵容攻击营地空投怪物，每个账号每天最多挑战 3 次
+   * （总挑战次数上限 10 次，仅作为循环保护，防止服务器异常导致死循环）
+   */
+  const batchAirdropChallenge = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+    try {
+      isRunning.value = true;
+      shouldStop.value = false;
+
+      selectedTokens.value.forEach((id) => {
+        tokenStatus.value[id] = "waiting";
+      });
+
+      const AIRDROP_MAX_TIMES = 3; // 每账号每日空投挑战上限
+      const TOTAL_MAX_TIMES = 10; // 挑战总次数上限（循环保护）
+
+      const challengeForToken = async (tokenId, token) => {
+        addLog({ time: new Date().toLocaleTimeString(), message: `=== 营地空投挑战：${token.name} ===`, type: "info" });
+        try {
+          // 1. 获取营地信息（读取当前期次已挑战次数）
+          let alreadyAttacked = 0;
+          try {
+            const clubInfo = await callWithRetry(tokenId, "club_getinfo", {}, {
+              noRetryErrors: ["400000", "200020", "3100080", "3100030", "400340"],
+            });
+            const siege = clubInfo?.siege || clubInfo?.body?.siege || {};
+            const attackMap = siege?.attackMap || {};
+            // 取最近的期次（键为 yymmdd 数字字符串），用其 attackCnt 作为已挑战次数
+            const periods = Object.keys(attackMap).sort().reverse();
+            alreadyAttacked = periods.length > 0 ? (attackMap[periods[0]]?.attackCnt || 0) : 0;
+          } catch {
+            // 获取营地信息失败不阻塞，仍尝试直接挑战
+          }
+
+          const remaining = Math.max(0, AIRDROP_MAX_TIMES - alreadyAttacked);
+          if (remaining <= 0) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `ℹ️ ${token.name} 今日空投挑战次数已用完（${alreadyAttacked}/${AIRDROP_MAX_TIMES}），跳过`, type: "info" });
+            return;
+          }
+          addLog({ time: new Date().toLocaleTimeString(), message: `📊 ${token.name} 今日空投已挑战 ${alreadyAttacked}/${AIRDROP_MAX_TIMES} 次，继续挑战 ${remaining} 次`, type: "info" });
+
+          await safeDelay(_getModuleDelay('hangup'));
+
+          // 2. 获取角色信息（宠物 UId）
+          const roleInfo = await callWithRetry(tokenId, "role_getroleinfo", {}, {
+            noRetryErrors: ["400000", "200020", "3100080", "3100030", "400340"],
+          });
+          const role = roleInfo?.role || roleInfo || {};
+          const petUId = role?.pet?.petUId || role?.petUId || "";
+
+          await safeDelay(_getModuleDelay('hangup'));
+
+          // 3. 获取预设队伍（阵容 + 武器）
+          const presetTeamRes = await callWithRetry(tokenId, "presetteam_getinfo", {});
+          const presetInfo
+            = presetTeamRes?.presetTeamInfo?.presetTeamInfo
+              || presetTeamRes?.presetTeamInfo
+              || presetTeamRes?.presetTeamMap
+              || {};
+          // 优先使用批量设置中的竞技阵容，未配置时回退到队伍1；若该队伍无阵容则取第一个有阵容的队伍
+          const preferFormation = batchSettings.arenaFormation || 1;
+          let teamData = presetInfo[String(preferFormation)] || presetInfo[preferFormation] || {};
+          if (!teamData?.teamInfo || Object.keys(teamData.teamInfo).length === 0) {
+            const firstValid = Object.entries(presetInfo).find(([, t]) => t?.teamInfo && Object.keys(t.teamInfo).length > 0);
+            if (firstValid) teamData = firstValid[1];
+          }
+
+          const lordWeaponId = teamData?.weapon?.weaponId || 0;
+          const battleTeam = {};
+          for (const [slot, hero] of Object.entries(teamData?.teamInfo || {})) {
+            if (hero?.heroId !== undefined && hero?.heroId !== null) {
+              battleTeam[slot] = hero.heroId;
+            }
+          }
+
+          if (Object.keys(battleTeam).length === 0) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `⚠️ ${token.name} 未获取到有效上阵阵容，跳过挑战`, type: "warning" });
+            return;
+          }
+
+          // 4. 循环发起营地空投挑战，直到空投次数用满或服务器返回次数已用完
+          let successCnt = 0;
+          for (let i = 0; i < TOTAL_MAX_TIMES; i++) {
+            if (shouldStop.value) {
+              addLog({ time: new Date().toLocaleTimeString(), message: `🛑 ${token.name} 已手动停止，剩余挑战中断`, type: "warning" });
+              break;
+            }
+            if (successCnt + alreadyAttacked >= AIRDROP_MAX_TIMES) break;
+
+            await safeDelay(_getModuleDelay('hangup'));
+            let resp;
+            try {
+              resp = await callWithRetry(tokenId, "club_attackmonster", {
+                useItem: false,
+                teamSetParams: { lordWeaponId, petUId, battleTeam },
+              }, { timeout: (batchSettings.battleCommandTimeout || 15000) });
+            } catch (e) {
+              const errMsg = e.message || "";
+              // 2600040=挑战次数已用完
+              if (errMsg.includes('2600040')) {
+                addLog({ time: new Date().toLocaleTimeString(), message: `ℹ️ ${token.name} 今日营地空投挑战次数已用完`, type: "info" });
+                break;
+              }
+              // 2300280=活动未开放或未开启
+              if (errMsg.includes('2300280')) {
+                addLog({ time: new Date().toLocaleTimeString(), message: `ℹ️ ${token.name} 营地空投挑战未开放或暂不可挑战`, type: "info" });
+                break;
+              }
+              throw e;
+            }
+
+            const body = resp?.body || resp || {};
+            const addScore = body?.addScore ?? resp?.addScore ?? 0;
+            const isWin = body?.battleData?.result?.isWin ?? resp?.battleData?.result?.isWin;
+            const winText = isWin === undefined ? "" : (isWin ? "胜利" : "失败");
+            successCnt++;
+
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `✅ ${token.name} 第 ${successCnt + alreadyAttacked}/${AIRDROP_MAX_TIMES} 次空投挑战完成${winText}${addScore ? `（+${addScore}分）` : ""}`,
+              type: "success",
+            });
+          }
+
+          if (successCnt > 0) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `🎉 ${token.name} 本轮共完成 ${successCnt} 次营地空投挑战`, type: "success" });
+          }
+        } catch (e) {
+          const errMsg = e.message || "";
+          if (errMsg.includes('2600040')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `ℹ️ ${token.name} 今日营地空投挑战次数已用完`, type: "info" });
+          } else if (errMsg.includes('2300280')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `ℹ️ ${token.name} 营地空投挑战未开放或暂不可挑战`, type: "info" });
+          } else {
+            throw e;
+          }
+        }
+      };
+
+      await batchWithRetry(selectedTokens.value, "营地空投挑战", challengeForToken);
+    } finally {
+      isRunning.value = false;
+      currentRunningTokenId.value = null;
+      message.success("批量营地空投挑战结束");
+    }
+  };
+
+  /**
+   * 批量营地奖励领取（club_taskclaim）
+   * 依次领取营地任务奖励：1=挑战3次奖励、2=区域1全通关奖励、3=区域2通关奖励、4=区域3通关奖励
+   * 已领取或未达条件时记录提示并继续下一个
+   */
+  const batchAirdropClaim = async () => {
+    if (selectedTokens.value.length === 0)
+      return;
+    try {
+      isRunning.value = true;
+      shouldStop.value = false;
+
+      selectedTokens.value.forEach((id) => {
+        tokenStatus.value[id] = "waiting";
+      });
+
+      const CLAIM_CONF = [
+        { id: 1, name: "挑战3次奖励" },
+        { id: 2, name: "区域1全通关奖励" },
+        { id: 3, name: "区域2通关奖励" },
+        { id: 4, name: "区域3通关奖励" },
+      ];
+
+      const claimForToken = async (tokenId, token) => {
+        addLog({ time: new Date().toLocaleTimeString(), message: `=== 营地奖励领取：${token.name} ===`, type: "info" });
+        try {
+          // 1. 获取营地信息（读取已领取的任务，taskClaimedMap 中存在的跳过）
+          let claimedSet = new Set();
+          try {
+            const clubInfo = await callWithRetry(tokenId, "club_getinfo", {}, {
+              noRetryErrors: ["400000", "200020", "3100080", "3100030", "400340"],
+            });
+            const siege = clubInfo?.siege || clubInfo?.body?.siege || {};
+            const claimedMap = siege?.taskClaimedMap || {};
+            claimedSet = new Set(Object.keys(claimedMap).map((k) => Number(k)));
+          } catch {
+            // 读取失败不阻塞，直接逐个尝试领取
+          }
+
+          // 2. 依次领取各档位奖励
+          let claimCnt = 0;
+          for (const conf of CLAIM_CONF) {
+            if (shouldStop.value) {
+              addLog({ time: new Date().toLocaleTimeString(), message: `🛑 ${token.name} 已手动停止，剩余奖励中断领取`, type: "warning" });
+              break;
+            }
+            if (claimedSet.has(conf.id)) {
+              addLog({ time: new Date().toLocaleTimeString(), message: `ℹ️ ${token.name} ${conf.name}已领取，跳过`, type: "info" });
+              continue;
+            }
+
+            await safeDelay(_getModuleDelay('hangup'));
+            try {
+              await callWithRetry(tokenId, "club_taskclaim", { confId: conf.id }, {
+                timeout: (batchSettings.defaultCommandTimeout || 10000),
+              });
+              claimCnt++;
+              addLog({ time: new Date().toLocaleTimeString(), message: `✅ ${token.name} 领取营地奖励成功：${conf.name}`, type: "success" });
+            } catch (e) {
+              const errMsg = e.message || "";
+              // 13000160=奖励未达标；其余为已领取/未开放等业务提示（不中断整体流程），未识别错误抛出
+              if (errMsg.includes('13000160')) {
+                addLog({ time: new Date().toLocaleTimeString(), message: `ℹ️ ${token.name} ${conf.name}：奖励未达标`, type: "info" });
+              } else if (/2600040|2600080|2600060|2300280/.test(errMsg)) {
+                addLog({ time: new Date().toLocaleTimeString(), message: `ℹ️ ${token.name} ${conf.name}：${errMsg}`, type: "info" });
+              } else {
+                throw e;
+              }
+            }
+          }
+
+          if (claimCnt > 0) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `🎉 ${token.name} 本轮共领取 ${claimCnt} 项营地奖励`, type: "success" });
+          }
+        } catch (e) {
+          const errMsg = e.message || "";
+          if (errMsg.includes('2300280')) {
+            addLog({ time: new Date().toLocaleTimeString(), message: `ℹ️ ${token.name} 营地任务奖励未开放或暂不可领取`, type: "info" });
+          } else {
+            throw e;
+          }
+        }
+      };
+
+      await batchWithRetry(selectedTokens.value, "营地奖励领取", claimForToken);
+    } finally {
+      isRunning.value = false;
+      currentRunningTokenId.value = null;
+      message.success("批量营地奖励领取结束");
+    }
+  };
+
   return {
     claimHangUpRewards,
     batchAddHangUpTime,
@@ -1118,6 +1360,8 @@ export function createTasksHangUp(deps) {
     batchclubsign,
     batchLegionSignup,
     batchClubSignup,
+    batchAirdropChallenge,
+    batchAirdropClaim,
     batchPayloadSignup,
     batchWarGuessCheer,
     batchHangUpUpgrade,

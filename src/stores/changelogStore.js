@@ -14,6 +14,18 @@ export const useChangelogStore = defineStore("changelog", () => {
    */
   const changelogs = ref([
     {
+      version: "v2.50.6",
+      date: new Date().toISOString().split('T')[0],
+      type: "minor",
+      title: "新增营地空投挑战与营地奖励领取批量任务",
+      fixes: [
+        "新增「营地空投挑战」批量任务：在批量日常页日常模块新增对应按钮，定时任务也支持勾选执行；自动获取角色上阵阵容与宠物信息后对营地空投怪物发起挑战，获得分数与奖励",
+        "营地空投挑战自动循环：每账号每日最多挑战 3 次空投（先读取营地信息中的已挑战次数，不足 3 次自动补齐剩余次数），总挑战次数 10 次作为循环保护，防止服务器异常导致死循环；次数已用完、活动未开放时给出明确提示",
+        "新增「营地奖励领取」批量任务：批量日常页日常模块新增按钮，定时任务支持勾选执行；依次自动领取营地任务四档奖励（挑战3次、区域1/2/3通关），先读取已领取记录跳过重复项，未达标时明确提示「奖励未达标」不中断流程",
+        "新增协议命令注册：club_attackmonster（营地空投挑战）、club_taskclaim（营地奖励领取）与 club_getinfo（营地信息），WebSocket 层已接入默认参数与超时控制",
+      ],
+    },
+    {
       version: "v2.50.5",
       date: new Date().toISOString().split('T')[0],
       type: "minor",

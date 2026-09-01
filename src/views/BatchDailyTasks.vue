@@ -368,6 +368,20 @@
                 </n-button>
                 <n-button
                   size="small"
+                  @click="executeManualTaskWithRecord('batchAirdropChallenge', '营地空投挑战', batchAirdropChallenge)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  营地空投挑战
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('batchAirdropClaim', '营地奖励领取', batchAirdropClaim)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  营地奖励领取
+                </n-button>
+                <n-button
+                  size="small"
                   @click="executeManualTaskWithRecord('batchSaltFieldDig', '盐场刨地', batchSaltFieldDig)"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
@@ -9462,7 +9476,7 @@ const fetchTaskSaltRoadOpponents = async () => {
 
 // 任务分组定义
 const taskGroupDefinitions = [
-  { name: 'daily', label: '日常', tasks: ['startBatch', 'batchSimplifiedDaily', 'claimHangUpRewards', 'batchAddHangUpTime', 'batchHangUpUpgrade', 'resetBottles', 'batchlingguanzi', 'batchclubsign', 'batchLegionSignup', 'batchClubSignup', 'batchSaltFieldDig', 'batchPayloadSignup', 'switchSaltFieldPeachFormation', 'batchStudy', 'batcharenafight', 'batchSmartSendCar', 'batchClaimCars', 'batchCarResearchUpgrade', 'store_purchase', 'batch_mail_claim_and_cleanup'] },
+  { name: 'daily', label: '日常', tasks: ['startBatch', 'batchSimplifiedDaily', 'claimHangUpRewards', 'batchAddHangUpTime', 'batchHangUpUpgrade', 'resetBottles', 'batchlingguanzi', 'batchclubsign', 'batchLegionSignup', 'batchClubSignup', 'batchAirdropChallenge', 'batchAirdropClaim', 'batchSaltFieldDig', 'batchPayloadSignup', 'switchSaltFieldPeachFormation', 'batchStudy', 'batcharenafight', 'batchSmartSendCar', 'batchClaimCars', 'batchCarResearchUpgrade', 'store_purchase', 'batch_mail_claim_and_cleanup'] },
   { name: 'welfare', label: '福利', tasks: ['charge_claimaddup_rewards', 'collection_claimfreereward', 'gacha_drawreward', 'claim_recruit_welfare', 'pkroom_appoint', 'saltcup26_openstarpack_use'] },
   { name: 'dungeon', label: '副本', tasks: ['climbTower', 'batchmengjing', 'skinChallenge', 'skinTreasure', 'newSkinChallenge', 'newSkinTreasure', 'batchClaimPeachTasks', 'batchBuyDreamItems'] },
   { name: 'baoku', label: '宝库', tasks: ['batchbaoku13', 'batchbaoku45'] },
@@ -17935,7 +17949,7 @@ const wrapTaskFunctions = (obj) => {
 
 // 初始化任务模块
 const tasksHangUp = wrapTaskFunctions(createTasksHangUp(createTaskDeps()));
-const { claimHangUpRewards, batchAddHangUpTime, batchStudy, batchStudyClaimReward, batchclubsign, batchLegionSignup, batchClubSignup, batchPayloadSignup, batchWarGuessCheer, batchHangUpUpgrade } = tasksHangUp;
+const { claimHangUpRewards, batchAddHangUpTime, batchStudy, batchStudyClaimReward, batchclubsign, batchLegionSignup, batchClubSignup, batchAirdropChallenge, batchAirdropClaim, batchPayloadSignup, batchWarGuessCheer, batchHangUpUpgrade } = tasksHangUp;
 
 const tasksBottle = wrapTaskFunctions(createTasksBottle(createTaskDeps()));
 const { resetBottles, batchlingguanzi } = tasksBottle;
