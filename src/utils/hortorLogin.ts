@@ -145,7 +145,7 @@ export const hortorLoginWithCode = async (
         gameId: "xyzwprod",
         code,
         gameTp: "minigame",
-        version: "2.41.5-wx",
+        version: "2.43.3-wx",
         sysInfo:
           '{"system":"Android","hortorSDKVersion":"4.0.6-cn","model":"22081212C","brand":"Redmi"}',
         channel: "hortor",
@@ -183,7 +183,7 @@ export const hortorLoginWithCode = async (
   const loginPath = isMini
     ? "/comb-login-server/api/v1/login" +
       "?gameId=xyzwprod&gameTp=minigame&system=android" +
-      "&version=2.41.5-wx&deviceUniqueId=ck42mn8i&loginTag=code&cryptVersion=1.1.0"
+      "&version=2.43.3-wx&deviceUniqueId=ck42mn8i&loginTag=code&cryptVersion=1.1.0"
     : "/comb-login-server/api/v1/login" +
       "?gameId=xyzwapp" +
       "&timestamp=" +

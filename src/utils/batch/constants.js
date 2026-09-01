@@ -64,7 +64,7 @@ export const availableTasks = [
   { label: "一键俱乐部签到", value: "batchclubsign" },
   { label: "盐场报名", value: "batchLegionSignup" },
   { label: "营地报名", value: "batchClubSignup" },
-  { label: "盐场创地", value: "batchSaltFieldDig" },
+  { label: "盐场刨地", value: "batchSaltFieldDig" },
   { label: "蟠桃报名", value: "batchPayloadSignup" },
   { label: "盐场蟠桃阵容", value: "switchSaltFieldPeachFormation" },
   { label: "一键竞技场战斗", value: "batcharenafight" },

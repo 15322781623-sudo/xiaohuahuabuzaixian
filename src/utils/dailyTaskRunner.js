@@ -41,6 +41,7 @@ export const SIMPLIFIED_TASK_ITEMS = [
   { key: 'freeSweep', label: '免费扫荡卷' },
   { key: 'gold', label: '免费点金' },
   { key: 'reward', label: '任务奖励领取' },
+  { key: 'paidRecruit', label: '付费招募' },
 ];
 
 // 错误码映射表
@@ -1053,6 +1054,25 @@ export class DailyTaskRunner {
   }
 
   /**
+   * 付费招募任务（独立方法，用于日常精简补齐）
+   * 与完整日常流程共用 localStorage 防重复标记，一天最多购买一次，
+   * 避免误点重复消耗元宝。精简补齐不判断活跃度，故不检查 isDone(4)。
+   */
+  buildPaidRecruitTask() {
+    const tasks = [];
+    const paidKey = `paidRecruit:${this.tokenId}:${todayStr()}`;
+    if (!localStorage.getItem(paidKey)) {
+      tasks.push(() => this.sendCommandSafe('hero_recruit',
+        { recruitType: RECRUIT_TYPES.PAID, recruitNumber: 1 },
+        { description: '付费招募', noRetry: true }));
+      tasks.push(() => { localStorage.setItem(paidKey, '1'); });
+    } else {
+      tasks.push(() => this.info('今日已完成付费招募，跳过'));
+    }
+    return tasks;
+  }
+
+  /**
    * 免费钓鱼任务（独立方法，供活动任务/精简模式/精简补齐复用）
    */
   buildFreeFishTasks(statistics) {
@@ -1609,6 +1629,7 @@ export class DailyTaskRunner {
       freeSweep: { build: () => this.buildFreeSweepTickets(), module: 'activity' },
       gold: { build: () => this.buildGoldTask(statisticsTime), module: 'daily' },
       reward: { build: () => this.buildRewardTasks(), module: 'daily' },
+      paidRecruit: { build: () => this.buildPaidRecruitTask(), module: 'daily' },
     };
 
     const keys = (Array.isArray(selectedKeys) && selectedKeys.length > 0)

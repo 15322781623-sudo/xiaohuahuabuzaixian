@@ -397,12 +397,15 @@ const handleUserAction = async (key) => {
 .nav-item {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-sm) var(--spacing-md);
+  /* ★ 头部字号随窗口宽度自适应缩放，避免文字被挤换行 */
+  gap: clamp(2px, 0.4vw, var(--spacing-xs));
+  padding: var(--spacing-sm) clamp(6px, 1.1vw, var(--spacing-md));
   border-radius: var(--border-radius-medium);
   color: var(--text-secondary);
   text-decoration: none;
   transition: all var(--transition-fast);
+  white-space: nowrap;
+  flex-shrink: 0;
 
   &:hover {
     background: var(--bg-tertiary);
@@ -413,6 +416,17 @@ const handleUserAction = async (key) => {
     background: var(--primary-color-light);
     color: var(--primary-color);
   }
+}
+
+.nav-item span {
+  /* ★ 头部导航文字：宽屏14px → 窄屏12px 平滑过渡 */
+  font-size: clamp(12px, 1.4vw, 14px);
+  line-height: 1.2;
+}
+
+.nav-item .n-icon {
+  /* 图标随文字一起缩小 */
+  font-size: clamp(16px, 2vw, 20px);
 }
 
 .nav-user {

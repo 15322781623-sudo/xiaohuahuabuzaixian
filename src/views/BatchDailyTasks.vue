@@ -3494,7 +3494,7 @@
       style="width: 95%; max-width: 700px;"
       :segmented="{ content: true }"
     >
-      <div v-if="currentTask" class="account-selector-container">
+      <div v-if="currentTask" class="account-selector-container account-selector-content">
         <!-- 当前任务信息 -->
         <n-alert type="info" style="margin-bottom: 16px; border-radius: 8px;">
           <strong>当前任务：</strong> {{ currentTask.name }}
@@ -3524,7 +3524,7 @@
             </n-button>
           </div>
           
-          <div style="display: flex; gap: 8px; margin-top: 12px;">
+          <div class="account-selector-actions" style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
             <n-button
               size="small"
               type="success"
@@ -3547,6 +3547,7 @@
             </n-button>
             <n-button
               size="small"
+              class="account-selector-actions-shrink"
               style="margin-left: auto;"
               @click="selectByTokenGroup"
             >
@@ -3581,15 +3582,15 @@
         </n-list>
 
         <!-- 统计信息 -->
-        <div style="margin-top: 16px; text-align: right; font-size: 14px; color: var(--text-tertiary);">
+        <div class="account-selector-stats" style="margin-top: 16px; text-align: right; font-size: 14px; color: var(--text-tertiary);">
           已选：{{ currentTask.selectedTokens.length }} 个 | 
           可见：{{ filteredTokens.length }} 个 | 
           分组：{{ selectedGroup || '全部' }}
         </div>
 
         <!-- 保存按钮 -->
-        <div style="margin-top: 20px; text-align: right;">
-          <n-button @click="showAccountSelectorModal = false" style="margin-right: 12px;">取消</n-button>
+        <div class="account-selector-footer" style="margin-top: 20px; text-align: right;">
+          <n-button @click="showAccountSelectorModal = false" class="account-selector-footer-cancel" style="margin-right: 12px;">取消</n-button>
           <n-button type="primary" @click="saveAccountSelection">保存选择</n-button>
         </div>
       </div>
@@ -9280,6 +9281,11 @@ const taskForm = reactive({
     5: { selected: false, count: 0, label: "白玉", min: 1, max: 1 },
     6: { selected: false, count: 1, label: "四圣宝珠碎片", min: 1, max: 1 },
   },
+  apexBuyItems: { // 逐鹿商店商品配置
+    1: { selected: false, count: 0, label: "饼干", min: 1, max: 25 },
+    2: { selected: false, count: 0, label: "幻彩灵果", min: 1, max: 75 },
+    3: { selected: false, count: 0, label: "四圣转换镜", min: 1, max: 1 },
+  },
   fragmentPackItems: [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005], // 碎片礼包选中的 itemId 数组（默认全选）
   manualBuyItems: { // 黑市多选购买商品配置
     1: { selected: false, count: 0, label: "青铜宝箱" },
@@ -9426,7 +9432,9 @@ const taskGroupDefinitions = [
   { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'apex_buy', 'batchGenieSweep', 'batchClaimCdkReward', 'batchClaimApexRewards', 'batchSaltCupBet'] },
   { name: 'legacy', label: '功法', tasks: ['batchLegacyHangup', 'batchLegacyClaim', 'batchLegacyGiftSendEnhanced', 'batchLegacyClaimGiftTask'] },
   { name: 'monthly', label: '月度', tasks: ['batchTopUpFish', 'batchTopUpArena', 'claim_guess_coin', 'legion_buy_store_items', 'batchSaltRoadCheer', 'batchApexGuess', 'batchApexGuessClaim'] },
-  { name: 'consumeActivity', label: '消耗活动', tasks: ['batchConsumeActivity', 'batchClaimConsumeRewards', 'batchApexCheer', 'batchUseActivityItem', 'batchActivityExchange', 'batchAutumnUseItem'] }
+  // 注：原列有 batchApexCheer，但代码里并不存在该函数（助威只能通过弹窗交互完成），
+  // 且 availableTasks 也没有对应项，属死条目，移除以免误导
+  { name: 'consumeActivity', label: '消耗活动', tasks: ['batchConsumeActivity', 'batchClaimConsumeRewards', 'batchUseActivityItem', 'batchActivityExchange', 'batchAutumnUseItem'] }
 ];
 
 // 计算属性，根据 taskGroupDefinitions 将 availableTasks 分组
@@ -10075,6 +10083,13 @@ const editTask = (task) => {
     weeklyMarketItems: mergedWeeklyMarketItems,
     saltCrystalShopItems: mergedSaltCrystalShopItems,
     saltIngotShopItems: mergedSaltIngotShopItems,
+    // 老任务数据没有该字段时为 undefined，必须兜底，否则保存时深拷贝会抛
+    // SyntaxError: "undefined" is not valid JSON
+    apexBuyItems: task.apexBuyItems || {
+      1: { selected: false, count: 0, label: "饼干", min: 1, max: 25 },
+      2: { selected: false, count: 0, label: "幻彩灵果", min: 1, max: 75 },
+      3: { selected: false, count: 0, label: "四圣转换镜", min: 1, max: 1 },
+    },
     manualBuyItems: mergedManualBuyItems,
     collectionExchangeItems: mergedCollectionExchangeItems,
     fragmentPackItems: task.fragmentPackItems || [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005],
@@ -10389,16 +10404,20 @@ const saveTask = () => {
     enabled: taskForm.enabled,
     offlineTimeEnabled: taskForm.offlineTimeEnabled || false, // 保存不上线时段设置
     // 始终保存完整配置，确保编辑时能正确显示
-    legionStoreItems: JSON.parse(JSON.stringify(taskForm.legionStoreItems)),
-    weeklyMarketItems: JSON.parse(JSON.stringify(taskForm.weeklyMarketItems)),
-    saltCrystalShopItems: JSON.parse(JSON.stringify(taskForm.saltCrystalShopItems)),
-    saltIngotShopItems: JSON.parse(JSON.stringify(taskForm.saltIngotShopItems)),
-    apexBuyItems: JSON.parse(JSON.stringify(taskForm.apexBuyItems)),
-    manualBuyItems: JSON.parse(JSON.stringify(taskForm.manualBuyItems)),
-    collectionExchangeItems: JSON.parse(JSON.stringify(taskForm.collectionExchangeItems)),
+    // 注意：JSON.parse(JSON.stringify(x)) 在 x 为 undefined 时会抛
+    // `SyntaxError: "undefined" is not valid JSON`
+    // （因为 JSON.stringify(undefined) 返回 undefined 值而非字符串），
+    // 因此每个字段都必须有默认值兜底，不能依赖上游已初始化。
+    legionStoreItems: JSON.parse(JSON.stringify(taskForm.legionStoreItems || {})),
+    weeklyMarketItems: JSON.parse(JSON.stringify(taskForm.weeklyMarketItems || {})),
+    saltCrystalShopItems: JSON.parse(JSON.stringify(taskForm.saltCrystalShopItems || {})),
+    saltIngotShopItems: JSON.parse(JSON.stringify(taskForm.saltIngotShopItems || {})),
+    apexBuyItems: JSON.parse(JSON.stringify(taskForm.apexBuyItems || {})),
+    manualBuyItems: JSON.parse(JSON.stringify(taskForm.manualBuyItems || {})),
+    collectionExchangeItems: JSON.parse(JSON.stringify(taskForm.collectionExchangeItems || {})),
     fragmentPackItems: [...(taskForm.fragmentPackItems || [])],
     boxWeeklyRewards: {...taskForm.boxWeeklyRewards},
-    smartDeparture: JSON.parse(JSON.stringify(taskForm.smartDeparture)),
+    smartDeparture: JSON.parse(JSON.stringify(taskForm.smartDeparture || {})),
     nightmarePresetIds: [...(taskForm.nightmarePresetIds || [])],
     nightmarePresetDelay: taskForm.nightmarePresetDelay || 10,
     saltCupBetPick: taskForm.saltCupBetPick || 1,
@@ -12691,22 +12710,34 @@ const healthCheck = () => {
       }
     }
   }
-  // Check for Cron 定时刷新
-  if (batchSettings.enableCronRefresh && batchSettings.cronRefreshExpression) {
-    try {
-      if (matchesCronExpression(batchSettings.cronRefreshExpression, new Date())) {
-        const refreshCheck = isSafeToRefreshPage();
-        if (refreshCheck.safe) {
-          console.log(`[${new Date().toISOString()}] Cron refresh triggered: ${batchSettings.cronRefreshExpression}`);
-          window.location.reload();
-        } else {
-          console.log(`[${new Date().toISOString()}] Cron refresh postponed: ${refreshCheck.reason}, will refresh after task completion`);
-          shouldRefreshAfterTask.value = true;
-        }
-      }
-    } catch (e) {
-      // cron 解析失败忽略
-    }
+};
+
+// ✅ Cron 定时刷新检查（原实现在 healthCheck 中每5分钟才检查一次，而 Cron 最小粒度为分钟，
+// 5分钟的检查点几乎无法命中目标分钟 → 定时刷新永不生效。改为在调度器每10秒的 tick 中检查）
+let lastCronRefreshMinute = -1;
+const checkCronRefresh = () => {
+  if (!batchSettings.enableCronRefresh || !batchSettings.cronRefreshExpression) return;
+  const now = new Date();
+  let matched = false;
+  try {
+    matched = matchesCronExpression(batchSettings.cronRefreshExpression, now);
+  } catch (e) {
+    return;
+  }
+  if (!matched) return;
+
+  // ✅ 防重复：10秒tick在同一命中分钟内会多次匹配，同一分钟只触发一次刷新
+  const minute = Math.floor(now.getTime() / 60000);
+  if (lastCronRefreshMinute === minute) return;
+  lastCronRefreshMinute = minute;
+
+  const refreshCheck = isSafeToRefreshPage();
+  if (refreshCheck.safe) {
+    console.log(`[${new Date().toISOString()}] Cron refresh triggered: ${batchSettings.cronRefreshExpression}`);
+    window.location.reload();
+  } else {
+    console.log(`[${new Date().toISOString()}] Cron refresh postponed: ${refreshCheck.reason}, will refresh after task completion`);
+    shouldRefreshAfterTask.value = true;
   }
 };
 
@@ -12720,6 +12751,10 @@ const startScheduler = () => {
   // Check every 10 seconds instead of 60 seconds for more timely task execution
   intervalId.value = setInterval(() => {
     try {
+      // ✅ Cron 定时刷新：必须在调度器 tick 中检查（分钟粒度需 10 秒精度才能命中），
+      // 且要放在下方 tasksToRun 空判断的 early return 之前
+      checkCronRefresh();
+
       const now = new Date();
       const currentTime = now.toLocaleTimeString("zh-CN", {
         hour12: false,
@@ -18381,8 +18416,22 @@ const tasksStore = wrapTaskFunctions(createTasksStore(createTaskDeps()));
 const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_buy, collection_exchange, charge_claimaddup_rewards, collection_claimfreereward, claim_recruit_welfare, claim_weird_tower_all, claim_weird_tower_pass, use_spotted_egg, claim_pet_book, batch_pet_merge, egg_merge_cycle, batch_pet_upgrade, gacha_drawreward, store_buy_selectable, batchCollectionExchange, legion_buy_red_jade, legion_buy_spotted_egg, salt_crystal_shop_buy, saltCrystalShopConfig, apex_buy, apexShopConfig, salt_ingot_shop_buy, saltIngotShopConfig, star_drawturntable, batch_star_challenge, nightmare_draw_lottery, nightmare_claim_book_reward, pkroom_appoint, claim_guess_coin, legion_buy_store_items, weeklyMarketBuy, weekly_market_free_gift, batch_mail_claim_and_cleanup, saltcup26_openstarpack_use, batchSaltCupBet, getSaltCupBetInfo, batchApexGuess, batchApexGuessClaim, batchSaltRoadCheer } = tasksStore;
 
 // ✅ 定时任务函数名映射表（替代 eval()，解决生产构建中 eval 无法访问组件局部变量的问题）
+// 任务函数映射表
+// ⚠️ 不能依赖 eval(functionName) 兜底：生产构建经混淆后所有标识符都被重命名，
+//   eval("resetBottles") 这类调用必然取不到函数，定时任务会误报"函数不存在，跳过执行"。
+//   因此这里展开各任务模块，改为按属性名查找（对象属性名不受混淆影响）。
 const taskFunctionMap = {
-  // tasksStore 函数
+  // 整模块展开：后续新增任务函数无需再手工维护本表，也避免逐个遗漏
+  ...tasksHangUp,
+  ...tasksBottle,
+  ...tasksTower,
+  ...tasksCar,
+  ...tasksSaltField,
+  ...tasksItem,
+  ...tasksDungeon,
+  ...tasksArena,
+  ...tasksStore,
+  // 非模块化的独立函数
   manual_buy,
   collection_exchange,
   legion_storebuygoods,
@@ -18782,6 +18831,10 @@ const applyBatchPurchaseConfig = async () => {
 
 const tasksLegacy = wrapTaskFunctions(createTasksLegacy(createTaskDeps()));
 const { batchLegacyClaim, batchLegacyHangup, batchLegacyGiftSendEnhanced, batchLegacyClaimGiftTask } = tasksLegacy;
+
+// tasksLegacy 定义在 taskFunctionMap 之后（存在暂时性死区，不能在表内直接展开），
+// 故在此补登记，使其函数同样可按名查到，不依赖混淆后会失效的 eval
+Object.assign(taskFunctionMap, tasksLegacy);
 
 // ====== 十殿阀罗挑战（弹窗打开组队界面） ======
 const showNightmareChallengeModal = ref(false);
@@ -19511,7 +19564,12 @@ const batchNightmareChallengePresets = async (silent, taskRecordIndex = -1) => {
 // ==================== 日常精简补齐 ====================
 // 手动执行弹窗状态与勾选项（默认全选）
 const showSimplifiedDailyModal = ref(false);
-const simplifiedDailySelectedItems = ref(SIMPLIFIED_TASK_ITEMS.map(item => item.key));
+// 付费招募默认不勾选：该项消耗元宝，防止用户在弹窗里误点导致浪费，需手动勾选才执行
+const simplifiedDailySelectedItems = ref(
+  SIMPLIFIED_TASK_ITEMS
+    .filter((item) => item.key !== 'paidRecruit')
+    .map((item) => item.key),
+);
 
 // 日常精简补齐：不受任何活跃度判断，按勾选任务项直接执行
 const batchSimplifiedDaily = async (selectedKeys = null) => {
@@ -20400,6 +20458,40 @@ const sortByActivityAfterDailyTask = async () => {
     });
   }
 };
+
+// ====== 任务函数映射表：补登记 ======
+// 以下函数定义在 taskFunctionMap 之后（存在暂时性死区，不能在表内直接引用），
+// 若不登记，定时任务按名称查找时会取不到函数而报"不存在，跳过执行"。
+Object.assign(taskFunctionMap, {
+  startBatch,
+  batchSimplifiedDaily,
+  batchNightmareChallenge,
+  batchNightmareChallengePresets,
+  openHeroFourSaintsModal,
+  // 任务名与实际函数名不一致，登记别名
+  switchSaltFieldPeachFormation: handleSwitchSaltFieldPeachFormation,
+  weekly_market_buy: weeklyMarketBuy,
+});
+
+// 自检：一次性列出所有无法按名解析的任务，便于定位遗漏（仅打印，不影响执行）
+try {
+  const _missingTaskFns = [];
+  taskGroupDefinitions.forEach((group) => {
+    group.tasks.forEach((name) => {
+      if (typeof taskFunctionMap[name] !== "function") {
+        _missingTaskFns.push(`${group.name}/${name}`);
+      }
+    });
+  });
+  if (_missingTaskFns.length > 0) {
+    console.warn(
+      "[任务映射自检] 以下任务无法按名解析，定时执行时会被跳过:",
+      _missingTaskFns,
+    );
+  }
+} catch (e) {
+  /* 自检失败不影响主流程 */
+}
 </script>
 
 <style scoped>
@@ -23791,6 +23883,49 @@ html[data-theme="dark"] .st-section-toggle {
 @media (max-width: 768px) {
   .apex-cheer-table {
     height: 50vh;
+  }
+}
+
+/* ====== 选择执行账号弹窗：手机端自适应 ====== */
+@media (max-width: 600px) {
+  .account-selector-content .n-alert {
+    font-size: 13px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+  }
+  .account-selector-content .group-filter-section {
+    padding: 10px !important;
+  }
+  .account-selector-content .info-label {
+    font-size: 12px;
+  }
+  /* 账号行 Token 描述更短，避免在窄屏溢出 */
+  .account-selector-content .n-list-item {
+    padding: 10px 12px !important;
+  }
+  /* 操作按钮：让"按分组勾选"在窄屏独立成行 */
+  .account-selector-actions-shrink {
+    margin-left: 0 !important;
+    flex-basis: 100%;
+  }
+  /* 底部按钮堆叠：主操作在前 */
+  .account-selector-footer {
+    text-align: stretch !important;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .account-selector-footer-cancel {
+    margin-right: 0 !important;
+    order: 2;
+  }
+  .account-selector-footer .n-button[type="primary"] {
+    order: 1;
+  }
+  /* 统计信息左对齐、字号缩小 */
+  .account-selector-stats {
+    text-align: left !important;
+    font-size: 12px !important;
   }
 }
 </style>

@@ -313,7 +313,11 @@ window.convertAssets = function (url) {
   if (typeof url != 'string') {
     return url
   }
-  if (!url.startsWith('assets/') || url.startsWith('assets/internal')) {
+  // ★ 关键修复：只转换远程 bundle (game/launcher)，不转换本地资源
+  // 避免将 src/assets/ 等本地路径错误转换为 CDN URL
+  if (!url.startsWith('assets/') || 
+      url.startsWith('assets/internal') ||
+      url.startsWith('src/assets/')) {
     return url
   }
   let newUrl = 'https://xxz-xyzw-res.hortorgames.com/remote/' + url.slice(7)
@@ -340,7 +344,7 @@ window.loadJscAndDecode = async function (url, callback) {
   jsCode = jsCode.replace(/cc\.assetManager\.loadAny=function\(\)\{\},?/g, '');
   // 删除 game 中禁用 loadBundle 的代码 (isH5 判断)
   jsCode = jsCode.replace(/[a-zA-Z]\.PlatformManager\.instance\.isH5&&\(cc\.assetManager\.loadBundle=function\(\)\{\}\),?/g, '');
-  console.log('[loadDecodeJSC] 已删除H5禁用代码');
+  console.log('[loadDecodeJSC] 已删除 H5 禁用代码');
   
   callback(jsCode)
 }
@@ -364,7 +368,10 @@ window.parseRemoteBundleVers = function (settingsObj) {
 }
 
 window.loadRemoteBundleVers = async function () {
-  const manifestUrl = `https://xxz-xyzw.hortorgames.com/login/manifest?platform=hortor&version=2.41.5-wx`
+  // ★ v10.5: 改用同源 /api/manifest 代理 (dev: vite proxy / prod: worker proxy) 规避 CORS
+  //   旧代码直连远端域名 + 空字符串 body → CORS 拦截 + "指令解析错误"
+  //   服务器要求空 JSON 对象 body '{}' 才返回 Login_ManifestResp
+  const manifestUrl = `${window.location.origin}/api/manifest?platform=hortor&version=0.32.0-android`
   console.log('[remoteAssets] POST manifest', manifestUrl)
 
   const settingsRes = await fetch(
@@ -375,7 +382,7 @@ window.loadRemoteBundleVers = async function () {
         Accept: 'application/json,text/plain,*/*',
         'Content-Type': 'application/json;charset=UTF-8'
       },
-      body: '',
+      body: '{}',
       cache: 'no-store'
     }
   )
@@ -448,32 +455,11 @@ window.installRemoteAssetLoader = function () {
 
   function downloadJson(url, options, onComplete) {
     const finalUrl = toRemoteUrl(url)
-    
-    // ★ Force cache control for bundle config files (texture updates)
-    const isConfigRequest = url.endsWith('config.json') || url.includes('/config.');
-    const fetchOptions = {
-      cache: 'no-cache',
-      headers: {
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    };
-    
-    // Append cache-busting timestamp if FORCE_REMOTE mode enabled
-    const forceRefresh = window.PATCH_FORCE_MANIFEST_REFRESH === true || 
-                         localStorage.getItem('__force_remote_manifest') === 'true';
-    let urlWithNoCache = finalUrl;
-    if (forceRefresh || isConfigRequest) {
-      const separator = finalUrl.includes('?') ? '&' : '?';
-      urlWithNoCache = `${finalUrl}${separator}_n=${Date.now()}`;
-    }
-    
     if (originalJsonDownloader) {
       return originalJsonDownloader(finalUrl, options, onComplete)
     }
 
-    fetch(urlWithNoCache, fetchOptions)
+    fetch(finalUrl, { cache: 'force-cache' })
       .then(function (res) {
         if (!res.ok) {
           throw new Error('download failed: ' + finalUrl + ', status: ' + res.status)
@@ -484,7 +470,6 @@ window.installRemoteAssetLoader = function () {
         onComplete && onComplete(null, json)
       })
       .catch(function (err) {
-        console.error('[ResourcePatch] Config fetch error:', err);
         onComplete && onComplete(err)
       })
   }

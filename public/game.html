@@ -14,6 +14,32 @@
   <link rel="icon" href="game/favicon.8de18.ico" />
 </head>
 <body>
+  <!-- ===== -0.5. 静默已知无害日志（游戏CDN脚本噪音） ===== -->
+  <script>
+  (function() {
+    try {
+      // 已知无害: [info cannot be null: index = N] 活动数据未开启时的断言日志
+      var NOISE_PATTERNS = [/info cannot be null/];
+      ['error', 'warn', 'log'].forEach(function(k) {
+        var orig = console[k] ? console[k].bind(console) : function() {};
+        console[k] = function() {
+          try {
+            var s = Array.prototype.map.call(arguments, function(a) {
+              try { return typeof a === 'object' ? JSON.stringify(a) : String(a); }
+              catch(e) { return String(a); }
+            }).join(' ');
+            for (var i = 0; i < NOISE_PATTERNS.length; i++) {
+              if (NOISE_PATTERNS[i].test(s)) return;
+            }
+          } catch(e) {}
+          orig.apply(console, arguments);
+        };
+      });
+      console.log('[ConsoleFilter] 已静默无害日志: info cannot be null');
+    } catch(e) {}
+  })();
+  </script>
+
   <canvas id="GameCanvas" oncontextmenu="event.preventDefault()" tabindex="0"></canvas>
   <div id="splash">
     <div class="progress-bar stripes"><span style="width: 0%"></span></div>
@@ -459,20 +485,36 @@
         var urlParams = new URLSearchParams(window.location.search);
         var platformExt = urlParams.get('platformExt');
         var platform = urlParams.get('platform');
-        
-        // 检查是否为微信小程序环境
-        if (platformExt === 'wx_mini_1' || 
-            platformExt === 'wxmini' || 
+        // 兼容从登录数据读取平台信息（game.html 以 ?token= 打开时不带这些参数）
+        var loginData = window.__saveInfoData;
+        if (platformExt == null && loginData) platformExt = loginData.platformExt;
+        if (platform == null && loginData) platform = loginData.platform;
+
+        // 明确指定为微信小程序环境
+        if (platformExt === 'wx_mini_1' ||
+            platformExt === 'wxmini' ||
+            platformExt === 'wx' ||
             platform === 'wechat' ||
+            platform === 'wx' ||
+            String(platformExt || '').indexOf('wx') === 0 ||
             window.location.host.includes('servicewechat.com')) {
           return true;
         }
+        // 明确指定为非微信平台（Android 原生/App 渠道）时不伪装
+        if (platformExt === 'android' ||
+            platformExt === 'app' ||
+            platform === 'android' ||
+            platform === 'app' ||
+            String(platformExt || '').indexOf('android') === 0) {
+          return false;
+        }
       } catch(e) {}
-      return false;
+      // ★ 默认伪装微信环境：游戏本体为微信小游戏版本(2.43.3-wx)，请求头需按微信 UA 构造
+      return true;
     }
     
     var isWeChatMini = isPanTaoOrWeChatMini();
-    console.log('[SDK Mock]', '微信小程序环境:', isWeChatMini);
+    console.log('[SDK Mock]', '微信小程序环境:', isWeChatMini, '(平台: platformExt=' + (window.__saveInfoData && window.__saveInfoData.platformExt) + ', platform=' + (window.__saveInfoData && window.__saveInfoData.platform) + ')');
     
     window.wx = window.wx || {
       getSystemInfo: function() { 
@@ -551,7 +593,7 @@
     window.__HORTOR_SDK__.tga.tga = window.__HORTOR_SDK__.tga;
     // ★ 蟠桃修复: getClientVersion 返回 GAME_VERSION (MD 检查点8)
     window.__HORTOR_SDK__.getClientVersion = function() {
-        return (typeof globalThis !== 'undefined' && globalThis.GAME_VERSION) || '2.41.5-wx';
+        return (typeof globalThis !== 'undefined' && globalThis.GAME_VERSION) || '2.43.3-wx';
     };
     // ★ 蟠桃修复: getGameId 返回游戏ID (MD 检查点9)
     window.__HORTOR_SDK__.getGameId = function() {
@@ -705,6 +747,9 @@
 
   <!-- ===== 4. 游戏配置 (本地文件) ===== -->
   <script src="game/src/settings.js" charset="utf-8"></script>
+  <!-- ★ v10.5: 版本清单 vers.js — 覆盖 settings.js 中过期的 bundleVers (如 main=dd530 → f71b7)
+       ★ 当 manifest 接口失效时，此静态清单保证 CDN 请求使用最新版本号，避免 404 -->
+  <script src="game/vers.959c24357b0f55b7117b1161a34eafaf.js" charset="utf-8"></script>
   <script src="game/game-defines.a175e.js" charset="utf-8"></script>
   <!-- ★ server指向本地: internal bundle和jsList从本地加载 -->
   <!-- ★ 远程bundle(game/launcher等)由 installRemoteAssetLoader() 独立处理CDN -->
@@ -719,8 +764,8 @@
   <!-- ===== 5. 游戏入口 main.js (本地文件) ===== -->
   <script src="game/main.2a00e.js" charset="utf-8"></script>
 
-  <!-- ===== 5.5 boot.js: 覆盖 boot() — manifest获取 + 版本锁定 + CDN资源加载器 ===== -->
-  <script src="game/boot.js" charset="utf-8"></script>
+  <!-- ===== 5.5 boot.js: 覆盖 boot() — manifest 获取 + 版本锁定 + CDN 资源加载器 ===== -->
+  <script src="game/boot.js?v9.3-20260830090000" charset="utf-8"></script>
 
   <!-- ===== 5.6 Bundle下载器修复: 确保bundle下载走自定义下载器而非Cocos默认 ===== -->
   <!-- ★ 问题: Cocos任务管道将bundle名解析为绝对URL, downloadBundle直接用该绝对URL -->
@@ -767,24 +812,27 @@
         var indexUrl = base + '/index.' + versionPart + 'js';
         console.log('[BundleFix]', bundleName, '→ config:', configUrl, 'index:', indexUrl);
 
-        var finished = 0, error = null, config = null;
-        function done(err) {
-          if (err) error = err;
-          finished++;
-          if (finished === 2) onComplete && onComplete(error, config);
-        }
+        var error = null, config = null;
         _origJsonDl(window.convertAssets(configUrl), options, function(err, data) {
-          if (err) error = err;
+          if (err) {
+            onComplete && onComplete(err, null);
+            return;
+          }
           if (data) {
             var remoteBase = window.convertAssets(base);
             data.base = remoteBase + '/';
             config = data;
           }
-          done(err);
+          // ★ v10.5: 部分纯资源 bundle 没有 index 脚本 (如 sounds/config/miniGameRes)
+          //   index 下载失败仅告警不致命, config 才是 bundle 清单的关键
+          var convertedIndexUrl = window.convertAssets(indexUrl);
+          dl.download(bundleName + '-index', convertedIndexUrl, '.js', options, function(idxErr) {
+            if (idxErr) {
+              console.warn('[BundleFix]', bundleName, 'index 不可用(纯资源bundle?):', String(idxErr && idxErr.message || idxErr).slice(0, 120));
+            }
+            onComplete && onComplete(null, config);
+          });
         });
-        // ★ index可能为.jsc加密文件, 用dl.download走downloadScript解密链
-        var convertedIndexUrl = window.convertAssets(indexUrl);
-        dl.download(bundleName + '-index', convertedIndexUrl, '.js', options, done);
       };
 
       console.log('[BundleFix] 自定义bundle下载器已注册 + convertAssets已包装');

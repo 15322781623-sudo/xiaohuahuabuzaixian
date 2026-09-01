@@ -6,6 +6,7 @@
 # 插件方法通过 @PluginMethod 反射调用，R8 无法识别引用，必须整体保留
 -keep class com.xyzw.webhelper.ApkInstallerPlugin { *; }
 -keep class com.xyzw.webhelper.YybServicePlugin { *; }
+-keep class com.xyzw.webhelper.DeviceIdPlugin { *; }
 
 # ====== WebView 与 JS 桥接保护 ======
 -keepclassmembers class * {

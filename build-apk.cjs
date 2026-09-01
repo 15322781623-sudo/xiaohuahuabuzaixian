@@ -90,6 +90,42 @@ const exec = (cmd, options = {}) => {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * 手动将 dist 同步到 android/app/src/main/assets/public（等价于 cap copy 的 web 资源部分）。
+ *
+ * 仅作为 cap sync 失败时的降级方案：cap sync 的 update 阶段会整目录重建
+ * capacitor-cordova-android-plugins，在受批量删除保护的环境下会被拦截而失败。
+ * 插件列表未变化时，原生侧配置（capacitor.settings.gradle / capacitor.build.gradle）
+ * 已是最新，只需同步 web 资源即可安全打包。
+ */
+const syncWebAssetsManually = () => {
+  const src = path.join(ROOT_DIR, 'dist');
+  const dest = path.join(ANDROID_DIR, 'app', 'src', 'main', 'assets', 'public');
+
+  if (!fs.existsSync(path.join(src, 'index.html'))) {
+    log('dist 不存在，无法手动同步（请先完成前端构建）', 'error');
+    return false;
+  }
+
+  try {
+    fs.rmSync(dest, { recursive: true, force: true });
+  } catch (e) {
+    // 删除被拦截时退化为覆盖写入，仅残留少量旧文件，不影响功能
+    log(`清空 assets/public 失败，改为覆盖写入: ${e.message}`, 'warn');
+  }
+
+  try {
+    fs.mkdirSync(dest, { recursive: true });
+    fs.cpSync(src, dest, { recursive: true });
+  } catch (e) {
+    log(`手动同步失败: ${e.message}`, 'error');
+    return false;
+  }
+
+  log('手动同步 web 资源完成（dist → assets/public）', 'success');
+  return true;
+};
+
 const deleteDir = (dir) => {
   if (!fs.existsSync(dir)) return;
   try {
@@ -273,9 +309,13 @@ const main = async () => {
     // 步骤 4: Capacitor 同步
     logStep(4, '同步 Capacitor (npx cap sync android)');
     if (!exec('npx cap sync android')) {
-      throw new Error('Capacitor 同步失败');
+      log('Capacitor 同步失败，尝试降级为手动同步 web 资源...', 'warn');
+      if (!syncWebAssetsManually()) {
+        throw new Error('Capacitor 同步失败，且手动同步 web 资源失败');
+      }
+    } else {
+      log('Capacitor 同步完成', 'success');
     }
-    log('Capacitor 同步完成', 'success');
 
     // 步骤 4.5: 应用宝协议服务（yyb-go）Android 交叉编译（多ABI，非致命）
     logStep('4.5', '应用宝协议服务 Android 交叉编译 (arm64-v8a/armeabi-v7a/x86_64)');

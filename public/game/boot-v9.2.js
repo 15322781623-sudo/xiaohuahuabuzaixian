@@ -1,183 +1,105 @@
-﻿// boot.js - 肝王之王 v9.3 (force-reload-20260830) - 修复 manifest platform=hortor
+// boot.js - 鸟哥之王 v9.2 启动逻辑（深度预热推进到登录场景）
 // ★ 替代 main.2a00e.js 中阻塞的 async boot()
 // ★ v9.2: 深度预热调用 cc.game.run() 预加载登录场景，点击进入瞬间显示
 // ★ 兼容：preload=1 行为不变；preload=2 触发深度预热
+// 借鉴 niaoge 项目最佳实践实现
 
 (function() {
     'use strict';
 
-    console.log('[boot v9.3-force-reload] 启动逻辑初始化...');
-    window.__bootVersion__ = 'v9.3-force-reload';
+    console.log('[boot v9.2] 启动逻辑初始化...');
+    window.__bootVersion__ = 'v9.2';
 
-    // ========== 1. 从服务器获取最新 bundleVers（带本地缓存） ==========
+    // ========== 1. 从服务器获取最新 bundleVers（带本地缓存）==========
     function fetchRemoteBundleVers(settings) {
         return new Promise(function(resolve, reject) {
             var CACHE_KEY = '__boot_manifest_cache__';
             var appliedCache = false;
-
-            // ★ v9.4: 保存本地静态版本快照（settings.js + vers.<hash>.js 提供的值）
-            //   当 manifest 接口失效时（如官方返回"指令解析错误"），回退到静态版本，
-            //   避免 localStorage 旧缓存（如 main=dd530）覆盖新版本导致 CDN 404
-            var STATIC_BUNDLEVERS = {};
-            try {
-                if (settings && settings.bundleVers) {
-                    Object.keys(settings.bundleVers).forEach(function(k) {
-                        STATIC_BUNDLEVERS[k] = settings.bundleVers[k];
-                    });
-                }
-            } catch(e) {}
-
-            // ★ v9.4: 回退到静态版本清单 + 清除过期缓存
-            function restoreStaticBundleVers() {
-                try {
-                    localStorage.removeItem(CACHE_KEY);
-                } catch(e) {}
-                if (settings && settings.bundleVers) {
-                    Object.assign(settings.bundleVers, STATIC_BUNDLEVERS);
-                }
-                var fallbackVer = STATIC_BUNDLEVERS.launcher || STATIC_BUNDLEVERS.main || '未知';
-                console.warn('[boot v9.4] ⚠ Manifest不可用, 已回退到本地静态版本 (launcher=' + fallbackVer + ')');
-            }
 
             // ★ v1.0: 优先应用本地缓存（秒开，避免阻塞）
             try {
                 var cached = localStorage.getItem(CACHE_KEY);
                 if (cached) {
                     var cacheData = JSON.parse(cached);
-if (cacheData && cacheData.bundleVers && typeof cacheData.bundleVers === 'object') {
-                            // ★ Force refresh mode: respect PATCH_FORCE_MANIFEST_REFRESH flag
-                            //   Enable with: localStorage.setItem('__force_remote_manifest', 'true')
-                            //   Use case: Force update textures when local versions are stale
-var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true || 
-                                   localStorage.getItem('__force_remote_manifest') === 'true';
-                            
-                            if (!FORCE_REMOTE) {
-                                // ★ v10.0: 缓存只用于资源加载加速，不同步 codeVersion
-                                //   原因：缓存可能过期，版本锁定应使用远程最新值或 game-defines 静态值
-                                Object.assign(settings.bundleVers, cacheData.bundleVers);
-                                appliedCache = true;
-                                console.log('[boot v1.0] ✅ 已应用本地 manifest 缓存，条目:', Object.keys(cacheData.bundleVers).length);
-                            } else {
-                                console.log('[boot v1.0] 🔄 强制跳过本地缓存，准备拉取远程 manifest');
-                            }
-                        }
+                    if (cacheData && cacheData.bundleVers && typeof cacheData.bundleVers === 'object') {
+                        Object.assign(settings.bundleVers, cacheData.bundleVers);
+                        appliedCache = true;
+                        console.log('[boot v1.0] ✅ 已应用本地 manifest 缓存，条目:', Object.keys(cacheData.bundleVers).length);
+                    }
                 }
             } catch(e) {}
 
-            // ★ v10.5: 服务器要求空 JSON 对象 body '{}' + 可识别的客户端版本号
-            //   1) 旧 body JSON.stringify({platform,version}) / '' → code:-1 "指令解析错误"
-            //   2) version=2.41.5-wx / 2.43.3 / 2.43.3-android → 响应无 bundleVers (858B)
-            //   3) version=0.32.0-android + body '{}' → 完整 Login_ManifestResp + 最新 bundleVers (35KB)
-            var currentVersion = '0.32.0-android';
-            var PROXY_URL = '/api/manifest?platform=hortor&version=' + currentVersion;
-            var REMOTE_URL = 'https://xxz-xyzw.hortorgames.com/login/manifest?platform=hortor&version=' + currentVersion;
-            var REMOTE_ATTEMPTED = false;  // ★ v10.6: 防止递归重试
-            console.log('[boot v1.0] POST', PROXY_URL);
+            var xhr = new XMLHttpRequest();
+            var manifestUrl = 'https://xxz-xyzw.hortorgames.com/login/manifest?platform=hortor&version=0.32.0-android';
+            console.log('[boot v1.0] POST', manifestUrl);
 
-            // ★ v10.6: 统一解析 manifest 响应（成功→合并+缓存；失败→返回 false）
-            function applyManifestText(text) {
-                var data = JSON.parse(text);
-                var body = data.body;
-                if (typeof body === 'string') body = JSON.parse(body);
-                var bv = body && body.bundleVers;
-                if (typeof bv === 'string') bv = JSON.parse(bv);
-                if (bv && typeof bv === 'object') {
-                    // 缓存到localStorage（下次启动秒开）
+            xhr.open('POST', manifestUrl, true);
+            xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
+            xhr.timeout = 5000;  // ★ v1.0: 5s 超时
+
+            xhr.onload = function() {
+                if (xhr.status === 200) {
                     try {
-                        localStorage.setItem(CACHE_KEY, JSON.stringify({
-                            bundleVers: bv,
-                            time: Date.now()
-                        }));
-                    } catch(e) {}
-                    // 合并到 settings.bundleVers
-                    var oldCount = Object.keys(settings.bundleVers || {}).length;
-                    Object.assign(settings.bundleVers, bv);
-                    var newCount = Object.keys(settings.bundleVers || {}).length;
-                    console.log('[boot v1.0] ✅ Manifest 获取成功! (缓存:', appliedCache ? '已预加载' : '首次', ')');
-                    console.log('[boot v1.0]   条目:', oldCount, '→', newCount);
-                    if (bv.codeVersion) {
-                        settings.codeVersion = bv.codeVersion;  // ★ v1.0: 自动同步服务器版本
-                        console.log('[boot v1.0]   ✅ 远程 codeVersion:', bv.codeVersion);
-                    } else {
-                        console.warn('[boot v1.0] ⚠ Manifest 响应中无 codeVersion 字段');
-                        console.warn('[boot v1.0]   原始响应:', JSON.stringify(bv));
-                    }
-                    return true;
-                }
-                return false;
-            }
+                        var data = JSON.parse(xhr.responseText);
+                        var body = data.body;
+                        if (typeof body === 'string') body = JSON.parse(body);
+                        var bv = body && body.bundleVers;
+                        if (typeof bv === 'string') bv = JSON.parse(bv);
 
-            // ★ v10.6: 拉取 manifest（支持代理→远程完整URL 两级 fallback）
-            //   EXE/APK 中无 /api/manifest 代理（404），自动改请求完整 URL（服务器 CORS:* 允许）
-            function fetchManifest(url, isFallback) {
-                var xhr = new XMLHttpRequest();
-                xhr.open('POST', url, true);
-                xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
-                xhr.timeout = 5000;  // ★ v1.0: 5s超时
-                xhr.onload = function() {
-                    if (xhr.status === 200) {
-                        try {
-                            if (applyManifestText(xhr.responseText)) {
-                                resolve(); // 成功：总是resolve
-                                return;
+                        if (bv && typeof bv === 'object') {
+                            // 缓存到 localStorage（下次启动秒开）
+                            try {
+                                localStorage.setItem(CACHE_KEY, JSON.stringify({
+                                    bundleVers: bv,
+                                    time: Date.now()
+                                }));
+                            } catch(e) {}
+
+                            // 合并到 settings.bundleVers
+                            var oldCount = Object.keys(settings.bundleVers || {}).length;
+                            Object.assign(settings.bundleVers, bv);
+                            var newCount = Object.keys(settings.bundleVers || {}).length;
+
+                            console.log('[boot v1.0] ✅ Manifest 获取成功！(缓存:', appliedCache ? '已预加载' : '首次', ')');
+                            console.log('[boot v1.0]   条目:', oldCount, '→', newCount);
+                            if (bv.codeVersion) {
+                                settings.codeVersion = bv.codeVersion;  // ★ v1.0: 自动同步服务器版本
+                                console.log('[boot v1.0]   远程 codeVersion:', bv.codeVersion);
                             }
-                            console.warn('[boot v1.0] ⚠ Manifest无有效bundleVers，使用本地版本');
-                        } catch(e) {
-                            console.warn('[boot v1.0] ⚠ Manifest解析失败:', e.message);
+                        } else {
+                            if (!appliedCache) console.warn('[boot v1.0] ⚠ Manifest 无有效 bundleVers，使用本地版本');
                         }
-                    } else {
-                        console.warn('[boot v1.0] ⚠ Manifest HTTP', xhr.status, isFallback ? '(远程)' : '(代理)');
+                    } catch(e) {
+                        if (!appliedCache) console.warn('[boot v1.0] ⚠ Manifest 解析失败:', e.message);
                     }
-                    // 代理失败 → 尝试远程完整 URL；远程也失败 → 静态兜底
-                    if (!isFallback && !REMOTE_ATTEMPTED) {
-                        REMOTE_ATTEMPTED = true;
-                        console.log('[boot v1.0] 🔄 本地代理不可用，尝试直接请求远程 manifest...');
-                        fetchManifest(REMOTE_URL, true);
-                        return;
-                    }
-                    restoreStaticBundleVers();
-                    resolve();
-                };
-                xhr.onerror = function() {
-                    console.warn('[boot v1.0] ⚠ Manifest网络错误', isFallback ? '(远程)' : '(代理)');
-                    if (!isFallback && !REMOTE_ATTEMPTED) {
-                        REMOTE_ATTEMPTED = true;
-                        console.log('[boot v1.0] 🔄 本地代理不可用，尝试直接请求远程 manifest...');
-                        fetchManifest(REMOTE_URL, true);
-                        return;
-                    }
-                    restoreStaticBundleVers();
-                    resolve();
-                };
-                xhr.ontimeout = function() {
-                    console.warn('[boot v1.0] ⚠ Manifest超时(5s)', isFallback ? '(远程)' : '(代理)');
-                    if (!isFallback && !REMOTE_ATTEMPTED) {
-                        REMOTE_ATTEMPTED = true;
-                        console.log('[boot v1.0] 🔄 本地代理不可用，尝试直接请求远程 manifest...');
-                        fetchManifest(REMOTE_URL, true);
-                        return;
-                    }
-                    restoreStaticBundleVers();
-                    resolve();
-                };
-                xhr.send('{}');  // ★ v10.5: 空 JSON 对象 body (服务器要求格式)
-            }
-            fetchManifest(PROXY_URL, false);
+                } else {
+                    if (!appliedCache) console.warn('[boot v1.0] ⚠ Manifest HTTP', xhr.status);
+                }
+                resolve(); // 总是 resolve（有缓存或本地版本兜底）
+            };
+
+            xhr.onerror = function() {
+                if (!appliedCache) console.warn('[boot v1.0] ⚠ Manifest 网络错误');
+                resolve();
+            };
+
+            xhr.ontimeout = function() {
+                if (!appliedCache) console.warn('[boot v1.0] ⚠ Manifest 超时 (5s)');
+                resolve();
+            };
+
+            xhr.send('{}');
         });
     }
 
     // ========== 2. 锁定 CODE_VERSION ==========
-    // 防止 Cocos launcher bundle 覆盖版本号导致启动卡住
+    // 防止 Cocos launcher bundle 覆盖版本号导致启动卡死
     function lockCodeVersion(settings) {
         var ver = settings.codeVersion ||
                   (typeof globalThis !== 'undefined' && globalThis.CODE_VERSION) ||
                   (typeof window !== 'undefined' && window.CODE_VERSION) ||
-                  '2.43.3';
-        // ★ 自动版本覆盖: manifest 返回的 codeVersion 优先拼 -wx 后缀（游戏更新后
-        //   无需改代码），manifest 失败时退回 game-defines 静态值，再退兜底
-        var gameVer = (settings.codeVersion ? settings.codeVersion + '-wx' : null) ||
-                      (typeof globalThis !== 'undefined' && globalThis.GAME_VERSION) ||
-                      '2.43.3-wx';
+                  '2.29.2';
+        var gameVer = (typeof globalThis !== 'undefined' && globalThis.GAME_VERSION) || '0.32.0-android';
         var commitId = (typeof globalThis !== 'undefined' && globalThis.COMMIT_ID) || '';
 
         try { delete globalThis.CODE_VERSION; } catch(e) {}
@@ -187,7 +109,7 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
             Object.defineProperty(globalThis, 'CODE_VERSION', {
                 get: function() { return ver; },
                 set: function(v) {
-                    console.warn('[boot v1.0] launcher 尝试覆盖 CODE_VERSION 为', v, '— 已阻止, 保持', ver);
+                    console.warn('[boot v1.0] launcher 尝试覆盖 CODE_VERSION 为', v + '— 已阻止，保持', ver);
                 },
                 configurable: true
             });
@@ -197,19 +119,15 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
                 configurable: true
             });
         } catch(e) {
-            console.warn('[boot v1.0] defineProperty 失败, 使用直接赋值:', e.message);
+            console.warn('[boot v1.0] defineProperty 失败，使用直接赋值:', e.message);
             globalThis.CODE_VERSION = ver;
             window.CODE_VERSION = ver;
         }
 
         settings.codeVersion = ver;
-        // ★ 自动覆盖 GAME_VERSION: 始终跟随最终 codeVersion 拼 -wx 后缀
-        if (settings.codeVersion) {
-            gameVer = settings.codeVersion + '-wx';
-        }
         globalThis.GAME_VERSION = gameVer;
         globalThis.ENV = 'Prod';
-        globalThis.GAME_ID = 'xyzw_mix';
+        globalThis.GAME_ID = 'xyzw';
         globalThis.COMMIT_ID = commitId;
 
         console.log('[boot v1.0] ✅ 版本信息已锁定:');
@@ -219,9 +137,9 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
     }
 
     // ========== 3. 启动游戏主逻辑 ==========
-    // ★ v2.0: deepPreload 模式 — 加载bundle后暂停，不调 cc.game.run()
+    // ★ v2.0: deepPreload 模式 — 加载 bundle 后暂停，不调 cc.game.run()
     function doStartGame(settings, deepPreload) {
-        var TAG = deepPreload ? '[boot v2.0深度预热]' : '[boot v2.0]';
+        var TAG = deepPreload ? '[boot v2.0 深度预热]' : '[boot v2.0]';
         console.log(TAG, '开始启动游戏...');
         console.log(TAG, 'server:', settings.server);
         console.log(TAG, 'remoteBundles 数量:', (settings.remoteBundles || []).length);
@@ -270,7 +188,7 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
                     cc.director.runSceneImmediate(scene);
 
                     if (isPreheat) {
-                        // ★ v9.2: 深度预热 — 保持隐藏, 挂起在登录界面
+                        // ★ v9.2: 深度预热 — 保持隐藏，挂起在登录界面
                         window.__loginSceneReady__ = true;
                         try {
                             window.parent.postMessage({
@@ -278,9 +196,9 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
                                 timestamp: Date.now()
                             }, '*');
                         } catch(e) {}
-                        console.log('[boot v9.2] 🔥 登录场景预加载完成, 等待进入...');
+                        console.log('[boot v9.2] 🔥 登录场景预加载完成，等待进入...');
                     } else {
-                        // 正常模式: 显示游戏
+                        // 正常模式：显示游戏
                         if (cc.sys.isBrowser) {
                             var canvas = document.getElementById('GameCanvas');
                             if (canvas) canvas.style.visibility = '';
@@ -330,7 +248,7 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
             count++;
             console.log(TAG, '加载进度:', count, '/', bundleRoot.length + 1);
             if (count === bundleRoot.length + 1) {
-                console.log(TAG, '✅ 基础 bundles 加载完成, 加载 MAIN bundle...');
+                console.log(TAG, '✅ 基础 bundles 加载完成，加载 MAIN bundle...');
                 cc.assetManager.loadBundle(MAIN, function (err) {
                     if (!err) {
                         console.log(TAG, '✅ MAIN bundle 加载成功!');
@@ -348,14 +266,14 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
                                     bundleCount: Object.keys(settings.bundleVers || {}).length
                                 }, '*');
                             } catch(e) {}
-                            // ★ v9.2: 不挂起, 直接调 cc.game.run() 预加载登录场景
-                            console.log('[boot v9.2] 🔥 深度预热推进: cc.game.run() → 预加载登录场景...');
+                            // ★ v9.2: 不挂起，直接调 cc.game.run() 预加载登录场景
+                            console.log('[boot v9.2] 🔥 深度预热推进：cc.game.run() → 预加载登录场景...');
                             cc.game.run(option, function() { onStart(true); });
                             console.log('[boot v9.2]   等待 LOGIN_SCENE_READY → 点击进入瞬间显示');
                             return;
                         }
 
-                        // 正常模式: 直接运行游戏
+                        // 正常模式：直接运行游戏
                         console.log('[boot v2.0] 运行游戏...');
                         cc.game.run(option, onStart);
                     } else {
@@ -363,7 +281,7 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
                         console.error('[boot v2.0]   err.message:', err.message);
                         console.error('[boot v2.0]   err.stack:', err.stack);
                         var bv = settings.bundleVers;
-                        console.error('[boot v2.0]   main版本号:', bv && bv['main']);
+                        console.error('[boot v2.0]   main 版本号:', bv && bv['main']);
                         console.error('[boot v2.0]   server:', settings.server);
                     }
                 });
@@ -386,9 +304,9 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
     window.finishDeepBoot = function() {
         // 登录场景已预加载完毕 → 直接显示游戏 (跳过 cc.game.run 和场景加载)
         if (window.__loginSceneReady__) {
-            console.log('[boot v9.2] 🚀 登录场景已预加载, 直接显示游戏!');
+            console.log('[boot v9.2] 🚀 登录场景已预加载，直接显示游戏!');
             window.__loginSceneReady__ = false;
-            // 显示canvas + 隐藏splash
+            // 显示 canvas + 隐藏 splash
             var canvas = document.getElementById('GameCanvas');
             if (canvas) canvas.style.visibility = '';
             var splash = document.getElementById('splash');
@@ -404,18 +322,18 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
             return;
         }
 
-        // ★ v9.3: 深度预热中 cc.game.run() 已执行但登录场景未就绪 → 等待登录场景加载完成, 不重复调用
+        // ★ v9.3: 深度预热中 cc.game.run() 已执行但登录场景未就绪 → 等待登录场景加载完成，不重复调用
         if (window.__gameRunStarted__ && !window.__loginSceneReady__) {
-            console.log('[boot v9.3] ⏳ cc.game.run() 进行中, 等待登录场景就绪...');
+            console.log('[boot v9.3] ⏳ cc.game.run() 进行中，等待登录场景就绪...');
             var MAX_WAIT = 10000;
             var waited = 0;
             var check = setInterval(function() {
                 waited += 100;
                 if (window.__loginSceneReady__) {
                     clearInterval(check);
-                    console.log('[boot v9.3] ✅ 登录场景就绪, 显示游戏 (等待了' + waited + 'ms)');
+                    console.log('[boot v9.3] ✅ 登录场景就绪，显示游戏 (等待了' + waited + 'ms)');
                     window.__loginSceneReady__ = false;
-                    // 显示canvas + 隐藏splash
+                    // 显示 canvas + 隐藏 splash
                     var canvas = document.getElementById('GameCanvas');
                     if (canvas) canvas.style.visibility = '';
                     var splash = document.getElementById('splash');
@@ -429,7 +347,7 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
                     } catch(e) {}
                 } else if (waited >= MAX_WAIT) {
                     clearInterval(check);
-                    console.warn('[boot v9.3] ⚠ 等待超时, 强制显示');
+                    console.warn('[boot v9.3] ⚠ 等待超时，强制显示');
                     window.finishDeepBoot();  // 回退重试
                 }
             }, 100);
@@ -446,11 +364,11 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
         }
 
         // 预热未完成 → 回退到完整 boot()
-        console.warn('[boot v2.0] ⚠ finishDeepBoot: 预热未完成, 回退到完整 boot()');
+        console.warn('[boot v2.0] ⚠ finishDeepBoot: 预热未完成，回退到完整 boot()');
         window.boot();
     };
 
-  // ========== v2.0: preBoot() — 深度预热 (manifest+bundle全部提前加载) ==========
+  // ========== v2.0: preBoot() — 深度预热 (manifest+bundle 全部提前加载) ==========
   window.preBoot = async function () {
     var settings = window._CCSettings;
     if (!settings) {
@@ -458,7 +376,7 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
       return;
     }
 
-    console.log('[boot v2.0] 🔥 深度预热开始: 拉取manifest + 加载bundle...');
+    console.log('[boot v2.0] 🔥 深度预热开始：拉取 manifest + 加载 bundle...');
 
     // 1) Manifest
     await fetchRemoteBundleVers(settings);
@@ -467,8 +385,6 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
     lockCodeVersion(settings);
 
     // 3) Launcher fallback
-    //    ★ v10.5: launcher 版本由 vers.js 静态清单 + manifest 动态提供 (debcc/f71b7),
-    //    main 也已更新 (f71b7), 兜底 'dd530' 基本不会触发 (仅当两者皆缺失)
     if (!settings.bundleVers.launcher || settings.bundleVers.launcher === '') {
       settings.bundleVers.launcher = settings.bundleVers.main || 'dd530';
       console.log('[boot v2.0] ✅ 已补充 launcher 版本:', settings.bundleVers.launcher);
@@ -484,7 +400,7 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
       console.warn('[boot v2.0] CDN 资源加载器安装失败:', e.message);
     }
 
-    // 5) 执行脚本队列（hook就位）
+    // 5) 执行脚本队列（hook 就位）
     try {
       if (typeof window.executeScriptQueue === 'function') {
         console.log('[boot v2.0] 🔧 引擎初始化前执行脚本队列...');
@@ -494,11 +410,11 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
       console.warn('[boot v2.0] 脚本预执行失败:', e.message);
     }
 
-    // 6) 加载bundle + 暂停在 cc.game.run() 之前
+    // 6) 加载 bundle + 暂停在 cc.game.run() 之前
     doStartGame(settings, true);
   };
 
-  // ========== 最终 boot() — 完整启动（正常模式/preload=1回退） ==========
+  // ========== 最终 boot() — 完整启动（正常模式/preload=1 回退）==========
   window.boot = async function () {
     var settings = window._CCSettings;
     if (!settings) {
@@ -513,7 +429,6 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
     lockCodeVersion(settings);
 
     // 3) Launcher fallback
-    //    ★ v10.5: 同 preBoot, launcher 版本由 vers.js + manifest 提供, 'dd530' 仅最后兜底
     if (!settings.bundleVers.launcher || settings.bundleVers.launcher === '') {
       settings.bundleVers.launcher = settings.bundleVers.main || 'dd530';
       console.log('[boot v2.0] ✅ 已补充 launcher 版本:', settings.bundleVers.launcher);
@@ -539,11 +454,11 @@ var FORCE_REMOTE = window.PATCH_FORCE_MANIFEST_REFRESH === true ||
       console.warn('[boot v2.0] 脚本预执行失败:', e.message);
     }
 
-    // 6) 完整启动（正常模式, 不暂停）
+    // 6) 完整启动（正常模式，不暂停）
     doStartGame(settings, false);
   };
 
-    console.log('[boot v2.0] ✅ 启动逻辑就绪 (深度预热支持)');
+    console.log('[boot v2.0] ✅ 启动逻辑就绪（深度预热支持)');
 
     // ★ v5.12: 移除冗余的 START_GAME / CLEAR_SCRIPT_QUEUE 监听器
     //   这些状态由 patch.js 统一管理，boot.js 的重复处理会导致

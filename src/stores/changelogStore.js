@@ -14,6 +14,38 @@ export const useChangelogStore = defineStore("changelog", () => {
    */
   const changelogs = ref([
     {
+      version: "v2.50.5",
+      date: new Date().toISOString().split('T')[0],
+      type: "minor",
+      title: "定时任务多项崩溃修复、付费招募精简补齐与前端 JS 混淆加固",
+      fixes: [
+        "修复定时任务编辑保存时报错「undefined is not valid JSON」：老任务数据缺少逐鹿商店（apexBuyItems）字段时保存直接崩溃——该字段此前只在「新增任务」初始化时赋值，打开 App 直接编辑已有任务即为 undefined，JSON.parse(JSON.stringify(undefined)) 立即抛错；现补上默认定义、编辑合并、保存兜底三层防护",
+        "修复大量定时任务报「任务函数不存在（可能已被删除），跳过执行」：任务函数映射表为手工维护存在遗漏（重置罐子、一键领取罐子等未被登记），且生产构建混淆后 eval 无法按名访问组件局部变量导致兜底失效；映射表改为整模块注册，补全独立函数与名称别名（盐场蟠桃阵容、黑市周购买），并新增运行时自检一次性列出无法解析的任务",
+        "修复 Android 7 及以下设备卡密激活报「网络错误：Object.fromEntries is not a function」：该 API 需 Chrome 73+，旧 WebView 缺失；补对应 polyfill",
+        "修复定时任务选择列表中盐场任务名显示为「盐场创地」的错别字，与批量日常按钮「盐场刨地」统一（执行日志与 API 注释同步修正）",
+        "修复 structuredClone 降级实现与原生行为不一致：旧 WebView 下 structuredClone(undefined) 会抛错而原生不会，已对齐",
+        "新增日常精简补齐「付费招募」选项：与完整日常流程共用防重复标记，一天最多购买一次；默认不勾选防止误点消耗元宝，需手动勾选才执行",
+        "安全加固：前端 JS 由 terser 压缩（伪混淆，格式化即可读）升级为 javascript-obfuscator 真混淆（字符串 base64 加密 + 标识符混淆 + 防格式化自防御），并覆盖 game.html 内联脚本；Release 包关闭 WebView 调试开关，防止 adb 远程 inspect",
+        "卡密设备绑定增强：补齐 Android DeviceId 插件（ANDROID_ID），清除 WebView 数据后设备标识保持不变，不再误退化为随机指纹导致反复重新激活",
+        "定时任务账号选择弹窗适配手机端：窄屏下按钮换行堆叠、主操作前置、统计信息左对齐",
+        "构建稳定性：EXE 打包前校验前端产物完整性，防止清空过程被中断时打出无法启动的坏包；修复 EXE 打包时因重复构建触发批量删除保护而中断的问题",
+      ],
+    },
+    {
+      version: "v2.50.4",
+      date: new Date().toISOString().split('T')[0],
+      type: "patch",
+      title: "Cron 定时刷新无法生效 Bug 修复",
+      fixes: [
+        "修复批量日常-设置-Cron定时刷新完全无法生效的问题：设置正确的 Cron 表达式后页面从不按计划刷新",
+        "根本原因：Cron 定时刷新检查被放在 healthCheck 函数中，而 healthCheck 每 5 分钟才执行一次；Cron 表达式最小粒度为分钟，5 分钟一次的检查点几乎不可能落在目标分钟上，导致定时刷新永不触发",
+        "修复方案：新增 checkCronRefresh 检查函数，将检查移动到调度器每 10 秒的 tick 中执行，分钟级精度下可以精确命中目标时间",
+        "检查位置优化：置于调度器 tick 的最前面（启用的定时任务为空时的 early return 之前），即使未启用任何定时任务也能正常执行 Cron 定时刷新",
+        "新增同一分钟防重复机制：10 秒 tick 在同一命中分钟内会多次匹配，现在同一分钟只触发一次刷新，避免页面被连续多次刷新",
+        "保留刷新安全检查：刷新前仍判断任务执行中/队列非空/账号任务活跃/未来2分钟内有定时任务即将触发等场景，不安全时自动推迟到任务完成后刷新，不会中断正在执行的任务",
+      ],
+    },
+    {
       version: "v2.50.3",
       date: new Date().toISOString().split('T')[0],
       type: "patch",
@@ -77,7 +109,7 @@ export const useChangelogStore = defineStore("changelog", () => {
         "并行刨地：所有账号同时在线刨地，按 1.5 秒间隔错开启动，互不等待",
         "智能阵容切换：创地前自动读取账号 saltFieldPeachFormation 配置并切换到目标阵容，如已是正确阵容则跳过",
         "六边形随机刨地：基于 even-q 偏移坐标系，随机选择相邻格子行军占领，最高 100 格安全上限",
-        "盐场时间窗限制：仅周六 20:00-20:30 执行，非活动时间自动提示并跳过",
+        "盐场时间窗限制：仅周六 20:00-21:00 执行，非活动时间自动提示并跳过",
         "独立盐场 WebSocket 连接：自动建立盐场专用 WS 连接，不影响主服连接",
         "支持中途停止：点击停止按钮可随时终止所有账号刨地",
         "吕布单将布阵：进场后自动使用吕布单将布阵，创地效率最高",

@@ -213,7 +213,7 @@ public class NativeHttpBridge {
      *   /api/weixin/...  -> https://open.weixin.qq.com/...
      *   /api/hortor/...  -> https://comb-platform.hortorgames.com/...
      *   /api/xxz/...     -> https://xxz-xyzw.hortorgames.com/...
-     *   /api/ucenter/... -> https://comb-platform.hortorgames.com/...
+     *   /api/ucenter/... -> https://ucenter-app-server.hortorgames.com/... (与 _worker.js 保持一致)
      */
     private String resolveUrl(String url) {
         if (url == null) return url;
@@ -227,7 +227,7 @@ public class NativeHttpBridge {
             return "https://xxz-xyzw.hortorgames.com" + url.substring("/api/xxz".length());
         }
         if (url.startsWith("/api/ucenter/")) {
-            return "https://comb-platform.hortorgames.com" + url.substring("/api/ucenter".length());
+            return "https://ucenter-app-server.hortorgames.com" + url.substring("/api/ucenter".length());
         }
         return url;
     }

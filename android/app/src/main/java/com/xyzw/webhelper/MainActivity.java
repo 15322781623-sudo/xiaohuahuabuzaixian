@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
         // 注册自定义插件（Capacitor 5+ 要求在 super.onCreate 之前调用，否则桥接已初始化导致注册无效）
         registerPlugin(ApkInstallerPlugin.class);
         registerPlugin(YybServicePlugin.class);
+        registerPlugin(DeviceIdPlugin.class);
 
         super.onCreate(savedInstanceState);
         
@@ -25,8 +26,11 @@ public class MainActivity extends BridgeActivity {
             webView.getSettings().setTextZoom(100);
         }
         
-        // 启用 WebView 调试功能
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+        // 仅 Debug 包开启 WebView 调试：Release 包开启会导致任意人通过 adb inspect 前端逻辑与数据
+        // AGP 8 默认关闭 BuildConfig 生成，改用 manifest 的 debuggable 标志判断
+        boolean debuggable = (getApplicationInfo().flags
+                & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        if (debuggable && Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             WebView.setWebContentsDebuggingEnabled(true);
         }
     }

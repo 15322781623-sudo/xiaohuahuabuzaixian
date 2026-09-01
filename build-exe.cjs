@@ -103,6 +103,35 @@ function buildFrontend() {
   }
 }
 
+// 校验前端产物完整性
+// 背景：vite 构建时会先清空 dist，若清空过程被中断（如受限环境下的批量删除保护），
+// dist 会处于"index.html 还在、assets 已被删掉"的残缺状态。此时打包出的 EXE
+// 能显示加载页却加载不到任何 JS，永远卡在"正在加载应用..."，且构建不会报错。
+function verifyDist() {
+  log.step('校验前端产物完整性...');
+
+  const distDir = path.join(__dirname, 'dist');
+  const assetsDir = path.join(distDir, 'assets');
+  const indexHtml = path.join(distDir, 'index.html');
+
+  if (!fs.existsSync(indexHtml)) {
+    log.error('dist/index.html 不存在，请先执行 npm run build');
+    process.exit(1);
+  }
+  if (!fs.existsSync(assetsDir)) {
+    log.error('dist/assets 不存在 —— 前端产物残缺（构建可能被中断），请删除 dist 后重新 npm run build');
+    process.exit(1);
+  }
+
+  const jsFiles = fs.readdirSync(assetsDir).filter(f => f.endsWith('.js'));
+  if (jsFiles.length === 0) {
+    log.error('dist/assets 下没有任何 JS 产物 —— 前端产物残缺，请删除 dist 后重新 npm run build');
+    process.exit(1);
+  }
+
+  log.success(`前端产物校验通过（assets 下 ${jsFiles.length} 个 JS 文件）`);
+}
+
 // 确保应用宝协议服务 (yyb-go.exe) 存在，缺失时尝试用便携 Go 构建
 // 返回 true 表示随包分发；--no-yyb 或无 Go 工具链时返回 false（打不含服务的包）
 function ensureYybService() {
@@ -153,13 +182,18 @@ function buildTauri(withYyb) {
   
   let buildCmd = isDebug ? 'tauri build --debug' : 'tauri build';
   
-  // 不打包应用宝服务时，用配置覆盖清空 resources（避免 tauri 因文件缺失报错）
-  if (!withYyb) {
-    const overridePath = path.join(__dirname, '.tools', 'tauri-no-yyb.json');
-    fs.mkdirSync(path.dirname(overridePath), { recursive: true });
-    fs.writeFileSync(overridePath, JSON.stringify({ bundle: { resources: [] } }));
-    buildCmd += ` --config "${overridePath}"`;
-  }
+  // 统一用配置覆盖 tauri.conf.json，解决两件事：
+  // 1) 前端已在 buildFrontend 构建完成，跳过 beforeBuildCommand。
+  //    重复构建既多花一倍时间，又会让 vite 清空 dist 目录——文件数超过阈值时
+  //    在受限环境下会被批量删除保护拦截，导致整个构建失败。
+  // 2) 不打包应用宝服务时清空 resources，避免 tauri 因资源文件缺失报错。
+  const override = { build: { beforeBuildCommand: '' } };
+  if (!withYyb) override.bundle = { resources: [] };
+
+  const overridePath = path.join(__dirname, '.tools', 'tauri-exe-override.json');
+  fs.mkdirSync(path.dirname(overridePath), { recursive: true });
+  fs.writeFileSync(overridePath, JSON.stringify(override));
+  buildCmd += ` --config "${overridePath}"`;
   
   try {
     execSync(buildCmd, {
@@ -240,6 +274,9 @@ async function main() {
     
     // 构建前端
     buildFrontend();
+
+    // 校验前端产物完整性（--skip-build 时同样校验，避免打包残缺产物）
+    verifyDist();
     
     // 确保应用宝服务可用
     const withYyb = ensureYybService();
