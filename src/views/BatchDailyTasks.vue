@@ -6904,6 +6904,29 @@ const apexGuessPickedCount = computed(() => apexGuessMatchList.value.filter(m =>
 watch(apexGuessGroupId, (val) => { localStorage.setItem("saltHillGuessStage", val); });
 watch(apexGuessScheduleId, (val) => { localStorage.setItem("saltHillGuessScheduleId", val); });
 
+// ✅ 公共探测函数：从决赛(26)→64强(20)逆序试探，找到首个有数据的赛程（局部编号），全部无数据返回 null
+// 弹窗打开与切期次共用，避免用 localStorage 恢复的旧赛程拉到上一赛程对阵
+const detectApexSchedule = async (tokenId, groupId) => {
+  for (let sId = 26; sId >= 20; sId--) {
+    const realScheduleId = groupId * 26 + sId;
+    try {
+      const res = await tokenStore.sendMessageWithPromise(
+        tokenId,
+        "apex_getguesslist",
+        { scheduleId: realScheduleId, groupId, idx: 0 },
+        5000
+      );
+      const list = res?.apexGuessList;
+      if (Array.isArray(list) && list.length > 0) {
+        return sId;
+      }
+    } catch (e) {
+      // 该赛程无数据，继续试探更早的赛程
+    }
+  }
+  return null;
+};
+
 // 期次变化时自动探测最新赛程（从决赛→64强逆序试探，第一个返回数据的即为当前赛程）
 const apexScheduleDetecting = ref(false);
 watch(apexGuessGroupId, async (newGroupId, oldGroupId) => {
@@ -6927,34 +6950,18 @@ watch(apexGuessGroupId, async (newGroupId, oldGroupId) => {
     return;
   }
 
-  // 从决赛(26)→64强(20)逆序试探，找到首个有数据的赛程
-  for (let sId = 26; sId >= 20; sId--) {
-    const realScheduleId = newGroupId * 26 + sId;
-    try {
-      const res = await tokenStore.sendMessageWithPromise(
-        tokenId,
-        "apex_getguesslist",
-        { scheduleId: realScheduleId, groupId: newGroupId, idx: 0 },
-        5000
-      );
-      const list = res?.apexGuessList;
-      if (Array.isArray(list) && list.length > 0) {
-        apexGuessScheduleId.value = sId;
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `🔍 第${newGroupId + 1}期自动探测到最新赛程：${["64强","32强","16强","8强","4强","季军赛","决赛"][sId - 20]}（scheduleId=${realScheduleId}）`,
-          type: "info",
-        });
-        apexScheduleDetecting.value = false;
-        return;
-      }
-    } catch (e) {
-      // 该赛程无数据，继续试探更早的赛程
-    }
+  const detected = await detectApexSchedule(tokenId, newGroupId);
+  if (detected !== null) {
+    apexGuessScheduleId.value = detected;
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `🔍 第${newGroupId + 1}期自动探测到最新赛程：${["64强","32强","16强","8强","4强","季军赛","决赛"][detected - 20]}（scheduleId=${newGroupId * 26 + detected}）`,
+      type: "info",
+    });
+  } else {
+    // 全部赛程均无数据（可能新期次未开赛），默认 64强
+    apexGuessScheduleId.value = 20;
   }
-
-  // 全部赛程均无数据（可能新期次未开赛），默认 64强
-  apexGuessScheduleId.value = 20;
   apexScheduleDetecting.value = false;
 });
 
@@ -8100,11 +8107,34 @@ const handleSaltCupBet = async (matchId, pick) => {
 };
 
 // Apex Guess Functions (逐鹿盐山竞猜)
-const openApexGuessModal = () => {
+const openApexGuessModal = async () => {
   showApexGuessModal.value = true;
   apexGuessMatchList.value = [];
   // 打开弹窗自动获取一次对阵列表（已选账号时）
   if (selectedTokens.value.length > 0) {
+    // ✅ 修复：先探测当前期次最新赛程，避免 localStorage 恢复的旧赛程拉到上一赛程对阵，勾选后下注报错
+    const tokenId = selectedTokens.value[0];
+    if (tokenStore.getWebSocketStatus(tokenId) === "connected") {
+      apexScheduleDetecting.value = true;
+      const detected = await detectApexSchedule(tokenId, apexGuessGroupId.value);
+      if (detected !== null) {
+        if (detected !== apexGuessScheduleId.value) {
+          apexGuessScheduleId.value = detected;
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `🔍 第${apexGuessGroupId.value + 1}期自动探测到最新赛程：${["64强","32强","16强","8强","4强","季军赛","决赛"][detected - 20]}（scheduleId=${apexGuessGroupId.value * 26 + detected}）`,
+            type: "info",
+          });
+        }
+      } else {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `⚠️ 第${apexGuessGroupId.value + 1}期当前无任何对阵数据（赛程可能未开放）`,
+          type: "warning",
+        });
+      }
+      apexScheduleDetecting.value = false;
+    }
     fetchApexGuessList();
   }
 };
@@ -8135,6 +8165,7 @@ const fetchApexGuessList = async () => {
 
     const matches = [];
     let idx = 0;
+    const seen = new Set(); // ✅ 对阵去重：防止服务器忽略 idx 分页导致同一场重复进入列表，勾选后对同一场重复下注报错
     // 编码规则: scheduleId = (期次-1)*26 + 局部编号，期次从1开始，groupId=期次-1
     const realScheduleId = apexGuessGroupId.value * 26 + apexGuessScheduleId.value;
     addLog({
@@ -8146,11 +8177,21 @@ const fetchApexGuessList = async () => {
       const res = await tokenStore.sendMessageWithPromise(tokenId, "apex_getguesslist", { scheduleId: realScheduleId, groupId: apexGuessGroupId.value, idx }, 5000);
       const list = res?.apexGuessList;
       if (!Array.isArray(list) || list.length === 0) break;
+      let addedCount = 0;
+      let dupCount = 0;
       for (const pair of list) {
         if (Array.isArray(pair) && pair.length >= 2) {
-          matches.push({ left: pair[0], right: pair[1], picked: null });
+          const left = pair[0];
+          const right = pair[1];
+          const key = `${left?.teamId ?? ''}|${right?.teamId ?? ''}`;
+          if (seen.has(key)) { dupCount++; continue; }
+          seen.add(key);
+          addedCount++;
+          matches.push({ left, right, picked: null });
         }
       }
+      // ✅ 本页全部为重复数据（服务器分页失效），提前结束，避免重复对阵误导勾选
+      if (addedCount === 0 && dupCount > 0) break;
       if (res?.last === true) break;
       idx += 5;
     }
@@ -14543,11 +14584,14 @@ const executeScheduledTask = async (task) => {
                 fetchReady = true;
               }
               const guessTeamIds = [];
+              const seenTeamIds = new Set(); // ✅ 对阵去重：防止分页失效时对同一场重复下注
               let guessIdx = 0;
               for (let page = 0; fetchReady && page < 40; page++) {
                 const res = await tokenStore.sendMessageWithPromise(fetchTokenId, "apex_getguesslist", { scheduleId, groupId, idx: guessIdx }, 5000);
                 const list = res?.apexGuessList;
                 if (!Array.isArray(list) || list.length === 0) break;
+                let addedCount = 0;
+                let dupCount = 0;
                 for (const pair of list) {
                   if (Array.isArray(pair) && pair.length >= 2) {
                     const left = pair[0];
@@ -14557,9 +14601,16 @@ const executeScheduledTask = async (task) => {
                     else if (strategy === 'power') pickRight = (right?.power || 0) > (left?.power || 0);
                     else if (strategy === 'cheer') pickRight = (right?.cheerCnt || 0) > (left?.cheerCnt || 0);
                     const pickedTeamId = pickRight ? right?.teamId : left?.teamId;
-                    if (pickedTeamId) guessTeamIds.push(pickedTeamId);
+                    if (pickedTeamId) {
+                      if (seenTeamIds.has(pickedTeamId)) { dupCount++; continue; }
+                      seenTeamIds.add(pickedTeamId);
+                      addedCount++;
+                      guessTeamIds.push(pickedTeamId);
+                    }
                   }
                 }
+                // ✅ 本页全部为重复数据（服务器分页失效），提前结束
+                if (addedCount === 0 && dupCount > 0) break;
                 if (res?.last === true) break;
                 guessIdx += 5;
               }
