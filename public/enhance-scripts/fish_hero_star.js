@@ -184,8 +184,15 @@
             if (ws.sendAsync) {
                 const response = await ws.sendAsync(requestData);
                 const rawData = (response && response._rawData) || (response && response.getData && response.getData()) || (response && response.body) || response;
-                if (rawData && typeof rawData === 'object' && response && response.code !== undefined) {
-                    rawData._code = response.code;
+                if (rawData && typeof rawData === 'object') {
+                    if (response && response.code !== undefined) {
+                        rawData._code = response.code;
+                    } else if (rawData.code !== undefined) {
+                        rawData._code = rawData.code;
+                    } else if (rawData.success === false || rawData.error) {
+                        // 无状态码但带失败标记的响应，统一标记为失败，避免上层盲发
+                        rawData._code = -1;
+                    }
                 }
                 return rawData;
             } else if (ws.send) {
@@ -433,9 +440,16 @@
                             try {
                                 const itemId = parseInt(fishId + '' + star);
                                 const res = await sendGameCommand('artifact_upgradestar', { heroId: -1, itemId: itemId });
+                                if (res && res._code !== undefined && res._code !== 0) {
+                                    logMessage(`鱼灵 ${itemId} 升星失败${res.message ? ': ' + res.message : ''}，已跳过该鱼`, 'error');
+                                    break;
+                                }
                                 updateProgress();
                                 await new Promise(r => setTimeout(r, delay));
-                            } catch (e) {}
+                            } catch (e) {
+                                logMessage(`鱼灵 ${itemId} 升星异常: ${e.message}`, 'error');
+                                break;
+                            }
                         }
                     }
                     if (fishStopFlag.value) { logMessage('鱼灵升星已停止', 'warning'); showTip('已停止', 'warning'); }

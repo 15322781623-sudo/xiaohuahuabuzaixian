@@ -112,14 +112,18 @@
 
   function startMaintenanceInterval() {
     if (maintIntervalId) return;
-    maintIntervalId = setInterval(function() {
-      if (!isGRootReady()) return;
-      if (isSaltFieldActive()) refreshVisionOnly();
-      if (getLegionWarPanelProxy() || hasZoomableMap()) {
+    // 空闲时低频轮询（8s），盐场活跃或有缩放 UI 时高频（1.5s），减少无谓空转
+    function tick() {
+      var active = isSaltFieldActive();
+      var hasUi = !!(getLegionWarPanelProxy() || hasZoomableMap());
+      if (active) refreshVisionOnly();
+      if (hasUi) {
         ensureGameScaleUI();
         repositionScaleComp();
       }
-    }, 1500);
+      maintIntervalId = setTimeout(tick, (active || hasUi) ? 1500 : 8000);
+    }
+    tick();
   }
 
   function bootUiAfterGRoot() {

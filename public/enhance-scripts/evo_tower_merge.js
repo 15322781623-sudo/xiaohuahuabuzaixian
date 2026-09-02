@@ -303,6 +303,7 @@
         api._running = true;
         setSuppress(true);                                            // 开始抑制奖励弹窗
         var count = 0;
+        var noDataRetries = 0;
         console.log(TAG, label + ' 已开启（回包即续，尽快执行；' + (opt.draw ? '合并+开箱(不使用奖励物)' : '仅合并') + '；停止 _怪异塔.' + label + '(false)）');
         function stop(msg) { api._running = false; setSuppress(false); if (msg) console.log(TAG, msg); }
         function next() { setSuppress(true); if (gap > 0) setTimeout(step, gap); else Promise.resolve().then(step); }
@@ -311,7 +312,14 @@
             if (!api._running || runId !== api._runId) return;
             if (count >= cap) { stop(label + ' 已达上限 ' + cap + '，停止（共 ' + count + ' 步）'); return; }
             var d = getData();
-            if (!d) { setTimeout(step, 400); return; }
+            if (!d) {
+                // 数据源未就绪时短暂等待；连续多次仍不可用则停止，避免无限自旋
+                noDataRetries++;
+                if (noDataRetries > 30) { stop(label + ' 数据源持续不可用，已停止'); return; }
+                setTimeout(step, 400);
+                return;
+            }
+            noDataRetries = 0;
             var p = findMergePair(d);                                   // ① 合并优先
             if (p) { count++; try { after(d.sendMergeItems(p.source, p.target)); } catch (e) { next(); } return; }
             if (opt.draw) {                                            // ② 无可合 → 开箱(耗钥匙)，不使用奖励物

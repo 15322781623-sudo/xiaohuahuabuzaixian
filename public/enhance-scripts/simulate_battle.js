@@ -48,6 +48,7 @@
     const SEED_RECORD_PAGE_SIZE = 15;
     const MAIN_PUSH_LOG_LIMIT = 60;
     const MAIN_PUSH_RESET_DELAY_MS = 300;
+    const MAIN_PUSH_MAX_RESET_COUNT = 10;
 
     const DIAGNOSTIC_SAMPLE_LIMIT = 24;
     const QUICK_TARGET_SELECT_LIMIT = 120;
@@ -7630,6 +7631,12 @@
                 pushMainPushLog(`关卡 ${levelId} [第 ${state.mainPush.resetCount} 次] 胜利`, 'success');
             } else {
                 pushMainPushLog(`关卡 ${levelId} [第 ${state.mainPush.resetCount} 次] 失败，准备重置`, 'warning');
+                // 同一关卡连续失败达到上限时自动停止，避免"失败→重置→再模拟"无限循环
+                if (state.mainPush.resetCount >= MAIN_PUSH_MAX_RESET_COUNT) {
+                    pushMainPushLog(`关卡 ${levelId} 连续失败 ${state.mainPush.resetCount} 次，已自动停止模拟推关`, 'error');
+                    stopMainPush('连续失败次数过多');
+                    return;
+                }
                 requestMainPushReset();
             }
         } catch (error) {

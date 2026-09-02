@@ -1132,7 +1132,7 @@ export function createTasksHangUp(deps) {
       const challengeForToken = async (tokenId, token) => {
         addLog({ time: new Date().toLocaleTimeString(), message: `=== 营地空投挑战：${token.name} ===`, type: "info" });
         try {
-          // 1. 获取营地信息（读取当前期次已挑战次数）
+          // 1. 获取营地信息（读取今日已挑战次数，键为日期字符串 yymmdd/yyyymmdd）
           let alreadyAttacked = 0;
           try {
             const clubInfo = await callWithRetry(tokenId, "club_getinfo", {}, {
@@ -1140,9 +1140,15 @@ export function createTasksHangUp(deps) {
             });
             const siege = clubInfo?.siege || clubInfo?.body?.siege || {};
             const attackMap = siege?.attackMap || {};
-            // 取最近的期次（键为 yymmdd 数字字符串），用其 attackCnt 作为已挑战次数
-            const periods = Object.keys(attackMap).sort().reverse();
-            alreadyAttacked = periods.length > 0 ? (attackMap[periods[0]]?.attackCnt || 0) : 0;
+            // 只统计今天的键，避免把昨天/往期键的 attackCnt 误判为今日已挑战
+            const now = new Date();
+            const yy = String(now.getFullYear()).slice(-2);
+            const yyyy = String(now.getFullYear());
+            const mm = String(now.getMonth() + 1).padStart(2, "0");
+            const dd = String(now.getDate()).padStart(2, "0");
+            const todayKeys = [`${yy}${mm}${dd}`, `${yyyy}${mm}${dd}`];
+            const todayKey = todayKeys.find((k) => attackMap[k] !== undefined);
+            alreadyAttacked = todayKey ? (attackMap[todayKey]?.attackCnt || 0) : 0;
           } catch {
             // 获取营地信息失败不阻塞，仍尝试直接挑战
           }

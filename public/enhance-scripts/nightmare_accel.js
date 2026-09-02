@@ -187,11 +187,13 @@
   }
 
   function applyUiEngineSpeed() {
+    if (!uw.cc || !uw.cc.director || !uw.cc.director.getScheduler()) return false;
     if (state.uiSpeed <= 0) {
+      // 关闭 UI 加速时还原全局时间倍率，避免残留加速影响游戏
+      uw.cc.director.getScheduler().setTimeScale(1);
       state.uiApplied = false;
       return true;
     }
-    if (!uw.cc || !uw.cc.director || !uw.cc.director.getScheduler()) return false;
     uw.cc.director.getScheduler().setTimeScale(state.uiSpeed);
     state.uiApplied = true;
     return true;
@@ -424,7 +426,11 @@
     loadConfig();
     createPanel();
     applyAll(false);
-    setInterval(tickInstall, RETRY_MS);
+    // 仅在仍有未完成 hook 项时轮询，空闲时零开销，避免常驻空转
+    setInterval(function () {
+      var idle = (state.tenPalace <= 0 || state.panelHooked) && (state.uiSpeed <= 0 || state.uiApplied);
+      if (!idle) tickInstall();
+    }, RETRY_MS);
     log('已加载 — 十殿=' + formatSpeed(state.tenPalace) + '，UI=' + formatSpeed(state.uiSpeed));
   }
 

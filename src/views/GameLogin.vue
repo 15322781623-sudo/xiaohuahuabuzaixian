@@ -98,7 +98,12 @@
         <div class="script-section">
           <div class="script-header" @click="enhanceCollapsed = !enhanceCollapsed" style="cursor:pointer;">
             <span style="font-size:12px;font-weight:500;">🔧 游戏增强 ({{ enabledEnhancementCount }}/{{ ENHANCEMENTS.length }})</span>
-            <span style="font-size:10px;color:#aaa;">{{ enhanceCollapsed ? '▶' : '▼' }}</span>
+            <div class="script-actions" @click.stop>
+              <n-button size="tiny" @click="selectAllEnhancements">全选</n-button>
+              <n-button size="tiny" @click="clearAllEnhancements">取消</n-button>
+              <n-button size="tiny" @click="resetEnhancements">恢复默认</n-button>
+              <span style="font-size:10px;color:#aaa;">{{ enhanceCollapsed ? '▶' : '▼' }}</span>
+            </div>
           </div>
           <div v-show="!enhanceCollapsed" class="enhance-scroll">
             <template v-for="grp in enhanceGroups" :key="grp.name">
@@ -496,7 +501,7 @@ import BinTokenForm from '@/views/TokenImport/bin.vue';
 import SingleBinTokenForm from '@/views/TokenImport/singlebin.vue';
 import WxQrcodeForm from '@/views/TokenImport/wxqrcode.vue';
 import { pickAsarFile, restoreAsarFile, requestStoredAsarFile, clearAsarHandle, parseAsarIndex } from '@/utils/localResManager';
-import { ENHANCE_KEY, ENHANCE_CODES_KEY, SCRIPTS_KEY, ENHANCEMENTS, ENHANCE_CODE, DEFAULT_ENABLED, PANEL_ENHANCER_FILE, PANEL_ENHANCER_DEPS, loadScriptFile, buildAndCacheEnhanceCodes } from '@/utils/gameEnhanceConfig';
+import { ENHANCE_KEY, ENHANCE_CODES_KEY, SCRIPTS_KEY, ENHANCEMENTS, ENHANCE_CODE, DEFAULT_ENABLED, PANEL_ENHANCER_FILE, PANEL_ENHANCER_DEPS, loadScriptFile, buildAndCacheEnhanceCodes, migrateEnhancementConfig } from '@/utils/gameEnhanceConfig';
 import { getKV, setKV } from '@/utils/tokenDb';
 
 const message = useMessage();
@@ -811,6 +816,10 @@ try {
 // ★ DEFAULT_ENABLED 已从 gameEnhanceConfig.js 导入
 // 确保所有功能都有默认值
 ENHANCEMENTS.forEach(e => { if (enhancementState[e.key] === undefined) enhancementState[e.key] = DEFAULT_ENABLED.has(e.key); });
+// 旧配置迁移：断线重连(wsReconnect)已合并入自动重连，清理残留键并写回
+const hadLegacyReconnect = 'wsReconnect' in enhancementState;
+migrateEnhancementConfig(enhancementState);
+if (hadLegacyReconnect) localStorage.setItem(ENHANCE_KEY, JSON.stringify(enhancementState));
 
 // ★ DEFAULT_ENABLED / ENHANCE_CODES_KEY / PANEL_ENHANCER_FILE / PANEL_ENHANCER_DEPS 已导入
 
@@ -832,6 +841,27 @@ async function cacheEnhanceCodes() {
 function toggleEnhancement(key, val) {
   enhancementState[key] = val;
   saveEnhancements();
+}
+
+// 全选全部增强功能
+function selectAllEnhancements() {
+  ENHANCEMENTS.forEach(e => { enhancementState[e.key] = true; });
+  saveEnhancements();
+  message.success(`已全选 ${ENHANCEMENTS.length} 项游戏增强`);
+}
+
+// 取消全部增强功能
+function clearAllEnhancements() {
+  ENHANCEMENTS.forEach(e => { enhancementState[e.key] = false; });
+  saveEnhancements();
+  message.success('已取消全部游戏增强');
+}
+
+// 恢复默认增强功能
+function resetEnhancements() {
+  ENHANCEMENTS.forEach(e => { enhancementState[e.key] = DEFAULT_ENABLED.has(e.key); });
+  saveEnhancements();
+  message.success('已恢复默认游戏增强配置');
 }
 
 // 初始化时缓存一次代码
@@ -2881,9 +2911,9 @@ onBeforeUnmount(() => {
 }
 .enhance-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
-  padding: 3px 6px;
+  padding: 4px 6px;
   border-radius: 3px;
   cursor: pointer;
   transition: background 0.15s;
@@ -2895,13 +2925,14 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  flex: 1;
 }
 .enhance-name {
   font-size: 11px;
   color: #e0e0e0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.4;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .enhance-file-badge {
   display: inline-block;
@@ -2917,9 +2948,10 @@ onBeforeUnmount(() => {
 .enhance-desc {
   font-size: 9px;
   color: #888;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 /* 移动端标签切换栏 */

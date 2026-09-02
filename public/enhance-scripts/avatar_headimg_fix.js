@@ -114,6 +114,7 @@
 
             input.onchange = function () {
                 var file = input.files && input.files[0];
+                clearTimeout(cleanupTimer);
                 try { document.body.removeChild(input); } catch (_) {}
                 if (!file) {
                     reject('no file');
@@ -138,6 +139,16 @@
                 reader.onerror = function () { reject('read fail'); };
                 reader.readAsDataURL(file);
             };
+
+            // 用户取消文件选择时 onchange 不触发，input 会残留 DOM；监听 cancel 事件并设置兜底定时清理
+            var cleanupTimer = setTimeout(function () {
+                try { document.body.removeChild(input); } catch (_) {}
+            }, 120000);
+            input.addEventListener('cancel', function () {
+                clearTimeout(cleanupTimer);
+                try { document.body.removeChild(input); } catch (_) {}
+                reject('cancel');
+            });
 
             input.click();
         });

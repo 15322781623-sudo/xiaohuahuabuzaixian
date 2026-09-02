@@ -1134,6 +1134,11 @@
         const pickedAttrs = getPickedTargetAttrs(cfg);
         const targetOn = !!(cfg.targetOn && pickedAttrs.length);
         const pct = getEffectiveTargetPct(cfg);
+        // 两个停止条件（次数/词条目标）均未开启时拒绝启动，避免无限连洗只能手动停
+        if (cfg.timesOn === false && !targetOn) {
+            console.warn('[指定洗炼] 次数控制和词条目标均未开启，无法自动停止，已拒绝启动');
+            return false;
+        }
         dialog[CUSTOM_RUN_KEY] = {
             left: times,
             total: times,

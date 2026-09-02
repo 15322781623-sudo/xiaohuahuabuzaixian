@@ -56,7 +56,10 @@
       <div class="gwt-enhance-section">
         <div class="gwt-enhance-header" @click="enhanceCollapsed = !enhanceCollapsed">
           <span style="font-weight:500;">🔧 游戏增强 ({{ enabledCount }}/{{ ENHANCEMENTS.length }})</span>
-          <span style="font-size:10px;color:#888;">{{ enhanceCollapsed ? '▶' : '▼' }}</span>
+          <span class="gwt-enhance-tools" @click.stop>
+            <button class="gwt-btn gwt-reset-btn" title="恢复默认" @click="resetEnhancements">恢复默认</button>
+            <span style="font-size:10px;color:#888;">{{ enhanceCollapsed ? '▶' : '▼' }}</span>
+          </span>
         </div>
         <div v-show="!enhanceCollapsed" class="gwt-enhance-scroll">
           <template v-for="grp in enhanceGroups" :key="grp.name">
@@ -80,7 +83,7 @@
 <script setup>
 import { ref, reactive, computed, nextTick } from 'vue';
 import { useGameWindowManager } from '@/composables/useGameWindowManager';
-import { ENHANCE_KEY, ENHANCEMENTS, DEFAULT_ENABLED, buildAndCacheEnhanceCodes } from '@/utils/gameEnhanceConfig';
+import { ENHANCE_KEY, ENHANCEMENTS, DEFAULT_ENABLED, buildAndCacheEnhanceCodes, migrateEnhancementConfig } from '@/utils/gameEnhanceConfig';
 
 const collapsed = ref(false);
 
@@ -114,6 +117,10 @@ try {
   Object.assign(enhancementState, saved);
 } catch(e) {}
 ENHANCEMENTS.forEach(e => { if (enhancementState[e.key] === undefined) enhancementState[e.key] = DEFAULT_ENABLED.has(e.key); });
+// 旧配置迁移：断线重连(wsReconnect)已合并入自动重连，清理残留键并写回
+const hadLegacyReconnect = 'wsReconnect' in enhancementState;
+migrateEnhancementConfig(enhancementState);
+if (hadLegacyReconnect) localStorage.setItem(ENHANCE_KEY, JSON.stringify(enhancementState));
 
 const enabledCount = computed(() => ENHANCEMENTS.filter(e => enhancementState[e.key]).length);
 
@@ -130,6 +137,12 @@ const enhanceGroups = computed(() => {
 
 function toggleEnhancement(key, val) {
   enhancementState[key] = val;
+  localStorage.setItem(ENHANCE_KEY, JSON.stringify(enhancementState));
+  buildAndCacheEnhanceCodes(enhancementState, getScripts());
+}
+
+function resetEnhancements() {
+  ENHANCEMENTS.forEach(e => { enhancementState[e.key] = DEFAULT_ENABLED.has(e.key); });
   localStorage.setItem(ENHANCE_KEY, JSON.stringify(enhancementState));
   buildAndCacheEnhanceCodes(enhancementState, getScripts());
 }
@@ -305,6 +318,17 @@ nextTick(() => buildAndCacheEnhanceCodes(enhancementState, getScripts()));
 .gwt-enhance-header:hover {
   background: var(--bg-secondary, #f5f5f5);
 }
+.gwt-enhance-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.gwt-reset-btn {
+  flex: none;
+  padding: 1px 6px;
+  font-size: 10px;
+  line-height: 1.6;
+}
 .gwt-enhance-scroll {
   max-height: 240px;
   overflow-y: auto;
@@ -361,12 +385,17 @@ nextTick(() => buildAndCacheEnhanceCodes(enhancementState, getScripts()));
 }
 .gwt-enhance-name {
   font-size: 11px;
-  line-height: 1.3;
+  line-height: 1.4;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .gwt-enhance-desc {
   font-size: 10px;
   color: #888;
-  line-height: 1.3;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .gwt-file-badge {
   display: inline-block;

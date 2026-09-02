@@ -440,51 +440,67 @@
                 }
 
                 let currentOrd = heroData.order || 0;
-                const standardLevels = [1, 5, 10, 50];
+                const standardLevels = [50, 10, 5, 1];
+                let noProgressCount = 0;
 
                 while (currentLevel < targetLevel && !this.heroUpgradeShouldStop) {
+                    let progressed = false;
+
                     if (this.canOrderUpgrade(currentLevel, currentOrd)) {
                         const orderResult = await HeroService.heroUpgradeOrder({ heroId });
                         if (orderResult && (orderResult.code === 0 || !orderResult.error)) {
                             await new Promise(resolve => setTimeout(resolve, 400));
+                            const prevLevel = currentLevel;
+                            const prevOrd = currentOrd;
                             heroData = this.getFromMap(unsafeWindow.__require('ServerData').ROLE.heroes, heroId);
                             currentLevel = heroData.level || 0;
                             currentOrd = heroData.order || 0;
                             this.updateDisplay(heroData);
-                            continue;
+                            progressed = currentLevel !== prevLevel || currentOrd !== prevOrd;
                         } else {
                             throw new Error(orderResult?.error || '进阶失败');
                         }
-                    }
+                    } else {
+                        const remaining = targetLevel - currentLevel;
+                        let useLevel = 1;
 
-                    const remaining = targetLevel - currentLevel;
-                    let useLevel = 1;
-
-                    for (const stdLevel of standardLevels.reverse()) {
-                        if (stdLevel <= remaining) {
-                            const judgement = this.judgeLevelUpgrade(currentLevel, stdLevel, currentOrd);
-                            if (judgement === false) {
-                                useLevel = stdLevel;
-                                break;
+                        for (const stdLevel of standardLevels) {
+                            if (stdLevel <= remaining) {
+                                const judgement = this.judgeLevelUpgrade(currentLevel, stdLevel, currentOrd);
+                                if (judgement === false) {
+                                    useLevel = stdLevel;
+                                    break;
+                                }
                             }
                         }
+
+                        const result = await HeroService.heroUpgradeLevel({ heroId, upgradeNum: useLevel });
+                        if (result && (result.code === 0 || !result.error)) {
+                            await new Promise(resolve => setTimeout(resolve, 400));
+                            const prevLevel = currentLevel;
+                            heroData = this.getFromMap(unsafeWindow.__require('ServerData').ROLE.heroes, heroId);
+                            currentLevel = heroData.level || 0;
+                            currentOrd = heroData.order || 0;
+                            this.updateDisplay(heroData);
+                            progressed = currentLevel !== prevLevel;
+
+                            // 显示升级进度提示 (防止过于频繁可以优化一下，这里用简单的反馈)
+                            if (currentLevel % 50 === 0 || currentLevel === targetLevel) {
+                                this.showTip(`升级进度: ${currentLevel}/${targetLevel}`, 'info');
+                            }
+                        } else {
+                            throw new Error(result?.error || '升级失败，可能金币不足');
+                        }
                     }
-                    standardLevels.reverse();
 
-                    const result = await HeroService.heroUpgradeLevel({ heroId, upgradeNum: useLevel });
-                    if (result && (result.code === 0 || !result.error)) {
-                        await new Promise(resolve => setTimeout(resolve, 400));
-                        heroData = this.getFromMap(unsafeWindow.__require('ServerData').ROLE.heroes, heroId);
-                        currentLevel = heroData.level || 0;
-                        currentOrd = heroData.order || 0;
-                        this.updateDisplay(heroData);
-
-                        // 显示升级进度提示 (防止过于频繁可以优化一下，这里用简单的反馈)
-                        if (currentLevel % 50 === 0 || currentLevel === targetLevel) {
-                            this.showTip(`升级进度: ${currentLevel}/${targetLevel}`, 'info');
+                    // 无进展护栏：连续多次升级后等级/阶数均无变化，说明资源不足或异常，停止防止死循环
+                    if (!progressed) {
+                        noProgressCount++;
+                        if (noProgressCount >= 3) {
+                            throw new Error('连续多次无进展，可能资源不足，已停止');
                         }
                     } else {
-                        throw new Error(result?.error || '升级失败，可能金币不足');
+                        noProgressCount = 0;
                     }
                 }
 

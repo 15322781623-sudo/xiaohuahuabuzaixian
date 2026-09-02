@@ -17717,8 +17717,14 @@ const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
   let retryCount = 0;
   let lastError = null;
   let slotAcquired = false; // ✅ 跟踪槽位持有状态，防止未获取就释放导致连接池计数错乱
-  
+  let tokenRefreshed = false; // ✅ 跟踪本轮是否已尝试刷新 Token，避免反复刷新浪费接口配额
+
   while (retryCount < maxRetries) {
+    // ✅ 用户中途停止时立即退出，避免无效的长时间等待
+    if (shouldStop.value) {
+      throw new Error('任务已停止');
+    }
+
     try {
       const latestToken = tokens.value.find((t) => t.id === tokenId);
       if (!latestToken) {
@@ -17775,16 +17781,65 @@ const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
     } catch (error) {
       lastError = error;
       retryCount++;
-      
+
       // ✅ 修复：只释放已获取的槽位（原逻辑无条件释放，若失败发生在获取槽位之前会造成虚假释放，破坏连接池计数）
       if (!skipSlot && slotAcquired) {
         releaseConnectionSlot();
         slotAcquired = false;
       }
-      
+
       // 关闭可能存在的连接
       tokenStore.closeWebSocketConnection(tokenId);
-      
+
+      // ✅ 新增：首次连接失败时尝试刷新 Token 后再连接
+      // 策略：仅在第一次失败（retryCount === 1）时尝试刷新一次，
+      //       利用 tokenStore.attemptTokenRefresh 的 URL/BIN/手动三种刷新通道，
+      //       很多"连接超时"实际是 Token 过期导致，新 Token 可显著提高重连成功率
+      // 复用 attemptTokenRefresh 内置保护：refreshingTokenIds 防重复 + 10-20秒冷却 + 最多3次内部重试
+      if (retryCount === 1 && maxRetries > 1 && !tokenRefreshed) {
+        tokenRefreshed = true;
+        const tokenInfo = tokens.value.find((t) => t.id === tokenId);
+        const tokenName = tokenInfo?.name || tokenId;
+        try {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `🔄 连接失败(${error.message})，尝试自动刷新 Token: ${tokenName}`,
+            type: "warning",
+          });
+          const refreshSuccess = await tokenStore.attemptTokenRefresh(tokenId, true);
+
+          // 用户中途停止时立即中断
+          if (shouldStop.value) {
+            throw new Error('任务已停止');
+          }
+
+          if (refreshSuccess) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `✅ Token刷新成功，准备立即重连: ${tokenName}`,
+              type: "success",
+            });
+            // 等待 2 秒让新 Token 在客户端生效，跳过阶梯退避直接进入下一轮重试
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            continue;
+          } else {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              message: `⚠️ Token刷新失败，按原计划阶梯退避重试: ${tokenName}`,
+              type: "warning",
+            });
+          }
+        } catch (refreshErr) {
+          // 任务停止信号：直接抛出，保留 shouldStop 状态
+          if (refreshErr?.message === '任务已停止') throw refreshErr;
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `⚠️ Token刷新出错(${refreshErr?.message || refreshErr})，继续原重试逻辑: ${tokenName}`,
+            type: "warning",
+          });
+        }
+      }
+
       if (retryCount < maxRetries) {
         // 阶梯退避：第1次等30秒，第2次等1分钟，第3次等3分钟
         let waitTime;
@@ -17800,7 +17855,12 @@ const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
           message: `⚠️ 连接失败，${waitTime >= 60000 ? (waitTime / 60000) + '分钟' : (waitTime / 1000) + '秒'}后重试: ${error.message}`,
           type: "warning",
         });
-        await new Promise(resolve => setTimeout(resolve, waitTime));
+        // 分段等待以便及时响应 shouldStop
+        const checkInterval = 1000;
+        for (let waited = 0; waited < waitTime; waited += checkInterval) {
+          if (shouldStop.value) break;
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
+        }
       } else {
         // 3次重试全部失败，直接停止
         addLog({
@@ -17811,7 +17871,7 @@ const ensureConnection = async (tokenId, maxRetries = 3, skipSlot = false) => {
       }
     }
   }
-  
+
   // 所有重试都失败
   throw new Error(`WebSocket连接失败: ${lastError?.message || '未知错误'}`);
 };

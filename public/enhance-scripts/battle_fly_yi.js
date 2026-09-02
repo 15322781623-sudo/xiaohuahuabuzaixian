@@ -124,7 +124,11 @@
     
     if (original === "i") {
       // "i" 是游戏内表示0伤害的标记（如大乔流离转移的伤害）
-      return "\u6d41\u79bb"; // 显示"流离"
+      // 仅当未指明伤害类型或确为流离类型(15/16)时显示"流离"，避免其他场景误显示
+      if (typeof damageType !== "number" || damageType === 15 || damageType === 16) {
+        return "\u6d41\u79bb"; // 显示"流离"
+      }
+      return original;
     } else if (original.startsWith("s")) {
       specialMark = "s";
       processedRaw = original.substring(1);

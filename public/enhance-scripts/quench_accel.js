@@ -105,8 +105,18 @@
   var attempts = 0;
   var timer = setInterval(function() {
     attempts++;
-    if (tryInstall() || attempts > 60) {
+    if (tryInstall()) {
       clearInterval(timer);
+      return;
+    }
+    if (attempts > 60) {
+      // 30 秒快轮询未命中后，降频继续尝试，避免模块晚加载时永久失效
+      clearInterval(timer);
+      var slowTimer = setInterval(function() {
+        if (tryInstall()) {
+          clearInterval(slowTimer);
+        }
+      }, 5000);
     }
   }, 500);
 

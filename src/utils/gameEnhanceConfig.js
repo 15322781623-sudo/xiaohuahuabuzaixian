@@ -10,10 +10,10 @@ export const SCRIPTS_KEY = '__game_scripts__';
 
 // ── 面板增强器依赖 ──
 export const PANEL_ENHANCER_FILE = 'enhance-scripts/panel_enhancer.js';
-export const PANEL_ENHANCER_DEPS = ['fishHeroStar', 'heroLevelUp', 'opponentWash', 'gameEnhancePanel'];
+export const PANEL_ENHANCER_DEPS = ['fishHeroStar', 'heroLevelUp', 'opponentWash', 'petMerge', 'gameEnhancePanel'];
 
-// ── 默认启用 ──
-export const DEFAULT_ENABLED = new Set(['skipPopup', 'skipAd', 'perfOpt', 'nightmareAccel', 'battleFlyYi', 'wsReconnect']);
+// ── 默认启用（十殿加速默认关闭，需要时手动开启）──
+export const DEFAULT_ENABLED = new Set(['skipPopup', 'skipAd', 'perfOpt', 'battleFlyYi', 'autoReconnect']);
 
 // ── 增强功能列表 ──
 export const ENHANCEMENTS = [
@@ -27,7 +27,7 @@ export const ENHANCEMENTS = [
   { key: 'perfOpt', name: '性能优化', desc: '30fps/禁粒子/锁定帧率/减装饰动画', group: '基础' },
   { key: 'disableSound', name: '关闭声音', desc: '自动关闭音乐/音效/震动/点击特效', group: '基础' },
   { key: 'disablePowerSave', name: '关闭省电', desc: '自动选择永不进入省电模式', group: '基础' },
-  { key: 'wsReconnect', name: '断线重连', desc: 'WebSocket断线自动重连+保活', file: 'enhance-scripts/ws_reconnect.js', group: '基础' },
+  { key: 'autoReconnect', name: '自动重连', desc: '断线自动重连+保活，失败后刷新页面', file: 'enhance-scripts/auto_reconnect.js', group: '基础' },
   // 文件型增强（按需加载）
   { key: 'battleFlyYi', name: '战斗飘字', desc: '飘字亿化+颜色+描边+阴影+轮询优化', file: 'enhance-scripts/battle_fly_yi.js', group: '战斗' },
   { key: 'nightmareAccel', name: '十殿加速', desc: '十殿战斗加速+UI全局加速(可调)', file: 'enhance-scripts/nightmare_accel.js', group: '十殿' },
@@ -46,6 +46,7 @@ export const ENHANCEMENTS = [
   { key: 'gameEnhancePanel', name: '增强面板', desc: '游戏内增强浮动面板', file: 'enhance-scripts/game_enhance_panel.js', group: '辅助' },
   { key: 'achievementReward', name: '成就奖励', desc: '自动领取成就奖励', file: 'enhance-scripts/achievement_reward.js', group: '辅助' },
   { key: 'fishHeroStar', name: '升星助手', desc: '武将升星+图鉴升级+鱼灵升星', file: 'enhance-scripts/fish_hero_star.js', group: '升级' },
+  { key: 'petMerge', name: '宠物合成', desc: '游戏内宠物合成增强', file: 'enhance-scripts/pet_merge.js', group: '升级' },
   { key: 'itemUse', name: '道具使用', desc: '批量使用道具/宝箱', file: 'enhance-scripts/item_use.js', group: '辅助' },
   { key: 'opponentWash', name: '对手洗练', desc: '自动查询对手洗练+历史记录', file: 'enhance-scripts/opponent_wash.js', group: '洗炼' },
 ];
@@ -60,13 +61,29 @@ export const ENHANCE_CODE = {
   skipChest: `(function(){${WFM_HELPER}window._wfm('BoxPanel',function(m){if(m&&m.BoxPanel&&m.BoxPanel.prototype){var origOpen=m.BoxPanel.prototype._onOpenBox;m.BoxPanel.prototype._onOpenBox=function(){if(!window._skipBoxAnim)return origOpen.apply(this,arguments);var boxList=this.boxList;var idx=this._currentIndex;if(idx<0||idx>=boxList.length)return;var boxItem=boxList[idx];var itemId=boxItem.id;if(!window.ROLE)return;var qty=window.ROLE.getItemQuantity(itemId);if(qty===0)return;this._removeCoinAnim&&this._removeCoinAnim();var Configs=window.__require('Configs');var ModuleManager=window.__require('ModuleManager');var boxModule=ModuleManager.GET_MODULE(Configs.ModuleType.BOX);var openNum=boxModule.getOpenBoxNum(boxItem,qty);var LanguageExt=window.__require('LanguageExt');var TipsManager=window.__require('TipsManager');boxModule.sendOpenBox(itemId,openNum).then(function(rewards){if(rewards){boxModule.syncBoxPoint&&boxModule.syncBoxPoint();var cfg=Configs.ItemConf.getById(itemId);var name=cfg?LanguageExt.GET_CONTENT(cfg.name):'\\u5b9d\\u7bb1';TipsManager.SHOW_TIP('\\u5f00\\u542f '+openNum+' \\u4e2a'+name);}});};window._skipBoxAnim=true;console.log('[\\u5b9d\\u7bb1\\u8df3\\u8fc7]BoxPanel\\u5df2hook');}});})();`,
   redRefineSkip: `(function(){${WFM_HELPER}window._wfm('QuenchStageUpDialog',function(m){if(m&&m.QuenchStageUpDialog&&m.QuenchStageUpDialog.prototype){var orig=m.QuenchStageUpDialog.prototype._checkQuenchConfirm;m.QuenchStageUpDialog.prototype._checkQuenchConfirm=function(){if(this.isSkipRed)return false;return orig.apply(this,arguments);};console.log('[\\u7ea2\\u6dec\\u8df3\\u8fc7]_checkQuenchConfirm\\u5df2hook');}});})();`,
   arenaReport: `(function(){${WFM_HELPER}window._wfm('ArenaRecordDialog',function(m){if(m&&m.ArenaRecordDialog&&m.ArenaRecordDialog.prototype){var orig=m.ArenaRecordDialog.prototype._refreshSingleListItem;m.ArenaRecordDialog.prototype._refreshSingleListItem=function(e,t){var result=orig.call(this,e,t);var recordData=this.recordList&&this.recordList[e];if(recordData&&t.m_headIcon){var RankModule=window.__require('RankModule');t.m_headIcon.clearClick();t.m_headIcon.onClick(function(){RankModule.SHOW_ROLE_INFO(recordData.oppositeId);});}return result;};console.log('[\\u6218\\u62a5\\u589e\\u5f3a]ArenaRecordDialog\\u5df2hook');}});})();`,
-  perfOpt: `(function(){var c=setInterval(function(){if(!window.cc||!cc.director)return;clearInterval(c);if(cc.game)cc.game.frameRate=30;if(cc.ParticleSystem){var op=cc.ParticleSystem.prototype.onLoad;if(op)cc.ParticleSystem.prototype.onLoad=function(){if(this.node)this.node.active=false;return op.apply(this,arguments);};}if(wx&&wx.vibrateShort)wx.vibrateShort=function(){};function lockFps(){try{if(cc.game&&cc.game.frameRate>30)cc.game.frameRate=30;}catch(e){}}if(cc.director.on)cc.director.on(cc.Director.EVENT_AFTER_SCENE_LAUNCH,function(){setTimeout(lockFps,500);});console.log('[性能优化]30fps/禁粒子/锁定帧率');},500);})();`,
+  perfOpt: `(function(){var c=setInterval(function(){if(!window.cc||!cc.director)return;clearInterval(c);if(cc.game)cc.game.frameRate=30;if(cc.ParticleSystem){var op=cc.ParticleSystem.prototype.onLoad;if(op)cc.ParticleSystem.prototype.onLoad=function(){if(this.node)this.node.active=false;return op.apply(this,arguments);};}if(window.wx&&window.wx.vibrateShort)window.wx.vibrateShort=function(){};function lockFps(){try{if(cc.game&&cc.game.frameRate>30)cc.game.frameRate=30;}catch(e){}}if(cc.director.on)cc.director.on(cc.Director.EVENT_AFTER_SCENE_LAUNCH,function(){setTimeout(lockFps,500);});console.log('[性能优化]30fps/禁粒子/锁定帧率');},500);})();`,
   disableSound: `(function(){var c=setInterval(function(){if(!window.cc||!cc.find)return;clearInterval(c);function muteAll(){try{var s=cc.director.getScene();if(!s)return;var labels=s.getComponentsInChildren? s.getComponentsInChildren(cc.Label):[];var audioKeys=['音乐','音效','震动','点击特效'];var clicked=0;labels.forEach(function(lb){var txt=(lb.string||'').trim();var nd=lb.node;if(!nd||!nd.active)return;if(audioKeys.indexOf(txt)!==-1){var p=nd.parent;if(!p)return;var btns=p.getComponentsInChildren? p.getComponentsInChildren(cc.Button):[];for(var i=0;i<btns.length;i++){var b=btns[i];if(!b||!b.node||!b.node.active)continue;var btnLabels=b.node.getComponentsInChildren? b.node.getComponentsInChildren(cc.Label):[];for(var j=0;j<btnLabels.length;j++){var bt=(btnLabels[j].string||'').trim();if(bt==='开启'){try{b._emitClickEvents&&b._emitClickEvents();console.log('[关闭声音]已关闭:',txt);clicked++;}catch(e){}break;}}}}});if(clicked>0)console.log('[关闭声音]已关闭'+clicked+'项');var ae=cc.audioEngine;if(ae){ae.setMusicVolume&&ae.setMusicVolume(0);ae.setEffectsVolume&&ae.setEffectsVolume(0);}cc.game&&cc.game.frameRate&&(cc.game.frameRate=Math.max(cc.game.frameRate,30));}catch(e){console.warn('[关闭声音]异常:',e);}}muteAll();cc.director.on&&cc.director.on(cc.Director.EVENT_AFTER_SCENE_LAUNCH,function(){setTimeout(muteAll,1000);});console.log('[关闭声音]已加载');},500);})();`,
   disablePowerSave: `(function(){var c=setInterval(function(){if(!window.cc||!cc.find)return;clearInterval(c);function disablePS(){try{var s=cc.director.getScene();if(!s)return;var labels=s.getComponentsInChildren? s.getComponentsInChildren(cc.Label):[];var clicked=false;labels.forEach(function(lb){var txt=(lb.string||'').trim();if(txt==='永不'){var nd=lb.node;if(!nd||!nd.active)return;var p=nd.parent;var tog=p?p.getComponent? p.getComponent(cc.Toggle):null:null;if(tog){try{tog.isChecked=true;tog._emitToggleEvents&&tog._emitToggleEvents();console.log('[关闭省电]已选择永不');clicked=true;}catch(e){}}if(!clicked){var allTogs=s.getComponentsInChildren? s.getComponentsInChildren(cc.Toggle):[];for(var i=0;i<allTogs.length;i++){var t=allTogs[i];var tLabels=t.node.getComponentsInChildren? t.node.getComponentsInChildren(cc.Label):[];for(var j=0;j<tLabels.length;j++){if((tLabels[j].string||'').trim()==='永不'){try{t.isChecked=true;t._emitToggleEvents&&t._emitToggleEvents();console.log('[关闭省电]已选择永不');clicked=true;}catch(e){}break;}}if(clicked)break;}}}});if(!clicked)console.log('[关闭省电]未找到永不选项，将在下次场景切换重试');if(window.__GAME_SPEED__){var cur=window.__GAME_SPEED__.get();if(cur<1){window.__GAME_SPEED__.set(1);console.log('[关闭省电]恢复速度1x');}}}catch(e){console.warn('[关闭省电]异常:',e);}}disablePS();cc.director.on&&cc.director.on(cc.Director.EVENT_AFTER_SCENE_LAUNCH,function(){setTimeout(disablePS,1000);});console.log('[关闭省电]已加载');},500);})();`,
 };
 
 // ── 脚本文件加载器 ──
 const _scriptFileCache = new Map();
+
+/**
+ * 旧配置迁移：断线重连(wsReconnect)已合并入自动重连(autoReconnect)
+ * - 旧配置中 wsReconnect 开启而 autoReconnect 关闭时，强制启用 autoReconnect
+ * - 移除 wsReconnect 键
+ */
+export function migrateEnhancementConfig(state) {
+  if (!state || typeof state !== 'object') return state;
+  if ('wsReconnect' in state) {
+    if (state.wsReconnect === true && state.autoReconnect === false) {
+      state.autoReconnect = true;
+    }
+    delete state.wsReconnect;
+  }
+  return state;
+}
 
 export async function loadScriptFile(filePath) {
   if (_scriptFileCache.has(filePath)) return _scriptFileCache.get(filePath);
@@ -84,6 +101,9 @@ export async function loadScriptFile(filePath) {
 
 // ── 收集启用增强的代码并缓存到 localStorage ──
 export async function buildAndCacheEnhanceCodes(enhancementState, userScripts = []) {
+  // 旧配置迁移：断线重连已合并入自动重连
+  migrateEnhancementConfig(enhancementState);
+
   const needPanelEnhancer = () => PANEL_ENHANCER_DEPS.some(k => enhancementState[k]);
   const codes = [];
 
@@ -123,7 +143,11 @@ export async function ensureEnhanceCodesCached() {
     const existing = localStorage.getItem(ENHANCE_CODES_KEY);
     if (existing) {
       const parsed = JSON.parse(existing);
-      if (Array.isArray(parsed) && parsed.length > 0) return; // 已有缓存
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // 旧缓存中若含已合并的「断线重连」代码，则重建为合并后的缓存
+        const hasLegacy = parsed.some(c => c && c.name === '断线重连');
+        if (!hasLegacy) return; // 已有缓存且无过期条目
+      }
     }
   } catch(e) {}
 
@@ -132,6 +156,8 @@ export async function ensureEnhanceCodesCached() {
   try {
     state = JSON.parse(localStorage.getItem(ENHANCE_KEY) || '{}');
   } catch(e) {}
+  // 旧配置迁移：断线重连已合并入自动重连
+  migrateEnhancementConfig(state);
   // 填充默认值
   ENHANCEMENTS.forEach(e => { if (state[e.key] === undefined) state[e.key] = DEFAULT_ENABLED.has(e.key); });
 

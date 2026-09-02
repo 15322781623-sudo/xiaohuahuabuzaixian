@@ -452,11 +452,18 @@
     }
 
     // ===== 整合WebSocket监控（战斗数据+RoleID拦截，新增名称提取） =====
+    let monitoringRetries = 0;
+    const MONITORING_MAX_RETRIES = 30;
     function setupWebsocketMonitoring() {
         const gameWS = window.ws || (window.h5websocket && window.h5websocket.ws);
         if (!gameWS || typeof gameWS.sendAsync !== 'function') {
-            console.log('[对手洗练] 无法设置WebSocket监控，1秒后重试...');
-            setTimeout(setupWebsocketMonitoring, 1000);
+            monitoringRetries++;
+            if (monitoringRetries <= MONITORING_MAX_RETRIES) {
+                console.log(`[对手洗练] 无法设置WebSocket监控（${monitoringRetries}/${MONITORING_MAX_RETRIES}），1秒后重试...`);
+                setTimeout(setupWebsocketMonitoring, 1000);
+            } else {
+                console.warn('[对手洗练] WebSocket监控设置失败次数过多（30次），停止重试');
+            }
             return;
         }
         
