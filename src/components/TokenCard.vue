@@ -235,6 +235,40 @@
           <span v-else>未通关</span>
         </span>
       </div>
+      <!-- 灯神挑战进度 -->
+      <n-popover trigger="click" placement="bottom" :width="240">
+        <template #trigger>
+          <div
+            class="status-tag genie-tag"
+            style="min-width: 70px; justify-content: center; cursor: pointer;"
+            :class="{ 'genie-all-cleared': genieChallengeList.length > 0 && genieClearedCount === genieChallengeList.length }"
+            :title="genieChallengeList.length ? `灯神挑战进度：${genieClearedCount}/${genieChallengeList.length} 个势力已全部通关（点击查看明细）` : '点击查看灯神挑战进度'"
+          >
+            <img class="tag-icon tag-icon-img" src="/genie-icon.png" alt="灯神" />
+            <span class="tag-text">
+              <span v-if="genieChallengeList.length">通关{{ genieClearedCount }}/{{ genieChallengeList.length }}</span>
+              <span v-else>未获取</span>
+            </span>
+          </div>
+        </template>
+        <div v-if="genieChallengeList.length" style="font-size: 13px;">
+          <div style="font-weight: 600; margin-bottom: 4px;">🧞 灯神挑战进度</div>
+          <div
+            v-for="item in genieChallengeList"
+            :key="item.id"
+            style="display: flex; justify-content: space-between; gap: 16px; line-height: 1.9;"
+          >
+            <span>{{ item.name }}</span>
+            <span :style="{ color: item.cleared ? '#059669' : '#555', fontWeight: item.cleared ? 600 : 400 }">
+              {{ item.layer }}层<span v-if="item.cleared"> ✅ 已通关</span>
+            </span>
+          </div>
+          <div style="font-size: 11px; color: #999; margin-top: 4px; line-height: 1.6;">
+            数值为已通关层数；魏/蜀/吴/群 17 层、深海 10 层为全部通关（绿色显示）
+          </div>
+        </div>
+        <div v-else style="font-size: 12px; color: #999;">暂无灯神数据，请先刷新账号数据</div>
+      </n-popover>
       <!-- 金鱼达标 -->
       <n-popover trigger="click" placement="bottom" :width="220">
         <template #trigger>
@@ -1044,6 +1078,65 @@ const isArenaFighting = ref(false);
 
 // 十殿阎罗通关等级
 const nightmareMaxLevel = ref(0);
+
+// 灯神挑战进度
+// role.genie = { 势力id: 已通关层-1 }（魏1/蜀2/吴3/群4/深海5）
+// 服务器存值 0-16 对应已通关 1-17 层（魏蜀吴群 17 层满），深海 0-9 对应已通关 1-10 层
+const GENIE_NAMES = { 1: "魏国", 2: "蜀国", 3: "吴国", 4: "群雄", 5: "深海" };
+const GENIE_MAX_LAYER = { 1: 17, 2: 17, 3: 17, 4: 17, 5: 10 }; // 各势力全部通关层数
+
+// 灯神挑战进度本地缓存 key（与金鱼达标等一致：未刷新/断连时显示缓存值）
+const genieStorageKey = computed(() => `genie_status_${props.token.id}`);
+
+// 从本地缓存加载灯神进度
+const loadGenieCache = () => {
+  try {
+    const raw = localStorage.getItem(genieStorageKey.value);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return data && typeof data === "object" ? data : null;
+  } catch {}
+  return null;
+};
+
+const genieChallengeList = computed(() => {
+  const rawRoleInfo = tokenGameData.value?.roleInfo;
+  const role = rawRoleInfo?.role || rawRoleInfo;
+  // 没有在线数据时回退本地缓存（与金鱼达标等状态一致）
+  const genie = !role
+    ? (loadGenieCache() || {})
+    : ((role && typeof role.genie === "object") ? role.genie : {});
+  const list = [];
+  for (let id = 1; id <= 5; id++) {
+    const raw = genie[id];
+    if (raw === undefined || raw === null) continue;
+    const val = Number(raw);
+    if (Number.isNaN(val)) continue;
+    const layer = val + 1; // 已通关层数
+    const max = GENIE_MAX_LAYER[id] || 17;
+    list.push({ id, name: GENIE_NAMES[id] || `势力${id}`, layer, cleared: layer >= max });
+  }
+  return list;
+});
+const genieClearedCount = computed(() => genieChallengeList.value.filter((g) => g.cleared).length);
+
+// 灯神数据有实际数值时保存到本地缓存
+watch(
+  () => {
+    const rawRoleInfo = tokenGameData.value?.roleInfo;
+    const role = rawRoleInfo?.role || rawRoleInfo;
+    return role?.genie;
+  },
+  (genie) => {
+    if (!genie || typeof genie !== "object") return;
+    const hasData = Object.values(genie).some((v) => v !== undefined && v !== null && !Number.isNaN(Number(v)));
+    if (!hasData) return;
+    try {
+      localStorage.setItem(genieStorageKey.value, JSON.stringify(genie));
+    } catch {}
+  },
+  { deep: true }
+);
 
 // 爬塔数据（普通爬塔）
 const towerData = ref({
@@ -5647,6 +5740,30 @@ const challengeTower = async (type) => {
         color: #c2410c !important;
         border-color: rgba(253, 186, 116, 0.6) !important;
         animation: pulse-glow 1s infinite;
+      }
+    }
+
+    &.genie-tag {
+      .tag-icon {
+        margin-right: 2px;
+      }
+
+      .tag-icon-img {
+        width: 16px;
+        height: 16px;
+        vertical-align: middle;
+        object-fit: contain;
+      }
+
+      .tag-text {
+        font-weight: 600;
+      }
+
+      // 全部通关：绿色
+      &.genie-all-cleared {
+        background: rgba(134, 239, 172, 0.8) !important;
+        color: #059669 !important;
+        border-color: rgba(110, 231, 183, 0.6) !important;
       }
     }
 

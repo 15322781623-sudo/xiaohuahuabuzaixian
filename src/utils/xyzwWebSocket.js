@@ -342,6 +342,7 @@ export function registerDefaultCommands(reg) {
     .register("club_attackmonster", { useItem: false }) // 营地空投挑战（攻击营地怪物）
     .register("club_taskclaim") // 营地奖励领取（confId: 1挑战3次/2区域1全通关/3区域2通关/4区域3通关）
     .register("club_getinfo") // 营地信息（空投挑战状态）
+    .register("club_getgrouprank") // 营地小组排名（Club_GetGroupRankResp：rankList+selfRank）
     .register("legion_buypayloaditem") // 蟠桃提交铃铛
     .register("legion_payloadsignup") // 蟠桃报名
 
@@ -352,6 +353,10 @@ export function registerDefaultCommands(reg) {
     // 灯神相关
     .register("genie_sweep", { genieId: 1 })
     .register("genie_buysweep")
+    // 灯神挑战（魏1/蜀2/吴3/群4/深海5），阵容 battleTeam 为位置->武将ID映射；
+    // 深海挑战同样走 fight_startgenie 且 genieId=5（role.genie[5] 记录深海进度，深海不限阵营、最多10层，敌方为 75xx 深海怪）；
+    // 挑战前游戏端会调 hero_calcpowerbyteam 计算阵容战力（已在下文"队伍相关"区注册）
+    .register("fight_startgenie", { genieId: 1, battleTeam: {}, lordWeaponId: 0, petUId: "" })
 
     // 礼包相关
     .register("discount_claimreward", { discountId: 1 })

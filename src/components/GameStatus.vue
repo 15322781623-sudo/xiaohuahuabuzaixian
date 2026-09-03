@@ -6,6 +6,7 @@
       'full-page-mode':
         activeSection === 'saltFieldGroup'
         || activeSection === 'peachGroup'
+        || activeSection === 'campGroup'
         || activeSection === 'rankGroup',
       'club-mode': activeSection === 'club',
       'lineup-mode': activeSection === 'lineup',
@@ -29,6 +30,7 @@
       <n-tab-pane v-if="ENABLE_TOOLS_TAB" name="tools" tab="工具"></n-tab-pane>
       <n-tab-pane name="saltFieldGroup" tab="盐场"></n-tab-pane>
       <n-tab-pane name="peachGroup" tab="蟠桃园"></n-tab-pane>
+      <n-tab-pane name="campGroup" tab="营地战报"></n-tab-pane>
       <n-tab-pane name="rankGroup" tab="排行榜"></n-tab-pane>
       <n-tab-pane name="fightPvp" tab="切磋"></n-tab-pane>
     </n-tabs>
@@ -290,6 +292,24 @@
       </div>
     </div>
 
+    <!-- 营地战报分组 -->
+    <div v-if="activeSection === 'campGroup'" class="camp-group">
+      <div class="sub-nav">
+        <n-tabs
+          animated
+          size="small"
+          type="segment"
+          v-model:value="campSubTab"
+        >
+          <n-tab-pane name="camp" tab="营地战报"></n-tab-pane>
+        </n-tabs>
+      </div>
+
+      <div v-if="campSubTab === 'camp'" class="warrank-full-container">
+        <CampBattleReport></CampBattleReport>
+      </div>
+    </div>
+
     <!-- 排行榜分组 -->
     <div v-if="activeSection === 'rankGroup'" class="rank-group">
       <div class="sub-nav">
@@ -393,6 +413,7 @@ import TowerStatus from "./Tower/TowerStatus.vue";
 import WeirdTowerStatus from "./Tower/WeirdTowerStatus.vue";
 import BossTower from "./Tower/BossTower.vue";
 import PeachInfo from "./Club/PeachInfo.vue";
+import CampBattleReport from "./Club/CampBattleReport.vue";
 import ServerRankList from "./cards/ServerRankListPageCard.vue";
 import LegionWarMap from "./Club/LegionWarMap.vue";
 import LegionWarStatistics from "./Club/LegionWarStatistics.vue";
@@ -414,6 +435,7 @@ const isOpeningNightmare = ref(false);
 const activeSection = ref("daily");
 const saltFieldSubTab = ref("warrank");
 const peachSubTab = ref("peach");
+const campSubTab = ref("camp");
 const rankSubTab = ref("serverrank");
 
 // 活动开放时间：仅周一到周三可参与
@@ -957,8 +979,18 @@ onUnmounted(() => {
   }
 }
 
+// 营地战报：内容较多，取消内部固定高度与裁剪，内容自然撑开、整页纵向滚动，
+// 避免底部"敌方"等部分在电脑端/手机端被裁掉无法查看
+.camp-group .warrank-full-container {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  overflow-x: clip;
+}
+
 .salt-field-group,
 .peach-group,
+.camp-group,
 .rank-group {
   grid-column: 1 / -1;
   width: 100%;
@@ -1195,9 +1227,10 @@ onUnmounted(() => {
     max-width: 100%;
   }
 
-  // 盐场/蟠桃园/排行榜组
+  // 盐场/蟠桃园/营地战报/排行榜组
   .salt-field-group,
   .peach-group,
+  .camp-group,
   .rank-group {
     max-width: 100%;
     overflow-x: hidden;

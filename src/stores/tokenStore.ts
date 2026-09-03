@@ -128,6 +128,11 @@ export const useTokenStore = defineStore("tokens", () => {
   // 每个token的游戏数据存储（用于批量显示）
   const tokenGameDataMap = ref<Record<string, any>>({});
 
+  // 静默拉取 role 的 token 集合：账号卡片上的非灯神功能按钮（一键补齐/月度竞技场/钓鱼/答题/盐罐等）
+  // 以静默方式调用 sendGetRoleInfo({ silentRole: true })，收到 role_getroleinforesp 时消费该标记并
+  // 跳过 tokenGameDataMap.roleInfo 写入，使账号卡片的灯神数据只被 连接按钮/灯神挑战/深海挑战 刷新。
+  const silentRoleGetTokenIds = new Set<string>();
+
   // 每个token的活跃度存储（用于批量排序）
   const tokenActivityMap = ref<Record<string, number>>({});
 
@@ -1042,14 +1047,20 @@ export const useTokenStore = defineStore("tokens", () => {
       if (cmd === "role_getroleinforesp") {
         syncRandomSeedFromStatistics(tokenId, body, client);
 
+        // 消费静默拉取标记（一次性）：静默请求（账号卡片非灯神功能按钮）不写 tokenGameDataMap，
+        // 保证卡片灯神数据只在 连接按钮 / 灯神挑战 / 深海挑战 时被更新
+        const silentRoleGet = silentRoleGetTokenIds.delete(tokenId);
+
         // 更新角色信息（当前选中token）
         if (body?.role) {
           gameData.value.roleInfo = body.role;
           gameData.value.lastUpdated = new Date().toISOString();
           wsLogger.debug(`更新角色信息 [${tokenId}]`);
 
-          // 同时更新到tokenGameDataMap（用于批量显示）
-          updateTokenGameData(tokenId, { roleInfo: body });
+          // 同时更新到tokenGameDataMap（用于批量显示）；静默拉取跳过，避免非灯神功能刷新卡片灯神数据
+          if (!silentRoleGet) {
+            updateTokenGameData(tokenId, { roleInfo: body });
+          }
         }
 
         // 更新头像
@@ -1809,12 +1820,20 @@ export const useTokenStore = defineStore("tokens", () => {
   };
 
   // 发送获取角色信息请求（异步处理）
+  // options.silentRole=true 时：仅为功能内部取数（返回 roleInfo），响应到达后不更新 tokenGameDataMap，
+  // 账号卡片灯神数据不会被该次拉取刷新（静默标记由 handleGameMessage 消费，见 role_getroleinforesp 分支）
   const sendGetRoleInfo = async (
     tokenId: string,
     params = {},
     retryCount = 0,
+    options: { silentRole?: boolean } = {},
   ) => {
     try {
+      // 静默模式登记：响应到达 handleGameMessage 时消费；超时/异常未收到响应则延时兜底清理，避免残留
+      if (options?.silentRole) {
+        silentRoleGetTokenIds.add(tokenId);
+        setTimeout(() => silentRoleGetTokenIds.delete(tokenId), 20000);
+      }
       // 增加超时时间到15秒，并添加重试机制
       const timeout = 15000;
       const roleInfo = await sendMessageWithPromise(
@@ -1848,7 +1867,7 @@ export const useTokenStore = defineStore("tokens", () => {
           `正在重试获取角色信息 [${tokenId}]，重试次数: ${retryCount + 1}`,
         );
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        return sendGetRoleInfo(tokenId, params, retryCount + 1);
+        return sendGetRoleInfo(tokenId, params, retryCount + 1, options);
       }
 
       throw error;

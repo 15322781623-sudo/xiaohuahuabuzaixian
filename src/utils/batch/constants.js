@@ -103,6 +103,8 @@ export const availableTasks = [
   { label: "一键使用怪异塔道具", value: "batchUseItems" },
   { label: "一键怪异塔合成", value: "batchMergeItems" },
   { label: "一键领取蟠桃园任务", value: "batchClaimPeachTasks" },
+  { label: "灯神挑战", value: "batchGenieChallenge" },
+  { label: "深海挑战", value: "batchDeepSeaChallenge" },
   { label: "一键扫荡灯神", value: "batchGenieSweep" },
   { label: "使用斑点蛋", value: "use_spotted_egg" },
   { label: "宠物领取图鉴奖励", value: "claim_pet_book" },

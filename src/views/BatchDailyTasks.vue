@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="batch-daily-tasks">
     <div class="main-layout">
       <!-- Left Column -->
@@ -652,7 +652,96 @@
                 >
                   一键购买梦境商品
                 </n-button>
+                <n-button
+                  size="small"
+                  @click="openGenieChallengeModal"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  灯神挑战
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="openDeepSeaChallengeModal"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  深海挑战
+                </n-button>
               </n-space>
+
+              <n-modal
+                v-model:show="showGenieChallengeModal"
+                preset="card"
+                title="🧞 灯神挑战"
+                style="width: 420px;"
+                :mask-closable="false"
+              >
+                <div style="padding: 4px 2px;">
+                  <div style="font-size: 12px; line-height: 1.6; color: #e6a23c; background: rgba(230,162,60,0.12); border: 1px solid rgba(230,162,60,0.35); border-radius: 4px; padding: 8px 10px; margin-bottom: 14px;">
+                    请先在游戏内设置好灯神阵容，并在灯神挑战界面进行预设阵容调整后挑战一次。后续通过账号设置中的"灯神预设阵容"选择阵容，再勾选对应势力进行挑战。
+                  </div>
+                  <div style="margin-bottom: 14px;">
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">选择挑战势力</div>
+                    <n-checkbox-group v-model:value="genieChallengeForm.genieIds">
+                      <n-space>
+                        <n-checkbox v-for="g in genieIdOptions" :key="g.value" :value="g.value" size="large">{{ g.label }}</n-checkbox>
+                      </n-space>
+                    </n-checkbox-group>
+                    <n-alert v-if="genieChallengeForm.genieIds.length === 0" type="warning" size="small" style="margin-top: 8px;">
+                      请至少勾选一个势力
+                    </n-alert>
+                  </div>
+                  <div style="margin-bottom: 8px;">
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">每日挑战总次数上限</div>
+                    <n-input-number v-model:value="genieChallengeForm.dailyLimit" :min="1" :max="99" style="width: 100%;" />
+                  </div>
+                  <div style="font-size: 12px; color: var(--text-secondary); margin-top: 10px;">
+                    灯神玩法要求上阵 5 名该国武将。使用账号设置中的"灯神预设阵容"，所有势力共用该队（若与该国阵营不符服务器会拒绝）。从当前进度层开始逐层挑战，直到失败/通关/今日次数用尽（默认每日 10 次，魏蜀吴群共享）。
+                  </div>
+                  <div style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
+                    <n-button size="small" @click="showGenieChallengeModal = false">取消</n-button>
+                    <n-button
+                      size="small"
+                      type="primary"
+                      :disabled="isRunning || selectedTokens.length === 0 || genieChallengeForm.genieIds.length === 0"
+                      @click="startGenieChallengeModal"
+                    >
+                      开始挑战
+                    </n-button>
+                  </div>
+                </div>
+              </n-modal>
+
+              <n-modal
+                v-model:show="showDeepSeaChallengeModal"
+                preset="card"
+                title="🌊 深海挑战"
+                style="width: 420px;"
+                :mask-closable="false"
+              >
+                <div style="padding: 4px 2px;">
+                  <div style="font-size: 12px; line-height: 1.6; color: #409eff; background: rgba(64,158,255,0.1); border: 1px solid rgba(64,158,255,0.35); border-radius: 4px; padding: 8px 10px; margin-bottom: 14px;">
+                    深海灯神不限阵营，任意阵容均可挑战。请先在游戏内设置好深海阵容，后续通过账号设置中的"灯神预设阵容"选择该预设槽，将按此阵容逐层挑战深海（最高 10 层）。
+                  </div>
+                  <div style="margin-bottom: 8px;">
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">每周挑战次数上限（默认 10 次，每周一刷新）</div>
+                    <n-input-number v-model:value="deepSeaChallengeForm.weeklyLimit" :min="1" :max="99" style="width: 100%;" />
+                  </div>
+                  <div style="font-size: 12px; color: var(--text-secondary); margin-top: 10px;">
+                    使用账号设置中单独配置的"深海预设阵容"（阵容 1-6，与灯神预设阵容相互独立）挑战深海灯神（genieId=5）。从当前进度层开始逐层挑战，直到通关第 10 层 / 本周 10 次挑战次数用尽。
+                  </div>
+                  <div style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
+                    <n-button size="small" @click="showDeepSeaChallengeModal = false">取消</n-button>
+                    <n-button
+                      size="small"
+                      type="primary"
+                      :disabled="isRunning || selectedTokens.length === 0"
+                      @click="startDeepSeaChallengeModal"
+                    >
+                      开始挑战
+                    </n-button>
+                  </div>
+                </div>
+              </n-modal>
             </n-tab-pane>
             <n-tab-pane name="baoku" tab="宝库">
               <n-space>
@@ -1844,6 +1933,14 @@
               <label class="st-label">盐场蟠桃</label>
               <n-select v-model:value="currentSettings.saltFieldPeachFormation" :options="formationOptions" size="small" />
             </div>
+            <div class="st-field">
+              <label class="st-label">灯神</label>
+              <n-select v-model:value="currentSettings.genieFormation" :options="genieFormationOptions" size="small" />
+            </div>
+            <div class="st-field">
+              <label class="st-label">深海</label>
+              <n-select v-model:value="currentSettings.deepSeaFormation" :options="genieFormationOptions" size="small" />
+            </div>
           </div>
         </div>
 
@@ -2091,6 +2188,14 @@
             <div class="st-field">
               <label class="st-label">盐场蟠桃</label>
               <n-select v-model:value="currentTemplate.saltFieldPeachFormation" :options="formationOptions" size="small" />
+            </div>
+            <div class="st-field">
+              <label class="st-label">灯神</label>
+              <n-select v-model:value="currentTemplate.genieFormation" :options="genieFormationOptions" size="small" />
+            </div>
+            <div class="st-field">
+              <label class="st-label">深海</label>
+              <n-select v-model:value="currentTemplate.deepSeaFormation" :options="genieFormationOptions" size="small" />
             </div>
           </div>
         </div>
@@ -3863,6 +3968,51 @@
                 >
                   {{ count }}次
                 </n-button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 灯神挑战配置 -->
+          <div v-if="taskForm.selectedTasks.includes('batchGenieChallenge')" class="task-config-card">
+            <div class="config-card-header">
+              <span class="config-card-title">🧞 灯神挑战 - 选择势力与阵容</span>
+            </div>
+            <div class="config-card-content">
+              <div style="font-size: 12px; line-height: 1.6; color: #e6a23c; background: rgba(230,162,60,0.12); border: 1px solid rgba(230,162,60,0.35); border-radius: 4px; padding: 6px 8px; margin-bottom: 10px;">
+                请先在游戏内设置好灯神阵容，并在灯神挑战界面进行预设阵容调整后挑战一次。后续通过账号设置中的"灯神预设阵容"选择阵容，再勾选对应势力进行挑战。
+              </div>
+              <div style="margin-bottom: 12px;">
+                <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">挑战势力</div>
+                <n-checkbox-group v-model:value="taskForm.genieChallenge.genieIds">
+                  <n-space>
+                    <n-checkbox v-for="g in genieIdOptions" :key="g.value" :value="g.value" size="large">{{ g.label }}</n-checkbox>
+                  </n-space>
+                </n-checkbox-group>
+                <n-alert v-if="!taskForm.genieChallenge.genieIds || taskForm.genieChallenge.genieIds.length === 0" type="warning" size="small" style="margin-top: 8px;">
+                  请至少勾选一个势力
+                </n-alert>
+              </div>
+              <div style="margin-top: 10px;">
+                <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">每日挑战总次数上限</div>
+                <n-input-number v-model:value="taskForm.genieChallenge.dailyLimit" :min="1" :max="99" size="small" style="max-width: 200px;" />
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">游戏默认每日 10 次（魏蜀吴群共享），挑战从当前进度层开始，次数用尽自动停止</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 深海挑战配置 -->
+          <div v-if="taskForm.selectedTasks.includes('batchDeepSeaChallenge')" class="task-config-card">
+            <div class="config-card-header">
+              <span class="config-card-title">🌊 深海挑战 - 挑战深海灯神</span>
+            </div>
+            <div class="config-card-content">
+              <div style="font-size: 12px; line-height: 1.6; color: #409eff; background: rgba(64,158,255,0.1); border: 1px solid rgba(64,158,255,0.35); border-radius: 4px; padding: 6px 8px; margin-bottom: 10px;">
+                深海灯神（genieId=5）不限阵营，任意阵容均可挑战。请先在游戏内设置好深海阵容，执行时按账号设置中单独配置的"深海预设阵容"（账号设置-阵容配置-深海）逐层挑战，与灯神互不影响，最高 10 层。
+              </div>
+              <div style="margin-top: 10px;">
+                <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">每周挑战次数上限</div>
+                <n-input-number v-model:value="taskForm.deepSeaChallenge.weeklyLimit" :min="1" :max="99" size="small" style="max-width: 200px;" />
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">深海挑战固定每周 10 次（每周一刷新，独立于魏蜀吴群灯神），从当前进度层开始，通关 10 层或次数用尽自动停止</div>
               </div>
             </div>
           </div>
@@ -8275,6 +8425,8 @@ const currentSettings = reactive({
   bossFormation: 1,
   nightmareFormation: 1, // 十殿阵容
   saltFieldPeachFormation: 1, // 盐场蟠桃阵容
+  genieFormation: 1, // 灯神挑战阵容（1-6=使用指定预设队，所有势力共用；已取消自动匹配）
+  deepSeaFormation: 1, // 深海挑战阵容（1-6=使用指定预设队，独立于灯神，账号设置单独配置）
   bossTimes: 2,
   dailyBossTimes: 3,
   arenaFightCount: 3, // 竞技场战斗次数
@@ -8309,6 +8461,8 @@ const currentTemplate = reactive({
   bossFormation: 1,
   nightmareFormation: 1, // 十殿阵容
   saltFieldPeachFormation: 1, // 盐场蟠桃阵容
+  genieFormation: 1, // 灯神挑战阵容（1-6=使用指定预设队，所有势力共用；已取消自动匹配）
+  deepSeaFormation: 1, // 深海挑战阵容（1-6=使用指定预设队，独立于灯神，账号设置单独配置）
   bossTimes: 2,
   dailyBossTimes: 3,
   arenaFightCount: 3, // 竞技场战斗次数
@@ -9301,6 +9455,55 @@ const saveAccountSelection = () => {
   showAccountSelectorModal.value = false;
   message.success("账号选择已保存");
 };
+
+// ===== 灯神挑战（副本）手动执行 =====
+const genieIdOptions = [
+  { label: "魏国", value: 1 },
+  { label: "蜀国", value: 2 },
+  { label: "吴国", value: 3 },
+  { label: "群雄", value: 4 },
+];
+// 灯神阵容选项（1-6 手动指定预设队；已取消"0=自动按势力选同阵营队"）
+const normalizeGenieFormation = (v) => {
+  const n = Math.floor(Number(v));
+  return n >= 1 && n <= 6 ? n : 1;
+};
+const genieFormationOptions = Array.from({ length: 6 }, (_, i) => ({ label: `阵容${i + 1}`, value: i + 1 }));
+const showGenieChallengeModal = ref(false);
+const genieChallengeForm = reactive({ genieIds: [1, 2, 3, 4], dailyLimit: 10 });
+const openGenieChallengeModal = () => {
+  // 势力默认全选，阵容始终使用账号设置中的灯神预设阵容
+  genieChallengeForm.genieIds = [1, 2, 3, 4];
+  genieChallengeForm.dailyLimit = 10;
+  showGenieChallengeModal.value = true;
+};
+const startGenieChallengeModal = async () => {
+  if (!genieChallengeForm.genieIds.length) return;
+  showGenieChallengeModal.value = false;
+  await executeManualTaskWithRecord(
+    "batchGenieChallenge",
+    "灯神挑战",
+    () => batchGenieChallenge([...genieChallengeForm.genieIds], normalizeGenieFormation(currentSettings.genieFormation), { dailyLimit: genieChallengeForm.dailyLimit }),
+  );
+};
+
+// ===== 深海挑战（副本）手动执行 =====
+const showDeepSeaChallengeModal = ref(false);
+const deepSeaChallengeForm = reactive({ weeklyLimit: 10 });
+const openDeepSeaChallengeModal = () => {
+  // 阵容始终使用账号设置中单独配置的深海预设阵容（1-6，不限阵营，与灯神预设阵容相互独立）
+  deepSeaChallengeForm.weeklyLimit = 10;
+  showDeepSeaChallengeModal.value = true;
+};
+const startDeepSeaChallengeModal = async () => {
+  showDeepSeaChallengeModal.value = false;
+  await executeManualTaskWithRecord(
+    "batchDeepSeaChallenge",
+    "深海挑战",
+    () => batchDeepSeaChallenge(normalizeGenieFormation(currentSettings.deepSeaFormation || 1), { weeklyLimit: deepSeaChallengeForm.weeklyLimit }),
+  );
+};
+
 const taskForm = reactive({
   name: "", // Task name
   taskType: "normal", // 'normal' | 'push_map'
@@ -9380,6 +9583,8 @@ const taskForm = reactive({
   },
   boxWeeklyRewards: {5: 1}, // 宝箱周自选大奖配置，默认珍珠 1 次
   arenaFightCount: 3, // 竞技场战斗次数配置
+  genieChallenge: { genieIds: [1, 2, 3, 4], formation: 1, dailyLimit: 10 }, // 灯神挑战任务级配置
+  deepSeaChallenge: { formation: 1, weeklyLimit: 10 }, // 深海挑战任务级配置（阵容始终取账号设置"灯神预设阵容"，每周一刷新 10 次上限）
   smartDeparture: { // 智能发车任务级配置（覆盖全局设置）
     enabled: false, // 是否启用任务级配置
     goldThreshold: 800,
@@ -9478,7 +9683,7 @@ const fetchTaskSaltRoadOpponents = async () => {
 const taskGroupDefinitions = [
   { name: 'daily', label: '日常', tasks: ['startBatch', 'batchSimplifiedDaily', 'claimHangUpRewards', 'batchAddHangUpTime', 'batchHangUpUpgrade', 'resetBottles', 'batchlingguanzi', 'batchclubsign', 'batchLegionSignup', 'batchClubSignup', 'batchAirdropChallenge', 'batchAirdropClaim', 'batchSaltFieldDig', 'batchPayloadSignup', 'switchSaltFieldPeachFormation', 'batchStudy', 'batcharenafight', 'batchSmartSendCar', 'batchClaimCars', 'batchCarResearchUpgrade', 'store_purchase', 'batch_mail_claim_and_cleanup'] },
   { name: 'welfare', label: '福利', tasks: ['charge_claimaddup_rewards', 'collection_claimfreereward', 'gacha_drawreward', 'claim_recruit_welfare', 'pkroom_appoint', 'saltcup26_openstarpack_use'] },
-  { name: 'dungeon', label: '副本', tasks: ['climbTower', 'batchmengjing', 'skinChallenge', 'skinTreasure', 'newSkinChallenge', 'newSkinTreasure', 'batchClaimPeachTasks', 'batchBuyDreamItems'] },
+  { name: 'dungeon', label: '副本', tasks: ['climbTower', 'batchmengjing', 'skinChallenge', 'skinTreasure', 'newSkinChallenge', 'newSkinTreasure', 'batchClaimPeachTasks', 'batchBuyDreamItems', 'batchGenieChallenge', 'batchDeepSeaChallenge'] },
   { name: 'baoku', label: '宝库', tasks: ['batchbaoku13', 'batchbaoku45'] },
   { name: 'weirdTower', label: '怪异塔', tasks: ['climbWeirdTower', 'batchUseItems', 'batchMergeItems', 'batchClaimFreeEnergy', 'claim_weird_tower_all', 'claim_weird_tower_pass'] },
   { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
@@ -9965,6 +10170,10 @@ const openTaskModal = () => {
   taskForm.saltRoadLegionName = '';
   taskForm.bookUpgradeTypes = ['hero', 'fish', 'skin'];
   taskForm.maxActive = 0;
+  // 灯神挑战任务级配置
+  taskForm.genieChallenge = { genieIds: [1, 2, 3, 4], formation: 1, dailyLimit: 10 };
+  // 深海挑战任务级配置
+  taskForm.deepSeaChallenge = { formation: 1, weeklyLimit: 10 };
   
   // 碎片礼包配置（默认全选）
   taskForm.fragmentPackItems = [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005];
@@ -10176,6 +10385,14 @@ const editTask = (task) => {
     simplifiedDailyItems: task.simplifiedDailyItems && task.simplifiedDailyItems.length > 0 ? [...task.simplifiedDailyItems] : SIMPLIFIED_TASK_ITEMS.map(item => item.key),
     arenaFightCount: task.arenaFightCount || 3, // 竞技场战斗次数配置
     maxActive: task.maxActive !== undefined ? task.maxActive : 0, // 任务级并发控制：0=使用全局
+    // 灯神挑战配置兜底（老任务无该字段时为 undefined，须补默认）
+    genieChallenge: task.genieChallenge && Array.isArray(task.genieChallenge.genieIds)
+      ? { genieIds: [...task.genieChallenge.genieIds], formation: normalizeGenieFormation(task.genieChallenge.formation), dailyLimit: task.genieChallenge.dailyLimit || 10 }
+      : { genieIds: [1, 2, 3, 4], formation: 1, dailyLimit: 10 },
+    // 深海挑战配置兜底
+    deepSeaChallenge: task.deepSeaChallenge
+      ? { weeklyLimit: task.deepSeaChallenge.weeklyLimit || task.deepSeaChallenge.dailyLimit || 10 }
+      : { weeklyLimit: 10 },
     pushStartTime: task.pushStartTime ? (() => {
       const [h, m] = task.pushStartTime.split(':').map(Number);
       const d = new Date();
@@ -10488,6 +10705,16 @@ const saveTask = () => {
     simplifiedDailyItems: [...(taskForm.simplifiedDailyItems || SIMPLIFIED_TASK_ITEMS.map(item => item.key))],
     arenaFightCount: taskForm.arenaFightCount || 3, // 竞技场战斗次数配置
     maxActive: taskForm.maxActive || 0, // 任务级并发控制：0=使用全局设置
+    // 灯神挑战任务级配置
+    genieChallenge: {
+      genieIds: [...(taskForm.genieChallenge?.genieIds || [1, 2, 3, 4])],
+      formation: normalizeGenieFormation(taskForm.genieChallenge?.formation),
+      dailyLimit: taskForm.genieChallenge?.dailyLimit || 10,
+    },
+    // 深海挑战任务级配置（阵容执行时按账号设置"灯神预设阵容"实时读取）
+    deepSeaChallenge: {
+      weeklyLimit: taskForm.deepSeaChallenge?.weeklyLimit || 10,
+    },
   };
 
   let isNew = !editingTask.value;
@@ -14544,6 +14771,31 @@ const executeScheduledTask = async (task) => {
                 type: "info",
               });
               await taskFunction(fightCount);
+            } else if (taskName === 'batchGenieChallenge') {
+              // 灯神挑战：读取任务级配置的势力与阵容（缺省时用账号设置的灯神阵容）
+              const genieConf = task.genieChallenge || {};
+              const genieIds = (genieConf.genieIds && genieConf.genieIds.length > 0) ? genieConf.genieIds : [1, 2, 3, 4];
+              const genieFormation = normalizeGenieFormation(currentSettings.genieFormation);
+              const genieDailyLimit = genieConf.dailyLimit || 10;
+              const genieNamesMap = { 1: '魏国', 2: '蜀国', 3: '吴国', 4: '群雄' };
+              const genieLabel = genieIds.map(g => genieNamesMap[g] || g).join('、');
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `🧞 灯神挑战：执行【${genieLabel}】（阵容${genieFormation}），每日上限${genieDailyLimit}次`,
+                type: "info",
+              });
+              await taskFunction(genieIds, genieFormation, { dailyLimit: genieDailyLimit });
+            } else if (taskName === 'batchDeepSeaChallenge') {
+              // 深海挑战：固定挑战深海灯神（genieId=5），阵容按账号设置中单独配置的深海预设阵容（深海不限阵营）
+              const dsConf = task.deepSeaChallenge || {};
+              const dsFormation = normalizeGenieFormation(currentSettings.deepSeaFormation || 1);
+              const dsWeeklyLimit = dsConf.weeklyLimit || dsConf.dailyLimit || 10;
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: `🌊 深海挑战：执行深海灯神（阵容${dsFormation}），每周上限${dsWeeklyLimit}次（周一刷新）`,
+                type: "info",
+              });
+              await taskFunction(dsFormation, { weeklyLimit: dsWeeklyLimit });
             } else if (taskName === 'batchSaltCupBet') {
               // 比赛竞猜，自动获取所有比赛并下注
               const pickVal = task.saltCupBetPick !== undefined ? task.saltCupBetPick : 1;
@@ -15501,6 +15753,8 @@ const loadSettings = (tokenId) => {
       bossFormation: 1,
       nightmareFormation: 1, // 十殿阵容
       saltFieldPeachFormation: 1, // 盐场蟠桃阵容
+      genieFormation: 1, // 灯神挑战阵容（1-6=使用指定预设队，所有势力共用；已取消自动匹配）
+      deepSeaFormation: 1, // 深海挑战阵容（1-6=使用指定预设队，独立于灯神，账号设置单独配置）
       bossTimes: 2,
       dailyBossTimes: 3,
       starChallengeAttempts: 3, // ✅ 星级挑战每关最大尝试次数（默认 3 次）
@@ -15533,6 +15787,12 @@ const openSettings = (token) => {
   // 兼容旧设置：缺失字段使用默认值
   if (currentSettings.saltFieldPeachFormation == null) {
     currentSettings.saltFieldPeachFormation = 1;
+  }
+  if (currentSettings.genieFormation == null || currentSettings.genieFormation < 1 || currentSettings.genieFormation > 6) {
+    currentSettings.genieFormation = 1; // 灯神挑战阵容（1-6 指定预设队，兼容旧值 0/非法值回退阵容 1）
+  }
+  if (currentSettings.deepSeaFormation == null || currentSettings.deepSeaFormation < 1 || currentSettings.deepSeaFormation > 6) {
+    currentSettings.deepSeaFormation = 1; // 深海挑战阵容（1-6 指定预设队，旧账号无此字段时默认阵容 1）
   }
   if (currentSettings.starChallengeAttempts == null) {
     currentSettings.starChallengeAttempts = 3; // ✅ 星级挑战每关最大尝试次数，默认 3 次
@@ -15595,6 +15855,7 @@ const openTaskTemplateModal = () => {
     bossFormation: 1,
     nightmareFormation: 1,
     saltFieldPeachFormation: 1,
+    deepSeaFormation: 1, // 深海挑战阵容（1-6 指定预设队）
     bossTimes: 2,
     dailyBossTimes: 3,
     starChallengeAttempts: 3, // ✅ 星级挑战每关最大尝试次数
@@ -15802,6 +16063,7 @@ const resetTemplateForm = () => {
     bossFormation: 1,
     nightmareFormation: 1,
     saltFieldPeachFormation: 1,
+    deepSeaFormation: 1, // 深海挑战阵容（1-6 指定预设队）
     bossTimes: 2,
     dailyBossTimes: 3,
     starChallengeAttempts: 3, // ✅ 星级挑战每关最大尝试次数
@@ -18532,7 +18794,7 @@ const pushToggleOne = (id) => {
 };
 
 const tasksDungeon = wrapTaskFunctions(createTasksDungeon(createTaskDeps()));
-const { batchbaoku13, batchbaoku45, batchmengjing, batchBuyDreamItems } = tasksDungeon;
+const { batchbaoku13, batchbaoku45, batchmengjing, batchBuyDreamItems, batchGenieChallenge, batchDeepSeaChallenge } = tasksDungeon;
 
 const tasksArena = wrapTaskFunctions(createTasksArena(createTaskDeps()));
 const { batcharenafight, batchTopUpFish, batchTopUpArena } = tasksArena;
