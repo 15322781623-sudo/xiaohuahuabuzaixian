@@ -188,6 +188,9 @@ async function obfuscateFile(filePath) {
     const cost = Date.now() - t0;
 
     code = `/* Obfuscated */ ${code}`;
+    // 写入前清除只读属性：源文件若带 ReadOnly，vite 拷贝到 dist 后副本继承只读，
+    // writeFileSync 会报 EPERM 导致该文件混淆被跳过
+    try { fs.chmodSync(filePath, 0o666); } catch {}
     fs.writeFileSync(filePath, code, 'utf-8');
 
     return { success: true, originalSize, terserSize, obfuscatedSize: code.length, cost };
@@ -231,6 +234,7 @@ function obfuscateInlineScripts(filePath) {
     return { error };
   }
 
+  try { fs.chmodSync(filePath, 0o666); } catch {}
   fs.writeFileSync(filePath, out, 'utf-8');
   return { success: true, count, skipped, originalSize, obfuscatedSize: out.length, cost: Date.now() - t0 };
 }

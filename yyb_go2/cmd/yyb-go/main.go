@@ -21,6 +21,11 @@ func main() {
 	resourceRoot := flag.String("resource-root", filepath.Join(".", "resource"), "runtime resource directory")
 	dbFilename := flag.String("db", httpapi.DefaultDBFilename, "SQLite database filename under resource/db")
 	tcpProxy := flag.String("tcp-proxy", "", "optional TCP proxy: socks5://host:port or http-connect://host:port")
+	renewInterval := flag.Duration("renew-interval", time.Hour, "auto renew check interval for stored accounts (0 to disable)")
+	// 续期阈值必须显著小于 refresh_token 有效期（约 7 天）：票据为滑动续期，
+	// 只有在有效期内使用 refresh_token 换新才会续命。此前默认 7 天与有效期
+	// 零提前量重叠，等到触发刷新时票据恰好过期，导致固定 7 天掉线。
+	renewMaxAge := flag.Duration("renew-max-age", 24*time.Hour, "refresh account credentials older than this duration")
 	flag.Parse()
 
 	cfg := httpapi.Config{
@@ -32,6 +37,8 @@ func main() {
 		AvatarTimeout:  10 * time.Second,
 		ScanTimeout:    180 * time.Second,
 		QRSessionTTL:   5 * time.Minute,
+		RenewInterval:  *renewInterval,
+		RenewMaxAge:    *renewMaxAge,
 	}
 
 	app, err := httpapi.NewApp(cfg)
@@ -39,6 +46,10 @@ func main() {
 		log.Fatalf("init app: %v", err)
 	}
 	defer app.Close()
+
+	// 启动后台常驻自动续期任务（每天滑动刷新应用宝凭证，在 refresh_token
+	// 约 7 天有效期内续命，保持登录态长期保活）
+	app.StartAutoRenew()
 
 	addr := fmt.Sprintf("%s:%d", *host, *port)
 	srv := &http.Server{
@@ -56,7 +67,11 @@ func main() {
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	<-stop
+	select {
+	case <-stop:
+	case <-app.ShutdownSignal():
+		log.Printf("shutdown requested via /shutdown API")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

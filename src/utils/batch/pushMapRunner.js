@@ -20,6 +20,38 @@ const BATTLE_TIME_DEFAULT = 300; // 默认5分钟
 // 心跳间隔（秒）- 推图期间必须保持连接，缩短间隔确保不断连
 const HEARTBEAT_INTERVAL = 10;
 
+// 定时任务互斥等待间隔（毫秒）- 推图暂停等待时轮询定时任务状态
+const SCHED_WAIT_INTERVAL = 5000;
+
+// ========== 定时任务互斥 ==========
+
+/**
+ * 是否有定时任务正在执行（由 BatchDailyTasks.vue 同步到 window._isScheduledTaskRunning）
+ * push_map 类型的推图定时不占此标记，仅普通批量定时任务会置 true
+ */
+const isScheduledTaskBusy = () => {
+  try {
+    return typeof window !== "undefined" && window._isScheduledTaskRunning === true;
+  } catch (e) {
+    return false;
+  }
+};
+
+/**
+ * 定时任务是否请求暂停推图（由 executeScheduledTask 在开始时设置，结束时清除）
+ * 与 isScheduledTaskBusy 取并集：任一成立推图即暂停等待
+ */
+const isPushPauseRequested = () => {
+  try {
+    return typeof window !== "undefined" && window._pausePushRequested === true;
+  } catch (e) {
+    return false;
+  }
+};
+
+/** 推图是否应该为定时任务让路（暂停等待） */
+const shouldPauseForSchedule = () => isScheduledTaskBusy() || isPushPauseRequested();
+
 
 /**
  * 创建推图执行器
@@ -94,6 +126,11 @@ export function createPushMapRunner(deps) {
    * @param {number} maxRetries - 最大重试次数
    */
   const safeSend = async (tokenId, cmd, params, timeout, nm, st, maxRetries = 2) => {
+    // 定时任务优先：发送前若定时任务执行中/已请求暂停，先暂停等待其完成再发送
+    if (st && shouldPauseForSchedule()) {
+      const ok = await waitIfScheduledBusy(tokenId, st, nm, `发送${cmd}前`);
+      if (!ok) throw new Error("推图已停止(定时等待期间)");
+    }
     for (let i = 0; i <= maxRetries; i++) {
       // 发送前检查连接状态
       if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
@@ -130,11 +167,14 @@ export function createPushMapRunner(deps) {
       const status = tokenStore.getWebSocketStatus(tokenId);
       if (status === "connected") {
         tokenStore.sendMessage(tokenId, "heart_beat");
-      } else {
-        log(`[${nm}] 心跳检测到连接异常(${status})，将在下次心跳尝试重连`, "warning");
+        return true;
       }
+      // 未连接时不打日志，由调用方（countdownWait 每秒检查）统一日志+重连，
+      // 避免“心跳日志 + 倒计时日志”每10秒重复刷屏
+      return false;
     } catch (e) {
       log(`[${nm}] 心跳发送异常: ${e.message}`, "warning");
+      return false;
     }
   };
 
@@ -241,6 +281,18 @@ export function createPushMapRunner(deps) {
     const nm = getTokenName(tokenId);
     let attempt = 0;
     while (!pushState.stopFlag && !isShouldStop()) {
+      // 重连前若定时任务执行中，只等待其结束（不等完就重建连接会踢掉定时的连接）；
+      // 注意：不能调 waitIfScheduledBusy（它内部会调 reconnect，会无限递归），此处仅等待
+      if (shouldPauseForSchedule()) {
+        log(`[${nm}] 定时任务执行中，重连暂停等待...`, "warning");
+        pushState.pausedBySchedule = true;
+        while (shouldPauseForSchedule() && !pushState.stopFlag && !isShouldStop()) {
+          await sleep(SCHED_WAIT_INTERVAL);
+        }
+        pushState.pausedBySchedule = false;
+        if (pushState.stopFlag || isShouldStop()) return { success: false };
+        log(`[${nm}] 定时任务已完成，继续重连...`, "success");
+      }
       attempt++;
       const tokens = getTokens();
       log(`[${nm}] 尝试重连 (第${attempt}次)...`, "info");
@@ -294,6 +346,32 @@ export function createPushMapRunner(deps) {
     st.lastStatusRefresh = Date.now();
   };
 
+  /**
+   * 定时任务互斥等待：检测到定时任务执行时暂停推图，
+   * 等待其完成后自动重连并恢复状态，调用方继续推图
+   * @returns {boolean} true=等待后已恢复可继续，false=等待期间被停止
+   */
+  const waitIfScheduledBusy = async (tokenId, st, nm, where) => {
+    if (!shouldPauseForSchedule()) return true;
+    if (st.stopFlag || isShouldStop()) return false;
+    st.pausedBySchedule = true;
+    log(`[${nm}] 检测到定时任务执行中，推图暂停等待（${where}），定时完成后自动重连继续...`, "warning");
+    while (shouldPauseForSchedule() && !st.stopFlag && !isShouldStop()) {
+      await sleep(SCHED_WAIT_INTERVAL);
+    }
+    st.pausedBySchedule = false;
+    if (st.stopFlag || isShouldStop()) return false;
+    log(`[${nm}] 定时任务已完成，重连后继续推图...`, "success");
+    const rc = await reconnect(tokenId, st);
+    if (!rc.success) {
+      log(`[${nm}] 定时任务后重连失败，停止推图`, "error");
+      st.stopFlag = true;
+      return false;
+    }
+    await restoreAfterReconnect(tokenId, st, nm);
+    return true;
+  };
+
   // ========== 战斗子函数 ==========
 
   /**
@@ -309,20 +387,27 @@ export function createPushMapRunner(deps) {
     let lastLogSec = -1;
 
     while (st.countdown > 0 && !st.stopFlag && !isShouldStop()) {
+      // 定时任务优先：倒计时期间定时触发则暂停等待，等待时长计入战斗耗时（服务端战斗不暂停）
+      if (shouldPauseForSchedule()) {
+        const ok = await waitIfScheduledBusy(tokenId, st, nm, "战斗倒计时中");
+        if (!ok) return;
+        // 等待后基于原 t0 重算剩余（等待时间也算战斗耗时，超时则直接结束倒计时去领奖）
+        const elapsedAfterWait = (Date.now() - t0) / 1000;
+        st.countdown = Math.max(0, Math.ceil(battleTime - elapsedAfterWait));
+        if (st.countdown <= 0) break;
+        // 重连后 t0 不变继续倒计时
+      }
       await sleep(1000);
       const elapsed = (Date.now() - t0) / 1000;
       // 关键修复：不再乘以 torchSpeedFactor，battleTime 已是最终值
       st.countdown = Math.max(0, Math.ceil(battleTime - elapsed));
 
-      // 心跳保活（每10秒）
+      // 心跳保活（每10秒）；断开时直接重连（重连内部指数退避，避免刷屏）
       lastHeartbeat++;
       if (lastHeartbeat >= HEARTBEAT_INTERVAL) {
         lastHeartbeat = 0;
-        sendHeartbeat(tokenId, nm);
-        
-        // 检查连接状态
-        if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
-          log(`[${nm}] 倒计时中检测到连接断开，尝试重连...`, "warning");
+        if (!sendHeartbeat(tokenId, nm)) {
+          log(`[${nm}] 心跳检测到连接断开，尝试重连...`, "warning");
           const rc = await reconnect(tokenId, st);
           if (!rc.success) {
             log(`[${nm}] 倒计时中重连失败，停止推图`, "error");
@@ -362,6 +447,12 @@ export function createPushMapRunner(deps) {
     const bd = (fr && fr.body) || fr || {};
     const win = bd.success == true || bd.isWin == true || bd.result == 1 || bd.win == true;
     const nl = bd.currLevel || bd.nextLevel || bd.level || bd.newLevel || st.level;
+    // 性能优化（借鉴旧版后端推关）：缓存服务端返回的下一关等待时间，
+    // 下一轮直接复用，跳过 fight_calcleveltime 请求
+    const nt = bd.nextTime ?? bd.next_time ?? bd.nextBattleTime;
+    if (nt != null && Number.isFinite(Number(nt)) && Number(nt) >= 0) {
+      st.nextBattleTime = Number(nt);
+    }
     
     st.battles++;
     if (win) {
@@ -391,35 +482,42 @@ export function createPushMapRunner(deps) {
     const bossNm = getBoss(st.level);
     log(`[${nm}] 关卡: ${st.level}${bossNm ? " Boss: " + bossNm : ""}`);
 
-    // 2. 计算战斗时间
+    // 2. 计算战斗时间（优先复用上一轮 fight_level 返回的 nextTime，省一次 calc 请求）
     let battleTime = BATTLE_TIME_DEFAULT;
-    try {
-      const cr = await safeSend(tokenId, "fight_calcleveltime", { levelId: st.level }, 15000, nm, st);
-      if (cr && !cr.code) {
-        const bt = cr.battleTime 
-          || (cr.body && cr.body.battleTime) 
-          || (cr.battleData && cr.battleData.battleTime);
-        if (bt != null) {
-          battleTime = Number(bt);
-          // 安全校验
-          if (battleTime <= 0) {
-            log(`[${nm}] 战斗时间无效(${battleTime}s)，使用默认值${BATTLE_TIME_DEFAULT}s`, "warning");
-            battleTime = BATTLE_TIME_DEFAULT;
-          } else if (battleTime > BATTLE_TIME_MAX) {
-            log(`[${nm}] 战斗时间异常(${battleTime}s > ${BATTLE_TIME_MAX}s)，使用上限值`, "warning");
-            battleTime = BATTLE_TIME_MAX;
+    if (st.nextBattleTime != null && Number.isFinite(st.nextBattleTime) && st.nextBattleTime >= 0) {
+      battleTime = Math.min(st.nextBattleTime, BATTLE_TIME_MAX);
+      log(`[${nm}] 复用上轮 nextTime，战斗需 ${battleTime} 秒`, "success");
+      st.nextBattleTime = null; // 消费掉，避免失败轮次误用过期值
+    } else {
+      st.nextBattleTime = null;
+      try {
+        const cr = await safeSend(tokenId, "fight_calcleveltime", { levelId: st.level }, 15000, nm, st);
+        if (cr && !cr.code) {
+          const bt = cr.battleTime
+            || (cr.body && cr.body.battleTime)
+            || (cr.battleData && cr.battleData.battleTime);
+          if (bt != null) {
+            battleTime = Number(bt);
+            // 安全校验
+            if (battleTime <= 0) {
+              log(`[${nm}] 战斗时间无效(${battleTime}s)，使用默认值${BATTLE_TIME_DEFAULT}s`, "warning");
+              battleTime = BATTLE_TIME_DEFAULT;
+            } else if (battleTime > BATTLE_TIME_MAX) {
+              log(`[${nm}] 战斗时间异常(${battleTime}s > ${BATTLE_TIME_MAX}s)，使用上限值`, "warning");
+              battleTime = BATTLE_TIME_MAX;
+            }
           }
+        } else if (cr && cr.code) {
+          log(`[${nm}] 获取战斗时间失败，错误码: ${cr.code}，使用默认值${BATTLE_TIME_DEFAULT}s`, "warning");
         }
-      } else if (cr && cr.code) {
-        log(`[${nm}] 获取战斗时间失败，错误码: ${cr.code}，使用默认值${BATTLE_TIME_DEFAULT}s`, "warning");
+        // 记录火把状态和战斗时间关系
+        const torchInfo = st.torchDur > 0
+          ? `火把剩余${Math.ceil((st.torchDur - (Date.now() - st.torchAt) / 1000))}s`
+          : "无火把";
+        log(`[${nm}] 战斗需 ${battleTime} 秒 (${torchInfo})`, "success");
+      } catch (e) {
+        log(`[${nm}] 获取战斗时间失败: ${e.message}，使用默认值${BATTLE_TIME_DEFAULT}s`, "warning");
       }
-      // 记录火把状态和战斗时间关系
-      const torchInfo = st.torchDur > 0 
-        ? `火把剩余${Math.ceil((st.torchDur - (Date.now() - st.torchAt) / 1000))}s`
-        : "无火把";
-      log(`[${nm}] 战斗需 ${battleTime} 秒 (${torchInfo})`, "success");
-    } catch (e) {
-      log(`[${nm}] 获取战斗时间失败: ${e.message}，使用默认值${BATTLE_TIME_DEFAULT}s`, "warning");
     }
     
     if (st.stopFlag || isShouldStop()) return;
@@ -456,15 +554,17 @@ export function createPushMapRunner(deps) {
       } catch (e) {
         const errMsg = e.message || '';
         const isServerError = errMsg.includes('200020');
-        
+
         if (fightRetry < 4) {
-          // 200020 服务器错误：战斗可能尚未结算，延长等待时间
+          // 200020 服务器错误：战斗尚未结算，等待后重试（不记胜负）
           const waitTime = isServerError ? 8000 : 3000;
           log(`[${nm}] 获取结果失败(${errMsg})，${isServerError ? '服务器处理中，' : ''}重试中(${fightRetry + 1}/4)...`, "warning");
           await sleep(waitTime);
         } else {
-          st.losses++;
-          log(`[${nm}] 获取结果最终失败: ${errMsg}`, "error");
+          // 最终失败：仅记录，不记 losses（未拿到结果不算败仗，避免胜率失真）；
+          // 清掉缓存的 nextTime，下一轮重新 calc
+          st.nextBattleTime = null;
+          log(`[${nm}] 获取结果最终失败: ${errMsg}，跳过本轮（不计胜负）`, "error");
           await sleep(10000);
           fightResultRetrieved = true;
         }
@@ -486,11 +586,23 @@ export function createPushMapRunner(deps) {
       retries: 0, countdown: 0, totalTime: 0, battles: 0, torchAt: 0, torchDur: 0,
       torchSpeedFactor: 1,
       lastStatusRefresh: 0,
+      nextBattleTime: null, // 上一轮 fight_level 返回的 nextTime，下一轮复用以跳过 calc 请求
     };
     const st = window._pt[tokenId];
     const nm = getTokenName(tokenId);
     if (tokenStatus) tokenStatus.value[tokenId] = "running";
     log(`[${nm}] 开始推图`, "success");
+
+    // 启动时若定时任务执行中，先暂停等待（避免启动即抢连接）
+    if (shouldPauseForSchedule()) {
+      const ok = await waitIfScheduledBusy(tokenId, st, nm, "推图启动时");
+      if (!ok) {
+        st.running = false;
+        if (tokenStatus) tokenStatus.value[tokenId] = "completed";
+        log(`[${nm}] 启动等待期间被停止，退出推图`, "warning");
+        return;
+      }
+    }
 
     // 启动时检查连接状态
     if (tokenStore.getWebSocketStatus(tokenId) !== "connected") {
@@ -514,6 +626,11 @@ export function createPushMapRunner(deps) {
 
     try {
       while (!st.stopFlag && !isShouldStop()) {
+        // 定时任务优先：每轮战斗开始前检查，定时执行中则暂停等待、完成后重连继续
+        if (shouldPauseForSchedule()) {
+          const ok = await waitIfScheduledBusy(tokenId, st, nm, "本轮战斗开始前");
+          if (!ok) break;
+        }
         // 执行一次战斗
         await executeOneBattle(tokenId, st, nm);
         if (st.stopFlag || isShouldStop()) break;

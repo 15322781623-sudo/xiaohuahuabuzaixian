@@ -10,7 +10,7 @@ export const SCRIPTS_KEY = '__game_scripts__';
 
 // ── 面板增强器依赖 ──
 export const PANEL_ENHANCER_FILE = 'enhance-scripts/panel_enhancer.js';
-export const PANEL_ENHANCER_DEPS = ['fishHeroStar', 'heroLevelUp', 'opponentWash', 'petMerge', 'gameEnhancePanel'];
+export const PANEL_ENHANCER_DEPS = ['heroLevelUp', 'opponentWash', 'petMerge', 'gameEnhancePanel'];
 
 // ── 默认启用（十殿加速默认关闭，需要时手动开启）──
 export const DEFAULT_ENABLED = new Set(['skipPopup', 'skipAd', 'perfOpt', 'battleFlyYi', 'autoReconnect']);
@@ -45,10 +45,10 @@ export const ENHANCEMENTS = [
   { key: 'saltFieldZoom', name: '盐场视距', desc: '盐场无限视距缩放', file: 'enhance-scripts/salt_field_zoom.js', group: '辅助' },
   { key: 'gameEnhancePanel', name: '增强面板', desc: '游戏内增强浮动面板', file: 'enhance-scripts/game_enhance_panel.js', group: '辅助' },
   { key: 'achievementReward', name: '成就奖励', desc: '自动领取成就奖励', file: 'enhance-scripts/achievement_reward.js', group: '辅助' },
-  { key: 'fishHeroStar', name: '升星助手', desc: '武将升星+图鉴升级+鱼灵升星', file: 'enhance-scripts/fish_hero_star.js', group: '升级' },
   { key: 'petMerge', name: '宠物合成', desc: '游戏内宠物合成增强', file: 'enhance-scripts/pet_merge.js', group: '升级' },
   { key: 'itemUse', name: '道具使用', desc: '批量使用道具/宝箱', file: 'enhance-scripts/item_use.js', group: '辅助' },
   { key: 'opponentWash', name: '对手洗练', desc: '自动查询对手洗练+历史记录', file: 'enhance-scripts/opponent_wash.js', group: '洗炼' },
+  { key: 'starUpgrade', name: '升星助手', desc: '武将/图鉴/鱼灵自动升星', file: 'enhance-scripts/star_upgrade.js', group: '升级' },
 ];
 
 // ── waitForModule 辅助函数 ──
@@ -70,9 +70,9 @@ export const ENHANCE_CODE = {
 const _scriptFileCache = new Map();
 
 /**
- * 旧配置迁移：断线重连(wsReconnect)已合并入自动重连(autoReconnect)
- * - 旧配置中 wsReconnect 开启而 autoReconnect 关闭时，强制启用 autoReconnect
- * - 移除 wsReconnect 键
+ * 旧配置迁移
+ * - wsReconnect 已合并入 autoReconnect：旧配置开启而新键关闭时强制启用，并移除旧键
+ * - autoCleanBackpack 增强已下线：移除残留键，避免用户勾选状态悬空
  */
 export function migrateEnhancementConfig(state) {
   if (!state || typeof state !== 'object') return state;
@@ -81,6 +81,9 @@ export function migrateEnhancementConfig(state) {
       state.autoReconnect = true;
     }
     delete state.wsReconnect;
+  }
+  if ('autoCleanBackpack' in state) {
+    delete state.autoCleanBackpack;
   }
   return state;
 }

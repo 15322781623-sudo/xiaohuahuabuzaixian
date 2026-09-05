@@ -3367,6 +3367,7 @@ const pushStatusText = computed(() => {
   void pushTick.value;  // 依赖响应式计数器，确保倒计时变化时重新计算
   const st = window._pt && window._pt[props.token.id];
   if (!st || !st.running) return '';
+  if (st.pausedBySchedule) return `⏸️等待定时完成 ${st.wins}胜${st.losses}负`;
   const cd = st.countdown || 0;
   const mm = Math.floor(cd / 60);
   const ss = String(Math.floor(cd % 60)).padStart(2, '0');

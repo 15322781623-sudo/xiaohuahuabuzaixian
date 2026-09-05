@@ -345,62 +345,7 @@
                 >
                   一键领取罐子
                 </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('batchclubsign', '一键俱乐部签到', batchclubsign)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  一键俱乐部签到
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('batchLegionSignup', '盐场报名', batchLegionSignup)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  盐场报名
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('batchClubSignup', '营地报名', batchClubSignup)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  营地报名
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('batchAirdropChallenge', '营地空投挑战', batchAirdropChallenge)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  营地空投挑战
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('batchAirdropClaim', '营地奖励领取', batchAirdropClaim)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  营地奖励领取
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('batchSaltFieldDig', '盐场刨地', batchSaltFieldDig)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  盐场刨地
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('batchPayloadSignup', '蟠桃报名', batchPayloadSignup)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  蟠桃报名
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="executeManualTaskWithRecord('switchSaltFieldPeachFormation', '盐场蟠桃阵容', handleSwitchSaltFieldPeachFormation)"
-                  :disabled="isRunning || selectedTokens.length === 0"
-                >
-                  盐场蟠桃阵容
-                </n-button>
+
                 <n-button
                   size="small"
                   @click="executeManualTaskWithRecord('batchStudy', '一键答题', batchStudy)"
@@ -539,6 +484,7 @@
                   </n-space>
                 </template>
               </n-modal>
+
             </n-tab-pane>
             <n-tab-pane name="welfare" tab="福利">
               <n-space>
@@ -1111,6 +1057,73 @@
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
                   橱窗咸将激活
+                </n-button>
+              </n-space>
+            </n-tab-pane>
+            <n-tab-pane name="club" tab="俱乐部">
+              <n-space>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('batchclubsign', '一键俱乐部签到', batchclubsign)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  一键俱乐部签到
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('batchLegionSignup', '盐场报名', batchLegionSignup)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  盐场报名
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('batchClubSignup', '营地报名', batchClubSignup)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  营地报名
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('batchAirdropChallenge', '营地空投挑战', batchAirdropChallenge)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  营地空投挑战
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('batchAirdropClaim', '营地奖励领取', batchAirdropClaim)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  营地奖励领取
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('batchSaltFieldDig', '盐场刨地', batchSaltFieldDig)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  盐场刨地
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('batchPayloadSignup', '蟠桃报名', batchPayloadSignup)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  蟠桃报名
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="executeManualTaskWithRecord('switchSaltFieldPeachFormation', '盐场蟠桃阵容', handleSwitchSaltFieldPeachFormation)"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  盐场蟠桃阵容
+                </n-button>
+                <n-button
+                  size="small"
+                  @click="openCampChallengeModal"
+                  :disabled="isRunning || selectedTokens.length === 0"
+                >
+                  营地挑战
                 </n-button>
               </n-space>
             </n-tab-pane>
@@ -1931,7 +1944,7 @@
             </div>
             <div class="st-field">
               <label class="st-label">盐场蟠桃</label>
-              <n-select v-model:value="currentSettings.saltFieldPeachFormation" :options="formationOptions" size="small" />
+              <n-select v-model:value="currentSettings.saltFieldPeachFormation" :options="saltFieldFormationOptions" size="small" />
             </div>
             <div class="st-field">
               <label class="st-label">灯神</label>
@@ -2187,7 +2200,7 @@
             </div>
             <div class="st-field">
               <label class="st-label">盐场蟠桃</label>
-              <n-select v-model:value="currentTemplate.saltFieldPeachFormation" :options="formationOptions" size="small" />
+              <n-select v-model:value="currentTemplate.saltFieldPeachFormation" :options="saltFieldFormationOptions" size="small" />
             </div>
             <div class="st-field">
               <label class="st-label">灯神</label>
@@ -4668,6 +4681,19 @@
               </div>
             </div>
           </div>
+
+          <!-- 营地挑战配置 -->
+          <div v-if="taskForm.selectedTasks.includes('batchCampChallenge')" class="task-config-card">
+            <div class="config-card-header">
+              <span class="config-card-title">🏕️ 营地挑战 - 挑战设置</span>
+            </div>
+            <div class="config-card-content">
+              <camp-challenge-config
+                v-if="ensureTaskCampForm()"
+                v-model="taskForm.campChallenge"
+              />
+            </div>
+          </div>
         </div>
         
         <!-- 不上线时段开关 -->
@@ -4695,6 +4721,23 @@
           <n-button type="primary" @click="saveTask" size="large">保存</n-button>
         </div>
       </div>
+    </n-modal>
+
+    <!-- 营地挑战设置 Modal -->
+    <n-modal
+      v-model:show="showCampChallengeModal"
+      preset="card"
+      title="🏕️ 营地挑战设置"
+      style="width: 95%; max-width: 640px"
+      :mask-closable="false"
+    >
+      <camp-challenge-config v-model="campChallengeForm" />
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 12px; width: 100%;">
+          <n-button @click="showCampChallengeModal = false">取消</n-button>
+          <n-button type="primary" @click="saveAndRunCampChallenge">保存并开始</n-button>
+        </div>
+      </template>
     </n-modal>
 
     <!-- Batch Settings Modal -->
@@ -6549,6 +6592,7 @@ import {
   createTasksBottle,
   createTasksTower,
   createTasksCar,
+  createTasksClub,
   createTasksItem,
   createTasksDungeon,
   createTasksSaltField,
@@ -6556,6 +6600,12 @@ import {
   createTasksStore,
   createTasksLegacy,
 } from "@/utils/batch";
+import {
+  DEFAULT_CAMP_CHALLENGE_SETTINGS,
+  loadCampChallengeSettings,
+  saveCampChallengeSettings,
+} from "@/utils/batch/tasksClub.js";
+import CampChallengeConfig from "@/components/CampChallengeConfig.vue";
 import { getModuleDelay, loadDelayGroups, saveDelayGroups, DELAY_GROUPS, DELAY_GROUP_LABELS, DELAY_GROUP_DESCRIPTIONS, DELAY_GROUP_MODULES, MODULE_DELAY_GROUP_MAP } from "@/utils/batch/delayManager";
 
 
@@ -8424,7 +8474,7 @@ const currentSettings = reactive({
   towerFormation: 1,
   bossFormation: 1,
   nightmareFormation: 1, // 十殿阵容
-  saltFieldPeachFormation: 1, // 盐场蟠桃阵容
+  saltFieldPeachFormation: 0, // 盐场阵容：0=跟随当前出战阵容（默认），1-6=指定预设队
   genieFormation: 1, // 灯神挑战阵容（1-6=使用指定预设队，所有势力共用；已取消自动匹配）
   deepSeaFormation: 1, // 深海挑战阵容（1-6=使用指定预设队，独立于灯神，账号设置单独配置）
   bossTimes: 2,
@@ -8460,7 +8510,7 @@ const currentTemplate = reactive({
   towerFormation: 1,
   bossFormation: 1,
   nightmareFormation: 1, // 十殿阵容
-  saltFieldPeachFormation: 1, // 盐场蟠桃阵容
+  saltFieldPeachFormation: 0, // 盐场阵容：0=跟随当前出战阵容（默认），1-6=指定预设队
   genieFormation: 1, // 灯神挑战阵容（1-6=使用指定预设队，所有势力共用；已取消自动匹配）
   deepSeaFormation: 1, // 深海挑战阵容（1-6=使用指定预设队，独立于灯神，账号设置单独配置）
   bossTimes: 2,
@@ -9332,6 +9382,25 @@ const scheduledTasks = ref([]); // List of all scheduled tasks
 const showTaskModal = ref(false); // Control the visibility of the add/edit task modal
 const showTasksModal = ref(false); // Control the visibility of the tasks list modal
 const editingTask = ref(null); // Currently editing task
+const showCampChallengeModal = ref(false); // 营地挑战设置弹窗
+const campChallengeForm = ref({ ...DEFAULT_CAMP_CHALLENGE_SETTINGS }); // 营地挑战设置（手动执行）
+const ensureTaskCampForm = () => {
+  if (!taskForm.campChallenge) {
+    taskForm.campChallenge = { ...loadCampChallengeSettings() };
+  } else {
+    // 编辑旧任务时，缺失的新字段自动补默认值，保证 UI 展示与运行时一致
+    const missing = Object.keys(DEFAULT_CAMP_CHALLENGE_SETTINGS).some(
+      (k) => !(k in taskForm.campChallenge),
+    );
+    if (missing) {
+      taskForm.campChallenge = {
+        ...DEFAULT_CAMP_CHALLENGE_SETTINGS,
+        ...taskForm.campChallenge,
+      };
+    }
+  }
+  return taskForm.campChallenge;
+};
 
 // Account Selector for Scheduled Tasks
 const showAccountSelectorModal = ref(false);
@@ -9469,6 +9538,11 @@ const normalizeGenieFormation = (v) => {
   return n >= 1 && n <= 6 ? n : 1;
 };
 const genieFormationOptions = Array.from({ length: 6 }, (_, i) => ({ label: `阵容${i + 1}`, value: i + 1 }));
+// 盐场布阵阵容选项：0=跟随账号当前出战阵容（默认），1-6=指定预设队（复用通用阵容选项）
+const saltFieldFormationOptions = [
+  { label: "跟随当前出战阵容", value: 0 },
+  ...formationOptions,
+];
 const showGenieChallengeModal = ref(false);
 const genieChallengeForm = reactive({ genieIds: [1, 2, 3, 4], dailyLimit: 10 });
 const openGenieChallengeModal = () => {
@@ -9585,6 +9659,7 @@ const taskForm = reactive({
   arenaFightCount: 3, // 竞技场战斗次数配置
   genieChallenge: { genieIds: [1, 2, 3, 4], formation: 1, dailyLimit: 10 }, // 灯神挑战任务级配置
   deepSeaChallenge: { formation: 1, weeklyLimit: 10 }, // 深海挑战任务级配置（阵容始终取账号设置"灯神预设阵容"，每周一刷新 10 次上限）
+  campChallenge: null, // 营地挑战任务级配置（null 时运行时取全局 camp-challenge-settings）
   smartDeparture: { // 智能发车任务级配置（覆盖全局设置）
     enabled: false, // 是否启用任务级配置
     goldThreshold: 800,
@@ -9681,12 +9756,13 @@ const fetchTaskSaltRoadOpponents = async () => {
 
 // 任务分组定义
 const taskGroupDefinitions = [
-  { name: 'daily', label: '日常', tasks: ['startBatch', 'batchSimplifiedDaily', 'claimHangUpRewards', 'batchAddHangUpTime', 'batchHangUpUpgrade', 'resetBottles', 'batchlingguanzi', 'batchclubsign', 'batchLegionSignup', 'batchClubSignup', 'batchAirdropChallenge', 'batchAirdropClaim', 'batchSaltFieldDig', 'batchPayloadSignup', 'switchSaltFieldPeachFormation', 'batchStudy', 'batcharenafight', 'batchSmartSendCar', 'batchClaimCars', 'batchCarResearchUpgrade', 'store_purchase', 'batch_mail_claim_and_cleanup'] },
+  { name: 'daily', label: '日常', tasks: ['startBatch', 'batchSimplifiedDaily', 'claimHangUpRewards', 'batchAddHangUpTime', 'batchHangUpUpgrade', 'resetBottles', 'batchlingguanzi', 'batchStudy', 'batcharenafight', 'batchSmartSendCar', 'batchClaimCars', 'batchCarResearchUpgrade', 'store_purchase', 'batch_mail_claim_and_cleanup'] },
   { name: 'welfare', label: '福利', tasks: ['charge_claimaddup_rewards', 'collection_claimfreereward', 'gacha_drawreward', 'claim_recruit_welfare', 'pkroom_appoint', 'saltcup26_openstarpack_use'] },
   { name: 'dungeon', label: '副本', tasks: ['climbTower', 'batchmengjing', 'skinChallenge', 'skinTreasure', 'newSkinChallenge', 'newSkinTreasure', 'batchClaimPeachTasks', 'batchBuyDreamItems', 'batchGenieChallenge', 'batchDeepSeaChallenge'] },
   { name: 'baoku', label: '宝库', tasks: ['batchbaoku13', 'batchbaoku45'] },
   { name: 'weirdTower', label: '怪异塔', tasks: ['climbWeirdTower', 'batchUseItems', 'batchMergeItems', 'batchClaimFreeEnergy', 'claim_weird_tower_all', 'claim_weird_tower_pass'] },
   { name: 'illustration', label: '图鉴', tasks: ['openHeroFourSaintsModal', 'batchHeroUpgrade', 'batchBookUpgrade', 'batchFishUpgrade', 'batchClaimStarRewards', 'batchCollectionActivate'] },
+  { name: 'club', label: '俱乐部', tasks: ['batchclubsign', 'batchLegionSignup', 'batchClubSignup', 'batchAirdropChallenge', 'batchAirdropClaim', 'batchSaltFieldDig', 'batchPayloadSignup', 'switchSaltFieldPeachFormation', 'batchCampChallenge'] },
   { name: 'pet', label: '宠物', tasks: ['legion_buy_spotted_egg', 'use_spotted_egg', 'claim_pet_book', 'batch_pet_merge', 'egg_merge_cycle', 'batch_pet_upgrade'] },
   { name: 'nightmare', label: '十殿', tasks: ['batchNightmareChallengePresets', 'nightmare_draw_lottery', 'nightmare_claim_book_reward', 'star_drawturntable', 'batch_star_challenge'] },
   { name: 'resource', label: '资源', tasks: ['batchOpenBox', 'batchOpenBoxByPoints', 'batchOpenDiamondBox', 'batchOpenFragmentPacks', 'batchClaimBoxWeeklyRewards', 'batchClaimBoxPointReward', 'batchFish', 'batchRecruit', 'legion_storebuygoods', 'legionStoreBuySkinCoins', 'weekly_market_buy', 'weekly_market_free_gift', 'store_purchase', 'manual_buy', 'collection_exchange', 'legion_buy_red_jade', 'salt_crystal_shop_buy', 'salt_ingot_shop_buy', 'apex_buy', 'batchGenieSweep', 'batchClaimCdkReward', 'batchClaimApexRewards', 'batchSaltCupBet'] },
@@ -10174,6 +10250,8 @@ const openTaskModal = () => {
   taskForm.genieChallenge = { genieIds: [1, 2, 3, 4], formation: 1, dailyLimit: 10 };
   // 深海挑战任务级配置
   taskForm.deepSeaChallenge = { formation: 1, weeklyLimit: 10 };
+  // 营地挑战任务级配置（新增任务默认空，运行时读取全局营地挑战设置）
+  taskForm.campChallenge = null;
   
   // 碎片礼包配置（默认全选）
   taskForm.fragmentPackItems = [3007, 3005, 3006, 3008, 3009, 3011, 3012, 35011, 3001, 3002, 3010, 37005];
@@ -10715,6 +10793,10 @@ const saveTask = () => {
     deepSeaChallenge: {
       weeklyLimit: taskForm.deepSeaChallenge?.weeklyLimit || 10,
     },
+    // 营地挑战任务级配置
+    campChallenge: taskForm.campChallenge
+      ? JSON.parse(JSON.stringify(taskForm.campChallenge))
+      : null,
   };
 
   let isNew = !editingTask.value;
@@ -12502,6 +12584,18 @@ const clearTaskExecutionRecords = () => {
   console.log('[定时任务] 任务完成记录已清空');
 };
 
+// ---------- 营地挑战设置 ----------
+const openCampChallengeModal = () => {
+  campChallengeForm.value = { ...loadCampChallengeSettings() };
+  showCampChallengeModal.value = true;
+};
+const saveAndRunCampChallenge = () => {
+  const saved = saveCampChallengeSettings(campChallengeForm.value);
+  campChallengeForm.value = { ...saved };
+  showCampChallengeModal.value = false;
+  executeManualTaskWithRecord('batchCampChallenge', '营地挑战', batchCampChallenge);
+};
+
 /**
  * 为手动执行的批量功能添加任务完成记录
  * @param {string} taskName - 任务名称（如 'claimHangUpRewards'）
@@ -12795,6 +12889,17 @@ const isSafeToRefreshPage = () => {
   if (runningSet && typeof runningSet.size === 'number' && runningSet.size > 0) {
     return { safe: false, reason: `仍有${runningSet.size}个账号任务活跃` };
   }
+  // 2.5 批量推图正在执行（推图走 window._pt 独立状态，不经过 isRunning/runningTokens，必须单独检查；
+  // 否则定时刷新会误判为安全而 reload 页面，推图连接全部丢失且无法恢复）
+  try {
+    const pt = window._pt;
+    if (pt) {
+      const pushing = Object.keys(pt).filter((id) => pt[id] && pt[id].running);
+      if (pushing.length > 0) {
+        return { safe: false, reason: `批量推图执行中（${pushing.length}个账号）` };
+      }
+    }
+  } catch (e) { /* 读取推图状态失败不阻塞刷新判断 */ }
   // 3. 未来2分钟内有定时任务即将触发（daily 为精确分钟匹配，刷新跨过触发分钟会导致任务被静默丢失）
   const now = new Date();
   for (const task of scheduledTasks.value) {
@@ -12855,6 +12960,7 @@ const healthCheck = () => {
         isScheduledTaskRunning.value = false;
         currentScheduledTask = null;
         scheduledTaskStartTime = null;
+        try { window._pausePushRequested = false; } catch (e) { /* 兜底：释放推图暂停标记 */ }
         isRunning.value = false;
         currentRunningTokenId.value = null;
         tokenStore.runningTokens?.value.forEach(tokenId => {
@@ -12897,6 +13003,7 @@ const healthCheck = () => {
       isScheduledTaskRunning.value = false;
       currentScheduledTask = null;
       scheduledTaskStartTime = null;
+      try { window._pausePushRequested = false; } catch (e) { /* 兜底：释放推图暂停标记 */ }
       tokenStore.runningTokens?.value.forEach(tokenId => {
         tokenStore.setTokenRunning(tokenId, false);
       });
@@ -12966,6 +13073,7 @@ const healthCheck = () => {
       isScheduledTaskRunning.value = false;
       currentScheduledTask = null;
       scheduledTaskStartTime = null;
+      try { window._pausePushRequested = false; } catch (e) { /* 兜底：释放推图暂停标记 */ }
       addLog({
         time: new Date().toLocaleTimeString(),
         message: `⚠️ 定时任务[${taskName}]已无活跃进度达${Math.round(elapsed/1000)}秒（层${triggerLayer}），调度器已强制释放${orphanCount ? `（标记${orphanCount}条孤儿记录）` : ''}`,
@@ -13740,8 +13848,41 @@ const executeScheduledTask = async (task) => {
     type: "info",
   });
 
+  // ✅ 推图互斥：定时任务优先 — 到点自动暂停推图，等推图真正停下后再执行定时，结束后自动恢复
+  let _pausedPushIds = [];
   try {
-    
+    _pausedPushIds = (typeof window !== "undefined" && window._pt)
+      ? Object.keys(window._pt).filter((id) => window._pt[id]?.running && !window._pt[id]?.stopFlag)
+      : [];
+  } catch (e) { _pausedPushIds = []; }
+  if (_pausedPushIds.length > 0) {
+    try { window._pausePushRequested = true; } catch (e) { /* ignore */ }
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `⏸️ 定时任务优先：${_pausedPushIds.length} 个推图账号自动暂停，等待其停稳后执行定时…`,
+      type: "warning",
+    });
+    // 等待推图循环检测到标记并进入暂停（每轮/每次发送/倒计时都会检查，最多等 30 秒）
+    const _waitStart = Date.now();
+    while (Date.now() - _waitStart < 30000) {
+      await new Promise((r) => setTimeout(r, 1000));
+      try {
+        const _stillActive = _pausedPushIds.filter((id) => {
+          const st = window._pt?.[id];
+          return st?.running && !st.stopFlag && !st.pausedBySchedule;
+        });
+        if (_stillActive.length === 0) break;
+      } catch (e) { break; }
+    }
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `▶️ 推图已暂停，开始执行定时任务（结束后自动重连继续推图）`,
+      type: "info",
+    });
+  }
+
+  try {
+
     // Verify dependencies before executing task
     const dependenciesValid = await verifyTaskDependencies(task);
     if (!dependenciesValid) {
@@ -14932,6 +15073,20 @@ const executeScheduledTask = async (task) => {
               // 领取残卷赠送奖励：传入任务级并发数
               const taskMaxConcurrent = (task.maxActive > 0) ? task.maxActive : (batchSettings.maxActive || 5);
               await taskFunction(taskMaxConcurrent);
+            } else if (taskName === 'batchCampChallenge') {
+              // 营地挑战：优先使用定时任务里配置的策略（未配置时运行时读取全局"营地挑战"设置）
+              const cc =
+                task.campChallenge && Object.keys(task.campChallenge).length > 0
+                  ? task.campChallenge
+                  : undefined;
+              addLog({
+                time: new Date().toLocaleTimeString(),
+                message: cc
+                  ? '🏕️ 营地挑战：使用定时任务内配置执行'
+                  : '🏕️ 营地挑战：使用全局营地挑战设置执行',
+                type: 'info',
+              });
+              await taskFunction(cc);
             } else {
               await taskFunction();
             }
@@ -15287,6 +15442,20 @@ saveTaskExecutionRecordsToStorage();
       isScheduledTaskRunning.value = false;
       currentScheduledTask = null;
       scheduledTaskStartTime = null; // ✅ 清除超时计时
+      // ✅ 推图互斥恢复：清除暂停标记，被暂停的推图会自动重连继续
+      try { window._pausePushRequested = false; } catch (e) { /* ignore */ }
+      try {
+        const _resumedPushIds = (typeof window !== "undefined" && window._pt)
+          ? Object.keys(window._pt).filter((id) => window._pt[id]?.pausedBySchedule || _pausedPushIds.includes(id))
+          : [];
+        if (_resumedPushIds.length > 0) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            message: `▶️ 定时任务完成：${_resumedPushIds.length} 个推图账号恢复，自动重连继续推图`,
+            type: "success",
+          });
+        }
+      } catch (e) { /* ignore */ }
       // 重置单账号加速标志
       batchSettings.singleAccountMode = false;
       // ✅ 统一在此处重置 isRunning（不再在子任务 finally 中重置，避免竞态窗口）
@@ -15752,7 +15921,7 @@ const loadSettings = (tokenId) => {
       towerFormation: 1,
       bossFormation: 1,
       nightmareFormation: 1, // 十殿阵容
-      saltFieldPeachFormation: 1, // 盐场蟠桃阵容
+      saltFieldPeachFormation: 0, // 盐场阵容：0=跟随当前出战阵容（默认），1-6=指定预设队
       genieFormation: 1, // 灯神挑战阵容（1-6=使用指定预设队，所有势力共用；已取消自动匹配）
       deepSeaFormation: 1, // 深海挑战阵容（1-6=使用指定预设队，独立于灯神，账号设置单独配置）
       bossTimes: 2,
@@ -15784,9 +15953,9 @@ const openSettings = (token) => {
   currentSettingsTokenName.value = token.name;
   const saved = loadSettings(token.id);
   Object.assign(currentSettings, saved);
-  // 兼容旧设置：缺失字段使用默认值
+  // 兼容旧设置：缺失字段默认跟随当前出战阵容
   if (currentSettings.saltFieldPeachFormation == null) {
-    currentSettings.saltFieldPeachFormation = 1;
+    currentSettings.saltFieldPeachFormation = 0;
   }
   if (currentSettings.genieFormation == null || currentSettings.genieFormation < 1 || currentSettings.genieFormation > 6) {
     currentSettings.genieFormation = 1; // 灯神挑战阵容（1-6 指定预设队，兼容旧值 0/非法值回退阵容 1）
@@ -15854,7 +16023,7 @@ const openTaskTemplateModal = () => {
     towerFormation: 1,
     bossFormation: 1,
     nightmareFormation: 1,
-    saltFieldPeachFormation: 1,
+    saltFieldPeachFormation: 0, // 盐场阵容：0=跟随当前出战阵容
     deepSeaFormation: 1, // 深海挑战阵容（1-6 指定预设队）
     bossTimes: 2,
     dailyBossTimes: 3,
@@ -16062,7 +16231,7 @@ const resetTemplateForm = () => {
     towerFormation: 1,
     bossFormation: 1,
     nightmareFormation: 1,
-    saltFieldPeachFormation: 1,
+    saltFieldPeachFormation: 0, // 盐场阵容：0=跟随当前出战阵容
     deepSeaFormation: 1, // 深海挑战阵容（1-6 指定预设队）
     bossTimes: 2,
     dailyBossTimes: 3,
@@ -16533,12 +16702,18 @@ const handleSwitchSaltFieldPeachFormation = async () => {
         return;
       }
       const settings = JSON.parse(settingsRaw);
-      // 兼容旧设置：缺失字段默认使用阵容1
+      // 兼容旧设置：缺失字段默认跟随当前出战阵容
       if (settings.saltFieldPeachFormation == null) {
-        settings.saltFieldPeachFormation = 1;
+        settings.saltFieldPeachFormation = 0;
         localStorage.setItem(`daily-settings:${tokenId}`, JSON.stringify(settings));
       }
       const formation = settings.saltFieldPeachFormation;
+      // 0=跟随当前出战阵容：该按钮是"切换到盐场专用预设队"，跟随当前时无需切换
+      if (formation === 0 || formation == null) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 配置为跟随当前出战阵容，无需切换`, type: "success" });
+        tokenStatus.value[tokenId] = "completed";
+        return;
+      }
       if (formation < 1 || formation > 6) {
         addLog({ time: new Date().toLocaleTimeString(), message: `${token.name} 盐场蟠桃阵容配置无效(${formation})，跳过`, type: "warning" });
         tokenStatus.value[tokenId] = "failed";
@@ -16617,6 +16792,7 @@ const handleSwitchSaltFieldPeachFormation = async () => {
   message.success(summary);
   isRunning.value = false;
 };
+
 const userManuallyDisabledScroll = ref(false); // 记录用户是否手动关闭了自动滚动
 const filterErrorsOnly = ref(false);
 const errorCount = computed(() => {
@@ -18285,6 +18461,9 @@ const { batchSmartSendCar, batchClaimCars, batchCarResearchUpgrade } = tasksCar;
 const tasksSaltField = wrapTaskFunctions(createTasksSaltField(createTaskDeps()));
 const { batchSaltFieldDig } = tasksSaltField;
 
+const tasksClub = wrapTaskFunctions(createTasksClub(createTaskDeps()));
+const { batchCampChallenge } = tasksClub;
+
 const tasksItem = wrapTaskFunctions(createTasksItem(createTaskDeps()));
 const {
   batchOpenBox,
@@ -18809,6 +18988,7 @@ const { legion_storebuygoods, legionStoreBuySkinCoins, store_purchase, manual_bu
 //   因此这里展开各任务模块，改为按属性名查找（对象属性名不受混淆影响）。
 const taskFunctionMap = {
   // 整模块展开：后续新增任务函数无需再手工维护本表，也避免逐个遗漏
+  ...tasksClub,
   ...tasksHangUp,
   ...tasksBottle,
   ...tasksTower,

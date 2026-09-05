@@ -69,6 +69,7 @@ export const availableTasks = [
   { label: "盐场刨地", value: "batchSaltFieldDig" },
   { label: "蟠桃报名", value: "batchPayloadSignup" },
   { label: "盐场蟠桃阵容", value: "switchSaltFieldPeachFormation" },
+  { label: "营地挑战", value: "batchCampChallenge" },
   { label: "一键竞技场战斗", value: "batcharenafight" },
   { label: "一键钓鱼补齐", value: "batchTopUpFish" },
   { label: "一键竞技场补齐", value: "batchTopUpArena" },

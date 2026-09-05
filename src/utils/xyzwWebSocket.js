@@ -343,6 +343,8 @@ export function registerDefaultCommands(reg) {
     .register("club_taskclaim") // 营地奖励领取（confId: 1挑战3次/2区域1全通关/3区域2通关/4区域3通关）
     .register("club_getinfo") // 营地信息（空投挑战状态）
     .register("club_getgrouprank") // 营地小组排名（Club_GetGroupRankResp：rankList+selfRank）
+    .register("club_gettargetteam", { targetId: 0 }) // 营地挑战：查看某防守者阵容
+    .register("club_attack", { useItem: false }) // 营地挑战：挑战真人对手（nodeId/targetId/challengeCnt/failCnt/teamSetParams）
     .register("legion_buypayloaditem") // 蟠桃提交铃铛
     .register("legion_payloadsignup") // 蟠桃报名
 

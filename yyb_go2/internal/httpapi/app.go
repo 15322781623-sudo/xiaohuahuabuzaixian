@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,6 +32,10 @@ type Config struct {
 	AvatarTimeout  time.Duration
 	ScanTimeout    time.Duration
 	QRSessionTTL   time.Duration
+	// RenewInterval 后台自动续期巡检间隔（<=0 关闭自动续期）
+	RenewInterval time.Duration
+	// RenewMaxAge 凭证超过该时长未续期则主动刷新（默认 7 天）
+	RenewMaxAge time.Duration
 }
 
 type App struct {
@@ -42,6 +47,9 @@ type App struct {
 
 	mu         sync.Mutex
 	qrSessions map[string]*qr.Session
+
+	// shutdownCh 由 /shutdown 接口触发，通知主程序优雅退出
+	shutdownCh chan struct{}
 }
 
 var swaggerDocsHandler = httpSwagger.Handler(
@@ -70,6 +78,9 @@ func NewApp(cfg Config) (*App, error) {
 	if cfg.QRSessionTTL == 0 {
 		cfg.QRSessionTTL = 5 * time.Minute
 	}
+	if cfg.RenewMaxAge == 0 {
+		cfg.RenewMaxAge = 24 * time.Hour
+	}
 	res, err := ensureResources(cfg.ResourceRoot)
 	if err != nil {
 		return nil, err
@@ -94,14 +105,58 @@ func NewApp(cfg Config) (*App, error) {
 		pool:       pool,
 		qr:         qr.NewClient(cfg.RequestTimeout),
 		qrSessions: map[string]*qr.Session{},
+		shutdownCh: make(chan struct{}, 1),
 	}, nil
 }
+
+// ShutdownSignal 返回远程停机信号通道（/shutdown 接口写入，main 监听）
+func (a *App) ShutdownSignal() <-chan struct{} { return a.shutdownCh }
 
 func (a *App) Close() error {
 	if a.db != nil {
 		return a.db.Close()
 	}
 	return nil
+}
+
+// StartAutoRenew 启动后台常驻自动续期任务：
+// 按 RenewInterval 周期巡检所有已保存账号，对超过 RenewMaxAge 未续期
+// 的账号主动刷新 MSDK 凭证，实现应用宝登录态长期保活
+func (a *App) StartAutoRenew() {
+	if a.cfg.RenewInterval <= 0 {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(a.cfg.RenewInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			a.renewOnce()
+		}
+	}()
+	log.Printf("auto renew started: interval=%s max-age=%s", a.cfg.RenewInterval, a.cfg.RenewMaxAge)
+}
+
+func (a *App) renewOnce() {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	accounts, err := a.db.ListAccounts(ctx)
+	if err != nil {
+		log.Printf("auto renew: list accounts: %v", err)
+		return
+	}
+	now := time.Now()
+	maxAge := a.cfg.RenewMaxAge
+	for _, acc := range accounts {
+		last := acc.UpdatedAt
+		if acc.LastCheckedAt != nil && *acc.LastCheckedAt > last {
+			last = *acc.LastCheckedAt
+		}
+		if last > 0 && now.Sub(time.Unix(last, 0)) < maxAge {
+			continue
+		}
+		status := a.refreshLiveness(ctx, acc)
+		log.Printf("auto renew: account %s -> %s", acc.OpenID, status)
+	}
 }
 
 func (a *App) Handler() http.Handler {
@@ -112,6 +167,18 @@ func (a *App) Handler() http.Handler {
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 
+	// 允许跨域访问：Web 端前端（浏览器）需要直连本服务，必须放行 CORS 预检与跨域请求
+	router.Use(func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	})
+
 	router.Any("/", gin.WrapF(a.handleIndex))
 	router.Any("/scan", gin.WrapF(a.handleScan))
 	router.Any("/docs", func(c *gin.Context) {
@@ -121,6 +188,17 @@ func (a *App) Handler() http.Handler {
 	router.Any("/openapi.json", gin.WrapF(a.handleOpenAPI))
 	router.Any("/health", func(c *gin.Context) {
 		writeJSON(c.Writer, http.StatusOK, gin.H{"ok": true})
+	})
+	// 远程停机：Web/APK 端无法杀外部进程，通过该接口让服务自行优雅退出
+	router.POST("/shutdown", func(c *gin.Context) {
+		writeJSON(c.Writer, http.StatusOK, gin.H{"ok": true})
+		go func() {
+			time.Sleep(200 * time.Millisecond) // 先返回响应再停机
+			select {
+			case a.shutdownCh <- struct{}{}:
+			default:
+			}
+		}()
 	})
 	router.StaticFS("/static", http.Dir(a.resources.Static))
 	router.Any("/qr", gin.WrapF(a.handleQRRoot))

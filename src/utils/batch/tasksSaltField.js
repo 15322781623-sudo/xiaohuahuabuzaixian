@@ -35,6 +35,7 @@ function canAct(role) {
  */
 class SaltFieldWSClient {
   constructor(token, sid, battlefieldId) {
+    this.sid = sid; // 服务器ID：URL 中 sid2 参数（不是 battlefieldId）
     this.battlefieldId = battlefieldId;
     this.token = token;
     this.utils = g_utils;
@@ -66,9 +67,12 @@ class SaltFieldWSClient {
     return new Promise((resolve, reject) => {
       const url = `wss://xxz-xyzw-new.hortorgames.com/agent`
         + `?p=${encodeURIComponent(this.token)}`
-        + `&e=x&sid2=${this.battlefieldId}&lang=chinese&sid2=${this.battlefieldId}`;
+        + `&e=x&sid2=${this.sid}&lang=chinese&sid2=${this.sid}`;
 
       this.socket = new WebSocket(url);
+      // ★ 关键：必须按 ArrayBuffer 接收二进制消息，否则默认 binaryType='blob'
+      //   服务器回包会变成 Blob，导致解析不到 packet（Cannot read '_raw'）
+      this.socket.binaryType = 'arraybuffer';
       let connected = false;
 
       this.socket.onopen = () => {
@@ -114,50 +118,76 @@ class SaltFieldWSClient {
       if (typeof event.data === 'string') {
         packet = JSON.parse(event.data);
       } else if (event.data instanceof ArrayBuffer) {
-        packet = this.utils?.parse 
-          ? this.utils.parse(event.data, 'auto')
-          : new TextDecoder().decode(event.data);
-      }
-
-      const actualPacket = packet._raw || packet;
-      const incomingSeq = typeof actualPacket?.seq === 'number' ? actualPacket.seq : undefined;
-      if (typeof incomingSeq === 'number' && incomingSeq >= 0) this.ack = incomingSeq;
-
-      // BON 解码
-      if (actualPacket.body && this._shouldDecodeBody(actualPacket.body)) {
-        try {
-          if (this.utils?.bon?.decode) {
-            const bodyBytes = this._convertToUint8Array(actualPacket.body);
-            if (bodyBytes) {
-              const decodedBody = this.utils.bon.decode(bodyBytes);
-              packet.decodedBody = decodedBody;
-              if (packet._raw) packet._raw.decodedBody = decodedBody;
-            }
+        packet = this._parseBinary(event.data);
+      } else if (typeof Blob !== 'undefined' && event.data instanceof Blob) {
+        // Blob 兜底（设置 binaryType='arraybuffer' 后一般不会走到，防御旧/异常环境）
+        event.data.arrayBuffer().then((buffer) => {
+          try {
+            this._processPacket(this._parseBinary(buffer));
+          } catch (e2) {
+            console.error('[SaltField] 消息处理失败:', e2.message);
           }
-        } catch (e) {}
-      }
-
-      // 消息监听
-      if (this.messageListener) this.messageListener(packet);
-
-      // ✅ 功能 3,5: Promise 响应匹配优先使用 resp 字段
-      if (packet.resp !== undefined && this.promises[packet.resp]) {
-        const promiseData = this.promises[packet.resp];
-        delete this.promises[packet.resp];
-        const responseBody = packet.rawData !== undefined ? packet.rawData
-          : packet.decodedBody !== undefined ? packet.decodedBody
-          : packet.body;
-        if (packet.code === 0 || packet.code === undefined) {
-          promiseData.resolve(responseBody || packet);
-        } else {
-          promiseData.reject(new Error(`服务器错误：${packet.code}`));
-        }
+        }).catch((err) => {
+          console.error('[SaltField] Blob 读取失败:', err?.message);
+        });
+        return;
       } else {
-        // 兼容旧的 cmd 名称映射
-        this._handleLegacyResponse(packet);
+        console.warn('[SaltField] 未知消息类型:', typeof event.data);
+        return;
       }
+      this._processPacket(packet);
     } catch (e) {
       console.error('[SaltField] 消息处理失败:', e.message);
+    }
+  }
+
+  /** 二进制消息解密解析（对齐 bonProtocol g_utils.parse） */
+  _parseBinary(buffer) {
+    return this.utils?.parse
+      ? this.utils.parse(buffer, 'auto')
+      : new TextDecoder().decode(buffer);
+  }
+
+  /** 统一处理解析后的消息包 */
+  _processPacket(packet) {
+    if (!packet) return; // 防御：解析不出内容时直接忽略
+
+    const actualPacket = packet._raw || packet;
+    const incomingSeq = typeof actualPacket?.seq === 'number' ? actualPacket.seq : undefined;
+    if (typeof incomingSeq === 'number' && incomingSeq >= 0) this.ack = incomingSeq;
+
+    // BON 解码
+    if (actualPacket.body && this._shouldDecodeBody(actualPacket.body)) {
+      try {
+        if (this.utils?.bon?.decode) {
+          const bodyBytes = this._convertToUint8Array(actualPacket.body);
+          if (bodyBytes) {
+            const decodedBody = this.utils.bon.decode(bodyBytes);
+            packet.decodedBody = decodedBody;
+            if (packet._raw) packet._raw.decodedBody = decodedBody;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 消息监听
+    if (this.messageListener) this.messageListener(packet);
+
+    // ✅ 功能 3,5: Promise 响应匹配优先使用 resp 字段
+    if (packet.resp !== undefined && this.promises[packet.resp]) {
+      const promiseData = this.promises[packet.resp];
+      delete this.promises[packet.resp];
+      const responseBody = packet.rawData !== undefined ? packet.rawData
+        : packet.decodedBody !== undefined ? packet.decodedBody
+        : packet.body;
+      if (packet.code === 0 || packet.code === undefined) {
+        promiseData.resolve(responseBody || packet);
+      } else {
+        promiseData.reject(new Error(`服务器错误：${packet.code}`));
+      }
+    } else {
+      // 兼容旧的 cmd 名称映射
+      this._handleLegacyResponse(packet);
     }
   }
 
@@ -267,13 +297,22 @@ class SaltFieldWSClient {
       if (!task) return;
 
       try {
+        // ★ 盐场协议与主服不同：每条命令 body 需先 BON 编码为字节数组，
+        //   再整体 utils.encode(raw) 加密封包（对齐 server/lib/legionWar 与
+        //   xyzwLegionWarWebSocket 的实现，否则服务端解析不出命令体，
+        //   war_enterbattlefield 等会无响应/超时）。
+        //   注意：心跳 war_ping 除外，走 _sendHeartbeat()，body 为普通对象。
+        const bodyParams = { ...task.params, battlefieldId: this.battlefieldId };
+        const bodyEncoded = this.utils?.bon?.encode
+          ? this.utils.bon.encode(bodyParams)
+          : bodyParams;
         const raw = {
           cmd: task.cmd,
           ack: this.ack,
           seq: task.seq,
           hint: task.hint,
           time: Date.now(),
-          body: { ...task.params, battlefieldId: this.battlefieldId }
+          body: bodyEncoded
         };
 
         // ✅ 功能 4: BON 编码发送
@@ -291,26 +330,37 @@ class SaltFieldWSClient {
     }, 50);
   }
 
-  // ✅ 功能 2: 心跳机制
+  // ✅ 功能 2: 心跳机制（盐场协议：cmd=war_ping, seq=0, body={ battlefieldId }）
+  _sendHeartbeat() {
+    if (!this.connected || this.socket?.readyState !== WebSocket.OPEN) return;
+    const raw = {
+      cmd: 'war_ping',
+      ack: this.ack,
+      seq: 0,
+      hint: this.battlefieldId,
+      time: Date.now(),
+      body: { battlefieldId: this.battlefieldId }
+    };
+    try {
+      const bin = this.utils?.encode && this.enc
+        ? this.utils.encode(raw, this.enc)
+        : JSON.stringify(raw);
+      this.socket.send(bin);
+    } catch (e) {
+      console.error('[SaltField] 心跳发送失败:', e.message);
+    }
+  }
+
   _setupHeartbeat() {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
-    
     // 延迟 3 秒后首发
-    setTimeout(() => {
-      if (this.connected && this.socket?.readyState === WebSocket.OPEN) {
-        this.send('heart_beat', {}, { respKey: 'war_ping' });
-      }
-    }, 3000);
-
+    this.heartbeatDelayTimer = setTimeout(() => this._sendHeartbeat(), 3000);
     // 每 5 秒一次
-    this.heartbeatTimer = setInterval(() => {
-      if (this.connected && this.socket?.readyState === WebSocket.OPEN) {
-        this.send('heart_beat', {}, { respKey: 'war_ping' });
-      }
-    }, this.heartbeatInterval);
+    this.heartbeatTimer = setInterval(() => this._sendHeartbeat(), this.heartbeatInterval);
   }
 
   _clearTimers() {
+    if (this.heartbeatDelayTimer) { clearTimeout(this.heartbeatDelayTimer); this.heartbeatDelayTimer = null; }
     if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
     if (this.sendQueueTimer) { clearInterval(this.sendQueueTimer); this.sendQueueTimer = null; }
   }
@@ -323,6 +373,21 @@ class SaltFieldWSClient {
     this.connected = false;
     this._clearTimers();
   }
+}
+
+/**
+ * 从响应/推送里取字段，兼容多层结构。
+ * 盐场响应经 BON 解码后，业务数据可能位于 packet 顶层（rawData/decodedBody），
+ * 或继续嵌套在 rawData/decodedBody/body/data 内，统一用本函数提取。
+ */
+function pickField(obj, name) {
+  if (!obj || typeof obj !== 'object') return undefined;
+  if (obj[name] !== undefined) return obj[name];
+  for (const k of ['rawData', '_rawData', 'decodedBody', 'body', 'data']) {
+    const child = obj[k];
+    if (child && typeof child === 'object' && child[name] !== undefined) return child[name];
+  }
+  return undefined;
 }
 
 /**
@@ -423,101 +488,14 @@ export function createTasksSaltField(deps) {
       } catch (err) {
         lastError = err;
         const errorMessage = err.message || "";
-        if (noRetryErrors.some(code => errorMessage.includes(code))) {
-          throw err;
-        }
-        throw err;
+        // 明确不可重试的错误直接抛出，其余按 retries 次数重试
+        if (noRetryErrors.some(code => errorMessage.includes(code))) throw err;
+        if (i >= retries) throw err;
+        await safeDelay(1000); // 简单退避后重试
       }
     }
     throw lastError;
   };
-
-  /**
-   * 六边形地图 - 随机选择相邻存在的格子
-   */
-  function pickRandomNeighbor(x, y, buildingData) {
-    const cands = hexNeighbors(x, y).filter(n => {
-      const key = `${n.x}_${n.y}`;
-      return Object.prototype.hasOwnProperty.call(buildingData, key);
-    });
-    if (!cands.length) return null;
-    return cands[Math.floor(Math.random() * cands.length)];
-  }
-
-  /**
-   * 建立盐场专用 WebSocket 连接
-   */
-  function createSaltFieldWS(token, sid, battlefieldId) {
-    return new Promise((resolve, reject) => {
-      const url = `wss://xxz-xyzw-new.hortorgames.com/agent`
-        + `?p=${encodeURIComponent(token)}`
-        + `&e=x&sid2=${sid}&lang=chinese&sid2=${sid}`;
-
-      const ws = new WebSocket(url);
-      let connected = false;
-      let seq = 0;
-      const pending = new Map();
-      const onMessageCallbacks = [];
-
-      ws.onopen = () => {
-        connected = true;
-        resolve({ ws, sendCommand, onMessage, close });
-      };
-
-      ws.onerror = () => {
-        if (!connected) reject(new Error('盐场WS连接失败'));
-      };
-
-      ws.onclose = () => {
-        connected = false;
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          let data = event.data;
-          if (data instanceof ArrayBuffer) {
-            data = new TextDecoder().decode(data);
-          }
-          if (typeof data === 'string') {
-            try { data = JSON.parse(data); } catch(e) { /* passthrough */ }
-          }
-          const msg = data;
-
-          if (msg.ack !== undefined && pending.has(msg.seq)) {
-            pending.get(msg.seq)(msg);
-            pending.delete(msg.seq);
-          }
-
-          if (msg.body && msg.body.battlefield) {
-            onMessageCallbacks.forEach(cb => cb(msg.body.battlefield));
-          }
-        } catch(e) { /* ignore parse errors */ }
-      };
-
-      function onMessage(cb) { onMessageCallbacks.push(cb); }
-
-      function sendCommand(cmd, params = {}) {
-        const currentSeq = ++seq;
-        const body = { ...params, battlefieldId };
-
-        const packet = JSON.stringify({
-          cmd, ack: 0, seq: currentSeq,
-          hint: battlefieldId,
-          time: Date.now(),
-          body
-        });
-
-        return new Promise((resolve) => {
-          pending.set(currentSeq, resolve);
-          ws.send(packet);
-        });
-      }
-
-      function close() {
-        ws.close();
-      }
-    });
-  }
 
   /**
    * 盐场刨地 - 单账号执行
@@ -559,47 +537,101 @@ export function createTasksSaltField(deps) {
       addLog({ time: new Date().toLocaleTimeString(), message: `${name} 连接盐场服务器...`, type: "info" });
       wsClient = new SaltFieldWSClient(token.token, sid, battlefieldId);
       await wsClient.init();
-      const { sendWithPromise, battlefieldId: bfId } = wsClient;
+      // ★ 不能直接解构方法调用：ESM 严格模式下 this 丢失会抛
+      //   "Cannot read properties of undefined (reading 'connected')"
+      const sendWithPromise = (...args) => wsClient.sendWithPromise(...args);
 
       const snapshot = { roles: {}, buildingData: {}, marches: {} };
       let myCodeId = null;
 
       wsClient.messageListener = (packet) => {
-        if (packet.body?.battlefield) {
-          mergeBattlefield(snapshot, packet.body.battlefield);
-        }
+        const bf = pickField(packet, 'battlefield');
+        if (bf) mergeBattlefield(snapshot, bf);
       };
 
-      // 阶段 4: 进场
+      // 阶段 4: 进场（连接建立后稍等，确保服务端就绪，参照 server 端 SaltFieldRunner 等 5s）
+      await safeDelay(5000);
       addLog({ time: new Date().toLocaleTimeString(), message: `${name} 进入战场...`, type: "info" });
       const enterResult = await sendWithPromise("war_enterbattlefield", { useGzip: true }, 10000);
-      if (enterResult.body?.battlefield) {
-        mergeBattlefield(snapshot, enterResult.body.battlefield);
-      }
-      if (enterResult.body && enterResult.body.roleCodeId) {
-        myCodeId = String(enterResult.body.roleCodeId);
-        addLog({ time: new Date().toLocaleTimeString(), message: `${name} ✅ 进场成功, codeId: ${myCodeId}`, type: "success" });
-      } else {
+      // 响应经 BON 解码后 battlefield/roleCodeId 可能位于顶层，或 rawData/decodedBody/body 内
+      const enterBf = pickField(enterResult, 'battlefield');
+      if (enterBf) mergeBattlefield(snapshot, enterBf);
+      myCodeId = String(pickField(enterResult, 'roleCodeId') ?? '');
+      if (!myCodeId) {
         throw new Error('进场失败：未获取到 roleCodeId');
       }
+      addLog({ time: new Date().toLocaleTimeString(), message: `${name} ✅ 进场成功, codeId: ${myCodeId}`, type: "success" });
 
-      // ✅ 布阵：使用预设阵容（支持多队）
-      addLog({ time: new Date().toLocaleTimeString(), message: `${name} 布阵：使用预设阵容...`, type: "info" });
-      let targetFormation = 1;
+      // 主动拉取一次战场全量：buildingData 全量地图由 war_getbattlefieldinfo 下发，
+      // 刨地目标选择依赖它判断"相邻格真实存在"（服务器推送的只是变化部分）
+      wsClient.send('war_getbattlefieldinfo', {});
+
+      // ✅ 布阵：默认跟随账号当前出战阵容；若账号配置了"盐场蟠桃阵容"(1-6)则使用指定预设队
+      // 盐场布阵协议参数为 battleTeam（槽位→武将 heroId），需先从主服读取预设队武将明细再布阵（对齐服务端实现）
+      addLog({ time: new Date().toLocaleTimeString(), message: `${name} 布阵准备：读取账号阵容...`, type: "info" });
+      let targetFormation = 0; // 0 = 跟随当前出战阵容
       try {
         const settingsRaw = localStorage.getItem(`daily-settings:${tokenId}`);
         if (settingsRaw) {
           const settings = JSON.parse(settingsRaw);
-          if (settings.saltFieldPeachFormation != null && settings.saltFieldPeachFormation >= 1 && settings.saltFieldPeachFormation <= 6) {
-            targetFormation = settings.saltFieldPeachFormation;
-          }
+          const v = Number(settings.saltFieldPeachFormation);
+          if (v >= 1 && v <= 6) targetFormation = v;
         }
       } catch(e) {}
-      
-      await sendWithPromise("war_teamsetbattleteam", { teamId: targetFormation }, 8000);
+
+      // 从主服读取账号预设队数据（presetteam_getinfo 返回服务器实时数据：useTeamId=当前出战阵容编号）
+      let battleTeam = null;     // 布阵武将 {槽位: heroId}
+      let formationDesc = '';   // 布阵来源描述
+      let useTeamId = null;
+      let presetTeamMap = null;
+      try {
+        const ptResp = await callWithRetry(tokenId, "presetteam_getinfo", {}, {
+          retries: 1,
+          noRetryErrors: [],
+          timeout: 8000,
+        });
+        const pinfo = pickField(ptResp, 'presetTeamInfo') || {};
+        useTeamId = Number(pinfo.useTeamId) || 1;
+        const inner = pinfo.presetTeamInfo;
+        presetTeamMap = (inner && typeof inner === 'object' && !Array.isArray(inner))
+          ? inner
+          : (typeof pinfo === 'object' && !Array.isArray(pinfo) ? pinfo : null);
+      } catch (e) {
+        addLog({ time: new Date().toLocaleTimeString(), message: `${name} ⚠ 读取主服预设阵容失败：${e.message}`, type: "warning" });
+      }
+
+      // 目标队：配置了 1-6 用指定队，否则跟随账号当前出战阵容（useTeamId）
+      const selectedTeamId = targetFormation >= 1 ? targetFormation : useTeamId;
+      const teamData = presetTeamMap ? (presetTeamMap[String(selectedTeamId)] || null) : null;
+      if (teamData && teamData.teamInfo && typeof teamData.teamInfo === 'object') {
+        const bt = {};
+        for (const [slot, hero] of Object.entries(teamData.teamInfo)) {
+          if (hero && hero.heroId != null) bt[slot] = hero.heroId;
+        }
+        if (Object.keys(bt).length > 0) {
+          battleTeam = bt;
+          formationDesc = targetFormation >= 1
+            ? `盐场配置预设阵容${targetFormation}`
+            : `当前出战阵容#${useTeamId}（跟随当前）`;
+        }
+      }
+
+      if (!battleTeam) {
+        // 预设读取失败 / 目标队为空 → 回退吕布单将（服务端 SaltFieldRunner 同款），保证能出城刨地
+        battleTeam = { '0': 107 };
+        const reason = presetTeamMap
+          ? (targetFormation >= 1 ? `预设阵容${targetFormation}无有效武将` : `当前阵容#${useTeamId}无有效武将`)
+          : '预设阵容读取失败';
+        formationDesc = formationDesc || `${reason}，自动回退吕布单将`;
+      }
+
+      addLog({ time: new Date().toLocaleTimeString(), message: `${name} 🛡 布阵：${formationDesc}（${Object.values(battleTeam).length}人）`, type: "info" });
+      await sendWithPromise("war_teamsetbattleteam", { battleTeam }, 8000);
       await safeDelay(800);
-      await sendWithPromise("war_setbattleteam", { teamId: targetFormation }, 8000);
-      addLog({ time: new Date().toLocaleTimeString(), message: `${name} ✅ 预设阵容${targetFormation}布阵完成`, type: "success" });
+      const setResp = await sendWithPromise("war_setbattleteam", { battleTeam }, 8000);
+      const setBf = pickField(setResp, 'battlefield');
+      if (setBf) mergeBattlefield(snapshot, setBf);
+      addLog({ time: new Date().toLocaleTimeString(), message: `${name} ✅ 布阵完成`, type: "success" });
 
       // 等待角色就绪（含状态检测）
       for (let i = 0; i < 20; i++) {
@@ -612,6 +644,7 @@ export function createTasksSaltField(deps) {
       // ✅ 阶段 5: 刨地循环（锁敌机制 + 目标优先级 + 死亡检测）
       addLog({ time: new Date().toLocaleTimeString(), message: `${name} 🔄 开始刨地循环...`, type: "info" });
       let digCount = 0;
+      let noTargetCount = 0; // 连续无可用相邻格计数，超阈值重新拉取全量地图
       const maxDigs = 100; // 最多 100 次
       
       // 读取用户配置的目标优先级和锁敌 ID
@@ -696,6 +729,11 @@ export function createTasksSaltField(deps) {
         }
               
         if (!target) {
+          noTargetCount++;
+          if (noTargetCount % 3 === 1) {
+            // 全量地图可能未就绪，重新拉取一次
+            wsClient.send('war_getbattlefieldinfo', {});
+          }
           addLog({ time: new Date().toLocaleTimeString(), message: `${name} ⚠ 无可用相邻格，原地等待`, type: "warning" });
           await safeDelay(1500);
           continue;
@@ -706,7 +744,7 @@ export function createTasksSaltField(deps) {
       
         // ✅ 行军失败重试
         try {
-          await sendWithPromise("war_startmarch", { battlefieldId: bfId, target }, 8000);
+          await sendWithPromise("war_startmarch", { battlefieldId, target }, 8000);
           addLog({ time: new Date().toLocaleTimeString(), message: `${name} 🏃 行军 -> [${target.x},${target.y}]`, type: "info" });
         } catch (e) {
           addLog({ time: new Date().toLocaleTimeString(), message: `${name} ❌ 行军失败：${e.message}`, type: "warning" });
@@ -736,7 +774,7 @@ export function createTasksSaltField(deps) {
         // ✅ 刨地失败仅警告继续循环
         try {
           await sendWithPromise("war_startattackbuilding", { 
-            battlefieldId: bfId, 
+            battlefieldId, 
             buildingId: `${target.x}_${target.y}` 
           }, 8000);
           addLog({ time: new Date().toLocaleTimeString(), message: `${name} ✅ 占领 [${target.x},${target.y}]`, type: "success" });

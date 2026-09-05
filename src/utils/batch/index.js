@@ -16,6 +16,7 @@ export * from "./logUtils.js";
 export { createTasksArena } from "./tasksArena.js";
 export { createTasksBottle } from "./tasksBottle.js";
 export { createTasksCar } from "./tasksCar.js";
+export { createTasksClub } from "./tasksClub.js";
 export { createTasksDungeon } from "./tasksDungeon.js";
 // Task factories
 export { createTasksHangUp } from "./tasksHangUp.js";

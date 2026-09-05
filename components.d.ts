@@ -25,6 +25,7 @@ declare module 'vue' {
     BottleHelperCard: typeof import('./src/components/cards/BottleHelperCard.vue')['default']
     BoxHelperCard: typeof import('./src/components/cards/BoxHelperCard.vue')['default']
     CampBattleReport: typeof import('./src/components/Club/CampBattleReport.vue')['default']
+    CampChallengeConfig: typeof import('./src/components/CampChallengeConfig.vue')['default']
     CardKeyDialog: typeof import('./src/components/CardKeyDialog.vue')['default']
     CarScoreInfo: typeof import('./src/components/Club/CarScoreInfo.vue')['default']
     CarTaskCard: typeof import('./src/components/CarTaskCard.vue')['default']
